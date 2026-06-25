@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "seed:run": "tsx src/seed.ts"
+    "seed:run": "tsx src/seed.ts",
+    "seed:staging": "tsx src/seed-staging.ts"
   },
   "dependencies": {
     "@pbe/shared": "*",
