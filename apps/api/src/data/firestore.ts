@@ -19,9 +19,17 @@ import { type Firestore, getFirestore } from "firebase-admin/firestore";
  */
 export function getDb(): Firestore {
   if (getApps().length === 0) {
-    const projectId =
-      process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT ?? "demo-pbe-book";
-    initializeApp({ projectId });
+    const explicitProject = process.env.GCLOUD_PROJECT ?? process.env.GOOGLE_CLOUD_PROJECT;
+    if (process.env.FIRESTORE_EMULATOR_HOST) {
+      // Local/CI: the emulator still needs a project id; use the demo one
+      // (matches the fake-data seeder and the emulator tests) unless overridden.
+      initializeApp({ projectId: explicitProject ?? "demo-pbe-book" });
+    } else {
+      // Real GCP (Cloud Run): let the Admin SDK auto-detect the project and
+      // credentials from the runtime service account / metadata server. Forcing
+      // a hardcoded id here is what made the container read the wrong project.
+      initializeApp(explicitProject ? { projectId: explicitProject } : {});
+    }
   }
   return getFirestore();
 }

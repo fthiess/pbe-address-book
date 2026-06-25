@@ -1,0 +1,23 @@
+# Build context for the Cloud Run API image (apps/api). Everything the image
+# needs is rebuilt in-stage from source via `npm ci` + the build scripts, so we
+# exclude installed/generated trees and anything irrelevant to the API build.
+node_modules
+**/node_modules
+dist
+**/dist
+*.tsbuildinfo
+
+.git
+.github
+.vscode
+
+# Not needed to build the API
+docs
+e2e
+test-results
+playwright-report
+
+# Local/emulator artifacts and logs
+.firebase
+*-debug.log
+*.log
