@@ -12,10 +12,14 @@ design, API spec) and the decision log
 ([`docs/initial-build/DECISIONS.md`](docs/initial-build/DECISIONS.md)) is
 authoritative for *why* anything is the way it is.
 
-> **Status: Phase 0 — Scaffolding and substrate.** An empty but fully wired
-> project: the monorepo, the toolchain, the CI gate, the deterministic
-> fake-data generator, and the role-switchable `DevIdentityProvider`. No
-> product features yet.
+> **Status: Phase 1 — the walking skeleton (in progress).** Phase 0 (the
+> monorepo, the toolchain, the CI gate, the deterministic fake-data generator,
+> and the role-switchable `DevIdentityProvider`) is complete. Phase 1a's
+> **backend read path** is now in: a Firestore-hydrated in-memory cache, the
+> server-side privacy-projection seam (brother role), and `GET /api/profiles`
+> served brotli/gzip-negotiated and `no-store`. Still ahead in Phase 1: the
+> staging infrastructure bring-up (the rest of 1a) and the Ghost auth bridge
+> plus the SPA shell and rendered list (1b).
 
 ## Layout
 
@@ -51,7 +55,7 @@ npm run test         # Vitest unit/integration (non-emulator)
 npm run test:emulator   # Vitest with the Firestore emulator running
 npm run seed         # seed the deterministic fake dataset into the emulator
 npm run e2e          # Playwright end-to-end
-npm run verify:gate  # the full Phase 0 gate, end to end
+npm run verify:gate  # the full tests-green gate, end to end
 ```
 
 ## Environments

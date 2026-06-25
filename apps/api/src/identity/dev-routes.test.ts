@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { ProfileCache } from "../data/cache.js";
 import { buildServer } from "../server.js";
 import { DevIdentityProvider } from "./dev-provider.js";
 import { registerDevRoutes } from "./dev-routes.js";
@@ -7,7 +8,7 @@ const DEV_ENV: NodeJS.ProcessEnv = { NODE_ENV: "development" };
 
 function buildDevServer() {
   const provider = new DevIdentityProvider(DEV_ENV);
-  const app = buildServer({ identityProvider: provider });
+  const app = buildServer({ identityProvider: provider, profileCache: new ProfileCache() });
   registerDevRoutes(app, provider);
   return app;
 }
