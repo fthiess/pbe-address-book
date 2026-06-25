@@ -1,0 +1,28 @@
+PBE Address Book — favicon (ivy leaf, gold on parchment)
+Lifted from the official crest; the wide isosceles triangle stays the masthead mark only.
+
+Files in this folder:
+  favicon.ico           16/32/48 multi-res — classic browser favicon
+  icon-16.png           16×16
+  icon-32.png           32×32
+  icon-48.png           48×48
+  icon-192.png          192×192 — Android / PWA
+  icon-512.png          512×512 — PWA splash / master
+  apple-touch-icon.png  180×180 — iOS home screen (square; iOS rounds it)
+
+Drop into <head>:
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/icon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/icon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+
+site.webmanifest icons:
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ]
+
+Note: the leaf art is raster (traced from the crest PNG). For a crisp vector
+favicon, have a designer redraw the leaf as an SVG path using these as reference.
+Tile color #F3ECDD (parchment), leaf #9B7A2E.

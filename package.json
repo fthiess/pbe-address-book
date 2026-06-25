@@ -1,0 +1,43 @@
+{
+  "name": "pbe-address-book",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "PBE Address Book (Book) — a members-only PBE alumni directory.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=24"
+  },
+  "workspaces": ["packages/*", "apps/*", "tools/*"],
+  "scripts": {
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "lint": "biome lint .",
+    "check": "biome check .",
+    "check:fix": "biome check --write .",
+    "build:libs": "tsc -b tsconfig.libs.json",
+    "typecheck": "npm run build:libs && tsc --noEmit -p apps/api/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p tools/fake-data/tsconfig.json",
+    "build:web": "npm run build --workspace apps/web",
+    "build:api": "npm run build --workspace apps/api",
+    "build": "npm run build:libs && npm run build:web && npm run build:api",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:emulator": "firebase emulators:exec --only firestore \"vitest run --config vitest.emulator.config.ts\"",
+    "seed": "firebase emulators:exec --only firestore \"npm run seed:run --workspace tools/fake-data\"",
+    "e2e": "playwright test",
+    "assert:no-dev-provider": "node scripts/assert-no-dev-provider.mjs",
+    "assert:tokens": "node scripts/assert-tokens-in-sync.mjs",
+    "check:bundle-size": "node scripts/check-bundle-size.mjs",
+    "verify:gate": "npm run check && npm run assert:tokens && npm run typecheck && npm run build && npm run assert:no-dev-provider && npm run check:bundle-size && npm run test && npm run test:emulator && npm run e2e"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.1",
+    "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "^1.50.1",
+    "esbuild": "^0.25.0",
+    "firebase-tools": "^14.0.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

@@ -1,0 +1,268 @@
+/* ============================================================================
+   PBE Address Book — Design Tokens
+   ----------------------------------------------------------------------------
+   Drop-in for shadcn/ui + Tailwind. Values are the EXACT hex used in the
+   HTML design references. Two themes: :root (light) and .dark.
+
+   The shadcn-named variables (--background, --primary, --ring, …) are the
+   load-bearing layer. Below them sit BRAND + SEMANTIC + CHIP tokens that the
+   shadcn set doesn't cover (the crest gold, the In-Memoriam palette, the
+   course-area chip colors, success/verified, the confirmation tones).
+
+   Two ways to consume:
+   • shadcn (Tailwind v3): keep these as-is; classes like bg-background,
+     text-primary, border-input, ring-ring resolve through tailwind.config.
+   • Tailwind v4: see the @theme inline block at the bottom of this file.
+   ========================================================================== */
+
+:root {
+  /* ---- shadcn core (LIGHT) ---- */
+  --background: #eef0f1; /* app canvas behind cards */
+  --foreground: #14181b; /* primary text */
+  --card: #ffffff; /* surfaces: cards, rows, top bar */
+  --card-foreground: #14181b;
+  --popover: #ffffff; /* menus, dialogs, the ? popover */
+  --popover-foreground: #14181b;
+
+  --primary: #007194; /* teal — primary buttons, active states, links-in-app */
+  --primary-foreground: #ffffff;
+  --primary-emphasis: #0b4a5b; /* darker teal for text/icons on teal tints */
+
+  --secondary: #f1f3f4; /* secondary/segmented control track + ghost surfaces */
+  --secondary-foreground: #14181b;
+
+  --muted: #f6f7f8; /* inset panels, locked fields, zebra */
+  --muted-foreground: #5a6470; /* muted/secondary text */
+
+  --accent: #f1f3f4; /* shadcn semantic = subtle hover bg for menu items */
+  --accent-foreground: #14181b;
+
+  --destructive: #b42318; /* delete / cannot-be-undone */
+  --destructive-foreground: #ffffff;
+
+  --border: #e2e5e7; /* card & divider borders (also #EDEFF0 hairline) */
+  --border-hairline: #edeff0;
+  --input: #808a92; /* input/control border (intentionally darker than --border) */
+  --ring: #007194; /* focus ring color */
+  --ring-shadow: 0 0 0 3px rgba(0, 113, 148, 0.2); /* the actual focus ring */
+
+  /* ---- text ramp (cool neutral) ---- */
+  --text-1: #14181b; /* headings / strong */
+  --text-2: #3a434b; /* body emphasis */
+  --text-3: #5a6470; /* muted */
+  --text-4: #8a949c; /* faint / placeholder */
+  --text-5: #a6aeb4; /* fainter */
+  --track: #c4cace; /* switch-off track, disabled */
+
+  /* ---- brand: crest gold + ivy ---- */
+  --brand-gold: #ad8736; /* crest fill, masthead mark */
+  --brand-gold-soft: #b8995e; /* small triangles, soft-confirm icon */
+  --gold-text: #7a4b00; /* gold label text */
+  --gold-text-strong: #8a5d00; /* "deliberate" confirmation tone */
+  --gold-bg: #f6ecdd; /* gold chip / tint */
+  --gold-bg-2: #fbf1dc; /* warning banner */
+  --gold-bg-3: #fbf7ec; /* soft-confirm surface */
+  --gold-bg-4: #fcfaf4; /* deceased field group surface */
+  --gold-border: #e6cfa9;
+  --gold-border-2: #ebd9ae;
+
+  /* ---- In Memoriam (memorial) ---- */
+  --memorial-fg: #6e5526; /* "In Memoriam" display + lifespan line */
+  --memorial-bg-from: #fbf7ef; /* banner gradient start */
+  --memorial-bg-to: #f6efe0; /* banner gradient end */
+  --memorial-border: #eadfc9;
+
+  /* ---- success / verified (green) ---- */
+  --success: #1e7a50;
+  --success-strong: #1e5c3e;
+  --success-bg: #e7f3ec;
+  --success-border: #bfe3ce;
+
+  /* ---- confirmation tones (3) ---- */
+  --tone-soft-fg: #8a6d34; /* gentle · reversible (mark deceased) */
+  --tone-deliberate-fg: #8a5d00; /* consequential · reversible (de-brother) */
+  --tone-destructive-fg: #b42318; /* destructive · cannot be undone (delete) */
+
+  /* ---- elevation ---- */
+  --shadow-card: 0 1px 2px rgba(20, 24, 27, 0.04), 0 10px 30px rgba(20, 24, 27, 0.07);
+  --shadow-popover: 0 6px 20px rgba(20, 24, 27, 0.12);
+  --shadow-popover-strong: 0 12px 30px rgba(20, 24, 27, 0.16);
+  --shadow-modal: 0 16px 40px rgba(20, 24, 27, 0.18);
+  --shadow-avatar: 0 0 0 4px #ffffff, 0 0 0 5px #e2ebed, 0 10px 28px rgba(0, 113, 148, 0.16);
+
+  /* ---- radius ---- */
+  --radius: 0.5625rem; /* 9px — inputs, buttons (shadcn derives sm/md/lg from this) */
+  --radius-sm: 6px;
+  --radius-md: 9px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-2xl: 18px; /* primary cards */
+  --radius-pill: 999px;
+}
+
+.dark {
+  /* ---- shadcn core (DARK) ---- */
+  --background: #0e1518;
+  --foreground: #e8edef;
+  --card: #101a1e;
+  --card-foreground: #e8edef;
+  --popover: #141d21;
+  --popover-foreground: #e8edef;
+
+  --primary: #34a9c4; /* brightened teal so it reads on dark surfaces */
+  --primary-foreground: #06181e; /* near-black text on the bright teal */
+  --primary-emphasis: #9ad7e6; /* teal link / active accent */
+
+  --secondary: #1b262b;
+  --secondary-foreground: #e8edef;
+
+  --muted: #141d21;
+  --muted-foreground: #9aa7ad;
+
+  --accent: #243036; /* hover bg */
+  --accent-foreground: #e8edef;
+
+  --destructive: #e5635a; /* lightened from #B42318 for dark-mode contrast */
+  --destructive-foreground: #1a0b0a;
+
+  --border: #243036;
+  --border-hairline: #233038;
+  --input: #2a3940;
+  --ring: #34a9c4;
+  --ring-shadow: 0 0 0 3px rgba(52, 169, 196, 0.28);
+
+  --text-1: #e8edef;
+  --text-2: #c3cbd0;
+  --text-3: #9aa7ad;
+  --text-4: #7e8b91;
+  --text-5: #5a6f7a;
+  --track: #566066;
+
+  --brand-gold: #cda86a;
+  --brand-gold-soft: #e6c78c;
+  --gold-text: #e6c78c;
+  --gold-text-strong: #e6c78c;
+  --gold-bg: #2e2415;
+  --gold-bg-2: #221b0f;
+  --gold-bg-3: #221b0f;
+  --gold-bg-4: #1b1710;
+  --gold-border: #574734;
+  --gold-border-2: #5a4a2a;
+
+  --memorial-fg: #e6c78c;
+  --memorial-bg-from: #1a1710;
+  --memorial-bg-to: #14110b;
+  --memorial-border: #3a3326;
+
+  --success: #5cc495;
+  --success-strong: #5cc495;
+  --success-bg: #13251d;
+  --success-border: #265840;
+
+  --shadow-card: 0 10px 30px rgba(0, 0, 0, 0.3);
+  --shadow-popover: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --shadow-popover-strong: 0 12px 30px rgba(0, 0, 0, 0.45);
+  --shadow-modal: 0 16px 40px rgba(0, 0, 0, 0.55);
+  --shadow-avatar: 0 0 0 4px #101a1e, 0 0 0 5px #243036, 0 10px 28px rgba(0, 0, 0, 0.4);
+}
+
+/* ============================================================================
+   COURSE-AREA CHIP PALETTE
+   ----------------------------------------------------------------------------
+   MIT course numbers are color-coded everywhere a major appears (Directory
+   chips, Profile majors, filter dialog). Each area = {text, bg, border}.
+   Meaning is ALSO carried by the code text — never rely on the color alone.
+   Dark-mode variants given where the design defined them.
+   ========================================================================== */
+:root {
+  --chip-teal-fg: #0b4a5b;
+  --chip-teal-bg: #e2f0f3;
+  --chip-teal-border: #c2dee5; /* Course 6 / 6-x */
+  --chip-gold-fg: #7a4b00;
+  --chip-gold-bg: #f6ecdd;
+  --chip-gold-border: #e6cfa9; /* Course 2 */
+  --chip-green-fg: #1e5c3e;
+  --chip-green-bg: #e7f3ec;
+  --chip-green-border: #bfe3ce; /* Course 7 */
+  --chip-purple-fg: #5b3b73;
+  --chip-purple-bg: #efe9f6;
+  --chip-purple-border: #dacbe8; /* Course 18 */
+  --chip-red-fg: #9b2530;
+  --chip-red-bg: #fbe7e8;
+  --chip-red-border: #f1c9cc; /* Course 10 */
+  --chip-slate-fg: #3a4651;
+  --chip-slate-bg: #e9edf0;
+  --chip-slate-border: #d2dadf; /* neutral / UNLISTED / de-brothered course */
+}
+.dark {
+  --chip-teal-fg: #9ad7e6;
+  --chip-teal-bg: #11343f;
+  --chip-teal-border: #1e5566;
+  --chip-gold-fg: #e6c78c;
+  --chip-gold-bg: #2e2415;
+  --chip-gold-border: #574734;
+  --chip-purple-fg: #c9aedd;
+  --chip-purple-bg: #241934;
+  --chip-purple-border: #45325a;
+  /* green / red / slate dark variants: darken bg to ~#13251D family, keep fg light */
+  --chip-slate-fg: #c3cbd0;
+  --chip-slate-bg: #1b262b;
+  --chip-slate-border: #2a3940;
+}
+
+/* ============================================================================
+   TYPOGRAPHY
+   ========================================================================== */
+:root {
+  --font-display: "Manufacturing Consent", ui-serif, Georgia, serif; /* masthead + "In Memoriam" only */
+  --font-sans: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; /* IDs, counts, year inputs */
+
+  /* size / line-height / weight / tracking — see README "Type scale" table */
+  --text-display: 3rem; /* 48px  · Manufacturing Consent · "In Memoriam" */
+  --text-masthead: 1.125rem; /* 18px  · Manufacturing Consent · top-bar wordmark */
+  --text-h1: 1.875rem; /* 30px / 1.1  / 700 / -0.01em */
+  --text-h2: 1.75rem; /* 28px / 1.1  / 700 / -0.01em */
+  --text-h3: 1.3125rem; /* 21px / 1.2  / 700 */
+  --text-h4: 1.125rem; /* 18px / 1.3  / 700 (dialog titles) */
+  --text-body-lg: 0.9375rem; /* 15px / 1.5  / 400-500 (field values) */
+  --text-body: 0.875rem; /* 14px / 1.55 / 400 (body, switch labels) */
+  --text-body-sm: 0.8125rem; /* 13px / 1.55 / 400-600 (helper text) */
+  --text-label: 0.8125rem; /* 13px / 600 (field labels, buttons) */
+  --text-label-up: 0.75rem; /* 12px / 700 / uppercase / 0.03-0.05em (section eyebrows) */
+  --text-caption: 0.6875rem; /* 11px / 700 / uppercase / 0.06em (role/status pills) */
+  --text-micro: 0.656rem; /* 10.5px / 700 / 0.03em (UNLISTED, IN MEMORIAM badges) */
+}
+
+/* ============================================================================
+   TAILWIND v4 — @theme inline (optional). For v3, use tailwind.config.js
+   (snippet in README). Maps the vars above to Tailwind color/util names.
+   ========================================================================== */
+/*
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+*/

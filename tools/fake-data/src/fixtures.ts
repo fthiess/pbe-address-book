@@ -1,0 +1,125 @@
+/**
+ * Small, committed fixture pools the generator draws from (DECISIONS D65 — we
+ * commit the generator and these fixtures, never a generated data blob). The
+ * data is deliberately and obviously fake: every generated email is on the
+ * reserved `example.test` domain and every Constitution ID is above #5000
+ * (real signing numbers are lower), so a generated profile can never be
+ * mistaken for a real brother.
+ */
+
+export const FIRST_NAMES: readonly string[] = [
+  "James",
+  "Robert",
+  "John",
+  "Michael",
+  "David",
+  "William",
+  "Richard",
+  "Thomas",
+  "Charles",
+  "Daniel",
+  "Matthew",
+  "Anthony",
+  "Mark",
+  "Donald",
+  "Steven",
+  "Paul",
+  "Andrew",
+  "Joshua",
+  "Kenneth",
+  "Kevin",
+  "Brian",
+  "George",
+  "Edward",
+  "Ronald",
+  "Timothy",
+  "Jason",
+  "Jeffrey",
+  "Ryan",
+  "Jacob",
+  "Gary",
+  "Nicholas",
+  "Eric",
+  "Jonathan",
+  "Stephen",
+  "Larry",
+  "Justin",
+  "Scott",
+  "Brandon",
+  "Benjamin",
+  "Samuel",
+] as const;
+
+// Plausible but clearly-placeholder surnames (note the deliberate misspellings,
+// e.g. "Smyth" for "Smith" — the house convention for the fake exemplar).
+export const LAST_NAMES: readonly string[] = [
+  "Smyth",
+  "Jonas",
+  "Willamson",
+  "Brownell",
+  "Joneson",
+  "Millard",
+  "Davison",
+  "Garcio",
+  "Rodrigue",
+  "Wilsone",
+  "Martinet",
+  "Andersohn",
+  "Tayler",
+  "Thomason",
+  "Jacksonn",
+  "Whyte",
+  "Harriss",
+  "Martine",
+  "Thompsen",
+  "Garretson",
+  "Robinette",
+  "Clarkson",
+  "Lewisohn",
+  "Lees",
+  "Walkerton",
+  "Hallman",
+  "Allenby",
+  "Younge",
+  "Hernandes",
+  "Kingsford",
+  "Wrighton",
+  "Lopaz",
+  "Hilliard",
+  "Scotson",
+  "Greenway",
+  "Adamson",
+  "Bakersfield",
+  "Nelsen",
+  "Hillman",
+  "Ramiro",
+] as const;
+
+export interface Place {
+  city: string;
+  state: string | null;
+  country: string;
+}
+
+export const PLACES: readonly Place[] = [
+  { city: "Boston", state: "MA", country: "US" },
+  { city: "Cambridge", state: "MA", country: "US" },
+  { city: "New York", state: "NY", country: "US" },
+  { city: "San Francisco", state: "CA", country: "US" },
+  { city: "Palo Alto", state: "CA", country: "US" },
+  { city: "Seattle", state: "WA", country: "US" },
+  { city: "Austin", state: "TX", country: "US" },
+  { city: "Chicago", state: "IL", country: "US" },
+  { city: "Denver", state: "CO", country: "US" },
+  { city: "Portland", state: "OR", country: "US" },
+  { city: "Atlanta", state: "GA", country: "US" },
+  { city: "Washington", state: "DC", country: "US" },
+  { city: "Pittsburgh", state: "PA", country: "US" },
+  { city: "Ann Arbor", state: "MI", country: "US" },
+  { city: "Minneapolis", state: "MN", country: "US" },
+  { city: "Toronto", state: "ON", country: "CA" },
+  { city: "Vancouver", state: "BC", country: "CA" },
+  { city: "London", state: null, country: "GB" },
+  { city: "Munich", state: null, country: "DE" },
+  { city: "Singapore", state: null, country: "SG" },
+] as const;

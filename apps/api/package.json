@@ -1,0 +1,18 @@
+{
+  "name": "@pbe/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --packages=external --outfile=dist/server.js",
+    "dev": "tsx watch src/index.dev.ts",
+    "start": "node dist/server.js"
+  },
+  "dependencies": {
+    "@pbe/shared": "*",
+    "fastify": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7"
+  }
+}

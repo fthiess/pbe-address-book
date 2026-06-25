@@ -1,0 +1,76 @@
+name: CI
+
+# The mechanical enforcement of the tests-green gate (CODING-PROJECT-PLAN §5).
+# A red pipeline blocks merge. Every step here mirrors a `npm run` script so the
+# same checks run locally and in CI.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      # The Firestore emulator runs on the JVM (used by the emulator test step).
+      - name: Set up Java (Firestore emulator)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Format + lint (Biome)
+        run: npm run check
+
+      - name: Token layer in sync (D29)
+        run: npm run assert:tokens
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Build (libs, SPA, API)
+        run: npm run build
+
+      - name: DevIdentityProvider absent from prod bundle (D108)
+        run: npm run assert:no-dev-provider
+
+      - name: Bundle-size budget (D74)
+        run: npm run check:bundle-size
+
+      - name: Unit / integration tests
+        run: npm run test
+
+      - name: Emulator integration tests
+        run: npm run test:emulator
+
+      - name: End-to-end + accessibility (Playwright + axe)
+        run: npm run e2e
+
+      - name: Upload Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

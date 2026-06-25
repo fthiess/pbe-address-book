@@ -1,0 +1,14 @@
+rules_version = '2';
+
+// Book clients NEVER talk to Firestore directly. Every read and write goes
+// through the Cloud Run backend using the Admin SDK, which bypasses these
+// rules entirely. These rules therefore deny all direct client access as a
+// defense-in-depth backstop (the system of record is only reachable via the
+// privacy-projecting API — ENGINEERING-DESIGN §2, DATABASE-SCHEMA §9).
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
