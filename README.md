@@ -1,5 +1,7 @@
 # PBE Address Book ("Book")
 
+[![CI](https://github.com/fthiess/pbe-address-book/actions/workflows/ci.yml/badge.svg)](https://github.com/fthiess/pbe-address-book/actions/workflows/ci.yml)
+
 A members-only directory for the brothers of PBE — a sibling to the Ghost
 newsletter site at `pbe400.org`, to live at `book.pbe400.org`.
 
