@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { ProfileCache } from "./data/cache.js";
 import type { IdentityProvider } from "./identity/types.js";
+import { registerImageRoutes } from "./routes/images.js";
 import { registerProfileRoutes } from "./routes/profiles.js";
 
 export interface BuildServerOptions {
@@ -28,6 +29,7 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   }));
 
   registerProfileRoutes(app, options.profileCache);
+  registerImageRoutes(app);
 
   return app;
 }

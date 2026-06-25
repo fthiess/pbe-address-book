@@ -15,7 +15,11 @@
   "hosting": {
     "public": "apps/web/dist",
     "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "rewrites": [
+      { "source": "/api/**", "run": { "serviceId": "pbe-book-api", "region": "us-central1" } },
+      { "source": "/img/**", "run": { "serviceId": "pbe-book-api", "region": "us-central1" } },
+      { "source": "**", "destination": "/index.html" }
+    ],
     "headers": [
       {
         "source": "**/*.@(js|css|woff2|svg|png|webp|ico)",
