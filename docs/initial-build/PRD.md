@@ -31,7 +31,7 @@ The first release ("MVP") delivers a complete, usable address book. Features tag
 - Profile view/edit page.
 - Authentication via a Ghost auth bridge.
 - Three permission levels: Brother, Manager, Administrator.
-- REST API under `/api/*`: the bulk `GET /api/profiles` (per-role projection) and `GET /api/me` self-fetch, single-record CRUD on `/api/profiles/{id}` with a dedicated verify action, self-service stars, the headshot upload/remove endpoints (reads go straight to the CDN), the admin role-change endpoint, and the first-party Linter `GET /api/roster` (the full contract is in `API-SPEC.md`).
+- REST API under `/api/*`: the bulk `GET /api/profiles` (per-role projection) and `GET /api/me` self-fetch, single-record CRUD on `/api/profiles/{id}` with a dedicated verify action, self-service stars, the headshot upload/remove endpoints (reads are served by the backend from a private bucket, decision D126), the admin role-change endpoint, and the first-party Linter `GET /api/roster` (the full contract is in `API-SPEC.md`).
 - SPA frontend that bulk-downloads the dataset the user is permitted to see.
 - Headshots with crop-on-upload; precomputed thumbnails.
 - Stars (personal favorites list).
@@ -242,10 +242,10 @@ The administrator action on this bar is **Add Brother**, which navigates to `/br
 
 The grid is a **single virtualized continuous list of the entire current result set** (TanStack Virtual, D29), not a paginated one: because the whole dataset is already in memory (D4), every matching brother is reachable by scrolling and there is nothing to "load more" of, so pagination or a Load-More control would be needless friction. Only the rows near the viewport are rendered, but the full match set scrolls as one list. A **result-count readout** ("248 brothers") reports the set's size in place of a page count. The **column-header row stays sticky** on vertical scroll (keeping the sort controls reachable), complementing the frozen left columns on horizontal scroll (§5.6.1); scroll-offset restoration on Back is implemented over the virtualizer (D31). The card layout below `md` (§5.5) follows the same model — a virtualized vertical list of cards.
 
-Thumbnails follow the lazy-plus-prefetch architecture of D9 (precomputed, CDN-served, kept out of the bulk JSON payload), with this session fixing the aggressiveness D9 left open:
+Thumbnails follow the lazy-plus-prefetch architecture of D9 (precomputed, kept out of the bulk JSON payload, and served by the backend from a private bucket — decision D126, which replaced the Cloud CDN of D9/D23), with this session fixing the aggressiveness D9 left open:
 
 - **Lookahead loading** tied to the virtualizer's overscan: a row's thumbnail loads as it comes within roughly one-to-two viewport-heights of the visible window, so it is ready just before scrolling into view. The exact margin is feel-tuned during the build.
-- **Idle-time prefetch** of the remaining thumbnails in the current result set, in scroll order (`requestIdleCallback`, low priority), **cancelled on any view change** and bounded to the current filtered set. This is affordable — a 96×96 WEBP is a few KB, so even an entire ~2,000-row set is single-digit megabytes, handled easily by the CDN and HTTP/2 — and because the objects are immutable and indefinitely cacheable (D17/D23), re-views and new tabs are instant.
+- **Idle-time prefetch** of the remaining thumbnails in the current result set, in scroll order (`requestIdleCallback`, low priority), **cancelled on any view change** and bounded to the current filtered set. This is affordable — a 96×96 WEBP is a few KB, so even an entire ~2,000-row set is single-digit megabytes, served easily by the backend over HTTP/2 — and because the objects are immutable and indefinitely **browser-cacheable** (D17/D23/D126), re-views and new tabs are instant.
 - **No layout shift:** the 96×96 box is reserved whether or not the image has loaded; a brother without a headshot shows the generic avatar immediately, one with a headshot a light placeholder until the thumbnail arrives.
 
 This keeps the initial bulk load text-only and fast — the reason D9 kept thumbnails out of the payload — then streams the images in so scrolling stays smooth.
