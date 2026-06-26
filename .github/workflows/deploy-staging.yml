@@ -73,10 +73,17 @@ jobs:
           workload_identity_provider: projects/268373129203/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: github-deployer@pbe-book-staging.iam.gserviceaccount.com
 
-      # Firebase first, immediately after auth: the CLI reads the ADC file via
-      # google-auth-library, which re-exchanges the OIDC token at use time, so it
-      # is the most sensitive to that token's freshness. No FIREBASE_TOKEN, no key.
-      # --project is explicit because .firebaserc's default is the emulator project.
+      # Run the Firebase CLI under Node 20: under Node 24 google-auth-library's STS
+      # token exchange dies with "Premature close" (undici), so the WIF credential
+      # never resolves. Node 20's HTTP stack handles it. The SPA was already built
+      # on Node 24 above; firebase-tools has no native deps, so this is safe.
+      - name: Use Node 20 for the Firebase CLI
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # Firebase reads the ADC file via google-auth-library (no FIREBASE_TOKEN, no
+      # key). --project is explicit because .firebaserc's default is the emulator.
       - name: Deploy Firebase Hosting
         run: npx firebase deploy --only hosting --project pbe-book-staging --non-interactive --debug
 
