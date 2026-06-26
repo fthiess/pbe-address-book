@@ -110,7 +110,7 @@ function buildProvider(
 describe("GhostIdentityProvider.createSession", () => {
   it("verifies a valid token, consumes the nonce, and resolves the email", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const nonce = singleUseNonce("good-nonce");
     const provider = buildProvider(publicKey, cache, nonce, "admin");
 
@@ -130,7 +130,7 @@ describe("GhostIdentityProvider.createSession", () => {
     // Ghost signs member JWTs RS512 with a 1024-bit RSA key; jose rejects that
     // key length, which is why the verifier uses Node crypto. This must pass.
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 1024 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     const session = await provider.createSession({
       token: makeToken({ privateKey, alg: "RS512" }),
@@ -141,7 +141,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("normalizes the JWT subject before resolving (D97)", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     const token = makeToken({ privateKey, sub: `  ${LINKED_EMAIL.toUpperCase()}  ` });
     const session = await provider.createSession({ token, state: "n" });
@@ -151,7 +151,7 @@ describe("GhostIdentityProvider.createSession", () => {
   it("rejects a token signed with the wrong key (forged signature)", async () => {
     const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const other = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     const token = makeToken({ privateKey: other.privateKey, signKey: other.privateKey });
     await expect(provider.createSession({ token, state: "n" })).rejects.toMatchObject({
@@ -162,7 +162,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("rejects a symmetric-algorithm (HS256) token — the alg pin (D104)", async () => {
     const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     // Hand-build an HS256-headed token; the alg pin rejects it before any verify.
     const header = b64u(JSON.stringify({ alg: "HS256", kid: "test-kid", typ: "JWT" }));
@@ -175,7 +175,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("rejects an alg:none token (D104)", async () => {
     const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     const header = b64u(JSON.stringify({ alg: "none", typ: "JWT" }));
     const payload = b64u(JSON.stringify({ sub: LINKED_EMAIL, iss: ISSUER, aud: AUDIENCE }));
@@ -187,7 +187,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("rejects a token with no kid", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     await expect(
       provider.createSession({ token: makeToken({ privateKey, kid: null }), state: "n" }),
@@ -196,7 +196,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("rejects an expired token", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     const token = makeToken({ privateKey, exp: Math.floor(Date.now() / 1000) - 120 });
     await expect(provider.createSession({ token, state: "n" })).rejects.toMatchObject({
@@ -206,7 +206,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("rejects a wrong-issuer and wrong-audience token", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     const badIss = makeToken({ privateKey, iss: "https://evil.example/members/api" });
     await expect(provider.createSession({ token: badIss, state: "n" })).rejects.toBeInstanceOf(
@@ -220,7 +220,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("denies an email that matches no profile (unlinked_member)", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: "someone.else@example.test" });
+    const cache = await loadedCache({ id: 5001, email: "someone.else@example.test" });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     await expect(
       provider.createSession({ token: makeToken({ privateKey }), state: "n" }),
@@ -230,8 +230,8 @@ describe("GhostIdentityProvider.createSession", () => {
   it("fails closed when an email matches more than one profile (ambiguous_member)", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache(
-      { constitutionId: 5001, email: LINKED_EMAIL },
-      { constitutionId: 5002, email: LINKED_EMAIL.toUpperCase() }, // same after normalization
+      { id: 5001, email: LINKED_EMAIL },
+      { id: 5002, email: LINKED_EMAIL.toUpperCase() }, // same after normalization
     );
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     await expect(
@@ -241,7 +241,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("rejects a missing or replayed state nonce (invalid_state)", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("good-nonce"));
     await provider.createSession({ token: makeToken({ privateKey }), state: "good-nonce" });
     await expect(
@@ -251,7 +251,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
   it("requires both a token and a state", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     await expect(provider.createSession({ state: "n" })).rejects.toMatchObject({
       code: "invalid_token",
@@ -259,5 +259,18 @@ describe("GhostIdentityProvider.createSession", () => {
     await expect(
       provider.createSession({ token: makeToken({ privateKey }) }),
     ).rejects.toMatchObject({ code: "invalid_state" });
+  });
+
+  it("denies a session to a de-brothered profile (debrothered, D115)", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const cache = await loadedCache({
+      id: 5001,
+      email: LINKED_EMAIL,
+      debrothered: { isDebrothered: true, debrotheredAt: "2026-01-01T00:00:00.000Z" },
+    });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    await expect(
+      provider.createSession({ token: makeToken({ privateKey }), state: "n" }),
+    ).rejects.toMatchObject({ status: 403, code: "debrothered" });
   });
 });

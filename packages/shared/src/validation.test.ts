@@ -1,0 +1,142 @@
+import { describe, expect, it } from "vitest";
+import type { Profile } from "./types.js";
+import { type ValidationContext, validateProfile } from "./validation.js";
+
+const CTX: ValidationContext = { currentYear: 2026, validMajorCodes: new Set(["6-3", "18"]) };
+
+/** The dotted field names flagged by a validation run, for terse assertions. */
+function fields(input: Partial<Profile>, ctx: ValidationContext = CTX): string[] {
+  return validateProfile(input, ctx).issues.map((issue) => issue.field);
+}
+
+/** A minimal valid candidate edit (partial — present fields only). */
+const valid: Partial<Profile> = {
+  id: 5247,
+  firstName: "James",
+  lastName: "Smyth",
+  classYear: 1984,
+  email: "james@example.test",
+};
+
+describe("validateProfile — accepts valid input", () => {
+  it("passes a clean partial edit", () => {
+    expect(validateProfile(valid, CTX)).toEqual({ ok: true, issues: [] });
+  });
+
+  it("accepts a null class year (unknown)", () => {
+    expect(fields({ classYear: null })).toEqual([]);
+  });
+
+  it("accepts free-text state for a non-US/CA country", () => {
+    expect(fields({ address: { country: "GB", stateProvince: "Greater London" } })).toEqual([]);
+  });
+});
+
+describe("validateProfile — required fields (create)", () => {
+  it("flags missing required names and class year when requireRequired is set", () => {
+    const result = fields({}, { ...CTX, requireRequired: true });
+    expect(result).toContain("firstName");
+    expect(result).toContain("lastName");
+    expect(result).toContain("classYear");
+  });
+
+  it("ignores absent fields on a partial edit (no requireRequired)", () => {
+    expect(fields({ email: "x@example.test" })).toEqual([]);
+  });
+
+  it("rejects a present-but-empty first name", () => {
+    expect(fields({ firstName: "   " })).toEqual(["firstName"]);
+  });
+});
+
+describe("validateProfile — class year range (§8)", () => {
+  it("rejects a year below 1890 or beyond currentYear + 6", () => {
+    expect(fields({ classYear: 1492 })).toEqual(["classYear"]);
+    expect(fields({ classYear: 2033 })).toEqual(["classYear"]);
+  });
+  it("accepts the future margin (currentYear + 6)", () => {
+    expect(fields({ classYear: 2032 })).toEqual([]);
+  });
+});
+
+describe("validateProfile — email rules (§8/D97)", () => {
+  it("rejects a malformed email", () => {
+    expect(fields({ email: "not-an-email" })).toEqual(["email"]);
+  });
+  it("rejects an alternate email with no primary on the record", () => {
+    expect(fields({ alternateEmail: "alt@example.test" })).toContain("alternateEmail");
+  });
+  it("accepts an alternate email when a primary is present", () => {
+    expect(fields({ email: "p@example.test", alternateEmail: "a@example.test" })).toEqual([]);
+  });
+});
+
+describe("validateProfile — address (§8/D37)", () => {
+  it("rejects an unknown country code", () => {
+    expect(fields({ address: { country: "ZZ" } })).toEqual(["address.country"]);
+  });
+  it("rejects an invalid US state code", () => {
+    expect(fields({ address: { country: "US", stateProvince: "ZZ" } })).toEqual([
+      "address.stateProvince",
+    ]);
+  });
+  it("accepts a valid US state code", () => {
+    expect(fields({ address: { country: "US", stateProvince: "MA" } })).toEqual([]);
+  });
+});
+
+describe("validateProfile — collections", () => {
+  it("rejects duplicate majors and unknown codes against the vocabulary", () => {
+    expect(fields({ majors: ["6-3", "6-3"] })).toContain("majors.1");
+    expect(fields({ majors: ["nope"] })).toContain("majors.0");
+  });
+  it("rejects more than five links and a non-http(s) URL scheme (D107)", () => {
+    expect(fields({ links: Array(6).fill({ label: "x", url: "https://example.test" }) })).toContain(
+      "links",
+    );
+    expect(fields({ links: [{ label: "x", url: "javascript:alert(1)" }] })).toEqual([
+      "links.0.url",
+    ]);
+  });
+  it("rejects more than two emergency contacts and a bad contact phone", () => {
+    expect(fields({ emergencyContacts: [{}, {}, {}] })).toContain("emergencyContacts");
+    expect(fields({ emergencyContacts: [{ phone: "letters" }] })).toEqual([
+      "emergencyContacts.0.phone",
+    ]);
+  });
+});
+
+describe("validateProfile — big brother", () => {
+  it("rejects a brother set as their own Big Brother", () => {
+    expect(fields({ id: 5247, bigBrotherId: 5247 })).toEqual(["bigBrotherId"]);
+  });
+  it("accepts a different Big Brother id", () => {
+    expect(fields({ id: 5247, bigBrotherId: 5001 })).toEqual([]);
+  });
+});
+
+describe("validateProfile — deceased lifespan (D122)", () => {
+  it("rejects deathYear together with a full date of death (mutually exclusive)", () => {
+    expect(
+      fields({ deceased: { isDeceased: true, dateOfDeath: "2020-05-01", deathYear: 2020 } }),
+    ).toEqual(["deceased.deathYear"]);
+  });
+  it("accepts a year-only death", () => {
+    expect(fields({ deceased: { isDeceased: true, deathYear: 2020 } })).toEqual([]);
+  });
+  it("rejects birth/death years on a living record", () => {
+    expect(fields({ deceased: { isDeceased: false, birthYear: 1960 } })).toEqual([
+      "deceased.birthYear",
+    ]);
+  });
+  it("rejects a death year before the birth year", () => {
+    expect(fields({ deceased: { isDeceased: true, birthYear: 1990, deathYear: 1980 } })).toEqual([
+      "deceased.deathYear",
+    ]);
+  });
+  it("rejects a bad date of death", () => {
+    expect(fields({ deceased: { isDeceased: true, dateOfDeath: "2020-02-31" } })).toEqual([
+      "deceased.dateOfDeath",
+    ]);
+  });
+});

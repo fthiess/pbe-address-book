@@ -35,7 +35,7 @@ const provider: IdentityProvider = {
 
 async function buildAuthServer(withBridge = true) {
   const cache = new ProfileCache();
-  await cache.load([makeProfile({ constitutionId: 5001, email: "x@example.test" })]);
+  await cache.load([makeProfile({ id: 5001, email: "x@example.test" })]);
   const sessionStore = new InMemorySessionStore();
   const app = buildServer({
     identityProvider: provider,
@@ -118,7 +118,7 @@ describe("auth routes", () => {
     expect(body.profileId).toBe(5001);
     expect(body.role).toBe("brother");
     expect(body.stars).toEqual([42]);
-    expect(body.profile.constitutionId).toBe(5001);
+    expect(body.profile.id).toBe(5001);
     await app.close();
   });
 

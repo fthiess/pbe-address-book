@@ -32,7 +32,8 @@ for (let start = 0; start < profiles.length; start += BATCH_LIMIT) {
   const slice = profiles.slice(start, start + BATCH_LIMIT);
   const batch = db.batch();
   for (const profile of slice) {
-    batch.set(db.collection("profiles").doc(profile.id), profile);
+    // The Firestore document key is the Constitution ID as a string (§2).
+    batch.set(db.collection("profiles").doc(String(profile.id)), profile);
   }
   await batch.commit();
   written += slice.length;

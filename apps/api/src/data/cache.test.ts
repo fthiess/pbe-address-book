@@ -4,7 +4,7 @@ import { makeProfile } from "../test-support/make-profile.js";
 import { ProfileCache } from "./cache.js";
 
 interface DecodedBody {
-  profiles: Array<{ constitutionId: number }>;
+  profiles: Array<{ id: number }>;
   majors: unknown[];
 }
 
@@ -18,10 +18,7 @@ describe("ProfileCache", () => {
 
   it("builds a brother payload whose br/gzip/json all decode to the same body", async () => {
     const cache = new ProfileCache();
-    await cache.load([
-      makeProfile({ constitutionId: 5001 }),
-      makeProfile({ constitutionId: 5002 }),
-    ]);
+    await cache.load([makeProfile({ id: 5001 }), makeProfile({ id: 5002 })]);
 
     const payload = cache.brotherPayload();
     const fromBr = zlib.brotliDecompressSync(payload.br).toString("utf-8");
@@ -35,51 +32,70 @@ describe("ProfileCache", () => {
     expect(body.majors).toEqual([]);
   });
 
-  it("applies the projection — unlisted records are absent from the payload", async () => {
+  it("applies the projection — unlisted and de-brothered records are absent", async () => {
     const cache = new ProfileCache();
     await cache.load([
-      makeProfile({ constitutionId: 5001, unlisted: false }),
-      makeProfile({ constitutionId: 5002, unlisted: true }),
-      makeProfile({ constitutionId: 5003, unlisted: false }),
+      makeProfile({ id: 5001, unlisted: false }),
+      makeProfile({ id: 5002, unlisted: true }),
+      makeProfile({ id: 5003, debrothered: { isDebrothered: true } }),
+      makeProfile({ id: 5004, unlisted: false }),
     ]);
 
     const body = parse(cache.brotherPayload().json);
-    expect(body.profiles.map((p) => p.constitutionId)).toEqual([5001, 5003]);
+    expect(body.profiles.map((p) => p.id)).toEqual([5001, 5004]);
     // size counts source profiles loaded, not projected ones.
-    expect(cache.size).toBe(3);
+    expect(cache.size).toBe(4);
   });
 
   it("indexes records by id and by normalized email for resolution", async () => {
     const cache = new ProfileCache();
     await cache.load([
-      makeProfile({ constitutionId: 5001, email: "Jane.Doe@Example.test" }),
-      makeProfile({ constitutionId: 5002, email: null }),
+      makeProfile({ id: 5001, email: "Jane.Doe@Example.test" }),
+      makeProfile({ id: 5002, email: undefined }),
     ]);
 
-    expect(cache.getById(5001)?.constitutionId).toBe(5001);
+    expect(cache.getById(5001)?.id).toBe(5001);
     expect(cache.getById(9999)).toBeNull();
 
     // Resolution normalizes the query (D97): different case still hits.
     expect(cache.resolveByEmail("  JANE.DOE@example.TEST ")).toEqual({
       kind: "found",
-      profile: expect.objectContaining({ constitutionId: 5001 }),
+      profile: expect.objectContaining({ id: 5001 }),
     });
     expect(cache.resolveByEmail("nobody@example.test")).toEqual({ kind: "none" });
+  });
+
+  it("resolves an alternateEmail in the same namespace as the primary (§5.1/D97)", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ id: 5001, email: "primary@example.test", alternateEmail: "alt@example.test" }),
+    ]);
+    expect(cache.resolveByEmail("alt@example.test")).toEqual({
+      kind: "found",
+      profile: expect.objectContaining({ id: 5001 }),
+    });
   });
 
   it("marks an email claimed by two profiles as ambiguous (fail closed)", async () => {
     const cache = new ProfileCache();
     await cache.load([
-      makeProfile({ constitutionId: 5001, email: "dup@example.test" }),
-      makeProfile({ constitutionId: 5002, email: "DUP@example.test" }),
+      makeProfile({ id: 5001, email: "dup@example.test" }),
+      makeProfile({ id: 5002, email: "DUP@example.test" }),
     ]);
     expect(cache.resolveByEmail("dup@example.test")).toEqual({ kind: "ambiguous" });
   });
 
+  it("marks one profile's primary clashing with another's alternate as ambiguous", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ id: 5001, email: "shared@example.test" }),
+      makeProfile({ id: 5002, email: "other@example.test", alternateEmail: "shared@example.test" }),
+    ]);
+    expect(cache.resolveByEmail("shared@example.test")).toEqual({ kind: "ambiguous" });
+  });
+
   it("compresses the bulk payload well (repeated keys at scale)", async () => {
-    const profiles = Array.from({ length: 500 }, (_, i) =>
-      makeProfile({ constitutionId: 5001 + i }),
-    );
+    const profiles = Array.from({ length: 500 }, (_, i) => makeProfile({ id: 5001 + i }));
     const cache = new ProfileCache();
     await cache.load(profiles);
 

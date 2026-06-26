@@ -23,7 +23,21 @@ authoritative for *why* anything is the way it is.
 > `/api/auth/*` + `/api/me` endpoints, and the persistent **SPA shell** (identity,
 > role badge, sign-out, privacy footer, system-banner slot, cold-start overlay)
 > with the rendered directory list. The Ghost-side relay lives in the theme repo
-> (`pbe-news-ghost-theme/book.hbs`). Next: Phase 2, the data & permission core.
+> (`pbe-news-ghost-theme/book.hbs`).
+>
+> **Phase 2a — schema, validation, and Canonical Name (complete).** The shared
+> `Profile` type is now the full `DATABASE-SCHEMA §3` shape (sub-types, the
+> consent/housekeeping fields, the numeric Constitution `id` as the single key)
+> with the **shared validation module** implementing the §8 rules (email/URL/date
+> formats, the strict http(s) URL-scheme allowlist, class-year and deceased
+> lifespan ranges, bundled ISO-3166 country + US/CA subdivision vocabularies) and
+> the **Canonical Name** derivation with load-time ambiguity detection (§5.1).
+> The fake-data generator now spans the full schema and every record it emits is
+> validated. The server-side projection re-expresses the brother view over the
+> new shape and gains the `debrothered` whole-record hide alongside `unlisted`;
+> the de-brother sign-in denial (§2.1) is wired now that the field exists. Next:
+> **Phase 2b** — the full per-role projection and capability matrix, then 2c (OCC
+> + audit). The manager/admin projection arms still fail loud until 2b.
 
 ## Layout
 

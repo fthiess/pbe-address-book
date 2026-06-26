@@ -58,22 +58,23 @@ if (!Number.isInteger(profileId)) {
 initializeApp({ projectId });
 const db = getFirestore();
 
-const profileRef = db.collection("profiles").doc(`fake-${profileId}`);
+const profileRef = db.collection("profiles").doc(String(profileId));
 const snapshot = await profileRef.get();
 if (!snapshot.exists) {
   console.error(
-    `Refusing: profile fake-${profileId} does not exist. Run \`npm run seed:staging\` first.`,
+    `Refusing: profile #${profileId} does not exist. Run \`npm run seed:staging\` first.`,
   );
   process.exit(1);
 }
 
 const profile = snapshot.data() as Profile;
-// Make the linked profile a clean, visible, contactable record for the tester.
+// Make the linked profile a clean, visible, contactable record for the tester:
+// a real email, the email share-toggle on, listed, and living (§3 field shape).
 await profileRef.update({
   email,
-  allowDirectoryEmail: true,
+  "privacy.shareEmail": true,
   unlisted: false,
-  deceased: false,
+  deceased: { isDeceased: false },
 });
 // Grant the linked profile the admin role so the tester can exercise everything.
 await db
@@ -82,6 +83,6 @@ await db
   .set({ id: profileId, role: "admin", stars: [] });
 
 console.log(
-  `Linked ${email} → fake profile #${profileId} ("${profile.canonicalName}") as admin in ${projectId}. Let the staging API cold-start (or redeploy) so it re-indexes the new email.`,
+  `Linked ${email} → fake profile #${profileId} ("${profile.firstName} ${profile.lastName}") as admin in ${projectId}. Let the staging API cold-start (or redeploy) so it re-indexes the new email.`,
 );
 process.exit(0);

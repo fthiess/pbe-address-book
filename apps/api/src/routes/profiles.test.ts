@@ -14,7 +14,7 @@ const stubProvider: IdentityProvider = {
 };
 
 interface DecodedBody {
-  profiles: Array<{ constitutionId: number; email?: string }>;
+  profiles: Array<{ id: number; email?: string }>;
   majors: unknown[];
 }
 
@@ -34,9 +34,22 @@ function brotherSession(): Session {
 async function buildReadServer() {
   const cache = new ProfileCache();
   await cache.load([
-    makeProfile({ constitutionId: 5001, allowDirectoryEmail: true, email: "a@example.test" }),
-    makeProfile({ constitutionId: 5002, unlisted: true }),
-    makeProfile({ constitutionId: 5003, allowDirectoryEmail: false, email: "b@example.test" }),
+    // 5001 shares email (default privacy); 5002 is unlisted (hidden); 5003 has
+    // email on file but the share toggle off; 5004 is de-brothered (hidden).
+    makeProfile({ id: 5001, email: "a@example.test" }),
+    makeProfile({ id: 5002, unlisted: true }),
+    makeProfile({
+      id: 5003,
+      email: "b@example.test",
+      privacy: {
+        shareEmail: false,
+        sharePhone: true,
+        shareAddress: true,
+        shareEmergency: false,
+        shareSpousePartner: false,
+      },
+    }),
+    makeProfile({ id: 5004, debrothered: { isDebrothered: true } }),
   ]);
   const sessionStore = new InMemorySessionStore();
   const app = buildServer({
@@ -85,11 +98,11 @@ describe("GET /api/profiles", () => {
     const body = JSON.parse(
       zlib.brotliDecompressSync(response.rawPayload).toString("utf-8"),
     ) as DecodedBody;
-    // The unlisted record (5002) is projected away; the others remain.
-    expect(body.profiles.map((p) => p.constitutionId)).toEqual([5001, 5003]);
+    // The unlisted (5002) and de-brothered (5004) records are projected away.
+    expect(body.profiles.map((p) => p.id)).toEqual([5001, 5003]);
     // Email rides the consent toggle: present for 5001, absent for 5003.
-    expect(body.profiles.find((p) => p.constitutionId === 5001)?.email).toBe("a@example.test");
-    expect(body.profiles.find((p) => p.constitutionId === 5003)).not.toHaveProperty("email");
+    expect(body.profiles.find((p) => p.id === 5001)?.email).toBe("a@example.test");
+    expect(body.profiles.find((p) => p.id === 5003)).not.toHaveProperty("email");
     expect(body.majors).toEqual([]);
   });
 

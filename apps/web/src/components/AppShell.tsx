@@ -1,3 +1,4 @@
+import { formatCanonicalName } from "@pbe/shared";
 import type { ReactNode } from "react";
 import { useSession } from "../auth/SessionContext.js";
 import type { Me } from "../lib/types.js";
@@ -15,7 +16,9 @@ import { type Banner, SystemBanner } from "./SystemBanner.js";
  */
 export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   const { signOut } = useSession();
-  const name = me.profile?.canonicalName ?? "Brother";
+  // The shell shows the signed-in brother's own name; a single record carries no
+  // ambiguity context, so render the plain (non-disambiguated) Canonical Name.
+  const name = me.profile ? formatCanonicalName(me.profile, false) : "Brother";
 
   // The /api/banner source lands in Phase 5 (D117); the slot is wired with null.
   const banner: Banner | null = null;

@@ -9,7 +9,7 @@ import { ProfileCache } from "./cache.js";
 const hasEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 
 interface DecodedBody {
-  profiles: Array<{ constitutionId: number }>;
+  profiles: Array<{ id: number }>;
   majors: unknown[];
 }
 
@@ -27,11 +27,11 @@ describe.skipIf(!hasEmulator)("ProfileCache.hydrateFromFirestore (emulator)", ()
     // path and the projection.
     const batch = db.batch();
     for (const profile of [
-      makeProfile({ constitutionId: 5003, unlisted: false }),
-      makeProfile({ constitutionId: 5001, unlisted: false }),
-      makeProfile({ constitutionId: 5002, unlisted: true }),
+      makeProfile({ id: 5003, unlisted: false }),
+      makeProfile({ id: 5001, unlisted: false }),
+      makeProfile({ id: 5002, unlisted: true }),
     ]) {
-      batch.set(db.collection("profiles").doc(profile.id), profile);
+      batch.set(db.collection("profiles").doc(String(profile.id)), profile);
     }
     await batch.commit();
   });
@@ -53,6 +53,6 @@ describe.skipIf(!hasEmulator)("ProfileCache.hydrateFromFirestore (emulator)", ()
 
     const body = JSON.parse(cache.brotherPayload().json) as DecodedBody;
     // Unlisted 5002 is projected away; the rest come back in id order.
-    expect(body.profiles.map((p) => p.constitutionId)).toEqual([5001, 5003]);
+    expect(body.profiles.map((p) => p.id)).toEqual([5001, 5003]);
   });
 });

@@ -1,5 +1,8 @@
+import { validateProfile } from "@pbe/shared";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_COUNT, FAKE_ID_FLOOR, generateProfiles } from "./generate.js";
+import { DEFAULT_COUNT, FAKE_ID_FLOOR, FAKE_MAJOR_CODES, generateProfiles } from "./generate.js";
+
+const VALID_MAJORS = new Set(FAKE_MAJOR_CODES);
 
 describe("generateProfiles", () => {
   it("is deterministic for a given seed", () => {
@@ -24,36 +27,63 @@ describe("generateProfiles", () => {
 
   it("emits only obviously-fake data: ids > 5000, unique ids, example.test emails", () => {
     const profiles = generateProfiles({ count: 500, seed: 7 });
-    const ids = new Set<string>();
+    const ids = new Set<number>();
     for (const profile of profiles) {
-      expect(profile.constitutionId).toBeGreaterThanOrEqual(FAKE_ID_FLOOR);
-      expect(profile.constitutionId).toBeGreaterThan(5000);
-      if (profile.email !== null) {
+      expect(profile.id).toBeGreaterThanOrEqual(FAKE_ID_FLOOR);
+      expect(profile.id).toBeGreaterThan(5000);
+      if (profile.email !== undefined) {
         expect(profile.email.endsWith("@example.test")).toBe(true);
+      }
+      if (profile.alternateEmail !== undefined) {
+        expect(profile.alternateEmail.endsWith("@example.test")).toBe(true);
       }
       ids.add(profile.id);
     }
     expect(ids.size).toBe(profiles.length);
   });
 
-  it("honors the deceased coupling: no live email, flags off, no headshot (D49)", () => {
+  it("honors the deceased coupling: no live email, consent off, no headshot (D49)", () => {
     const profiles = generateProfiles({ count: 1000, seed: 9 });
     for (const profile of profiles) {
-      if (profile.deceased) {
-        expect(profile.email).toBeNull();
-        expect(profile.allowDirectoryEmail).toBe(false);
-        expect(profile.headshotVersion).toBeNull();
+      if (profile.deceased.isDeceased) {
+        expect(profile.email).toBeUndefined();
+        expect(profile.allowNewsletterEmail).toBe(false);
+        expect(profile.allowCommentReplyEmail).toBe(false);
+        expect(profile.hasHeadshot).toBe(false);
         expect(profile.unlisted).toBe(false);
       }
     }
   });
 
-  it("spans the feature space (some living, some deceased, some unlisted)", () => {
-    const profiles = generateProfiles({ count: 1000, seed: 11 });
-    expect(profiles.some((p) => p.deceased)).toBe(true);
-    expect(profiles.some((p) => !p.deceased)).toBe(true);
+  it("spans the feature space across the full schema", () => {
+    const profiles = generateProfiles({ count: 1500, seed: 11 });
+    expect(profiles.some((p) => p.deceased.isDeceased)).toBe(true);
+    expect(profiles.some((p) => !p.deceased.isDeceased)).toBe(true);
     expect(profiles.some((p) => p.unlisted)).toBe(true);
-    expect(profiles.some((p) => p.headshotVersion !== null)).toBe(true);
-    expect(profiles.some((p) => p.country !== "US")).toBe(true);
+    expect(profiles.some((p) => p.debrothered.isDebrothered)).toBe(true);
+    expect(profiles.some((p) => p.hasHeadshot)).toBe(true);
+    expect(profiles.some((p) => p.address?.country !== "US")).toBe(true);
+    expect(profiles.some((p) => p.classYear === null)).toBe(true);
+    expect(profiles.some((p) => (p.majors?.length ?? 0) === 2)).toBe(true);
+    expect(profiles.some((p) => p.alternateEmail !== undefined)).toBe(true);
+    expect(profiles.some((p) => p.bigBrotherId !== undefined)).toBe(true);
+    // Both death forms appear (D122): some full dates, some year-only.
+    const deceased = profiles.filter((p) => p.deceased.isDeceased);
+    expect(deceased.some((p) => p.deceased.dateOfDeath !== undefined)).toBe(true);
+    expect(deceased.some((p) => p.deceased.deathYear !== undefined)).toBe(true);
+  });
+
+  it("emits only records that pass the shared validation rules (§8)", () => {
+    const profiles = generateProfiles({ count: 1500, seed: 13 });
+    for (const profile of profiles) {
+      const result = validateProfile(profile, {
+        currentYear: 2026,
+        validMajorCodes: VALID_MAJORS,
+        requireRequired: true,
+      });
+      // Surface the offending field names (never values) if this ever fails.
+      expect(result.issues.map((issue) => `${profile.id}:${issue.field}`)).toEqual([]);
+      expect(result.ok).toBe(true);
+    }
   });
 });

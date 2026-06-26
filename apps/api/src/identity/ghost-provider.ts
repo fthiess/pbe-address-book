@@ -1,5 +1,5 @@
 import { verify as cryptoVerify } from "node:crypto";
-import { type Role, normalizeEmail } from "@pbe/shared";
+import { type Role, formatCanonicalName, normalizeEmail } from "@pbe/shared";
 import type { ProfileCache } from "../data/cache.js";
 import type { KeyResolver } from "./ghost-jwks.js";
 import type { NonceService } from "./nonce-store.js";
@@ -106,19 +106,23 @@ export class GhostIdentityProvider implements IdentityProvider {
     }
     const profile = resolution.profile;
 
-    // De-brother denial (D115): a resolved-but-de-brothered profile is denied a
-    // session. The `debrothered` sub-type lands in Phase 2; the hook is here so
-    // the belt-and-suspenders Book-side check is enforced the moment it exists.
+    // De-brother denial (D115; ENGINEERING-DESIGN §2.1): a resolved-but-
+    // de-brothered profile is denied a session. The de-brothering already
+    // deleted the Ghost member (§5.1); this Book-side check is the
+    // belt-and-suspenders half that blocks any lingering token.
+    if (profile.debrothered.isDebrothered) {
+      throw new AuthError(403, "debrothered", "this member has been de-brothered");
+    }
 
     // 4. Establish the Book role (create-if-absent as brother).
-    const { role } = await this.deps.ensureUser(profile.constitutionId);
+    const { role } = await this.deps.ensureUser(profile.id);
 
     const identity: Identity = {
       subject: email,
-      profileId: profile.constitutionId,
+      profileId: profile.id,
       email,
       role,
-      displayName: profile.canonicalName,
+      displayName: formatCanonicalName(profile, false),
     };
     const ttl = this.deps.sessionTtlMs ?? FOUR_HOURS_MS;
     return { identity, expiresAt: Date.now() + ttl };

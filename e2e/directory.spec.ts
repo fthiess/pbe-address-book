@@ -9,56 +9,57 @@ const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
  * — the shell, role badge, own-row marker, and the rendered list — and gates the
  * page on WCAG 2.2 AA (D79) without standing up the API and emulator.
  */
+// Mock wire shapes (DATABASE-SCHEMA §3): the Canonical Name is derived
+// client-side from id/firstName/lastName/classYear, so the stub carries only the
+// stored fields, not a `canonicalName`. `/api/me` returns a full own Profile; the
+// directory rows are the brother-role projection (DirectoryProfile).
 const ME = {
   profileId: 5002,
   role: "admin" as const,
   stars: [],
   profile: {
-    id: "fake-5002",
-    constitutionId: 5002,
-    canonicalName: "Dev Admin",
+    id: 5002,
     firstName: "Dev",
     lastName: "Admin",
     classYear: 1990,
     email: "admin@example.test",
-    city: "Cambridge",
-    state: "MA",
-    country: "USA",
-    deceased: false,
+    deceased: { isDeceased: false },
+    debrothered: { isDebrothered: false },
+    hasHeadshot: false,
+    privacy: {
+      shareEmail: true,
+      sharePhone: true,
+      shareAddress: true,
+      shareEmergency: false,
+      shareSpousePartner: false,
+    },
     unlisted: false,
-    allowDirectoryEmail: true,
-    headshotVersion: null,
+    allowNewsletterEmail: true,
+    allowCommentReplyEmail: true,
+    allowShareWithMITAA: false,
+    lastModified: "2026-06-03T12:00:00.000Z",
+    newsletterConsentChangedAt: "2026-06-03T12:00:00.000Z",
   },
 };
 
 const PROFILES = {
   profiles: [
     {
-      id: "fake-5001",
-      constitutionId: 5001,
-      canonicalName: "Aaron Adams",
+      id: 5001,
       firstName: "Aaron",
       lastName: "Adams",
       classYear: 1984,
-      city: "Boston",
-      state: "MA",
-      country: "USA",
-      deceased: false,
-      headshotVersion: null,
+      deceased: { isDeceased: false },
+      hasHeadshot: false,
       email: "aaron.adams@example.test",
     },
     {
-      id: "fake-5002",
-      constitutionId: 5002,
-      canonicalName: "Dev Admin",
+      id: 5002,
       firstName: "Dev",
       lastName: "Admin",
       classYear: 1990,
-      city: "Cambridge",
-      state: "MA",
-      country: "USA",
-      deceased: false,
-      headshotVersion: null,
+      deceased: { isDeceased: false },
+      hasHeadshot: false,
     },
   ],
   majors: [],

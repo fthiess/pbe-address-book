@@ -1,6 +1,6 @@
-import { formatClassYear } from "@pbe/shared";
+import { formatClassYear, resolveCanonicalNames } from "@pbe/shared";
 import { useQueryState } from "nuqs";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSession } from "../auth/SessionContext.js";
 import { Avatar } from "../components/Avatar.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
@@ -8,9 +8,9 @@ import { fetchProfiles } from "../lib/api.js";
 import type { DirectoryProfile } from "../lib/types.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
 
-/** Comma-joined "City, ST" / "City, Country", skipping the empty parts. */
-function locationOf(p: DirectoryProfile): string {
-  return [p.city, p.state ?? p.country].filter(Boolean).join(", ");
+/** A class-year token, rendering the unknown (null) case as `'??` (§4). */
+function classYearLabel(classYear: number | null): string {
+  return classYear === null ? "'??" : formatClassYear(classYear);
 }
 
 /**
@@ -19,6 +19,9 @@ function locationOf(p: DirectoryProfile): string {
  * Directory: the pinned/reorderable columns, virtualization, fuzzy/phonetic
  * search, stars, and filters are Phase 3. A simple name search (URL-synced via
  * nuqs) is included to exercise the routing/query-state wiring.
+ *
+ * Canonical Names are derived client-side from the in-memory dataset via the
+ * shared `resolveCanonicalNames` (one O(n) ambiguity pass, §5.1) — never stored.
  */
 export function Directory() {
   const { state } = useSession();
@@ -27,6 +30,11 @@ export function Directory() {
   const [profiles, setProfiles] = useState<DirectoryProfile[] | null>(null);
   const [error, setError] = useState(false);
   const [q, setQ] = useQueryState("q", { defaultValue: "" });
+
+  // Resolve every visible brother's Canonical Name in one pass when the dataset
+  // arrives; a name is then an O(1) lookup keyed by Constitution ID.
+  const names = useMemo(() => resolveCanonicalNames(profiles ?? []), [profiles]);
+  const nameOf = (p: DirectoryProfile): string => names.get(p.id) ?? `${p.firstName} ${p.lastName}`;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -53,7 +61,7 @@ export function Directory() {
 
   const term = q.trim().toLowerCase();
   const rows = (profiles ?? []).filter(
-    (p) => term === "" || p.canonicalName.toLowerCase().includes(term),
+    (p) => term === "" || nameOf(p).toLowerCase().includes(term),
   );
 
   return (
@@ -103,26 +111,23 @@ export function Directory() {
                   Class
                 </th>
                 <th scope="col" className="px-4 py-2 font-semibold">
-                  Location
-                </th>
-                <th scope="col" className="px-4 py-2 font-semibold">
                   Email
                 </th>
               </tr>
             </thead>
             <tbody>
               {rows.map((p) => (
-                <tr key={p.constitutionId} className="border-t border-border even:bg-card/50">
+                <tr key={p.id} className="border-t border-border even:bg-card/50">
                   <th scope="row" className="px-4 py-2 text-left font-normal">
                     <span className="flex items-center gap-2.5">
-                      <Avatar name={p.canonicalName} size={30} />
-                      <span className="font-medium">{p.canonicalName}</span>
-                      {p.constitutionId === myId && (
+                      <Avatar name={nameOf(p)} size={30} />
+                      <span className="font-medium">{nameOf(p)}</span>
+                      {p.id === myId && (
                         <span className="rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">
                           You
                         </span>
                       )}
-                      {p.deceased && (
+                      {p.deceased.isDeceased && (
                         <span className="text-xs uppercase tracking-wide text-muted-foreground">
                           In Memoriam
                         </span>
@@ -130,9 +135,8 @@ export function Directory() {
                     </span>
                   </th>
                   <td className="px-4 py-2 tabular-nums text-muted-foreground">
-                    {formatClassYear(p.classYear)}
+                    {classYearLabel(p.classYear)}
                   </td>
-                  <td className="px-4 py-2 text-muted-foreground">{locationOf(p)}</td>
                   <td className="px-4 py-2 text-muted-foreground">
                     {p.email ? (
                       <a className="underline-offset-2 hover:underline" href={`mailto:${p.email}`}>

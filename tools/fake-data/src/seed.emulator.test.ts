@@ -35,14 +35,14 @@ describe.skipIf(!hasEmulator)(
 
       const writeBatch = db.batch();
       for (const profile of profiles) {
-        writeBatch.set(collection.doc(profile.id), profile);
+        writeBatch.set(collection.doc(String(profile.id)), profile);
       }
       await writeBatch.commit();
 
       const snapshot = await collection.get();
       expect(snapshot.size).toBe(25);
 
-      const firstDoc = await collection.doc("fake-5001").get();
+      const firstDoc = await collection.doc("5001").get();
       expect(firstDoc.exists).toBe(true);
       expect(firstDoc.data()).toEqual(profiles[0]);
     });

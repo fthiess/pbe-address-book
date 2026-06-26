@@ -71,7 +71,8 @@ export class ProfileCache {
    * Normalized-email → record index for sign-in resolution (ENGINEERING-DESIGN
    * §2.1). A value of {@link AMBIGUOUS} marks an address claimed by more than one
    * profile, so resolution can fail closed (`ambiguous_member`, D97) rather than
-   * guess. Phase 2 folds `alternateEmail` into this same namespace (§5.1).
+   * guess. Primary `email` and `alternateEmail` share this **one namespace**
+   * (§5.1/§8, D97) — no address appears twice anywhere in Book.
    */
   private byEmail = new Map<string, Profile | typeof AMBIGUOUS>();
 
@@ -94,13 +95,20 @@ export class ProfileCache {
     this.byId = new Map();
     this.byEmail = new Map();
     for (const profile of profiles) {
-      this.byId.set(profile.constitutionId, profile);
-      if (profile.email !== null) {
-        const key = normalizeEmail(profile.email);
-        // A second profile claiming the same normalized email makes it ambiguous.
-        this.byEmail.set(key, this.byEmail.has(key) ? AMBIGUOUS : profile);
-      }
+      this.byId.set(profile.id, profile);
+      // Primary and alternate addresses share one namespace (§5.1/D97).
+      this.indexEmail(profile.email, profile);
+      this.indexEmail(profile.alternateEmail, profile);
     }
+  }
+
+  /** Add one address to the email index, marking it ambiguous on a second claim. */
+  private indexEmail(email: string | undefined, profile: Profile): void {
+    if (email === undefined) {
+      return;
+    }
+    const key = normalizeEmail(email);
+    this.byEmail.set(key, this.byEmail.has(key) ? AMBIGUOUS : profile);
   }
 
   /**
@@ -110,9 +118,7 @@ export class ProfileCache {
    */
   async hydrateFromFirestore(db: Firestore): Promise<void> {
     const snapshot = await db.collection("profiles").get();
-    const profiles = snapshot.docs
-      .map((doc) => doc.data() as Profile)
-      .sort((a, b) => a.constitutionId - b.constitutionId);
+    const profiles = snapshot.docs.map((doc) => doc.data() as Profile).sort((a, b) => a.id - b.id);
     await this.load(profiles);
   }
 
@@ -125,8 +131,8 @@ export class ProfileCache {
   }
 
   /** The caller's own full record by Constitution ID, or null if unknown. */
-  getById(constitutionId: number): Profile | null {
-    return this.byId.get(constitutionId) ?? null;
+  getById(id: number): Profile | null {
+    return this.byId.get(id) ?? null;
   }
 
   /**

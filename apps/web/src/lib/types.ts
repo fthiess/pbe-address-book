@@ -2,12 +2,29 @@ import type { Profile, Role } from "@pbe/shared";
 
 /**
  * The directory-row shape the SPA consumes from `GET /api/profiles` — the
- * server's brother-role projection (apps/api `projection.ts`). It is a subset of
- * `Profile`: the privacy/consent flags are stripped server-side, and `email`
- * is present only when the owner consented to directory email (D45). The full
- * per-role projections arrive in Phase 2; the walking skeleton renders this one.
+ * server's brother-role projection (apps/api `projection.ts`, Phase 2a subset).
+ * It carries the public fields plus the contact `email` only when the owner's
+ * `privacy.shareEmail` toggle is on (D45). The full per-role projections arrive
+ * in Phase 2b; this mirrors the brother view the skeleton renders.
  */
-export type DirectoryProfile = Omit<Profile, "email" | "unlisted" | "allowDirectoryEmail"> & {
+export type DirectoryProfile = Pick<
+  Profile,
+  | "id"
+  | "firstName"
+  | "middleName"
+  | "lastName"
+  | "fullLegalName"
+  | "mugName"
+  | "classYear"
+  | "employerName"
+  | "jobTitle"
+  | "majors"
+  | "links"
+  | "bigBrotherId"
+  | "deceased"
+  | "hasHeadshot"
+  | "headshotVersion"
+> & {
   email?: string;
 };
 
