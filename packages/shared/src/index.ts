@@ -35,3 +35,15 @@ export {
   type ValidationIssue,
   type ValidationResult,
 } from "./validation.js";
+export {
+  type FieldVisibility,
+  FIELD_VISIBILITY,
+  fieldVisibleToRole,
+} from "./visibility.js";
+export {
+  type WriteRule,
+  WRITE_RULE,
+  canActOnProfile,
+  canWriteField,
+  partitionWritableFields,
+} from "./capabilities.js";

@@ -1,8 +1,8 @@
 import { promisify } from "node:util";
 import zlib from "node:zlib";
-import { type Profile, normalizeEmail } from "@pbe/shared";
+import { type Profile, type Role, normalizeEmail } from "@pbe/shared";
 import type { Firestore } from "firebase-admin/firestore";
-import { type BrotherProfile, projectForRole } from "../projection/projection.js";
+import { type ProjectedProfile, projectForRole } from "../projection/projection.js";
 
 /** The sentinel an email index entry carries when more than one profile claims it. */
 const AMBIGUOUS = Symbol("ambiguous-email");
@@ -16,6 +16,15 @@ export type EmailResolution =
 const brotliCompress = promisify(zlib.brotliCompress);
 const gzipCompress = promisify(zlib.gzip);
 
+/**
+ * brotli quality by audience (D84). The brother buffer is the ≈700-person hot
+ * path precomputed once off the request path, so it earns maximum ratio (11);
+ * the manager/admin payloads are computed fresh per request for a handful of
+ * callers, so they take a moderate level that keeps request-path CPU modest.
+ */
+const BROTHER_BROTLI_QUALITY = 11;
+const STAFF_BROTLI_QUALITY = 5;
+
 /** A response body precompressed once, ready to serve under content negotiation. */
 export interface NegotiablePayload {
   /** The uncompressed JSON text — served to a client that accepts no encoding. */
@@ -28,7 +37,7 @@ export interface NegotiablePayload {
 
 /** The `GET /api/profiles` envelope (API-SPEC §3). */
 interface ProfilesBody {
-  profiles: BrotherProfile[];
+  profiles: ProjectedProfile[];
   /**
    * The `majors` vocabulary rides this same payload (API-SPEC §3) so the SPA can
    * resolve major codes in memory. It is empty until the `Major` type and its
@@ -37,10 +46,10 @@ interface ProfilesBody {
   majors: unknown[];
 }
 
-async function compress(json: string): Promise<NegotiablePayload> {
+async function compress(json: string, brotliQuality: number): Promise<NegotiablePayload> {
   const raw = Buffer.from(json, "utf-8");
   const [br, gzip] = await Promise.all([
-    brotliCompress(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } }),
+    brotliCompress(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: brotliQuality } }),
     gzipCompress(raw, { level: zlib.constants.Z_BEST_COMPRESSION }),
   ]);
   return { json, br, gzip };
@@ -59,8 +68,8 @@ async function compress(json: string): Promise<NegotiablePayload> {
  * because there are no writers yet to drive it: the GCS snapshot object that
  * speeds cold-start hydration (D85), the debounced off-event-loop recompression
  * on each write (D84), and the Firestore snapshot-listener convergence safety
- * net (D83). Manager/admin payloads (computed fresh per request, D82) likewise
- * arrive with the roles in Phase 1b/2.
+ * net (D83). Phase 2b adds the manager/admin payloads — computed fresh per
+ * request (D82), not cached — via {@link payloadForRole}.
  */
 export class ProfileCache {
   private payload: NegotiablePayload | null = null;
@@ -81,13 +90,19 @@ export class ProfileCache {
    * payload. Used by tests today; the seed/restore paths reuse it in later phases.
    */
   async load(profiles: readonly Profile[]): Promise<void> {
-    const body: ProfilesBody = {
-      profiles: projectForRole(profiles, "brother"),
-      majors: [],
-    };
-    this.payload = await compress(JSON.stringify(body));
+    this.payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
     this.sourceCount = profiles.length;
     this.rebuildIndexes(profiles);
+  }
+
+  /** Project a profile set to a role and precompress the `GET /api/profiles` body. */
+  private projectAndCompress(
+    profiles: readonly Profile[],
+    role: Role,
+    brotliQuality: number,
+  ): Promise<NegotiablePayload> {
+    const body: ProfilesBody = { profiles: projectForRole(profiles, role), majors: [] };
+    return compress(JSON.stringify(body), brotliQuality);
   }
 
   /** Rebuild the by-id and by-email lookup indexes from the source records. */
@@ -128,6 +143,26 @@ export class ProfileCache {
       throw new Error("ProfileCache.brotherPayload: the cache has not been hydrated yet.");
     }
     return this.payload;
+  }
+
+  /**
+   * The `GET /api/profiles` payload for a role (D82). The brother projection is
+   * the precomputed, cached buffer (the hot path); the manager and admin
+   * projections are **computed fresh per request** — few callers, no caching —
+   * so a brother can never receive a staff projection from a shared buffer. The
+   * fresh projections see the live dataset; the brother buffer is the snapshot
+   * from the last {@link load}.
+   */
+  async payloadForRole(role: Role): Promise<NegotiablePayload> {
+    if (role === "brother") {
+      return this.brotherPayload();
+    }
+    return this.projectAndCompress(this.orderedProfiles(), role, STAFF_BROTLI_QUALITY);
+  }
+
+  /** All loaded records, ordered by Constitution id for a deterministic payload. */
+  private orderedProfiles(): Profile[] {
+    return [...this.byId.values()].sort((a, b) => a.id - b.id);
   }
 
   /** The caller's own full record by Constitution ID, or null if unknown. */

@@ -35,7 +35,23 @@ const provider: IdentityProvider = {
 
 async function buildAuthServer(withBridge = true) {
   const cache = new ProfileCache();
-  await cache.load([makeProfile({ id: 5001, email: "x@example.test" })]);
+  await cache.load([
+    makeProfile({
+      id: 5001,
+      email: "x@example.test",
+      // shareEmail off proves the owner still gets his OWN value back via /api/me…
+      privacy: {
+        shareEmail: false,
+        sharePhone: true,
+        shareAddress: true,
+        shareEmergency: false,
+        shareSpousePartner: false,
+      },
+      // …while these never reach any client, even their owner (§9).
+      adminNote: "staff eyes only",
+      ghostMemberId: "ghost-5001",
+    }),
+  ]);
   const sessionStore = new InMemorySessionStore();
   const app = buildServer({
     identityProvider: provider,
@@ -119,6 +135,11 @@ describe("auth routes", () => {
     expect(body.role).toBe("brother");
     expect(body.stars).toEqual([42]);
     expect(body.profile.id).toBe(5001);
+    // The owner gets his own value back even with the share toggle off (D82)…
+    expect(body.profile.email).toBe("x@example.test");
+    // …but never the staff-internal note or the system-internal Ghost id (§9).
+    expect(body.profile).not.toHaveProperty("adminNote");
+    expect(body.profile).not.toHaveProperty("ghostMemberId");
     await app.close();
   });
 

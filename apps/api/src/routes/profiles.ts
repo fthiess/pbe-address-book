@@ -12,11 +12,12 @@ import { negotiateEncoding } from "./encoding.js";
  * re-fetched on the next fresh load (D95). The bytes are precompressed off the
  * request path (D84) — the handler does no compression and no Firestore read.
  *
- * PHASE 1b: the read is now **session-gated** (the `gate` preHandler), closing
- * the 1a interim un-gated path. The role-from-session selection of the
- * manager/admin projections is still pending — all authenticated roles receive
- * the (most-restrictive) brother projection until the full per-role projection
- * lands in Phase 2; the caller's own full record arrives via `/api/me` (D82).
+ * PHASE 2b: the read is session-gated (the `gate` preHandler) **and per-role**.
+ * The caller's role (from the session the gate attached) selects the projection
+ * — the precomputed brother buffer for brothers, a freshly-computed manager or
+ * admin projection otherwise (D82). The bulk payload is uniform per role and
+ * caller-independent; the caller's own off-toggle/restricted values arrive
+ * separately via `/api/me`, so no caller can receive another's owner-level view.
  */
 export function registerProfileRoutes(
   app: FastifyInstance,
@@ -24,7 +25,10 @@ export function registerProfileRoutes(
   gate: preHandlerHookHandler,
 ): void {
   app.get("/api/profiles", { preHandler: gate }, async (request, reply) => {
-    const payload = cache.brotherPayload();
+    // The gate guarantees a session on a 200 path; default to the most-restrictive
+    // brother projection if it is somehow absent rather than over-disclosing.
+    const role = request.session?.identity.role ?? "brother";
+    const payload = await cache.payloadForRole(role);
     const encoding = negotiateEncoding(request.headers["accept-encoding"]);
 
     reply

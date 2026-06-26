@@ -10,6 +10,7 @@ import {
 } from "../identity/session-cookie.js";
 import type { SessionService } from "../identity/session-store.js";
 import { AuthError, type IdentityProvider } from "../identity/types.js";
+import { projectSelf } from "../projection/projection.js";
 
 /**
  * Where to send a user to start the Ghost handshake. The relay lives on the live
@@ -87,6 +88,12 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
    * The caller's own private state and own full profile (API-SPEC §2 `/api/me`);
    * the SPA overlays this onto its own directory row (the split read, D82).
    * Served `no-store`: it carries the caller's own contact values (D95).
+   *
+   * The record is run through {@link projectSelf} even for its owner: the owner
+   * sees their entire record **except** `adminNote` (staff-internal — the note
+   * exists because the brother does not see it, §9) and `ghostMemberId` (never
+   * sent to any client). `profile` is `null` if the session id has no loaded
+   * record (e.g. a not-yet-hydrated new initiate).
    */
   app.get("/api/me", { preHandler: gate }, async (request, reply) => {
     const session = request.session;
@@ -94,7 +101,8 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
       return reply.code(401).send({ error: "unauthenticated" });
     }
     const { profileId, role } = session.identity;
-    const profile = config.cache.getById(profileId);
+    const own = config.cache.getById(profileId);
+    const profile = own ? projectSelf(own) : null;
     const stars = await config.getStars(profileId);
     reply.header("Cache-Control", "no-store");
     return { profileId, role, stars, profile };
