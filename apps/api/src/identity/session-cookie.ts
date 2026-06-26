@@ -14,9 +14,16 @@ import type { Session } from "./types.js";
  * absolute cap is enforced by the server-side record's `expiresAt`, not by the
  * cookie. The one cookie authenticates both `/api/*` and the same-origin `/img/*`
  * reads (D126).
+ *
+ * The cookie **must** be named `__session`: with Firebase Hosting fronting Cloud
+ * Run (D126), Hosting strips every request cookie *except* `__session` before
+ * forwarding to the backend (it is the one cookie Hosting's CDN allows through).
+ * Any other name is silently dropped, so the backend would never see the session
+ * — the constraint only surfaces behind Hosting, not in local dev. (Surfaced by
+ * the Phase 1b live test; see DECISIONS N5.)
  */
 
-export const SESSION_COOKIE = "book_session";
+export const SESSION_COOKIE = "__session";
 
 export interface SessionCookieConfig {
   /**
