@@ -80,8 +80,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build SPA
-        run: npm run build:web
+      # @pbe/shared must be compiled before the SPA build: vite resolves the
+      # workspace package to its built dist/. Mirrors CI's full `npm run build`
+      # chain (build:libs && build:web && build:api) — the API is built in the
+      # container instead, so only libs + web are needed here.
+      - name: Build shared libs + SPA
+        run: |
+          npm run build:libs
+          npm run build:web
 
       # Firebase CLI authenticates via the ADC the auth step exported
       # (GOOGLE_APPLICATION_CREDENTIALS) — no FIREBASE_TOKEN, no key. --project is
