@@ -90,6 +90,22 @@ function projectFields(profile: Profile, role: Role): ProjectedProfile {
 }
 
 /**
+ * Project a **single** record for one role's view — the single-record read
+ * (`GET /api/profiles/{id}`) and the PATCH response (API-SPEC §3). This is the
+ * field-level projection of one record, the same one the bulk read applies per
+ * record. The **whole-record hide** (`unlisted`/`debrothered`) is *not* applied
+ * here: it is a brother-bulk-listing rule (the record is omitted from the
+ * directory), and the route enforces the single-record consequence — a brother
+ * requesting a hidden record gets a `404`, while managers/admins project it
+ * normally (badged in their UI). A caller viewing their **own** record uses
+ * {@link projectSelf} instead, which never hides and reveals their own
+ * off-toggle values.
+ */
+export function projectRecord(profile: Profile, role: Role): ProjectedProfile {
+  return projectFields(profile, role);
+}
+
+/**
  * Project a caller's **own** record for the out-of-band self read (D82). Returns
  * the full record save `adminNote` and `ghostMemberId` — see {@link SelfProfile}.
  * Destructured rather than table-walked so the type is exact; the companion test

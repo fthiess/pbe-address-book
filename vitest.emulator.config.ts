@@ -22,5 +22,9 @@ export default defineConfig({
     exclude: ["**/node_modules/**", "**/dist/**"],
     testTimeout: 20_000,
     hookTimeout: 20_000,
+    // The emulator suites share one Firestore instance (and some assert on a
+    // whole-collection count), so they must not run in parallel against the same
+    // database — one file completes, cleans up, then the next runs.
+    fileParallelism: false,
   },
 });

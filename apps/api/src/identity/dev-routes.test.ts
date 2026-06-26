@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { ProfileCache } from "../data/cache.js";
 import { buildServer } from "../server.js";
-import { InMemoryNonceStore, InMemorySessionStore } from "../test-support/fakes.js";
+import {
+  InMemoryNonceStore,
+  InMemoryProfileStore,
+  InMemorySessionStore,
+} from "../test-support/fakes.js";
 import { DevIdentityProvider } from "./dev-provider.js";
 import { registerDevRoutes } from "./dev-routes.js";
 import { SESSION_COOKIE } from "./session-cookie.js";
@@ -15,6 +19,7 @@ function buildDevServer() {
   const app = buildServer({
     identityProvider: provider,
     profileCache: new ProfileCache(),
+    profileStore: new InMemoryProfileStore(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],

@@ -3,7 +3,11 @@ import { ProfileCache } from "../data/cache.js";
 import { SESSION_COOKIE } from "../identity/session-cookie.js";
 import { AuthError, type IdentityProvider, type Session } from "../identity/types.js";
 import { buildServer } from "../server.js";
-import { InMemoryNonceStore, InMemorySessionStore } from "../test-support/fakes.js";
+import {
+  InMemoryNonceStore,
+  InMemoryProfileStore,
+  InMemorySessionStore,
+} from "../test-support/fakes.js";
 import { makeProfile } from "../test-support/make-profile.js";
 
 function sessionFor(profileId: number, role: "brother" | "manager" | "admin"): Session {
@@ -56,6 +60,7 @@ async function buildAuthServer(withBridge = true) {
   const app = buildServer({
     identityProvider: provider,
     profileCache: cache,
+    profileStore: new InMemoryProfileStore(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [42],

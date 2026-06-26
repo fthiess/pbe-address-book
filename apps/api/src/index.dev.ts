@@ -13,6 +13,7 @@
  */
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
+import { FirestoreProfileStore } from "./data/profiles.js";
 import { getUser } from "./data/users.js";
 import { DevIdentityProvider } from "./identity/dev-provider.js";
 import { registerDevRoutes } from "./identity/dev-routes.js";
@@ -38,6 +39,7 @@ async function main(): Promise<void> {
   const app = buildServer({
     identityProvider: provider,
     profileCache,
+    profileStore: new FirestoreProfileStore(db),
     sessionStore,
     nonceStore,
     getStars: async (profileId) => (await getUser(db, profileId))?.stars ?? [],

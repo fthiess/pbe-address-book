@@ -3,6 +3,7 @@ import zlib from "node:zlib";
 import { type Profile, type Role, normalizeEmail } from "@pbe/shared";
 import type { Firestore } from "firebase-admin/firestore";
 import { type ProjectedProfile, projectForRole } from "../projection/projection.js";
+import { INITIAL_CONCURRENCY_TOKEN, encodeToken } from "./profiles.js";
 
 /** The sentinel an email index entry carries when more than one profile claims it. */
 const AMBIGUOUS = Symbol("ambiguous-email");
@@ -84,15 +85,28 @@ export class ProfileCache {
    * (§5.1/§8, D97) — no address appears twice anywhere in Book.
    */
   private byEmail = new Map<string, Profile | typeof AMBIGUOUS>();
+  /**
+   * Per-record optimistic-concurrency token (D25): Firestore's `updateTime`,
+   * surfaced to clients as the `ETag` and required back as `If-Match`. Kept in
+   * the cache so a single-record read emits the token with zero Firestore reads
+   * (D7/D83), and advanced by {@link applyUpdate} after each write so the read
+   * model stays consistent with what was just committed (read-your-writes).
+   */
+  private tokenById = new Map<number, string>();
 
   /**
    * (Re)load the cache from an in-memory profile set, rebuilding the precomputed
-   * payload. Used by tests today; the seed/restore paths reuse it in later phases.
+   * payload. Used by tests and the seed/restore paths. Each record is assigned
+   * the {@link INITIAL_CONCURRENCY_TOKEN}; the Firestore-hydrated path
+   * ({@link hydrateFromFirestore}) supplies real `updateTime` tokens instead.
    */
-  async load(profiles: readonly Profile[]): Promise<void> {
+  async load(profiles: readonly Profile[], tokens?: ReadonlyMap<number, string>): Promise<void> {
     this.payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
     this.sourceCount = profiles.length;
     this.rebuildIndexes(profiles);
+    this.tokenById = new Map(
+      profiles.map((p) => [p.id, tokens?.get(p.id) ?? INITIAL_CONCURRENCY_TOKEN]),
+    );
   }
 
   /** Project a profile set to a role and precompress the `GET /api/profiles` body. */
@@ -133,8 +147,19 @@ export class ProfileCache {
    */
   async hydrateFromFirestore(db: Firestore): Promise<void> {
     const snapshot = await db.collection("profiles").get();
-    const profiles = snapshot.docs.map((doc) => doc.data() as Profile).sort((a, b) => a.id - b.id);
-    await this.load(profiles);
+    const docs = [...snapshot.docs].sort(
+      (a, b) => (a.data() as Profile).id - (b.data() as Profile).id,
+    );
+    const profiles = docs.map((doc) => doc.data() as Profile);
+    // The concurrency token is the document's server-authoritative `updateTime`
+    // (D25), captured here so reads can emit a correct `ETag` without re-reading.
+    const tokens = new Map<number, string>();
+    for (const doc of docs) {
+      if (doc.updateTime) {
+        tokens.set((doc.data() as Profile).id, encodeToken(doc.updateTime));
+      }
+    }
+    await this.load(profiles, tokens);
   }
 
   /** The precomputed brother-role payload. Throws if the cache is not hydrated. */
@@ -168,6 +193,33 @@ export class ProfileCache {
   /** The caller's own full record by Constitution ID, or null if unknown. */
   getById(id: number): Profile | null {
     return this.byId.get(id) ?? null;
+  }
+
+  /** The record's current concurrency token (the `ETag`/`If-Match` value), or null. */
+  concurrencyToken(id: number): string | null {
+    return this.tokenById.get(id) ?? null;
+  }
+
+  /**
+   * Apply a committed write to the in-memory model (read-your-writes; D83). The
+   * single authoritative instance is the only writer, so after the conditional
+   * Firestore write succeeds the cache is updated in lock-step: the record and
+   * its new concurrency `token` are stored, the email index is rebuilt, and the
+   * precomputed brother payload is recomputed so the next bulk read reflects the
+   * edit.
+   *
+   * The brother-payload recompression runs **synchronously** here. The off-event-
+   * loop debounce and the GCS snapshot regeneration (D84/D85) — the machinery
+   * that keeps a burst of writes from spiking request-path CPU — are deferred to
+   * Phase 7; at this phase writes are rare and the simple synchronous rebuild is
+   * correct, which is what the access-control floor needs first.
+   */
+  async applyUpdate(updated: Profile, token: string): Promise<void> {
+    this.byId.set(updated.id, updated);
+    this.tokenById.set(updated.id, token);
+    const profiles = this.orderedProfiles();
+    this.rebuildIndexes(profiles);
+    this.payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
   }
 
   /**

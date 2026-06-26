@@ -1,11 +1,18 @@
+import {
+  INITIAL_CONCURRENCY_TOKEN,
+  type ProfileStore,
+  type ProfileWrite,
+  StaleWriteError,
+} from "../data/profiles.js";
 import type { NonceService } from "../identity/nonce-store.js";
 import type { SessionService } from "../identity/session-store.js";
 import type { Session } from "../identity/types.js";
 
 /**
- * In-memory `SessionService`/`NonceService` doubles for fast unit tests that
- * need the gate or the auth routes without standing up the Firestore emulator.
- * The Firestore-backed real stores get their own emulator integration tests.
+ * In-memory `SessionService`/`NonceService`/`ProfileStore` doubles for fast unit
+ * tests that need the gate, the auth routes, or the write path without standing
+ * up the Firestore emulator. The Firestore-backed real stores get their own
+ * emulator integration tests.
  */
 
 export class InMemorySessionStore implements SessionService {
@@ -59,5 +66,30 @@ export class InMemoryNonceStore implements NonceService {
   /** Test helper: directly seed a nonce so a test can drive `consume`. */
   seed(nonce: string, expiresAt: number): void {
     this.nonces.set(nonce, expiresAt);
+  }
+}
+
+/**
+ * In-memory `ProfileStore` double. Mirrors the Firestore store's optimistic-
+ * concurrency contract — a write whose `precondition` no longer matches the
+ * record's current token raises {@link StaleWriteError} (the 412 path) — without
+ * the emulator, so route tests can drive the whole PATCH flow. A record never
+ * written through the store is treated as carrying {@link INITIAL_CONCURRENCY_TOKEN},
+ * matching what `ProfileCache.load` assigns, so the cache and store agree on a
+ * freshly loaded record exactly as they do via Firestore in production. The real
+ * `lastUpdateTime` precondition is proven separately in the emulator suite.
+ */
+export class InMemoryProfileStore implements ProfileStore {
+  private readonly tokens = new Map<number, string>();
+  private counter = 0;
+
+  async update(id: number, write: ProfileWrite): Promise<string> {
+    const current = this.tokens.get(id) ?? INITIAL_CONCURRENCY_TOKEN;
+    if (write.precondition !== current) {
+      throw new StaleWriteError();
+    }
+    const next = `token-${++this.counter}`;
+    this.tokens.set(id, next);
+    return next;
   }
 }

@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { ProfileCache } from "./data/cache.js";
 import type { IdentityProvider } from "./identity/types.js";
 import { buildServer } from "./server.js";
-import { InMemoryNonceStore, InMemorySessionStore } from "./test-support/fakes.js";
+import {
+  InMemoryNonceStore,
+  InMemoryProfileStore,
+  InMemorySessionStore,
+} from "./test-support/fakes.js";
 
 // A stub provider standing in for the real Ghost one: the health route only
 // reads the provider name, and buildServer must stay provider-agnostic.
@@ -16,6 +20,7 @@ describe("buildServer", () => {
     const app = buildServer({
       identityProvider: ghostLikeProvider,
       profileCache: new ProfileCache(),
+      profileStore: new InMemoryProfileStore(),
       sessionStore: new InMemorySessionStore(),
       nonceStore: new InMemoryNonceStore(),
       getStars: async () => [],

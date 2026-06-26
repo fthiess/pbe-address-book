@@ -1,18 +1,26 @@
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
+import { AuditLog } from "./audit/audit-log.js";
 import type { ProfileCache } from "./data/cache.js";
+import type { ProfileStore } from "./data/profiles.js";
 import type { NonceService } from "./identity/nonce-store.js";
 import { type SessionCookieConfig, requireSession } from "./identity/session-cookie.js";
 import type { SessionService } from "./identity/session-store.js";
 import type { IdentityProvider } from "./identity/types.js";
 import { type GhostBridgeConfig, registerAuthRoutes } from "./routes/auth.js";
 import { registerImageRoutes } from "./routes/images.js";
-import { registerProfileRoutes } from "./routes/profiles.js";
+import { type Clock, registerProfileRoutes } from "./routes/profiles.js";
 
 export interface BuildServerOptions {
   identityProvider: IdentityProvider;
   /** The hydrated in-memory dataset cache the read path serves from. */
   profileCache: ProfileCache;
+  /** The conditional Firestore write path for profile edits (D25). */
+  profileStore: ProfileStore;
+  /** The audit stream sink (D61); defaults to structured JSON on stdout. */
+  auditLog?: AuditLog;
+  /** "Now" for write timestamps and audit entries; defaults to the wall clock. */
+  clock?: Clock;
   /** Firestore-persisted session store (read-through cache; D125). */
   sessionStore: SessionService;
   /** Firestore-persisted single-use login nonce store (D104/D125). */
@@ -57,7 +65,13 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     cookie: options.cookie,
     ghostBridge: options.ghostBridge,
   });
-  registerProfileRoutes(app, options.profileCache, gate);
+  registerProfileRoutes(app, {
+    cache: options.profileCache,
+    gate,
+    store: options.profileStore,
+    audit: options.auditLog ?? new AuditLog(),
+    clock: options.clock ?? (() => new Date()),
+  });
   registerImageRoutes(app, gate);
 
   return app;
