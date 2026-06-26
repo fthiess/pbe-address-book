@@ -50,6 +50,37 @@ documented rather than scripted:
     --update-env-vars SEEDED_AT=$(date +%s)
   ```
 
+## Keyless CI deploys (Workload Identity Federation)
+
+[`setup-wif.sh`](setup-wif.sh) wires up deploy-on-merge: GitHub Actions deploys
+the API (Cloud Run) and the SPA (Firebase Hosting) with **no service-account key
+anywhere**. A key would be a long-lived secret in a *public* repo's secret store;
+instead GitHub mints a short-lived OIDC token that Google trusts **only for this
+one repository** (`fthiess/pbe-address-book`), enforced by an attribute condition
+on the OIDC provider. That condition is the load-bearing security control.
+
+```bash
+# once per environment, authenticated as a project owner
+PROJECT_ID=pbe-book-staging GITHUB_REPO=fthiess/pbe-address-book \
+bash infra/setup-wif.sh
+```
+
+It creates a workload identity pool + provider, a dedicated `github-deployer`
+service account (deploy-only least privilege: `run.admin`,
+`cloudbuild.builds.editor`, `artifactregistry.writer`, `storage.admin`,
+`firebasehosting.admin`, plus `iam.serviceAccountUser` scoped to the runtime
+`book-api` SA and the Cloud Build SA), and the `workloadIdentityUser` binding that
+lets the repo impersonate it. It prints the provider resource name + SA email —
+the two non-secret values that go in
+[`.github/workflows/deploy-staging.yml`](../.github/workflows/deploy-staging.yml).
+
+That workflow is **gated on the CI gate**: it triggers via `workflow_run` only
+after the CI workflow succeeds on `main`, so a red `main` is never deployed.
+
+For production later, tighten `storage.admin` to `objectAdmin` on the
+`run-sources-*` bucket and give Cloud Build a dedicated minimal SA rather than
+reusing the Compute Engine default.
+
 ## Architecture invariants the playbook encodes
 
 - Cloud Run: `--max-instances=1 --min-instances=0` — single authoritative

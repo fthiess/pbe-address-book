@@ -1,0 +1,90 @@
+name: Deploy staging
+
+# Keyless deploy of the Book API (Cloud Run) + Firebase Hosting to the staging
+# environment, gated on a green test gate. It does NOT trigger on push directly:
+# it waits for the CI workflow to SUCCEED on main, so a red main is never
+# deployed (CODING-PROJECT-PLAN §5 — the gate guards the deploy too).
+#
+# Auth is via Workload Identity Federation (infra/setup-wif.sh) — GitHub mints a
+# short-lived OIDC token Google trusts only for this repo. There is no JSON key
+# anywhere in the repo or its secrets, which is essential: this repo is PUBLIC.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  # Manual re-deploy (e.g. after a config change with no new commit, or to kick
+  # the very first deploy before the workflow_run trigger has registered).
+  workflow_dispatch:
+
+# Never run two deploys at once; a deploy in flight should finish, not be cancelled.
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to staging
+    runs-on: ubuntu-latest
+    # Deploy only when CI passed on a push to main — or on a manual dispatch.
+    # The workflow_run payload carries the conclusion, branch, and triggering event.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      ( github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.event == 'push' )
+
+    permissions:
+      contents: read
+      id-token: write # required for the WIF OIDC token exchange
+
+    steps:
+      # Check out the exact commit CI validated (workflow_run defaults to the
+      # branch tip, which may have moved). Falls back to the ref for dispatch.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Authenticate to Google Cloud (keyless, WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: pbe-book-staging
+          workload_identity_provider: projects/268373129203/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: github-deployer@pbe-book-staging.iam.gserviceaccount.com
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      # Cloud Build builds the root Dockerfile from the uploaded source, pushes to
+      # Artifact Registry, and deploys the new revision. Same flags as the
+      # provisioning playbook (D83 scale-to-zero, D126 image bucket, fake-data
+      # staging is intentionally --allow-unauthenticated). node_modules is not on
+      # disk yet, so the source upload stays small (.gitignore-filtered).
+      - name: Deploy API to Cloud Run
+        run: |
+          gcloud run deploy pbe-book-api \
+            --source . \
+            --region us-central1 \
+            --service-account book-api@pbe-book-staging.iam.gserviceaccount.com \
+            --max-instances 1 --min-instances 0 \
+            --set-env-vars IMAGE_BUCKET=pbe-book-staging-images \
+            --allow-unauthenticated \
+            --quiet
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build SPA
+        run: npm run build:web
+
+      # Firebase CLI authenticates via the ADC the auth step exported
+      # (GOOGLE_APPLICATION_CREDENTIALS) — no FIREBASE_TOKEN, no key. --project is
+      # explicit because .firebaserc's default is the emulator's demo project.
+      - name: Deploy Firebase Hosting
+        run: npx firebase deploy --only hosting --project pbe-book-staging --non-interactive
