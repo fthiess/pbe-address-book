@@ -1,0 +1,109 @@
+{{!--
+  book.hbs — the PBE Address Book auth bridge relay.
+
+  This is an ADDITIVE custom route on the live Ghost site (mapped to /book/ via
+  routes.yaml; see book-bridge/README.md). It is the Ghost-side half of Book's
+  auth bridge (ENGINEERING-DESIGN §2.1; DECISIONS D20/D104). It does NOT touch
+  the newsletter or any existing content — it is a standalone page that hands a
+  logged-in member's Ghost token to the Address Book app and otherwise prompts
+  for sign-in.
+
+  Flow:
+    1. The Book SPA sends the member here as `/book/?state=<nonce>&target=<env>`.
+    2. This page fetches the member's short-lived Ghost JWT from the same-origin
+       `/members/api/session` (200 + token when signed in; 204 when not).
+    3. Signed in  → redirect to Book's `/auth/callback` with the token + state in
+       the URL **fragment** (never a query string, so it stays out of logs,
+       history, and the Referer header — D20).
+    4. Not signed in → show the Ghost Portal sign-in button; after the magic-link
+       sign-in the member returns here and the relay re-runs.
+
+  Security (D104): the callback destination is chosen from a HARDCODED allowlist
+  keyed by `target` — it is never taken verbatim from the query string, so this
+  page can never be turned into an open redirect.
+--}}<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Sign in — PBE Address Book</title>
+  {{ghost_head}}
+  <style>
+    :root { color-scheme: light dark; }
+    body {
+      margin: 0; min-height: 100vh; display: grid; place-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f4f6f7; color: #1b262b; padding: 1.5rem;
+    }
+    .book-card {
+      width: 100%; max-width: 26rem; text-align: center; background: #fff;
+      border: 1px solid #e3e8ea; border-radius: 1rem; padding: 2rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,.06);
+    }
+    .book-card h1 { font-size: 1.4rem; margin: .25rem 0 .5rem; }
+    .book-card p { color: #51616a; font-size: .95rem; line-height: 1.5; margin: 0 0 1.25rem; }
+    .book-btn {
+      display: inline-block; width: 100%; box-sizing: border-box; cursor: pointer;
+      background: #0f6f7e; color: #fff; border: 0; border-radius: .55rem;
+      padding: .7rem 1rem; font-size: 1rem; font-weight: 600;
+    }
+    .book-btn:hover { opacity: .92; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main class="book-card" role="main">
+    <noscript>This page needs JavaScript to sign you in to the PBE Address Book.</noscript>
+    <p id="book-loading" aria-live="polite">Signing you in&hellip;</p>
+
+    <div id="book-signin" hidden>
+      <h1>PBE Address Book</h1>
+      <p>Sign in with your pbe400.org membership to continue.</p>
+      <button type="button" id="book-signin-btn" class="book-btn" data-portal="signin">Sign in</button>
+    </div>
+
+    <p id="book-error" hidden aria-live="polite">
+      Something went wrong starting your sign-in. Please try again in a moment.
+    </p>
+  </main>
+
+  <script>
+    (function () {
+      // HARDCODED callback allowlist — never read the destination from the query
+      // string (D104). `target` only selects among these known environments.
+      var CALLBACKS = {
+        prod: 'https://book.pbe400.org/auth/callback',
+        staging: 'https://pbe-book-staging.web.app/auth/callback'
+      };
+
+      var params = new URLSearchParams(window.location.search);
+      var state = params.get('state') || '';
+      var target = params.get('target') || 'prod';
+      var callback = CALLBACKS[target] || CALLBACKS.prod;
+
+      function show(which) {
+        ['book-loading', 'book-signin', 'book-error'].forEach(function (id) {
+          var el = document.getElementById(id);
+          if (el) { el.hidden = (id !== which); }
+        });
+      }
+
+      fetch('/members/api/session', { credentials: 'same-origin' })
+        .then(function (res) { return res.status === 200 ? res.text() : null; })
+        .then(function (token) {
+          if (token) {
+            // Hand the token to Book in the fragment (anti-leakage, D20).
+            window.location.replace(
+              callback + '#token=' + encodeURIComponent(token) + '&state=' + encodeURIComponent(state)
+            );
+          } else {
+            show('book-signin');
+          }
+        })
+        .catch(function () { show('book-error'); });
+    })();
+  </script>
+  {{ghost_foot}}
+</body>
+</html>

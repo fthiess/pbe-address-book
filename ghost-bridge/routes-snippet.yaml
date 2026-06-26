@@ -1,0 +1,18 @@
+# PBE Address Book auth bridge — routes.yaml addition
+#
+# Ghost serves custom templates only when a route maps to them. Add the ONE
+# route below to the LIVE routes.yaml so `/book/` renders `book.hbs`.
+#
+# IMPORTANT: this is a SNIPPET to MERGE, not a replacement file. The live
+# routes.yaml also carries the collections/taxonomies that drive the newsletter
+# site; replacing it would break those. Add only the `/book/:` entry under the
+# existing top-level `routes:` key.
+#
+# To apply (Ghost Admin → Settings → Labs → Beta features → Routes):
+#   1. Download the current routes.yaml.
+#   2. Add the entry below under its `routes:` key.
+#   3. Upload the edited routes.yaml.
+
+routes:
+  /book/:
+    template: book
