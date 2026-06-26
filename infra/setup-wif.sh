@@ -99,6 +99,9 @@ fi
 #    - firebasehosting.admin      deploy the SPA to Firebase Hosting
 #    - firebaserules.admin        publish Firestore security rules (the deny-all
 #                                 backstop) — firebasehosting.admin does NOT cover this
+#    - serviceusage.serviceUsageConsumer   lets the Firebase CLI's firestore deploy
+#                                 preflight READ whether firestore.googleapis.com is
+#                                 enabled (services.get); does NOT allow enabling APIs
 echo "==> Granting project roles to ${DEPLOYER_SA}"
 for role in \
   roles/run.admin \
@@ -106,7 +109,8 @@ for role in \
   roles/artifactregistry.writer \
   roles/storage.admin \
   roles/firebasehosting.admin \
-  roles/firebaserules.admin; do
+  roles/firebaserules.admin \
+  roles/serviceusage.serviceUsageConsumer; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${DEPLOYER_SA}" --role="${role}" \
     --condition=None >/dev/null
