@@ -97,13 +97,16 @@ fi
 #    - storage.admin              read/write the build source-staging bucket
 #                                 (tighten to objectAdmin on run-sources-* for prod)
 #    - firebasehosting.admin      deploy the SPA to Firebase Hosting
+#    - firebaserules.admin        publish Firestore security rules (the deny-all
+#                                 backstop) — firebasehosting.admin does NOT cover this
 echo "==> Granting project roles to ${DEPLOYER_SA}"
 for role in \
   roles/run.admin \
   roles/cloudbuild.builds.editor \
   roles/artifactregistry.writer \
   roles/storage.admin \
-  roles/firebasehosting.admin; do
+  roles/firebasehosting.admin \
+  roles/firebaserules.admin; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${DEPLOYER_SA}" --role="${role}" \
     --condition=None >/dev/null

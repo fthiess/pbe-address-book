@@ -110,9 +110,12 @@ gcloud run services describe "${SERVICE}" --region "${REGION}" --project "${PROJ
 #      - Firebase CLI auth: run `gcloud auth application-default login` INCLUDING
 #        the firebase scope, then export GOOGLE_APPLICATION_CREDENTIALS (see
 #        infra/README.md). The default GCS-only ADC scope is not enough.
-echo "==> Building SPA and deploying Firebase Hosting"
+# firestore:rules ships the deny-all backstop (firestore.rules) alongside Hosting.
+# build:libs first — vite resolves @pbe/shared to its built dist/ during build:web.
+echo "==> Building SPA and deploying Firebase Hosting + Firestore rules"
+npm run build:libs
 npm run build:web
-npx firebase deploy --only hosting --project "${PROJECT_ID}"
+npx firebase deploy --only hosting,firestore:rules --project "${PROJECT_ID}"
 
 echo
 echo "==> Done. Staging URLs:"
