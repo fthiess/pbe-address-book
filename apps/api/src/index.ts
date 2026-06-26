@@ -15,7 +15,7 @@
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
 import { ensureUser, getUser } from "./data/users.js";
-import { createGhostJwks } from "./identity/ghost-jwks.js";
+import { createGhostKeyResolver } from "./identity/ghost-jwks.js";
 import { GhostIdentityProvider } from "./identity/ghost-provider.js";
 import { NonceStore } from "./identity/nonce-store.js";
 import { SessionStore } from "./identity/session-store.js";
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
   const nonceStore = new NonceStore(db);
 
   const provider = new GhostIdentityProvider({
-    jwks: createGhostJwks(GHOST_JWKS_URL),
+    keyResolver: createGhostKeyResolver(GHOST_JWKS_URL),
     issuer: GHOST_JWT_ISSUER,
     audience: GHOST_JWT_AUDIENCE,
     nonceStore,

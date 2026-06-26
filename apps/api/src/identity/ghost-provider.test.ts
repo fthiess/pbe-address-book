@@ -1,36 +1,33 @@
-import { type JWTVerifyGetKey, SignJWT, generateKeyPair } from "jose";
-import { beforeAll, describe, expect, it } from "vitest";
+import { type KeyObject, sign as cryptoSign, generateKeyPairSync } from "node:crypto";
+import { describe, expect, it } from "vitest";
 import { ProfileCache } from "../data/cache.js";
 import { makeProfile } from "../test-support/make-profile.js";
+import type { KeyResolver } from "./ghost-jwks.js";
 import { GhostIdentityProvider } from "./ghost-provider.js";
 import type { NonceService } from "./nonce-store.js";
 import { AuthError } from "./types.js";
 
-/** The signing-key type jose returns from `generateKeyPair` (no `KeyLike` in v6). */
-type GeneratedKey = Awaited<ReturnType<typeof generateKeyPair>>["privateKey"];
-
 /**
  * Offline verification of the security-critical Ghost handshake (D104/D97/R20).
- * A synthetic RS256 keypair stands in for Ghost's signing key, so the genuine
- * crypto path — signature, alg pin, iss/aud/exp, nonce, email resolution — is
- * exercised end to end without the live Ghost site.
+ * Tokens are built and signed with Node crypto (the same path the provider
+ * verifies with), so the genuine signature/alg-pin/iss/aud/exp/nonce/resolution
+ * flow is exercised end to end without the live Ghost site — including the
+ * regression case that broke against the real instance: **RS512 over a 1024-bit
+ * key**, which jose rejects but Ghost actually uses.
  */
 
-const ISSUER = "https://pbe400.org/members/api";
-const AUDIENCE = "https://pbe400.org/members/api";
+const ISSUER = "https://staging.pbe400.org/members/api";
+const AUDIENCE = "https://staging.pbe400.org/members/api";
 const LINKED_EMAIL = "linked.brother.5001@example.test";
 
-let privateKey: GeneratedKey;
-let publicKey: GeneratedKey;
-let jwks: JWTVerifyGetKey;
+const b64u = (input: string | Buffer): string => Buffer.from(input).toString("base64url");
 
-beforeAll(async () => {
-  ({ privateKey, publicKey } = await generateKeyPair("RS256"));
-  // A local key resolver returning our synthetic public key for any token.
-  jwks = (async () => publicKey) as unknown as JWTVerifyGetKey;
-});
+/** A resolver that returns one public key for any kid (tests don't rotate keys). */
+function resolverFor(publicKey: KeyObject): KeyResolver {
+  return { resolve: async () => publicKey };
+}
 
-/** A trivial single-use nonce double that always accepts the named nonce once. */
+/** A single-use nonce double that accepts the named nonce exactly once. */
 function singleUseNonce(valid: string): NonceService & { consumedCount: number } {
   let consumed = false;
   return {
@@ -49,6 +46,43 @@ function singleUseNonce(valid: string): NonceService & { consumedCount: number }
   };
 }
 
+interface TokenOptions {
+  privateKey: KeyObject;
+  alg?: string;
+  digest?: string;
+  kid?: string | null;
+  sub?: string;
+  iss?: string;
+  aud?: string | string[];
+  exp?: number;
+  nbf?: number;
+  signKey?: KeyObject;
+}
+
+/** Build a signed compact JWT with Node crypto. */
+function makeToken(opts: TokenOptions): string {
+  const alg = opts.alg ?? "RS512";
+  const header: Record<string, unknown> = { alg, typ: "JWT" };
+  if (opts.kid !== null) {
+    header.kid = opts.kid ?? "test-kid";
+  }
+  const now = Math.floor(Date.now() / 1000);
+  const payload: Record<string, unknown> = {
+    sub: opts.sub ?? LINKED_EMAIL,
+    iss: opts.iss ?? ISSUER,
+    aud: opts.aud ?? AUDIENCE,
+    iat: now,
+    exp: opts.exp ?? now + 600,
+  };
+  if (opts.nbf !== undefined) {
+    payload.nbf = opts.nbf;
+  }
+  const signingInput = `${b64u(JSON.stringify(header))}.${b64u(JSON.stringify(payload))}`;
+  const digest = opts.digest ?? (alg === "RS256" ? "RSA-SHA256" : "RSA-SHA512");
+  const signature = cryptoSign(digest, Buffer.from(signingInput), opts.signKey ?? opts.privateKey);
+  return `${signingInput}.${b64u(signature)}`;
+}
+
 async function loadedCache(
   ...profiles: Parameters<typeof makeProfile>[0][]
 ): Promise<ProfileCache> {
@@ -58,12 +92,13 @@ async function loadedCache(
 }
 
 function buildProvider(
+  publicKey: KeyObject,
   cache: ProfileCache,
   nonceStore: NonceService,
   ensureRole: "brother" | "manager" | "admin" = "brother",
 ): GhostIdentityProvider {
   return new GhostIdentityProvider({
-    jwks,
+    keyResolver: resolverFor(publicKey),
     issuer: ISSUER,
     audience: AUDIENCE,
     nonceStore,
@@ -72,32 +107,17 @@ function buildProvider(
   });
 }
 
-interface TokenOverrides {
-  subject?: string;
-  issuer?: string;
-  audience?: string;
-  expirationTime?: string | number;
-  signingKey?: GeneratedKey;
-  alg?: string;
-}
-
-async function makeToken(overrides: TokenOverrides = {}): Promise<string> {
-  return new SignJWT({})
-    .setProtectedHeader({ alg: overrides.alg ?? "RS256" })
-    .setSubject(overrides.subject ?? LINKED_EMAIL)
-    .setIssuer(overrides.issuer ?? ISSUER)
-    .setAudience(overrides.audience ?? AUDIENCE)
-    .setExpirationTime(overrides.expirationTime ?? "10m")
-    .sign(overrides.signingKey ?? privateKey);
-}
-
 describe("GhostIdentityProvider.createSession", () => {
   it("verifies a valid token, consumes the nonce, and resolves the email", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
     const nonce = singleUseNonce("good-nonce");
-    const provider = buildProvider(cache, nonce, "admin");
+    const provider = buildProvider(publicKey, cache, nonce, "admin");
 
-    const session = await provider.createSession({ token: await makeToken(), state: "good-nonce" });
+    const session = await provider.createSession({
+      token: makeToken({ privateKey }),
+      state: "good-nonce",
+    });
 
     expect(session.identity.profileId).toBe(5001);
     expect(session.identity.email).toBe(LINKED_EMAIL);
@@ -106,44 +126,34 @@ describe("GhostIdentityProvider.createSession", () => {
     expect(nonce.consumedCount).toBe(1);
   });
 
-  it("normalizes the JWT subject before resolving (D97)", async () => {
+  it("verifies an RS512 token over a 1024-bit key — Ghost's real key (regression)", async () => {
+    // Ghost signs member JWTs RS512 with a 1024-bit RSA key; jose rejects that
+    // key length, which is why the verifier uses Node crypto. This must pass.
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 1024 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
-    const provider = buildProvider(cache, singleUseNonce("n"));
-    // Mixed-case + surrounding spaces still resolve to the same profile.
-    const token = await makeToken({ subject: `  ${LINKED_EMAIL.toUpperCase()}  ` });
-    const session = await provider.createSession({ token, state: "n" });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    const session = await provider.createSession({
+      token: makeToken({ privateKey, alg: "RS512" }),
+      state: "n",
+    });
     expect(session.identity.profileId).toBe(5001);
   });
 
-  it("verifies an RS512 token — Ghost's actual signing algorithm", async () => {
-    // Ghost members JWTs are RS512; prove a real-shaped token verifies against
-    // its own JWKS key under the asymmetric-only pin.
-    const rs512 = await generateKeyPair("RS512");
+  it("normalizes the JWT subject before resolving (D97)", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
-    const provider = new GhostIdentityProvider({
-      jwks: (async () => rs512.publicKey) as unknown as JWTVerifyGetKey,
-      issuer: ISSUER,
-      audience: AUDIENCE,
-      nonceStore: singleUseNonce("n"),
-      cache,
-      ensureUser: async () => ({ role: "brother" }),
-    });
-    const token = await new SignJWT({})
-      .setProtectedHeader({ alg: "RS512" })
-      .setSubject(LINKED_EMAIL)
-      .setIssuer(ISSUER)
-      .setAudience(AUDIENCE)
-      .setExpirationTime("10m")
-      .sign(rs512.privateKey);
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    const token = makeToken({ privateKey, sub: `  ${LINKED_EMAIL.toUpperCase()}  ` });
     const session = await provider.createSession({ token, state: "n" });
     expect(session.identity.profileId).toBe(5001);
   });
 
   it("rejects a token signed with the wrong key (forged signature)", async () => {
+    const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const other = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
-    const other = await generateKeyPair("RS256");
-    const provider = buildProvider(cache, singleUseNonce("n"));
-    const token = await makeToken({ signingKey: other.privateKey });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    const token = makeToken({ privateKey: other.privateKey, signKey: other.privateKey });
     await expect(provider.createSession({ token, state: "n" })).rejects.toMatchObject({
       status: 401,
       code: "invalid_token",
@@ -151,77 +161,103 @@ describe("GhostIdentityProvider.createSession", () => {
   });
 
   it("rejects a symmetric-algorithm (HS256) token — the alg pin (D104)", async () => {
+    const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
-    const provider = buildProvider(cache, singleUseNonce("n"));
-    // Forge an HS256 token HMAC'd with bytes; the RS256 pin must reject it.
-    const hs = await new SignJWT({})
-      .setProtectedHeader({ alg: "HS256" })
-      .setSubject(LINKED_EMAIL)
-      .setIssuer(ISSUER)
-      .setAudience(AUDIENCE)
-      .setExpirationTime("10m")
-      .sign(new TextEncoder().encode("a".repeat(32)));
-    await expect(provider.createSession({ token: hs, state: "n" })).rejects.toMatchObject({
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    // Hand-build an HS256-headed token; the alg pin rejects it before any verify.
+    const header = b64u(JSON.stringify({ alg: "HS256", kid: "test-kid", typ: "JWT" }));
+    const payload = b64u(JSON.stringify({ sub: LINKED_EMAIL, iss: ISSUER, aud: AUDIENCE }));
+    const token = `${header}.${payload}.${b64u("not-a-real-signature")}`;
+    await expect(provider.createSession({ token, state: "n" })).rejects.toMatchObject({
       code: "invalid_token",
     });
   });
 
-  it("rejects an expired token", async () => {
+  it("rejects an alg:none token (D104)", async () => {
+    const { publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
-    const provider = buildProvider(cache, singleUseNonce("n"));
-    const token = await makeToken({ expirationTime: Math.floor(Date.now() / 1000) - 60 });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    const header = b64u(JSON.stringify({ alg: "none", typ: "JWT" }));
+    const payload = b64u(JSON.stringify({ sub: LINKED_EMAIL, iss: ISSUER, aud: AUDIENCE }));
+    const token = `${header}.${payload}.`;
+    await expect(provider.createSession({ token, state: "n" })).rejects.toMatchObject({
+      code: "invalid_token",
+    });
+  });
+
+  it("rejects a token with no kid", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    await expect(
+      provider.createSession({ token: makeToken({ privateKey, kid: null }), state: "n" }),
+    ).rejects.toMatchObject({ code: "invalid_token" });
+  });
+
+  it("rejects an expired token", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    const token = makeToken({ privateKey, exp: Math.floor(Date.now() / 1000) - 120 });
     await expect(provider.createSession({ token, state: "n" })).rejects.toMatchObject({
       code: "invalid_token",
     });
   });
 
   it("rejects a wrong-issuer and wrong-audience token", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
-    const provider = buildProvider(cache, singleUseNonce("n"));
-    const badIss = await makeToken({ issuer: "https://evil.example/members/api" });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    const badIss = makeToken({ privateKey, iss: "https://evil.example/members/api" });
     await expect(provider.createSession({ token: badIss, state: "n" })).rejects.toBeInstanceOf(
       AuthError,
     );
+    const badAud = makeToken({ privateKey, aud: "https://evil.example/members/api" });
+    await expect(provider.createSession({ token: badAud, state: "n" })).rejects.toMatchObject({
+      code: "invalid_token",
+    });
   });
 
   it("denies an email that matches no profile (unlinked_member)", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: "someone.else@example.test" });
-    const provider = buildProvider(cache, singleUseNonce("n"));
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     await expect(
-      provider.createSession({ token: await makeToken(), state: "n" }),
+      provider.createSession({ token: makeToken({ privateKey }), state: "n" }),
     ).rejects.toMatchObject({ status: 403, code: "unlinked_member" });
   });
 
   it("fails closed when an email matches more than one profile (ambiguous_member)", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache(
       { constitutionId: 5001, email: LINKED_EMAIL },
       { constitutionId: 5002, email: LINKED_EMAIL.toUpperCase() }, // same after normalization
     );
-    const provider = buildProvider(cache, singleUseNonce("n"));
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     await expect(
-      provider.createSession({ token: await makeToken(), state: "n" }),
+      provider.createSession({ token: makeToken({ privateKey }), state: "n" }),
     ).rejects.toMatchObject({ status: 403, code: "ambiguous_member" });
   });
 
   it("rejects a missing or replayed state nonce (invalid_state)", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
-    const nonce = singleUseNonce("good-nonce");
-    const provider = buildProvider(cache, nonce);
-    // First use consumes it; a replay of the same valid token + nonce fails.
-    await provider.createSession({ token: await makeToken(), state: "good-nonce" });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("good-nonce"));
+    await provider.createSession({ token: makeToken({ privateKey }), state: "good-nonce" });
     await expect(
-      provider.createSession({ token: await makeToken(), state: "good-nonce" }),
+      provider.createSession({ token: makeToken({ privateKey }), state: "good-nonce" }),
     ).rejects.toMatchObject({ status: 401, code: "invalid_state" });
   });
 
   it("requires both a token and a state", async () => {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ constitutionId: 5001, email: LINKED_EMAIL });
-    const provider = buildProvider(cache, singleUseNonce("n"));
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     await expect(provider.createSession({ state: "n" })).rejects.toMatchObject({
       code: "invalid_token",
     });
-    await expect(provider.createSession({ token: await makeToken() })).rejects.toMatchObject({
-      code: "invalid_state",
-    });
+    await expect(
+      provider.createSession({ token: makeToken({ privateKey }) }),
+    ).rejects.toMatchObject({ code: "invalid_state" });
   });
 });

@@ -108,6 +108,6 @@ jobs:
             --region us-central1 \
             --service-account book-api@pbe-book-staging.iam.gserviceaccount.com \
             --max-instances 1 --min-instances 0 \
-            --set-env-vars IMAGE_BUCKET=pbe-book-staging-images,GHOST_JWKS_URL=https://pbe400.org/members/.well-known/jwks.json,GHOST_JWT_ISSUER=https://pbe400.org/members/api,GHOST_JWT_AUDIENCE=https://pbe400.org/members/api,GHOST_BRIDGE_URL=https://pbe400.org/book,GHOST_BRIDGE_TARGET=staging \
+            --set-env-vars IMAGE_BUCKET=pbe-book-staging-images,GHOST_JWKS_URL=https://staging.pbe400.org/members/.well-known/jwks.json,GHOST_JWT_ISSUER=https://staging.pbe400.org/members/api,GHOST_JWT_AUDIENCE=https://staging.pbe400.org/members/api,GHOST_BRIDGE_URL=https://staging.pbe400.org/book,GHOST_BRIDGE_TARGET=staging \
             --allow-unauthenticated \
             --quiet

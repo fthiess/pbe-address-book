@@ -38,13 +38,14 @@ SERVICE="${SERVICE:-pbe-book-api}"
 SA_NAME="${SA_NAME:-book-api}"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-# Ghost auth-bridge config (Phase 1b). Defaults target the live pbe400.org Ghost
-# (the D72 single-relay mechanism); GHOST_BRIDGE_TARGET selects which callback the
-# relay routes to (staging here). iss/aud are Ghost's members-API conventions.
-GHOST_JWKS_URL="${GHOST_JWKS_URL:-https://pbe400.org/members/.well-known/jwks.json}"
-GHOST_JWT_ISSUER="${GHOST_JWT_ISSUER:-https://pbe400.org/members/api}"
-GHOST_JWT_AUDIENCE="${GHOST_JWT_AUDIENCE:-https://pbe400.org/members/api}"
-GHOST_BRIDGE_URL="${GHOST_BRIDGE_URL:-https://pbe400.org/book}"
+# Ghost auth-bridge config (Phase 1b). Defaults target the SELF-HOSTED
+# ghost-staging at staging.pbe400.org (D72, amended — auth is tested against an
+# isolated open-source Ghost, not live pbe400.org). GHOST_BRIDGE_TARGET selects
+# which callback the relay routes to. Prod cutover overrides these with pbe400.org.
+GHOST_JWKS_URL="${GHOST_JWKS_URL:-https://staging.pbe400.org/members/.well-known/jwks.json}"
+GHOST_JWT_ISSUER="${GHOST_JWT_ISSUER:-https://staging.pbe400.org/members/api}"
+GHOST_JWT_AUDIENCE="${GHOST_JWT_AUDIENCE:-https://staging.pbe400.org/members/api}"
+GHOST_BRIDGE_URL="${GHOST_BRIDGE_URL:-https://staging.pbe400.org/book}"
 GHOST_BRIDGE_TARGET="${GHOST_BRIDGE_TARGET:-staging}"
 
 echo "==> Project ${PROJECT_ID} | region ${REGION} | bucket ${IMAGE_BUCKET}"
