@@ -45,6 +45,27 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
+      # Build the SPA FIRST — it needs no cloud auth, and doing the slow work
+      # before authenticating keeps the gap between auth and the deploys short.
+      # @pbe/shared must compile before the SPA build (vite resolves the
+      # workspace package to its built dist/).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared libs + SPA
+        run: |
+          npm run build:libs
+          npm run build:web
+
+      # Authenticate LAST-minute: the auth action bakes GitHub's short-lived OIDC
+      # token into the ADC credential file statically, so the deploys must run
+      # soon after this step — not behind a multi-minute build.
       - name: Authenticate to Google Cloud (keyless, WIF)
         uses: google-github-actions/auth@v2
         with:
@@ -52,14 +73,20 @@ jobs:
           workload_identity_provider: projects/268373129203/locations/global/workloadIdentityPools/github-pool/providers/github-provider
           service_account: github-deployer@pbe-book-staging.iam.gserviceaccount.com
 
+      # Firebase first, immediately after auth: the CLI reads the ADC file via
+      # google-auth-library, which re-exchanges the OIDC token at use time, so it
+      # is the most sensitive to that token's freshness. No FIREBASE_TOKEN, no key.
+      # --project is explicit because .firebaserc's default is the emulator project.
+      - name: Deploy Firebase Hosting
+        run: npx firebase deploy --only hosting --project pbe-book-staging --non-interactive --debug
+
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
-      # Cloud Build builds the root Dockerfile from the uploaded source, pushes to
-      # Artifact Registry, and deploys the new revision. Same flags as the
-      # provisioning playbook (D83 scale-to-zero, D126 image bucket, fake-data
-      # staging is intentionally --allow-unauthenticated). node_modules is not on
-      # disk yet, so the source upload stays small (.gitignore-filtered).
+      # API last: gcloud only needs the token briefly to SUBMIT the Cloud Build
+      # (the build then runs server-side as the build SA), so it tolerates the
+      # slightly older token. Same flags as the provisioning playbook (D83
+      # scale-to-zero, D126 image bucket, fake-data staging --allow-unauthenticated).
       - name: Deploy API to Cloud Run
         run: |
           gcloud run deploy pbe-book-api \
@@ -70,27 +97,3 @@ jobs:
             --set-env-vars IMAGE_BUCKET=pbe-book-staging-images \
             --allow-unauthenticated \
             --quiet
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      # @pbe/shared must be compiled before the SPA build: vite resolves the
-      # workspace package to its built dist/. Mirrors CI's full `npm run build`
-      # chain (build:libs && build:web && build:api) — the API is built in the
-      # container instead, so only libs + web are needed here.
-      - name: Build shared libs + SPA
-        run: |
-          npm run build:libs
-          npm run build:web
-
-      # Firebase CLI authenticates via the ADC the auth step exported
-      # (GOOGLE_APPLICATION_CREDENTIALS) — no FIREBASE_TOKEN, no key. --project is
-      # explicit because .firebaserc's default is the emulator's demo project.
-      - name: Deploy Firebase Hosting
-        run: npx firebase deploy --only hosting --project pbe-book-staging --non-interactive
