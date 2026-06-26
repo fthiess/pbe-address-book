@@ -84,8 +84,11 @@ jobs:
 
       # Firebase reads the ADC file via google-auth-library (no FIREBASE_TOKEN, no
       # key). --project is explicit because .firebaserc's default is the emulator.
-      - name: Deploy Firebase Hosting
-        run: npx firebase deploy --only hosting --project pbe-book-staging --non-interactive
+      # firestore:rules ships the deny-all backstop (firestore.rules) on every
+      # deploy so the enforced policy always matches the repo (needs the deployer's
+      # firebaserules.admin role — see infra/setup-wif.sh).
+      - name: Deploy Firebase Hosting + Firestore rules
+        run: npx firebase deploy --only hosting,firestore:rules --project pbe-book-staging --non-interactive
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
