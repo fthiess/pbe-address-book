@@ -77,6 +77,14 @@ the two non-secret values that go in
 That workflow is **gated on the CI gate**: it triggers via `workflow_run` only
 after the CI workflow succeeds on `main`, so a red `main` is never deployed.
 
+**Node-version landmine (don't "fix" it):** the Firebase deploy step pins the
+Firebase CLI to **Node 20**, even though the rest of the repo is on Node 24. Under
+Node 24, `google-auth-library`'s STS token exchange (how the CLI redeems the WIF
+credential) dies with `Premature close` (an undici failure) and the deploy fails
+with a misleading "have you run firebase login?". `gcloud` is unaffected (its STS
+client is not Node). Keep the Node-20 override until firebase-tools ships a fixed
+auth library — this will apply to prod too.
+
 For production later, tighten `storage.admin` to `objectAdmin` on the
 `run-sources-*` bucket and give Cloud Build a dedicated minimal SA rather than
 reusing the Compute Engine default.
