@@ -69,9 +69,11 @@ bash infra/setup-wif.sh
 It creates a workload identity pool + provider, a dedicated `github-deployer`
 service account (deploy-only least privilege: `run.admin`,
 `cloudbuild.builds.editor`, `artifactregistry.writer`, `storage.admin`,
-`firebasehosting.admin`, `firebaserules.admin`, plus `iam.serviceAccountUser`
-scoped to the runtime `book-api` SA and the Cloud Build SA), and the
-`workloadIdentityUser` binding that lets the repo impersonate it. It prints the provider resource name + SA email —
+`firebasehosting.admin`, `firebaserules.admin`,
+`serviceusage.serviceUsageConsumer` (the firestore-rules deploy preflight reads
+whether the Firestore API is enabled), plus `iam.serviceAccountUser` scoped to the
+runtime `book-api` SA and the Cloud Build SA), and the `workloadIdentityUser`
+binding that lets the repo impersonate it. It prints the provider resource name + SA email —
 the two non-secret values that go in
 [`.github/workflows/deploy-staging.yml`](../.github/workflows/deploy-staging.yml).
 
