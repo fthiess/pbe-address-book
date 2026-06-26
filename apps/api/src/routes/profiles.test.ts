@@ -1,12 +1,13 @@
 import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProfileCache } from "../data/cache.js";
-import type { IdentityProvider } from "../identity/types.js";
+import { SESSION_COOKIE } from "../identity/session-cookie.js";
+import type { IdentityProvider, Session } from "../identity/types.js";
 import { buildServer } from "../server.js";
+import { InMemoryNonceStore, InMemorySessionStore } from "../test-support/fakes.js";
 import { makeProfile } from "../test-support/make-profile.js";
 
-// A no-op provider: the read path does not touch auth in Phase 1a, so a stub
-// keeps this test off the DevIdentityProvider's environment guard.
+// A no-op provider: these tests exercise the read path, not the handshake.
 const stubProvider: IdentityProvider = {
   name: "stub",
   createSession: () => Promise.reject(new Error("not used in the read-path test")),
@@ -17,6 +18,19 @@ interface DecodedBody {
   majors: unknown[];
 }
 
+function brotherSession(): Session {
+  return {
+    identity: {
+      subject: "5001",
+      profileId: 5001,
+      email: "a@example.test",
+      role: "brother",
+      displayName: "Test Brother",
+    },
+    expiresAt: Date.now() + 60 * 60 * 1000,
+  };
+}
+
 async function buildReadServer() {
   const cache = new ProfileCache();
   await cache.load([
@@ -24,25 +38,42 @@ async function buildReadServer() {
     makeProfile({ constitutionId: 5002, unlisted: true }),
     makeProfile({ constitutionId: 5003, allowDirectoryEmail: false, email: "b@example.test" }),
   ]);
-  return buildServer({ identityProvider: stubProvider, profileCache: cache });
+  const sessionStore = new InMemorySessionStore();
+  const app = buildServer({
+    identityProvider: stubProvider,
+    profileCache: cache,
+    sessionStore,
+    nonceStore: new InMemoryNonceStore(),
+    getStars: async () => [],
+    cookie: { secure: true },
+  });
+  const sessionId = await sessionStore.create(brotherSession());
+  return { app, cookie: `${SESSION_COOKIE}=${sessionId}` };
 }
 
 describe("GET /api/profiles", () => {
-  let app: Awaited<ReturnType<typeof buildReadServer>>;
+  let app: Awaited<ReturnType<typeof buildReadServer>>["app"];
+  let cookie: string;
 
   beforeEach(async () => {
-    app = await buildReadServer();
+    ({ app, cookie } = await buildReadServer());
   });
 
   afterEach(async () => {
     await app.close();
   });
 
+  it("rejects an unauthenticated request with 401 (the Phase 1b gate)", async () => {
+    const response = await app.inject({ method: "GET", url: "/api/profiles" });
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toMatchObject({ error: "unauthenticated" });
+  });
+
   it("serves brotli with no-store and the right headers when br is accepted", async () => {
     const response = await app.inject({
       method: "GET",
       url: "/api/profiles",
-      headers: { "accept-encoding": "br, gzip" },
+      headers: { "accept-encoding": "br, gzip", cookie },
     });
 
     expect(response.statusCode).toBe(200);
@@ -66,7 +97,7 @@ describe("GET /api/profiles", () => {
     const response = await app.inject({
       method: "GET",
       url: "/api/profiles",
-      headers: { "accept-encoding": "gzip, deflate" },
+      headers: { "accept-encoding": "gzip, deflate", cookie },
     });
 
     expect(response.statusCode).toBe(200);
@@ -76,7 +107,7 @@ describe("GET /api/profiles", () => {
   });
 
   it("serves uncompressed JSON when no encoding is accepted", async () => {
-    const response = await app.inject({ method: "GET", url: "/api/profiles" });
+    const response = await app.inject({ method: "GET", url: "/api/profiles", headers: { cookie } });
 
     expect(response.statusCode).toBe(200);
     expect(response.headers["content-encoding"]).toBeUndefined();

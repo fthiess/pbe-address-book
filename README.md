@@ -12,14 +12,18 @@ design, API spec) and the decision log
 ([`docs/initial-build/DECISIONS.md`](docs/initial-build/DECISIONS.md)) is
 authoritative for *why* anything is the way it is.
 
-> **Status: Phase 1 — the walking skeleton (in progress).** Phase 0 (the
-> monorepo, the toolchain, the CI gate, the deterministic fake-data generator,
-> and the role-switchable `DevIdentityProvider`) is complete. Phase 1a's
-> **backend read path** is now in: a Firestore-hydrated in-memory cache, the
-> server-side privacy-projection seam (brother role), and `GET /api/profiles`
-> served brotli/gzip-negotiated and `no-store`. Still ahead in Phase 1: the
-> staging infrastructure bring-up (the rest of 1a) and the Ghost auth bridge
-> plus the SPA shell and rendered list (1b).
+> **Status: Phase 1 — the walking skeleton (complete).** Phase 0 (the monorepo,
+> the toolchain, the CI gate, the deterministic fake-data generator, and the
+> role-switchable `DevIdentityProvider`) and Phase 1a (the backend read path and
+> the staging infrastructure bring-up) are done. **Phase 1b** is now in: the
+> **Ghost auth bridge** (real JWKS verification with the RS-family alg pin, the
+> single-use login nonce, NFC email→profile resolution, create-if-absent users),
+> Firestore-persisted **sessions and nonces** (cold-start-safe, D125), the
+> **session gate** that closes the 1a interim un-gated read path, the
+> `/api/auth/*` + `/api/me` endpoints, and the persistent **SPA shell** (identity,
+> role badge, sign-out, privacy footer, system-banner slot, cold-start overlay)
+> with the rendered directory list. The Ghost-side relay lives in the theme repo
+> (`pbe-news-ghost-theme/book.hbs`). Next: Phase 2, the data & permission core.
 
 ## Layout
 
@@ -57,6 +61,28 @@ npm run seed         # seed the deterministic fake dataset into the emulator
 npm run e2e          # Playwright end-to-end
 npm run verify:gate  # the full tests-green gate, end to end
 ```
+
+## Running the app locally
+
+The SPA, the API, and the Firestore emulator run side by side. The
+`DevIdentityProvider` gives a Ghost-free, role-switchable login (D72), so no
+Ghost is needed locally.
+
+```bash
+# 1. Start the emulator and seed the fake dataset (leave it running):
+npx firebase emulators:start --only firestore   # in its own terminal
+npm run seed                                     # once, into the running emulator
+
+# 2. Start the API against the emulator (its own terminal):
+FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 npm run dev --workspace apps/api
+
+# 3. Start the SPA (its own terminal); it proxies /api and /img to the API:
+npm run dev --workspace apps/web
+```
+
+Open the SPA, and on the sign-in screen use the **Local development** role
+switcher (brother / manager / admin) to sign in. In production that block is
+absent — only the real Ghost **Sign in** button ships (`import.meta.env.DEV`).
 
 ## Environments
 

@@ -1,4 +1,4 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import { getStorage } from "firebase-admin/storage";
 
 /**
@@ -10,17 +10,16 @@ import { getStorage } from "firebase-admin/storage";
  * immutable browser caching (the URLs are versioned, so a new upload yields a
  * new URL rather than mutating an old one).
  *
- * PHASE 1a SCOPE. The bucket name comes from the `IMAGE_BUCKET` env var. The
- * read is un-gated in this interim (like `GET /api/profiles`), which is safe
- * because every environment it runs in holds fake data only (D72). The session
- * gate and per-record visibility (an unlisted/de-brothered brother's image
- * returning 404 to a peer), and the full upload/derivation pipeline, arrive with
- * auth in Phase 1b and the Profile work in Phase 4.
+ * The bucket name comes from the `IMAGE_BUCKET` env var. PHASE 1b adds the
+ * session `gate`, so an image read now requires a valid Book session — the same
+ * cookie that authenticates `/api/*` (D126). Per-record visibility (an
+ * unlisted/de-brothered brother's image returning 404 to a peer) and the full
+ * upload/derivation pipeline arrive with the Profile work in Phase 4.
  */
-export function registerImageRoutes(app: FastifyInstance): void {
+export function registerImageRoutes(app: FastifyInstance, gate: preHandlerHookHandler): void {
   const bucketName = process.env.IMAGE_BUCKET;
 
-  app.get("/img/*", async (request, reply) => {
+  app.get("/img/*", { preHandler: gate }, async (request, reply) => {
     if (!bucketName) {
       return reply.code(503).send({ error: "image_bucket_unconfigured" });
     }

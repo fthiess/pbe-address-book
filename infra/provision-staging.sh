@@ -38,6 +38,15 @@ SERVICE="${SERVICE:-pbe-book-api}"
 SA_NAME="${SA_NAME:-book-api}"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
+# Ghost auth-bridge config (Phase 1b). Defaults target the live pbe400.org Ghost
+# (the D72 single-relay mechanism); GHOST_BRIDGE_TARGET selects which callback the
+# relay routes to (staging here). iss/aud are Ghost's members-API conventions.
+GHOST_JWKS_URL="${GHOST_JWKS_URL:-https://pbe400.org/members/.well-known/jwks.json}"
+GHOST_JWT_ISSUER="${GHOST_JWT_ISSUER:-https://pbe400.org/members/api}"
+GHOST_JWT_AUDIENCE="${GHOST_JWT_AUDIENCE:-https://pbe400.org/members/api}"
+GHOST_BRIDGE_URL="${GHOST_BRIDGE_URL:-https://pbe400.org/book}"
+GHOST_BRIDGE_TARGET="${GHOST_BRIDGE_TARGET:-staging}"
+
 echo "==> Project ${PROJECT_ID} | region ${REGION} | bucket ${IMAGE_BUCKET}"
 
 # 1. Project (create only if absent; the id is permanent and globally unique).
@@ -68,6 +77,15 @@ if ! gcloud firestore databases describe --project "${PROJECT_ID}" >/dev/null 2>
   gcloud firestore databases create --location="${REGION}" --type=firestore-native --project "${PROJECT_ID}"
 fi
 
+# 4b. TTL policies so lapsed sessions and spent login nonces are reaped
+#     server-side (D125). The app also checks expiry on read, so the policy is a
+#     sweeper, not the enforcement point. Idempotent: re-enabling is a no-op.
+echo "==> Enabling Firestore TTL on sessions.expiresAt and authNonces.expiresAt"
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=sessions --enable-ttl --project "${PROJECT_ID}" --quiet || true
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=authNonces --enable-ttl --project "${PROJECT_ID}" --quiet || true
+
 # 5. Private image bucket (uniform access; public access prevented).
 if ! gcloud storage buckets describe "gs://${IMAGE_BUCKET}" >/dev/null 2>&1; then
   echo "==> Creating private image bucket gs://${IMAGE_BUCKET}"
@@ -93,7 +111,7 @@ gcloud run deploy "${SERVICE}" \
   --source . --region "${REGION}" --project "${PROJECT_ID}" \
   --service-account "${SA_EMAIL}" \
   --max-instances 1 --min-instances 0 \
-  --set-env-vars "IMAGE_BUCKET=${IMAGE_BUCKET}" \
+  --set-env-vars "IMAGE_BUCKET=${IMAGE_BUCKET},GHOST_JWKS_URL=${GHOST_JWKS_URL},GHOST_JWT_ISSUER=${GHOST_JWT_ISSUER},GHOST_JWT_AUDIENCE=${GHOST_JWT_AUDIENCE},GHOST_BRIDGE_URL=${GHOST_BRIDGE_URL},GHOST_BRIDGE_TARGET=${GHOST_BRIDGE_TARGET}" \
   --allow-unauthenticated --quiet
 
 echo "==> Cloud Run URL:"

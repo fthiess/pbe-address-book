@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "seed:run": "tsx src/seed.ts",
-    "seed:staging": "tsx src/seed-staging.ts"
+    "seed:staging": "tsx src/seed-staging.ts",
+    "link:staging-tester": "tsx src/link-staging-tester.ts"
   },
   "dependencies": {
     "@pbe/shared": "*",

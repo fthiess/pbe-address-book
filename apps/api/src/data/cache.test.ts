@@ -49,6 +49,33 @@ describe("ProfileCache", () => {
     expect(cache.size).toBe(3);
   });
 
+  it("indexes records by id and by normalized email for resolution", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ constitutionId: 5001, email: "Jane.Doe@Example.test" }),
+      makeProfile({ constitutionId: 5002, email: null }),
+    ]);
+
+    expect(cache.getById(5001)?.constitutionId).toBe(5001);
+    expect(cache.getById(9999)).toBeNull();
+
+    // Resolution normalizes the query (D97): different case still hits.
+    expect(cache.resolveByEmail("  JANE.DOE@example.TEST ")).toEqual({
+      kind: "found",
+      profile: expect.objectContaining({ constitutionId: 5001 }),
+    });
+    expect(cache.resolveByEmail("nobody@example.test")).toEqual({ kind: "none" });
+  });
+
+  it("marks an email claimed by two profiles as ambiguous (fail closed)", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ constitutionId: 5001, email: "dup@example.test" }),
+      makeProfile({ constitutionId: 5002, email: "DUP@example.test" }),
+    ]);
+    expect(cache.resolveByEmail("dup@example.test")).toEqual({ kind: "ambiguous" });
+  });
+
   it("compresses the bulk payload well (repeated keys at scale)", async () => {
     const profiles = Array.from({ length: 500 }, (_, i) =>
       makeProfile({ constitutionId: 5001 + i }),

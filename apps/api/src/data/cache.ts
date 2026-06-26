@@ -1,8 +1,17 @@
 import { promisify } from "node:util";
 import zlib from "node:zlib";
-import type { Profile } from "@pbe/shared";
+import { type Profile, normalizeEmail } from "@pbe/shared";
 import type { Firestore } from "firebase-admin/firestore";
 import { type BrotherProfile, projectForRole } from "../projection/projection.js";
+
+/** The sentinel an email index entry carries when more than one profile claims it. */
+const AMBIGUOUS = Symbol("ambiguous-email");
+
+/** Outcome of resolving a normalized email against the in-memory index. */
+export type EmailResolution =
+  | { readonly kind: "found"; readonly profile: Profile }
+  | { readonly kind: "ambiguous" }
+  | { readonly kind: "none" };
 
 const brotliCompress = promisify(zlib.brotliCompress);
 const gzipCompress = promisify(zlib.gzip);
@@ -56,6 +65,15 @@ async function compress(json: string): Promise<NegotiablePayload> {
 export class ProfileCache {
   private payload: NegotiablePayload | null = null;
   private sourceCount = 0;
+  /** Raw records by Constitution ID — backs `/api/me` and single-record reads. */
+  private byId = new Map<number, Profile>();
+  /**
+   * Normalized-email → record index for sign-in resolution (ENGINEERING-DESIGN
+   * §2.1). A value of {@link AMBIGUOUS} marks an address claimed by more than one
+   * profile, so resolution can fail closed (`ambiguous_member`, D97) rather than
+   * guess. Phase 2 folds `alternateEmail` into this same namespace (§5.1).
+   */
+  private byEmail = new Map<string, Profile | typeof AMBIGUOUS>();
 
   /**
    * (Re)load the cache from an in-memory profile set, rebuilding the precomputed
@@ -68,6 +86,21 @@ export class ProfileCache {
     };
     this.payload = await compress(JSON.stringify(body));
     this.sourceCount = profiles.length;
+    this.rebuildIndexes(profiles);
+  }
+
+  /** Rebuild the by-id and by-email lookup indexes from the source records. */
+  private rebuildIndexes(profiles: readonly Profile[]): void {
+    this.byId = new Map();
+    this.byEmail = new Map();
+    for (const profile of profiles) {
+      this.byId.set(profile.constitutionId, profile);
+      if (profile.email !== null) {
+        const key = normalizeEmail(profile.email);
+        // A second profile claiming the same normalized email makes it ambiguous.
+        this.byEmail.set(key, this.byEmail.has(key) ? AMBIGUOUS : profile);
+      }
+    }
   }
 
   /**
@@ -89,6 +122,28 @@ export class ProfileCache {
       throw new Error("ProfileCache.brotherPayload: the cache has not been hydrated yet.");
     }
     return this.payload;
+  }
+
+  /** The caller's own full record by Constitution ID, or null if unknown. */
+  getById(constitutionId: number): Profile | null {
+    return this.byId.get(constitutionId) ?? null;
+  }
+
+  /**
+   * Resolve a raw email (e.g. a JWT `sub`) to a profile. The address is
+   * normalized here (D97) so callers pass the value as received. Fails closed:
+   * an address claimed by multiple profiles resolves to `ambiguous`, never a
+   * guess (ENGINEERING-DESIGN §2.1).
+   */
+  resolveByEmail(email: string): EmailResolution {
+    const hit = this.byEmail.get(normalizeEmail(email));
+    if (hit === undefined) {
+      return { kind: "none" };
+    }
+    if (hit === AMBIGUOUS) {
+      return { kind: "ambiguous" };
+    }
+    return { kind: "found", profile: hit };
   }
 
   /** Count of source profiles last loaded — for startup/diagnostic logging. */

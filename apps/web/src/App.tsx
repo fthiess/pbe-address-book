@@ -1,35 +1,56 @@
-import { formatConstitutionId } from "@pbe/shared";
+import { NuqsAdapter } from "nuqs/adapters/react-router/v7";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { SessionProvider, useSession } from "./auth/SessionContext.js";
+import { AppShell } from "./components/AppShell.js";
+import { LoadingOverlay } from "./components/LoadingOverlay.js";
+import { useDelayedFlag } from "./lib/useDelayedFlag.js";
+import { AuthCallback } from "./pages/AuthCallback.js";
+import { Directory } from "./pages/Directory.js";
+import { SignIn } from "./pages/SignIn.js";
 
 /**
- * Phase 0 placeholder. Its only jobs are to prove the rails work end to end:
- * the SPA builds and mounts, the shared package is importable in the client,
- * and the design token layer (styles/tokens.css) is wired so this screen
- * already wears the final brand palette in light and dark. The real app shell,
- * routing, and identity land in Phase 1.
+ * The authenticated app, gated on session state. While `/api/me` is in flight a
+ * cold start can take a few seconds (scale-to-zero), so the loading overlay is
+ * threshold-gated (D119): the warm path shows a bare background and never the
+ * overlay. Signed-out → the sign-in screen; signed-in → the shell + directory.
+ */
+function Gate() {
+  const { state } = useSession();
+  const showOverlay = useDelayedFlag(state.status === "loading", 500);
+
+  if (state.status === "loading") {
+    return showOverlay ? (
+      <LoadingOverlay label="Loading the directory…" />
+    ) : (
+      <div className="min-h-dvh bg-background" />
+    );
+  }
+  if (state.status === "unauthenticated") {
+    return <SignIn />;
+  }
+  return (
+    <AppShell me={state.me}>
+      <Directory />
+    </AppShell>
+  );
+}
+
+/**
+ * The SPA root: the persistent shell, identity, and routing (React Router +
+ * nuqs) of the Phase 1b walking skeleton. `/auth/callback` completes the Ghost
+ * bridge; every other path resolves through the session gate.
  */
 export function App() {
   return (
-    <main className="grid min-h-dvh place-items-center bg-background px-4 py-12 text-foreground">
-      <section
-        aria-labelledby="phase0-heading"
-        className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-card-foreground shadow-sm"
-      >
-        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-          PBE Address Book
-        </p>
-        <h1 id="phase0-heading" className="mt-2 text-2xl font-bold tracking-tight">
-          Phase&nbsp;0 — Scaffolding
-        </h1>
-        <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
-          The project is wired and the toolchain is green. Product features begin with the walking
-          skeleton in Phase&nbsp;1.
-        </p>
-        <p className="mt-6 text-sm">
-          <span className="text-muted-foreground">Example brother:</span>{" "}
-          <span className="font-medium">James Smyth&nbsp;’84</span>{" "}
-          <span className="font-mono text-muted-foreground">({formatConstitutionId(5247)})</span>
-        </p>
-      </section>
-    </main>
+    <BrowserRouter>
+      <NuqsAdapter>
+        <SessionProvider>
+          <Routes>
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route path="*" element={<Gate />} />
+          </Routes>
+        </SessionProvider>
+      </NuqsAdapter>
+    </BrowserRouter>
   );
 }

@@ -4,27 +4,46 @@
  * imported, so they are reachable only through this entry and never reach the
  * production bundle (D108 layer 1). Run with `npm run dev --workspace apps/api`.
  *
- * The cache hydrates from whatever Firestore the environment points at: the
- * local emulator (set `FIRESTORE_EMULATOR_HOST`, seed it first with the
- * repo-root `npm run seed`), or staging's Firestore for UAT. The default port
- * is off the emulator's 8080 (firebase.json) so both can run side by side.
+ * The cache, sessions, and nonces hydrate from whatever Firestore the
+ * environment points at: the local emulator (set `FIRESTORE_EMULATOR_HOST`, seed
+ * it first with the repo-root `npm run seed`), or staging's Firestore for UAT.
+ * The default port is off the emulator's 8080 (firebase.json) so both can run
+ * side by side. The session cookie is issued without `Secure` so it is sent over
+ * the local plain-http dev server (never the case in any deployed environment).
  */
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
+import { getUser } from "./data/users.js";
 import { DevIdentityProvider } from "./identity/dev-provider.js";
 import { registerDevRoutes } from "./identity/dev-routes.js";
+import { NonceStore } from "./identity/nonce-store.js";
+import type { SessionCookieConfig } from "./identity/session-cookie.js";
+import { SessionStore } from "./identity/session-store.js";
 import { buildServer } from "./server.js";
 
 // Constructing this asserts we are not in a production-like config (D108 layers 2 + 4).
 const provider = new DevIdentityProvider();
 const port = Number(process.env.PORT ?? 8787);
+// Local dev runs over plain http, where a Secure cookie would not be sent.
+const cookie: SessionCookieConfig = { secure: false };
 
 async function main(): Promise<void> {
+  const db = getDb();
   const profileCache = new ProfileCache();
-  await profileCache.hydrateFromFirestore(getDb());
+  await profileCache.hydrateFromFirestore(db);
 
-  const app = buildServer({ identityProvider: provider, profileCache });
-  registerDevRoutes(app, provider);
+  const sessionStore = new SessionStore(db);
+  const nonceStore = new NonceStore(db);
+
+  const app = buildServer({
+    identityProvider: provider,
+    profileCache,
+    sessionStore,
+    nonceStore,
+    getStars: async (profileId) => (await getUser(db, profileId))?.stars ?? [],
+    cookie,
+  });
+  registerDevRoutes(app, provider, { sessionStore, cookie });
 
   const address = await app.listen({ port, host: "127.0.0.1" });
   console.log(

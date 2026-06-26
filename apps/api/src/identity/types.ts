@@ -13,6 +13,13 @@ import type { Role } from "@pbe/shared";
 export interface Identity {
   /** Stable subject id (the Ghost member id in production; synthetic in dev). */
   subject: string;
+  /**
+   * The caller's Book Constitution ID — the key for their `profiles` and
+   * `users` documents. Resolved from the verified email in production
+   * (ENGINEERING-DESIGN §2.1) and assigned a fixed fake id per role in dev.
+   * `/api/me` and the directory's own-row overlay (D82) key off this.
+   */
+  profileId: number;
   email: string;
   role: Role;
   displayName: string;
@@ -33,16 +40,40 @@ export interface Session {
 export interface SessionRequest {
   /** Dev only: the role to assume (defaults to "brother"). Ignored in production. */
   role?: Role;
-  /** Production: the raw credential to verify (the Ghost JWT). Wired in Phase 1. */
+  /** Production: the raw credential to verify (the Ghost JWT). */
   token?: string;
+  /** Production: the single-use `state` nonce that binds the callback to a Book-initiated flow (D104). */
+  state?: string;
 }
 
 export interface IdentityProvider {
   /** Human-readable provider name, surfaced in diagnostics. */
   readonly name: string;
   /**
-   * Establish a session. Production verifies request credentials (Phase 1);
-   * development mints a session for the requested role.
+   * Establish a session. Production verifies request credentials (the Ghost
+   * JWT, the single-use nonce, and the email→profile resolution); development
+   * mints a session for the requested role.
+   *
+   * On a credential/resolution failure it throws an {@link AuthError} carrying
+   * the HTTP status and the API-SPEC §2 error code (`unlinked_member`,
+   * `ambiguous_member`, `debrothered`, …) the route surfaces to the SPA.
    */
   createSession(request: SessionRequest): Promise<Session>;
+}
+
+/**
+ * A failure in the auth handshake, carrying the HTTP status and the
+ * machine-readable error code from API-SPEC §2 (`401`/`403` with
+ * `unlinked_member` / `ambiguous_member` / `debrothered` / `invalid_state` /
+ * `invalid_token`). The route handler maps it straight onto the JSON error body.
+ */
+export class AuthError extends Error {
+  constructor(
+    readonly status: 401 | 403,
+    readonly code: string,
+    message?: string,
+  ) {
+    super(message ?? code);
+    this.name = "AuthError";
+  }
 }

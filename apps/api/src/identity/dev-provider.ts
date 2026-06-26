@@ -20,6 +20,18 @@ const DISPLAY_NAME: Record<Role, string> = {
 };
 
 /**
+ * Each dev role maps to a fixed fake profile id so a dev session has a real
+ * record to back `/api/me` and the directory's own-row overlay (D82). These ids
+ * sit at the bottom of the generated fake range (`FAKE_ID_FLOOR` = 5001), so the
+ * default 1200-profile dataset always contains them.
+ */
+const PROFILE_ID: Record<Role, number> = {
+  brother: 5001,
+  manager: 5002,
+  admin: 5003,
+};
+
+/**
  * The test/dev implementation of the `IdentityProvider` seam (D72): mints a
  * Ghost-free session for any chosen role, for local development, the Playwright
  * suite, and ephemeral staging UAT. Locked out of production by the four
@@ -37,6 +49,7 @@ export class DevIdentityProvider implements IdentityProvider {
     const role: Role = request.role ?? "brother";
     const identity: Identity = {
       subject: `dev-${role}`,
+      profileId: PROFILE_ID[role],
       email: `dev-${role}@example.test`,
       role,
       displayName: DISPLAY_NAME[role],
