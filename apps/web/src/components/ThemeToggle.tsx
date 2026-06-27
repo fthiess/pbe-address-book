@@ -17,11 +17,8 @@ const OPTIONS: { mode: ThemeMode; label: string; icon: ReactNode }[] = [
 export function ThemeToggle() {
   const { mode, setMode } = useTheme();
   return (
-    <div
-      role="group"
-      aria-label="Theme"
-      className="inline-flex items-center gap-0.5 rounded-full border border-border bg-secondary p-0.5"
-    >
+    <fieldset className="m-0 inline-flex items-center gap-0.5 rounded-full border border-border bg-secondary p-0.5">
+      <legend className="sr-only">Theme</legend>
       {OPTIONS.map((option) => {
         const active = mode === option.mode;
         return (
@@ -43,7 +40,7 @@ export function ThemeToggle() {
           </button>
         );
       })}
-    </div>
+    </fieldset>
   );
 }
 
