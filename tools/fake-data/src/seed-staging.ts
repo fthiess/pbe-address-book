@@ -10,6 +10,16 @@
  *   - refuses if `FIRESTORE_EMULATOR_HOST` is set (use `npm run seed` for the
  *     emulator instead).
  *
+ * Seeding is a **clean replace**, not a merge: it WIPES the `profiles`
+ * collection first, then writes the generated set. A plain per-doc `set()` only
+ * overwrites docs under matching keys, so if an older seed wrote a *different*
+ * id keyspace (e.g. the pre-2a skeleton's `fake-5247` string ids vs. the
+ * schema's numeric `5247`), those stale docs would survive and break cache
+ * hydration — exactly the failure seen on the first Phase-2c staging deploy.
+ * Wiping first makes the result a pure function of the generator, independent of
+ * whatever the collection happened to hold (the same self-containment the
+ * emulator seed enjoys by starting from an empty database).
+ *
  * Usage (from the repo root, after `gcloud auth application-default login`):
  *   GOOGLE_CLOUD_PROJECT=pbe-book-staging npm run seed:staging --workspace tools/fake-data
  */
@@ -40,8 +50,27 @@ if (!projectId.endsWith("-staging")) {
 initializeApp({ projectId });
 const db = getFirestore();
 
-const profiles = generateProfiles();
 const BATCH_LIMIT = 450; // under Firestore's 500-writes-per-batch ceiling
+
+// Wipe the collection first so seeding is a clean replace, not a merge: any doc
+// left from an earlier seed (including one under a different id keyspace) is
+// removed, so a stale-schema record can never linger and crash hydration.
+const existing = await db.collection("profiles").get();
+if (!existing.empty) {
+  let removed = 0;
+  for (let start = 0; start < existing.size; start += BATCH_LIMIT) {
+    const batch = db.batch();
+    for (const doc of existing.docs.slice(start, start + BATCH_LIMIT)) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+    removed += Math.min(BATCH_LIMIT, existing.size - start);
+    console.log(`  …wiped ${removed}/${existing.size} existing`);
+  }
+  console.log(`Cleared ${existing.size} existing profile docs before seeding.`);
+}
+
+const profiles = generateProfiles();
 
 let written = 0;
 for (let start = 0; start < profiles.length; start += BATCH_LIMIT) {
