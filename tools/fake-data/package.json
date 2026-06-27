@@ -6,6 +6,8 @@
   "scripts": {
     "seed:run": "tsx src/seed.ts",
     "seed:staging": "tsx src/seed-staging.ts",
+    "seed:staging-images": "tsx src/seed-staging-images.ts",
+    "author:thumbnails": "tsx src/author-thumbnails.ts",
     "link:staging-tester": "tsx src/link-staging-tester.ts"
   },
   "dependencies": {
@@ -13,6 +15,7 @@
     "firebase-admin": "^13.0.2"
   },
   "devDependencies": {
-    "@types/node": "^22.10.7"
+    "@types/node": "^22.10.7",
+    "sharp": "^0.34.5"
   }
 }

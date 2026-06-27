@@ -11,6 +11,7 @@ export type {
   VisibilityClass,
 } from "./types.js";
 export { formatConstitutionId, formatClassYear } from "./format.js";
+export { thumbnailObjectKey, headshotObjectKey, imageUrl } from "./images.js";
 export { normalizeEmail } from "./email.js";
 export {
   type CanonicalNameInput,

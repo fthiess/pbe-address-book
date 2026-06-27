@@ -5,6 +5,7 @@ import { AppShell } from "./components/AppShell.js";
 import { LoadingOverlay } from "./components/LoadingOverlay.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
+import { BrotherPlaceholder } from "./pages/BrotherPlaceholder.js";
 import { Directory } from "./pages/Directory.js";
 import { SignIn } from "./pages/SignIn.js";
 
@@ -12,7 +13,8 @@ import { SignIn } from "./pages/SignIn.js";
  * The authenticated app, gated on session state. While `/api/me` is in flight a
  * cold start can take a few seconds (scale-to-zero), so the loading overlay is
  * threshold-gated (D119): the warm path shows a bare background and never the
- * overlay. Signed-out → the sign-in screen; signed-in → the shell + directory.
+ * overlay. Signed-out → the sign-in screen; signed-in → the shell wrapping the
+ * authenticated routes (the Directory and, from Phase 4, the Profile page).
  */
 function Gate() {
   const { state } = useSession();
@@ -30,7 +32,10 @@ function Gate() {
   }
   return (
     <AppShell me={state.me}>
-      <Directory />
+      <Routes>
+        <Route path="/brother/:id" element={<BrotherPlaceholder />} />
+        <Route path="*" element={<Directory />} />
+      </Routes>
     </AppShell>
   );
 }

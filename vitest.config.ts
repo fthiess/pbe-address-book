@@ -17,6 +17,10 @@ export default defineConfig({
     include: [
       "packages/**/src/**/*.test.ts",
       "apps/api/src/**/*.test.ts",
+      // The SPA's pure logic (grid model, comparators, lens reducers) is unit
+      // tested here under the node environment; DOM-bearing component behaviour
+      // is covered end-to-end by Playwright (e2e/).
+      "apps/web/src/**/*.test.ts",
       "tools/fake-data/src/**/*.test.ts",
     ],
     exclude: ["**/node_modules/**", "**/dist/**", "**/*.emulator.test.ts"],

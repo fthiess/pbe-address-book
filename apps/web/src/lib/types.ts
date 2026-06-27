@@ -1,32 +1,18 @@
 import type { Profile, Role } from "@pbe/shared";
 
 /**
- * The directory-row shape the SPA consumes from `GET /api/profiles` — the
- * server's brother-role projection (apps/api `projection.ts`, Phase 2a subset).
- * It carries the public fields plus the contact `email` only when the owner's
- * `privacy.shareEmail` toggle is on (D45). The full per-role projections arrive
- * in Phase 2b; this mirrors the brother view the skeleton renders.
+ * The directory-row shape the SPA consumes from `GET /api/profiles` — one
+ * record of the server's per-role bulk projection (apps/api `projection.ts`,
+ * the full Phase-2b taxonomy). It is structurally the server's `ProjectedProfile`
+ * (D3 — the one shared `Profile` type, the server's only transformation being to
+ * *omit* fields the role may not see): `id` is the single guaranteed key, and
+ * every other field is present only when both visible to the caller's role and
+ * set on the record. The SPA must therefore treat all non-`id` fields as
+ * optional — a missing `email`/`address`/`phone` means "not visible or not set,"
+ * the projection deliberately collapsing the two so a network inspection cannot
+ * tell them apart.
  */
-export type DirectoryProfile = Pick<
-  Profile,
-  | "id"
-  | "firstName"
-  | "middleName"
-  | "lastName"
-  | "fullLegalName"
-  | "mugName"
-  | "classYear"
-  | "employerName"
-  | "jobTitle"
-  | "majors"
-  | "links"
-  | "bigBrotherId"
-  | "deceased"
-  | "hasHeadshot"
-  | "headshotVersion"
-> & {
-  email?: string;
-};
+export type DirectoryProfile = Partial<Profile> & Pick<Profile, "id">;
 
 /** `GET /api/profiles` envelope (API-SPEC §3). */
 export interface ProfilesResponse {
