@@ -153,6 +153,8 @@ export function Directory() {
           myId={myId}
           sort={sort}
           onReorder={lens.setOrder}
+          widthOf={lens.getWidth}
+          onResize={lens.setWidth}
           viewKey={location.search}
         />
       ) : (

@@ -2,6 +2,8 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef } from "react";
 import { Link } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
+import { cn } from "../../lib/utils.js";
+import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import type { GridColumn } from "./grid-model.js";
 import { Thumbnail } from "./thumbnail.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
@@ -61,6 +63,8 @@ export function DirectoryCards({ rows, dataColumns, nameOf, myId, viewKey }: Dir
           }
           const name = nameOf(profile);
           const deceased = profile.deceased?.isDeceased === true;
+          const unlisted = profile.unlisted === true;
+          const debrothered = profile.debrothered?.isDebrothered === true;
           return (
             <li
               key={profile.id}
@@ -77,34 +81,44 @@ export function DirectoryCards({ rows, dataColumns, nameOf, myId, viewKey }: Dir
               >
                 <span className="flex items-center gap-3">
                   <Thumbnail profile={profile} name={name} />
-                  <span className="flex min-w-0 flex-col">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate font-semibold">{name}</span>
+                  <span className="flex min-w-0 flex-col gap-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={cn(
+                          "truncate font-semibold",
+                          debrothered && "text-muted-foreground line-through decoration-1",
+                        )}
+                      >
+                        {name}
+                      </span>
                       {profile.id === myId && (
                         <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">
                           You
                         </span>
                       )}
                     </span>
-                    {deceased && (
-                      <span className="text-[length:var(--text-micro)] font-bold uppercase tracking-wide text-[var(--memorial-fg)]">
-                        In Memoriam
-                      </span>
-                    )}
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {deceased && <InMemoriamBadge />}
+                      {unlisted && <UnlistedBadge />}
+                      {debrothered && <DebrotheredBadge />}
+                    </span>
                   </span>
                 </span>
 
                 {dataColumns.length > 0 && (
-                  <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm">
+                  <dl className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 text-sm">
                     {dataColumns.map((column) => {
                       const value = column.display(profile, name);
                       if (value === "—") {
                         return null;
                       }
+                      const code = column.key === "major" ? profile.majors?.[0] : undefined;
                       return (
                         <div key={column.key} className="contents">
                           <dt className="text-muted-foreground">{column.label}</dt>
-                          <dd className="m-0 min-w-0 truncate">{value}</dd>
+                          <dd className="m-0 min-w-0 truncate">
+                            {code ? <CourseChip code={code} /> : value}
+                          </dd>
                         </div>
                       );
                     })}

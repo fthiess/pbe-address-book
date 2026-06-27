@@ -1,5 +1,6 @@
 import type { Role } from "@pbe/shared";
-import { useCallback, useMemo, useState } from "react";
+import { useQueryState } from "nuqs";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   COLUMNS,
   type ColumnKey,
@@ -9,71 +10,120 @@ import {
 } from "./grid-model.js";
 
 /**
- * The **column lens** (D30/D31) — the user's personal choice of *which* data
- * columns appear and in *what order*. It is a personal preference, so it lives in
- * `localStorage`, deliberately **not** in the URL: a shared link reproduces the
- * sender's search/filter/sort view (§5.4) without imposing the sender's columns.
+ * The **column lens** (D30/D31, refined) — the user's choice of *which* data
+ * columns appear, in *what order*, and at *what width*.
  *
- * The lens covers only the reorderable data columns; the frozen identity columns
- * (Thumbnail, Canonical Name) are always shown and never part of it. The stored
- * value is reconciled against the current model and role on every load, so a
- * column removed from the app, or one a role may not see, is silently dropped
- * rather than rendered against missing data.
+ * It is a personal preference, so it persists in **localStorage** as the durable
+ * default. It is **also mirrored into the URL** (`?cols=…`, only when non-default)
+ * so a view is fully shareable and walks the browser back/forward history — a
+ * deliberate refinement of D30/D31, which originally kept columns out of the URL.
+ * The original concern (a shared link must not clobber the recipient's saved
+ * column setup) is preserved: a URL that arrives carrying `cols` is *applied* to
+ * that view but **never written back to localStorage** — only the user's own
+ * edits update their saved default. The URL is the single source of truth for the
+ * active lens; localStorage seeds it on first load and records each edit.
+ *
+ * Width clamps and the `cols` grammar live here; the resize affordance and the
+ * grid template consume `getWidth`.
  */
 
 const STORAGE_KEY = "pbe.book.directory.columns.v1";
+const MIN_WIDTH = 64;
+const MAX_WIDTH = 640;
 
-interface PersistedLens {
-  /** Ordered list of visible data-column keys. */
-  visible: ColumnKey[];
+/** The active lens: visible data columns in order, plus per-column width overrides. */
+interface Lens {
+  order: ColumnKey[];
+  widths: Partial<Record<ColumnKey, number>>;
 }
 
-/** Read and sanitise the persisted lens for this role, or null if none/invalid. */
-function loadLens(role: Role): ColumnKey[] | null {
+function defaultLens(): Lens {
+  return { order: [...DEFAULT_DATA_KEYS], widths: {} };
+}
+
+function clampWidth(value: number): number {
+  return Math.max(MIN_WIDTH, Math.min(MAX_WIDTH, Math.round(value)));
+}
+
+/** Whether a lens is the pristine default (default order, no width overrides). */
+function isDefaultLens(lens: Lens): boolean {
+  return (
+    Object.keys(lens.widths).length === 0 &&
+    lens.order.length === DEFAULT_DATA_KEYS.length &&
+    lens.order.every((key, i) => key === DEFAULT_DATA_KEYS[i])
+  );
+}
+
+/**
+ * Parse a lens from its compact string form, sanitised against the model and
+ * role. Grammar: comma-separated `key` or `key:width` tokens. A **non-pinned**
+ * key joins the visible order (its width, if given, overrides the default); a
+ * **pinned** key (e.g. `name`) is a width-only override and does not affect order.
+ */
+function parseLens(raw: string, role: Role): Lens {
+  const order: ColumnKey[] = [];
+  const widths: Partial<Record<ColumnKey, number>> = {};
+  const seen = new Set<ColumnKey>();
+  for (const token of raw.split(",")) {
+    const [rawKey, rawWidth] = token.split(":");
+    const key = rawKey as ColumnKey;
+    const column = COLUMNS[key];
+    if (!column || seen.has(key) || !columnAllowsRole(column, role)) {
+      continue;
+    }
+    seen.add(key);
+    if (rawWidth !== undefined && rawWidth !== "") {
+      const width = Number.parseInt(rawWidth, 10);
+      if (Number.isFinite(width)) {
+        widths[key] = clampWidth(width);
+      }
+    }
+    if (!column.pinned) {
+      order.push(key);
+    }
+  }
+  // A lens that parsed to no visible data columns is treated as the default,
+  // so a malformed `cols` can never leave the grid with the identity block only.
+  return order.length === 0 && Object.keys(widths).length === 0 ? defaultLens() : { order, widths };
+}
+
+/** Serialise a lens to its `cols` string (pinned width overrides lead, then the order). */
+function serializeLens(lens: Lens): string {
+  const tokens: string[] = [];
+  // Pinned (e.g. name) width overrides — width-only tokens that don't affect order.
+  for (const key of Object.keys(lens.widths) as ColumnKey[]) {
+    if (COLUMNS[key]?.pinned) {
+      tokens.push(`${key}:${lens.widths[key]}`);
+    }
+  }
+  for (const key of lens.order) {
+    const width = lens.widths[key];
+    tokens.push(width === undefined ? key : `${key}:${width}`);
+  }
+  return tokens.join(",");
+}
+
+function loadSaved(role: Role): Lens | null {
   if (typeof localStorage === "undefined") {
     return null;
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as Partial<PersistedLens>;
-    if (!Array.isArray(parsed.visible)) {
-      return null;
-    }
-    // Keep only keys that still exist in the model, are non-pinned, and are
-    // visible to this role; de-duplicate while preserving order.
-    const seen = new Set<ColumnKey>();
-    const clean = parsed.visible.filter((key): key is ColumnKey => {
-      const column = COLUMNS[key as ColumnKey];
-      if (!column || column.pinned || !columnAllowsRole(column, role) || seen.has(key)) {
-        return false;
-      }
-      seen.add(key);
-      return true;
-    });
-    return clean;
+    return raw ? parseLens(raw, role) : null;
   } catch {
     return null;
   }
 }
 
-/** Persist the lens, ignoring quota/availability failures (a non-critical preference). */
-function saveLens(visible: ColumnKey[]): void {
+function saveLens(lens: Lens): void {
   if (typeof localStorage === "undefined") {
     return;
   }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ visible } satisfies PersistedLens));
+    localStorage.setItem(STORAGE_KEY, serializeLens(lens));
   } catch {
     // localStorage unavailable or full — the lens simply won't persist.
   }
-}
-
-/** The default lens: the role-identical default data columns, in their default order. */
-function defaultLens(): ColumnKey[] {
-  return [...DEFAULT_DATA_KEYS];
 }
 
 export interface ColumnLens {
@@ -81,28 +131,64 @@ export interface ColumnLens {
   visible: ColumnKey[];
   /** Every non-pinned column this role may select, for the picker menu. */
   available: ReturnType<typeof selectableColumns>;
-  /** Whether a column is currently shown. */
+  /** The effective width of a column (override, else the model default). */
+  getWidth: (key: ColumnKey) => number;
   isVisible: (key: ColumnKey) => boolean;
   /** Show/hide a data column; showing appends it at the end of the order. */
   toggle: (key: ColumnKey) => void;
   /** Replace the visible-column order (the drag-reorder commit). */
   setOrder: (keys: ColumnKey[]) => void;
-  /** Restore the default column set and order. */
+  /** Set (and persist) a column's width — the resize commit. */
+  setWidth: (key: ColumnKey, width: number) => void;
+  /** Restore the default columns, order, and widths. */
   reset: () => void;
 }
 
-/** Manage the persisted column lens for the signed-in role. */
 export function useColumnLens(role: Role): ColumnLens {
-  const [visible, setVisible] = useState<ColumnKey[]>(() => loadLens(role) ?? defaultLens());
+  // The URL carries the lens (push history on edits, so back/forward walk them).
+  const [cols, setCols] = useQueryState("cols", { history: "push" });
 
-  const available = useMemo(() => selectableColumns(role), [role]);
+  // The saved default, read once; seeds the URL and absorbs edits.
+  const savedRef = useRef<Lens | null>(null);
+  if (savedRef.current === null) {
+    savedRef.current = loadSaved(role) ?? defaultLens();
+  }
 
-  const commit = useCallback((next: ColumnKey[]) => {
-    setVisible(next);
-    saveLens(next);
-  }, []);
+  // Active lens = the URL when present, else the saved default.
+  const active = useMemo<Lens>(
+    () => (cols != null ? parseLens(cols, role) : (savedRef.current ?? defaultLens())),
+    [cols, role],
+  );
 
-  const isVisible = useCallback((key: ColumnKey) => visible.includes(key), [visible]);
+  // On first load with a clean URL, reflect a non-default saved lens into the URL
+  // (replace, no history entry) so the URL is authoritative thereafter. A URL that
+  // already carries `cols` (a shared link) is left as-is and never persisted.
+  const seeded = useRef(false);
+  useEffect(() => {
+    if (seeded.current) {
+      return;
+    }
+    seeded.current = true;
+    const saved = savedRef.current;
+    if (cols == null && saved && !isDefaultLens(saved)) {
+      void setCols(serializeLens(saved), { history: "replace" });
+    }
+  }, [cols, setCols]);
+
+  const apply = useCallback(
+    (next: Lens) => {
+      saveLens(next);
+      savedRef.current = next;
+      void setCols(isDefaultLens(next) ? null : serializeLens(next), { history: "push" });
+    },
+    [setCols],
+  );
+
+  const getWidth = useCallback(
+    (key: ColumnKey) => active.widths[key] ?? COLUMNS[key].width,
+    [active],
+  );
+  const isVisible = useCallback((key: ColumnKey) => active.order.includes(key), [active]);
 
   const toggle = useCallback(
     (key: ColumnKey) => {
@@ -110,25 +196,47 @@ export function useColumnLens(role: Role): ColumnLens {
       if (!column || column.pinned || !columnAllowsRole(column, role)) {
         return;
       }
-      commit(visible.includes(key) ? visible.filter((k) => k !== key) : [...visible, key]);
+      const order = active.order.includes(key)
+        ? active.order.filter((k) => k !== key)
+        : [...active.order, key];
+      apply({ order, widths: active.widths });
     },
-    [visible, role, commit],
+    [active, role, apply],
   );
 
   const setOrder = useCallback(
     (keys: ColumnKey[]) => {
-      // Accept only a permutation of the currently-visible set, so a reorder can
-      // never smuggle in or drop a column (that is `toggle`'s job).
-      const current = new Set(visible);
+      const current = new Set(active.order);
       const reordered = keys.filter((key) => current.has(key));
-      if (reordered.length === visible.length) {
-        commit(reordered);
+      if (reordered.length === active.order.length) {
+        apply({ order: reordered, widths: active.widths });
       }
     },
-    [visible, commit],
+    [active, apply],
   );
 
-  const reset = useCallback(() => commit(defaultLens()), [commit]);
+  const setWidth = useCallback(
+    (key: ColumnKey, width: number) => {
+      if (!COLUMNS[key]) {
+        return;
+      }
+      apply({ order: active.order, widths: { ...active.widths, [key]: clampWidth(width) } });
+    },
+    [active, apply],
+  );
 
-  return { visible, available, isVisible, toggle, setOrder, reset };
+  const reset = useCallback(() => apply(defaultLens()), [apply]);
+
+  const available = useMemo(() => selectableColumns(role), [role]);
+
+  return {
+    visible: active.order,
+    available,
+    getWidth,
+    isVisible,
+    toggle,
+    setOrder,
+    setWidth,
+    reset,
+  };
 }

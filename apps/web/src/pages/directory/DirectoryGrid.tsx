@@ -15,10 +15,19 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { type CSSProperties, useMemo, useRef } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
+import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import type { ColumnKey, GridColumn } from "./grid-model.js";
 import { Thumbnail } from "./thumbnail.js";
 import type { DirectorySort } from "./useDirectorySort.js";
@@ -54,6 +63,10 @@ export interface DirectoryGridProps {
   sort: DirectorySort;
   /** Commit a new order of the (non-pinned) data columns after a drag. */
   onReorder: (dataKeys: ColumnKey[]) => void;
+  /** The effective (possibly user-resized) width of a column. */
+  widthOf: (key: ColumnKey) => number;
+  /** Commit a column's new width after a resize (drag end or keyboard step). */
+  onResize: (key: ColumnKey, width: number) => void;
   /** The active view identity (URL search string) — keys scroll restoration. */
   viewKey: string;
 }
@@ -65,11 +78,24 @@ export function DirectoryGrid({
   myId,
   sort,
   onReorder,
+  widthOf,
+  onResize,
   viewKey,
 }: DirectoryGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const totalWidth = useMemo(() => columns.reduce((sum, c) => sum + c.width, 0), [columns]);
+  // A live width while a resize drag is in flight (committed to the lens on
+  // drop), so the grid reflows under the cursor without persisting every pixel.
+  const [drag, setDrag] = useState<{ key: ColumnKey; width: number } | null>(null);
+  const effWidth = useCallback(
+    (key: ColumnKey) => (drag?.key === key ? drag.width : widthOf(key)),
+    [drag, widthOf],
+  );
+
+  const totalWidth = useMemo(
+    () => columns.reduce((sum, c) => sum + effWidth(c.key), 0),
+    [columns, effWidth],
+  );
   // Cumulative left offset for each frozen column, so the pinned block stays a
   // contiguous, correctly-stacked strip during horizontal scroll.
   const pinnedLeft = useMemo(() => {
@@ -78,11 +104,11 @@ export function DirectoryGrid({
     for (const column of columns) {
       if (column.pinned) {
         offsets.set(column.key, acc);
-        acc += column.width;
+        acc += effWidth(column.key);
       }
     }
     return offsets;
-  }, [columns]);
+  }, [columns, effWidth]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -146,7 +172,7 @@ export function DirectoryGrid({
         >
           <colgroup>
             {columns.map((column) => (
-              <col key={column.key} style={{ width: column.width }} />
+              <col key={column.key} style={{ width: effWidth(column.key) }} />
             ))}
           </colgroup>
           <thead>
@@ -159,6 +185,12 @@ export function DirectoryGrid({
                     colIndex={index + 1}
                     sort={sort}
                     left={pinnedLeft.get(column.key)}
+                    width={effWidth(column.key)}
+                    onPreview={(width) => setDrag({ key: column.key, width })}
+                    onResize={(width) => {
+                      setDrag(null);
+                      onResize(column.key, width);
+                    }}
                   />
                 ))}
               </SortableContext>
@@ -215,11 +247,17 @@ function HeaderCell({
   colIndex,
   sort,
   left,
+  width,
+  onPreview,
+  onResize,
 }: {
   column: GridColumn;
   colIndex: number;
   sort: DirectorySort;
   left: number | undefined;
+  width: number;
+  onPreview: (width: number) => void;
+  onResize: (width: number) => void;
 }) {
   const isActive = sort.sortKey === column.key;
   const ariaSort = !column.sortable
@@ -295,7 +333,84 @@ function HeaderCell({
           <span className="sr-only">{column.label}</span>
         )}
       </span>
+      {/* The thumbnail column is fixed; every other column can be resized. */}
+      {column.key !== "thumbnail" && (
+        <ResizeHandle
+          label={column.label}
+          width={width}
+          onPreview={onPreview}
+          onResize={onResize}
+        />
+      )}
     </th>
+  );
+}
+
+/**
+ * The column resize affordance — a thin separator at the cell's trailing edge.
+ * It is keyboard-operable (the ARIA window-splitter pattern: focusable, arrow
+ * keys nudge the width) so resizing never *requires* a drag, satisfying WCAG
+ * 2.5.7 alongside the pointer drag (§5.5/D79). Pointer drags preview live and
+ * commit on release.
+ */
+function ResizeHandle({
+  label,
+  width,
+  onPreview,
+  onResize,
+}: {
+  label: string;
+  width: number;
+  onPreview: (width: number) => void;
+  onResize: (width: number) => void;
+}) {
+  const KEY_STEP = 16;
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    event.preventDefault();
+    event.stopPropagation(); // never let a resize start a column drag or a sort
+    const startX = event.clientX;
+    const startWidth = width;
+    const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+    let latest = startWidth;
+    const move = (e: PointerEvent) => {
+      latest = startWidth + (e.clientX - startX);
+      onPreview(latest);
+    };
+    const up = () => {
+      target.releasePointerCapture(event.pointerId);
+      target.removeEventListener("pointermove", move);
+      target.removeEventListener("pointerup", up);
+      onResize(latest);
+    };
+    target.addEventListener("pointermove", move);
+    target.addEventListener("pointerup", up);
+  };
+
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLSpanElement>) => {
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      onResize(width - KEY_STEP);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      onResize(width + KEY_STEP);
+    }
+  };
+
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize the ${label} column`}
+      aria-valuenow={Math.round(width)}
+      aria-valuemin={64}
+      aria-valuemax={640}
+      tabIndex={0}
+      onPointerDown={onPointerDown}
+      onKeyDown={onKeyDown}
+      className="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none outline-none after:absolute after:inset-y-1 after:right-[3px] after:w-px after:bg-border hover:after:bg-foreground/40 focus-visible:after:bg-ring focus-visible:after:w-0.5"
+    />
   );
 }
 
@@ -389,6 +504,8 @@ function Cell({
 
   if (column.key === "name") {
     const deceased = profile.deceased?.isDeceased === true;
+    const unlisted = profile.unlisted === true;
+    const debrothered = profile.debrothered?.isDebrothered === true;
     return (
       <th
         scope="row"
@@ -402,7 +519,11 @@ function Cell({
               interactive Star/Select cells land with their behaviour in 3c. */}
           <Link
             to={`/brother/${profile.id}`}
-            className="truncate font-medium underline-offset-2 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring"
+            className={cn(
+              "truncate font-medium underline-offset-2 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring",
+              // De-brothered: struck through and muted (D115); managers/admins only.
+              debrothered && "text-muted-foreground line-through decoration-1",
+            )}
           >
             {name}
           </Link>
@@ -411,13 +532,20 @@ function Cell({
               You
             </span>
           )}
-          {deceased && (
-            <span className="shrink-0 text-[length:var(--text-micro)] font-bold uppercase tracking-wide text-[var(--memorial-fg)]">
-              In Memoriam
-            </span>
-          )}
+          {deceased && <InMemoriamBadge />}
+          {unlisted && <UnlistedBadge />}
+          {debrothered && <DebrotheredBadge />}
         </span>
       </th>
+    );
+  }
+
+  if (column.key === "major") {
+    const code = profile.majors?.[0];
+    return (
+      <td aria-colindex={colIndex} className={common}>
+        {code ? <CourseChip code={code} /> : <span className="text-muted-foreground">—</span>}
+      </td>
     );
   }
 

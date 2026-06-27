@@ -30,8 +30,13 @@ export interface DirectorySort {
 }
 
 export function useDirectorySort(): DirectorySort {
-  const [rawKey, setKey] = useQueryState("sort", { defaultValue: DEFAULT_KEY });
-  const [rawDir, setDir] = useQueryState("dir", { defaultValue: DEFAULT_DIRECTION });
+  // Sort is a discrete change, so it pushes a history entry — back/forward walk
+  // through sort changes (D31, refined; live search stays on replace).
+  const [rawKey, setKey] = useQueryState("sort", { defaultValue: DEFAULT_KEY, history: "push" });
+  const [rawDir, setDir] = useQueryState("dir", {
+    defaultValue: DEFAULT_DIRECTION,
+    history: "push",
+  });
 
   // Clamp whatever the URL carries to the valid space, so a hand-edited or stale
   // link can never select a non-existent column or a bogus direction.

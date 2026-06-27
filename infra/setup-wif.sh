@@ -102,6 +102,11 @@ fi
 #    - serviceusage.serviceUsageConsumer   lets the Firebase CLI's firestore deploy
 #                                 preflight READ whether firestore.googleapis.com is
 #                                 enabled (services.get); does NOT allow enabling APIs
+#    - datastore.user            the deploy's seed-staging step writes the fake
+#                                 dataset + tester link to Firestore (storage.admin
+#                                 already covers the image bucket). STAGING ONLY —
+#                                 a prod deploy must never re-seed, so omit this for
+#                                 prod or guard the seed step off (STAGING_AUTOSEED).
 echo "==> Granting project roles to ${DEPLOYER_SA}"
 for role in \
   roles/run.admin \
@@ -110,7 +115,8 @@ for role in \
   roles/storage.admin \
   roles/firebasehosting.admin \
   roles/firebaserules.admin \
-  roles/serviceusage.serviceUsageConsumer; do
+  roles/serviceusage.serviceUsageConsumer \
+  roles/datastore.user; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${DEPLOYER_SA}" --role="${role}" \
     --condition=None >/dev/null

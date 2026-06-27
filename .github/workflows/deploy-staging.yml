@@ -90,6 +90,35 @@ jobs:
       - name: Deploy Firebase Hosting + Firestore rules
         run: npx firebase deploy --only hosting,firestore:rules --project pbe-book-staging --non-interactive
 
+      # Re-seed staging so its data is always a pure function of the deployed code
+      # — the same clean-replace discipline as the seed scripts themselves, made
+      # automatic so staging can never drift from the generator (the failure that
+      # bit us when the fixture names changed but staging was never re-seeded).
+      # Runs BEFORE the Cloud Run deploy so the new revision cold-starts and
+      # hydrates the freshly-seeded data (and re-indexes the tester's email). It
+      # runs on the Node-20 step above, where google-auth-library's STS exchange
+      # works (the Node-24 undici bug that the Firebase pin dodges).
+      #
+      # TOGGLE: set the repository variable STAGING_AUTOSEED=false to skip this —
+      # e.g. during Phase-8 UAT, when real testers' in-progress state on staging
+      # should survive a deploy. Unset (the default) means "seed on every deploy".
+      # Needs the deployer SA's roles/datastore.user (Firestore) + storage.admin
+      # (the image bucket) — see infra/setup-wif.sh.
+      - name: Re-seed staging (data + images)
+        if: vars.STAGING_AUTOSEED != 'false'
+        env:
+          GOOGLE_CLOUD_PROJECT: pbe-book-staging
+          IMAGE_BUCKET: pbe-book-staging-images
+          STAGING_TESTER_EMAIL: ${{ secrets.STAGING_TESTER_EMAIL }}
+        run: |
+          npm run seed:staging --workspace tools/fake-data
+          npm run seed:staging-images --workspace tools/fake-data
+          if [ -n "$STAGING_TESTER_EMAIL" ]; then
+            npm run link:staging-tester --workspace tools/fake-data
+          else
+            echo "STAGING_TESTER_EMAIL secret not set — skipping tester link."
+          fi
+
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 

@@ -36,6 +36,7 @@ export type ColumnKey =
   | "stateProvince"
   | "country"
   // Non-default selectable columns (off by default):
+  | "fullName"
   | "constitutionId"
   // Restricted, manager/administrator only (§5.6.1, off by default):
   | "allowNewsletterEmail"
@@ -130,15 +131,16 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
   },
   major: {
     key: "major",
-    label: "Major",
+    // MIT "majors" are called **courses** — the column is headed "Course"
+    // (the underlying field stays `majors`). The cell renders the primary
+    // course as a colour-coded chip (see CourseChip); this string is the
+    // sort/export value.
+    label: "Course",
     group: "default",
-    width: 132,
+    width: 120,
     align: "start",
     pinned: false,
     sortable: true,
-    // The primary major's course code (e.g. "6-3"). The friendly display-name
-    // mapping arrives when the `majors` vocabulary envelope is populated and the
-    // profile major-ordering UI lands (Phase 4); the code is honest until then.
     display: (p) => primaryMajor(p) ?? EMPTY,
     sortValue: (p) => primaryMajor(p),
   },
@@ -204,6 +206,20 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     display: (p) => (p.address?.country ? countryName(p.address.country) : EMPTY),
     sortValue: (p) =>
       p.address?.country ? countryName(p.address.country).toLocaleLowerCase() : null,
+  },
+  fullName: {
+    key: "fullName",
+    // The brother's full/legal name (incl. suffixes, compound names) — off by
+    // default, selectable by any role when the constructed Canonical Name isn't
+    // enough (§3.2; visual-design column set).
+    label: "Full Name",
+    group: "optional",
+    width: 200,
+    align: "start",
+    pinned: false,
+    sortable: true,
+    display: (p) => p.fullLegalName ?? EMPTY,
+    sortValue: (p) => p.fullLegalName?.toLocaleLowerCase() ?? null,
   },
   constitutionId: {
     key: "constitutionId",

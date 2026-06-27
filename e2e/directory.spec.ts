@@ -67,6 +67,7 @@ const NAMED = [
     firstName: "Aaron",
     lastName: "Adams",
     classYear: 1984,
+    majors: ["6-3"],
     deceased: { isDeceased: false },
     hasHeadshot: true,
     headshotVersion: "v1",
@@ -78,9 +79,32 @@ const NAMED = [
     firstName: "Grace",
     lastName: "Abbott",
     classYear: 1979,
+    majors: ["18"],
     deceased: { isDeceased: true },
     hasHeadshot: true,
     headshotVersion: "v2",
+  },
+  // An UNLISTED brother (staff-visible badge, D124).
+  {
+    id: 5004,
+    firstName: "Bob",
+    lastName: "Acker",
+    classYear: 2001,
+    majors: ["2"],
+    deceased: { isDeceased: false },
+    hasHeadshot: false,
+    unlisted: true,
+  },
+  // A DE-BROTHERED brother (struck-through + badge + red ✕, D115).
+  {
+    id: 5005,
+    firstName: "Carl",
+    lastName: "Ash",
+    classYear: 1995,
+    majors: ["10"],
+    deceased: { isDeceased: false },
+    hasHeadshot: false,
+    debrothered: { isDebrothered: true },
   },
   // The caller's own row, no headshot (exercises the avatar fallback).
   {
@@ -113,6 +137,13 @@ async function gotoDirectory(page: Page) {
   await page.route("**/img/thumbnails/**", (route) => route.fulfill({ path: THUMB_FIXTURE }));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+}
+
+/** The rendered pixel width of a column, by its visible header text. */
+async function columnWidth(page: Page, headerText: string): Promise<number> {
+  const header = page.getByRole("columnheader").filter({ hasText: headerText }).first();
+  const box = await header.boundingBox();
+  return box?.width ?? 0;
 }
 
 test.describe("signed-in directory", () => {
@@ -235,6 +266,62 @@ test.describe("signed-in directory", () => {
     await page.goto("/");
     await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
     await expect(page.getByRole("img", { name: /Aaron Adams/ })).toHaveCount(0);
+  });
+
+  test("renders the course column as a chip and the staff status badges", async ({ page }) => {
+    await gotoDirectory(page);
+    // The Course column header (renamed from "Major") and a course chip.
+    await expect(page.getByRole("columnheader", { name: /Course/ })).toBeVisible();
+    await expect(page.getByText("6-3", { exact: true })).toBeVisible();
+    // Status badges (admin view): In Memoriam, Unlisted, De-brothered.
+    await expect(page.getByText("In Memoriam", { exact: true })).toBeVisible();
+    await expect(page.getByText("Unlisted", { exact: true })).toBeVisible();
+    await expect(page.getByText("De-brothered", { exact: true })).toBeVisible();
+  });
+
+  test("the column lens offers the Full Name column", async ({ page }) => {
+    await gotoDirectory(page);
+    await expect(page.getByRole("columnheader", { name: /Full Name/ })).toHaveCount(0);
+    await page.getByText("Columns", { exact: true }).click();
+    await page.getByRole("checkbox", { name: "Full Name" }).check();
+    await expect(page.getByRole("columnheader", { name: /Full Name/ })).toBeVisible();
+  });
+
+  test("a column header exposes a keyboard-operable resize separator", async ({ page }) => {
+    await gotoDirectory(page);
+    const resizer = page.getByRole("separator", { name: /resize the email column/i });
+    await expect(resizer).toBeVisible();
+    // Keyboard resize (WCAG 2.5.7 alternative to dragging) widens the column.
+    const before = await columnWidth(page, "Email");
+    await resizer.focus();
+    await page.keyboard.press("ArrowRight");
+    await page.keyboard.press("ArrowRight");
+    await expect.poll(() => columnWidth(page, "Email")).toBeGreaterThan(before);
+  });
+
+  test("changing the sort pushes history, so Back restores the previous sort", async ({ page }) => {
+    await gotoDirectory(page);
+    const classHeader = page.getByRole("columnheader").filter({ hasText: "Class" });
+
+    await page.getByRole("button", { name: "Class", exact: true }).click();
+    await expect(page).toHaveURL(/sort=classYear/);
+    await expect(classHeader).toHaveAttribute("aria-sort", "ascending");
+
+    await page.goBack();
+    // Back returns to the default Canonical-Name sort (clean URL), not off-page.
+    await expect(page).not.toHaveURL(/sort=classYear/);
+    await expect(page.getByRole("columnheader").filter({ hasText: "Name" })).toHaveAttribute(
+      "aria-sort",
+      "ascending",
+    );
+  });
+
+  test("hiding a column writes it to the URL (shareable view)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByText("Columns", { exact: true }).click();
+    await page.getByRole("checkbox", { name: "Email" }).uncheck();
+    // The lens is mirrored into the URL so the view is shareable + history-walkable.
+    await expect(page).toHaveURL(/cols=/);
   });
 
   test("has no detectable accessibility violations (axe, WCAG 2.2 AA)", async ({ page }) => {
