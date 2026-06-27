@@ -82,6 +82,9 @@ function fakePhone(rng: Random): string {
   return `+1 ${rng.int(201, 989)}-555-0${String(rng.int(100, 199))}`;
 }
 
+/** Generational suffixes occasionally appended to a full legal name. */
+const NAME_SUFFIXES = ["Jr.", "Sr.", "II", "III", "IV"];
+
 function makeName(rng: Random): {
   firstName: string;
   lastName: string;
@@ -245,6 +248,15 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
 
     if (middleName !== undefined) profile.middleName = middleName;
     if (mugName !== undefined) profile.mugName = mugName;
+
+    // ~70% carry a recorded full/legal name (first [middle] last [suffix]),
+    // distinct from the constructed Canonical Name, so the Directory's Full Name
+    // column has real data to display.
+    if (rng.chance(0.7)) {
+      const mid = middleName ?? rng.pick(FIRST_NAMES);
+      const suffix = rng.chance(0.1) ? ` ${rng.pick(NAME_SUFFIXES)}` : "";
+      profile.fullLegalName = `${firstName} ${mid} ${lastName}${suffix}`;
+    }
 
     // ~5% of living brothers have no email; deceased records carry none.
     if (!isDeceased && rng.chance(0.95)) {

@@ -162,7 +162,14 @@ export function DirectoryGrid({
       className="overflow-auto rounded-xl border border-border bg-card"
       style={{ maxHeight: "calc(100dvh - 13rem)" }}
     >
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+      {/* autoScroll disabled: a column drag must never scroll the grid (the
+          header is always in view; reordering off-screen columns isn't needed). */}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={closestCenter}
+        onDragEnd={handleDragEnd}
+        autoScroll={false}
+      >
         <table
           aria-label="Brothers directory"
           aria-rowcount={rows.length + 1}
@@ -513,14 +520,18 @@ function Cell({
         className={cn(common, "font-normal")}
         style={frozenStyle(left, false)}
       >
-        <span className="flex min-w-0 items-center gap-2">
+        {/* flex-wrap so the status badges sit inline when the column is wide and
+            flow BENEATH the name when it narrows — both stay readable (§5.6.5,
+            visual-design). The name truncates only when it alone exceeds the
+            cell. */}
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {/* The Canonical Name is the row-open affordance (§5.6.7): a real anchor
               for keyboard, Enter, and modifier/new-tab. Whole-row click and the
               interactive Star/Select cells land with their behaviour in 3c. */}
           <Link
             to={`/brother/${profile.id}`}
             className={cn(
-              "truncate font-medium underline-offset-2 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring",
+              "min-w-0 max-w-full truncate font-medium underline-offset-2 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring",
               // De-brothered: struck through and muted (D115); managers/admins only.
               debrothered && "text-muted-foreground line-through decoration-1",
             )}

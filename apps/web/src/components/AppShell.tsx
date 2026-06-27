@@ -1,7 +1,8 @@
 import { formatCanonicalName } from "@pbe/shared";
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { useSession } from "../auth/SessionContext.js";
 import type { Me } from "../lib/types.js";
+import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
 import { Avatar } from "./Avatar.js";
 import { PrivacyFooter } from "./PrivacyFooter.js";
 import { RoleBadge } from "./RoleBadge.js";
@@ -23,6 +24,9 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   // The /api/banner source lands in Phase 5 (D117); the slot is wired with null.
   const banner: Banner | null = null;
 
+  const menuRef = useRef<HTMLDetailsElement>(null);
+  useDetailsAutoClose(menuRef);
+
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="border-b border-border bg-card">
@@ -33,9 +37,9 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
           </div>
           <div className="flex items-center gap-3">
             <RoleBadge role={me.role} />
-            <details className="relative">
+            <details ref={menuRef} className="relative">
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full px-1 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                <Avatar name={name} size={34} />
+                <Avatar name={name} seed={me.profile?.id} size={34} />
                 <span className="hidden text-sm font-medium sm:inline">{name}</span>
               </summary>
               <div className="absolute right-0 z-20 mt-2 w-44 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg">

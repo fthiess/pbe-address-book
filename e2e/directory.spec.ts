@@ -68,6 +68,7 @@ const NAMED = [
     lastName: "Adams",
     classYear: 1984,
     majors: ["6-3"],
+    fullLegalName: "Aaron Bartholomew Adams Jr.",
     deceased: { isDeceased: false },
     hasHeadshot: true,
     headshotVersion: "v1",
@@ -279,12 +280,22 @@ test.describe("signed-in directory", () => {
     await expect(page.getByText("De-brothered", { exact: true })).toBeVisible();
   });
 
-  test("the column lens offers the Full Name column", async ({ page }) => {
+  test("the column lens offers the Full Name column and shows its data", async ({ page }) => {
     await gotoDirectory(page);
     await expect(page.getByRole("columnheader", { name: /Full Name/ })).toHaveCount(0);
     await page.getByText("Columns", { exact: true }).click();
     await page.getByRole("checkbox", { name: "Full Name" }).check();
     await expect(page.getByRole("columnheader", { name: /Full Name/ })).toBeVisible();
+    await expect(page.getByText("Aaron Bartholomew Adams Jr.", { exact: true })).toBeVisible();
+  });
+
+  test("the Columns menu closes on an outside click", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByText("Columns", { exact: true }).click();
+    await expect(page.getByRole("checkbox", { name: "Email" })).toBeVisible();
+    // Clicking outside the popover dismisses it (native <details> doesn't do this).
+    await page.getByRole("heading", { name: "Directory" }).click();
+    await expect(page.getByRole("checkbox", { name: "Email" })).toBeHidden();
   });
 
   test("a column header exposes a keyboard-operable resize separator", async ({ page }) => {

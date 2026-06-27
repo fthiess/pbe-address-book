@@ -1,4 +1,5 @@
-import { useId } from "react";
+import { useId, useRef } from "react";
+import { useDetailsAutoClose } from "../../lib/useDetailsAutoClose.js";
 import type { ColumnGroup } from "./grid-model.js";
 import type { ColumnLens } from "./useColumnLens.js";
 
@@ -21,13 +22,15 @@ const GROUP_LABEL: Partial<Record<ColumnGroup, string>> = {
 
 export function ColumnPicker({ lens }: { lens: ColumnLens }) {
   const panelId = useId();
+  const ref = useRef<HTMLDetailsElement>(null);
+  useDetailsAutoClose(ref);
 
   // Group the available (role-permitted) columns for a tidy menu; the default
   // data columns lead, then optional, then the staff-only restricted set.
   const groups: ColumnGroup[] = ["default", "optional", "restricted"];
 
   return (
-    <details className="group relative">
+    <details ref={ref} className="group relative">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <ColumnsIcon />
         Columns

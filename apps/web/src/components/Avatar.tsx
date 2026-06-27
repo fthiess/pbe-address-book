@@ -79,7 +79,10 @@ export function Avatar({
   return (
     <span
       aria-hidden="true"
-      className={cn("relative inline-grid shrink-0 place-items-center rounded-full", className)}
+      className={cn(
+        "relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full",
+        className,
+      )}
       style={{ width: size, height: size, background: ground.background }}
     >
       {/* Translucent white silhouette watermark (generic head + shoulders). */}

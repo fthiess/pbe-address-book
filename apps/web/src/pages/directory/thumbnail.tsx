@@ -60,26 +60,31 @@ export function Thumbnail({ profile, name }: { profile: DirectoryProfile; name: 
 
       {deceased && <MourningBand />}
       {debrothered && (
-        // Translucent red ✕ over an expelled brother's avatar (D115).
-        <span
+        // Translucent red ✕ across the whole circle (D115) — corner-to-corner
+        // strokes, clipped by the circle so they span its full diameter.
+        <svg
+          viewBox="0 0 40 40"
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0 grid place-items-center text-lg font-bold"
-          style={{ color: "rgba(150,30,24,0.55)" }}
+          className="pointer-events-none absolute inset-0 size-full"
+          stroke="rgba(150,30,24,0.6)"
+          strokeWidth="3.5"
+          strokeLinecap="round"
         >
-          ✕
-        </span>
+          <line x1="3" y1="3" x2="37" y2="37" />
+          <line x1="37" y1="3" x2="3" y2="37" />
+        </svg>
       )}
     </span>
   );
 }
 
 /**
- * The diagonal mourning band — an ink stripe that **cuts across the upper-right
- * corner**, connecting a point on the top edge to a point on the right edge (the
- * genealogy convention). It runs along the "╲" diagonal (`rotate(45deg)`) and is
- * inset so the circle's rim stays visible all the way around; hairline white
- * edges let it read on a dark-mode avatar (D32). Purely decorative — the status
- * is carried in words by the badge and the alt text.
+ * The diagonal mourning band — an ink stripe across the upper-right of the circle
+ * along the "╲" diagonal (`rotate(45deg)`), spanning **edge to edge** of the
+ * circle in its path (a full chord — the band is wider than the circle and the
+ * round container clips it to the rim). Hairline white edges let it read on a
+ * dark-mode avatar (D32). Purely decorative — the status is carried in words by
+ * the badge and the alt text.
  */
 function MourningBand() {
   return (
@@ -88,12 +93,11 @@ function MourningBand() {
       className="pointer-events-none absolute"
       style={{
         top: "23%",
-        right: "7%",
-        width: "47%",
+        right: "-19%",
+        width: "100%",
         height: "13%",
         transform: "rotate(45deg)",
         transformOrigin: "center",
-        borderRadius: "1px",
         background: "#14181b",
         boxShadow: "0 0.5px 0 rgba(255,255,255,0.85), 0 -0.5px 0 rgba(255,255,255,0.85)",
       }}
