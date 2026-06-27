@@ -10,6 +10,7 @@ export default defineConfig({
     alias: {
       "@pbe/shared": fromHere("./packages/shared/src/index.ts"),
       "@pbe/help-content": fromHere("./packages/help-content/src/index.ts"),
+      "@pbe/name-search": fromHere("./packages/name-search/src/index.ts"),
     },
   },
   test: {

@@ -1,3 +1,4 @@
+import type { HighlightRange } from "@pbe/name-search";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useRef } from "react";
 import { Link } from "react-router-dom";
@@ -5,6 +6,7 @@ import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import type { GridColumn } from "./grid-model.js";
+import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
 import { useScrollRestoration } from "./useScrollRestoration.js";
@@ -28,11 +30,20 @@ export interface DirectoryCardsProps {
   /** The lens's visible data columns (the pinned identity block is implicit). */
   dataColumns: GridColumn[];
   nameOf: (profile: DirectoryProfile) => string;
+  /** Character ranges to mark in a brother's display name for the active search (D35). */
+  highlight: (display: string) => HighlightRange[];
   myId: number | null;
   viewKey: string;
 }
 
-export function DirectoryCards({ rows, dataColumns, nameOf, myId, viewKey }: DirectoryCardsProps) {
+export function DirectoryCards({
+  rows,
+  dataColumns,
+  nameOf,
+  highlight,
+  myId,
+  viewKey,
+}: DirectoryCardsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const virtualizer = useVirtualizer({
@@ -89,7 +100,7 @@ export function DirectoryCards({ rows, dataColumns, nameOf, myId, viewKey }: Dir
                           debrothered && "text-muted-foreground line-through decoration-1",
                         )}
                       >
-                        {name}
+                        <HighlightedName text={name} ranges={highlight(name)} />
                       </span>
                       {profile.id === myId && (
                         <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">

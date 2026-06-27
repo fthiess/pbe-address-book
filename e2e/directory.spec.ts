@@ -116,6 +116,26 @@ const NAMED = [
     deceased: { isDeceased: false },
     hasHeadshot: false,
   },
+  // A brother whose given name has a common nickname (exercises D123: "bill"
+  // must find "William" — a match no substring search can make).
+  {
+    id: 5006,
+    firstName: "William",
+    lastName: "Webster",
+    classYear: 1988,
+    deceased: { isDeceased: false },
+    hasHeadshot: false,
+  },
+  // A brother whose surname is a phonetic variant (exercises the Beider-Morse
+  // arm end-to-end: "smyth" must find "Smith").
+  {
+    id: 5007,
+    firstName: "Karl",
+    lastName: "Smith",
+    classYear: 1992,
+    deceased: { isDeceased: false },
+    hasHeadshot: false,
+  },
 ];
 
 const GENERATED = Array.from({ length: 60 }, (_, i) => ({
@@ -176,6 +196,40 @@ test.describe("signed-in directory", () => {
     await page.getByRole("searchbox", { name: /name search/i }).fill("aaron");
     await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
     await expect(page.getByRole("rowheader", { name: /Dev Admin/ })).toHaveCount(0);
+  });
+
+  test("the Web Worker index comes online (progressive enhancement, D110)", async ({ page }) => {
+    await gotoDirectory(page);
+    // The grid renders immediately (exact/substring on the main thread); the
+    // worker's fuzzy/phonetic index switches on shortly after and flips the flag.
+    await expect(page.locator("[data-search-ready]")).toHaveAttribute("data-search-ready", "true");
+  });
+
+  test("matches a common nickname once the worker is ready (D123): 'bill' → William", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    await page.locator("[data-search-ready='true']").waitFor();
+    // 'bill' is NOT a substring of 'William' — only the nickname expansion finds it.
+    await page.getByRole("searchbox", { name: /name search/i }).fill("bill");
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toHaveCount(0);
+  });
+
+  test("matches a phonetic sound-alike via Beider-Morse: 'smyth' → Smith", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.locator("[data-search-ready='true']").waitFor();
+    await page.getByRole("searchbox", { name: /name search/i }).fill("smyth");
+    await expect(page.getByRole("rowheader", { name: /Karl Smith/ })).toBeVisible();
+  });
+
+  test("highlights the matched characters in a result name (D35)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByRole("searchbox", { name: /name search/i }).fill("webster");
+    const row = page.getByRole("rowheader", { name: /William Webster/ });
+    await expect(row).toBeVisible();
+    // The matched substring is wrapped in a <mark> so the eye finds the hit.
+    await expect(row.locator("mark")).toHaveText(/Webster/i);
   });
 
   test("clicking a column header sorts, toggling direction and updating the URL", async ({
@@ -345,6 +399,18 @@ test.describe("signed-in directory", () => {
 
   test("has no detectable accessibility violations (axe, WCAG 2.2 AA)", async ({ page }) => {
     await gotoDirectory(page);
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("stays accessible with an active search and highlight marks (WCAG 2.2 AA)", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    await page.getByRole("searchbox", { name: /name search/i }).fill("webster");
+    await expect(
+      page.getByRole("rowheader", { name: /William Webster/ }).locator("mark"),
+    ).toBeVisible();
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
   });

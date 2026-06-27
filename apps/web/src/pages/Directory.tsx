@@ -1,4 +1,5 @@
 import { getHelpEntry } from "@pbe/help-content";
+import { DEFAULT_SEARCH_CONFIG, type NameRecord, highlightRanges } from "@pbe/name-search";
 import { resolveCanonicalNames } from "@pbe/shared";
 import { useQueryState } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -13,6 +14,7 @@ import { ColumnPicker } from "./directory/ColumnPicker.js";
 import { DirectoryCards } from "./directory/DirectoryCards.js";
 import { DirectoryGrid } from "./directory/DirectoryGrid.js";
 import { COLUMNS, makeComparator } from "./directory/grid-model.js";
+import { useNameSearch } from "./directory/search/useNameSearch.js";
 import { useColumnLens } from "./directory/useColumnLens.js";
 import { useDirectorySort } from "./directory/useDirectorySort.js";
 
@@ -22,11 +24,13 @@ import { useDirectorySort } from "./directory/useDirectorySort.js";
  * column lens, single-column sorting with the canonical secondary key, full
  * virtualization with scroll restoration, and the responsive card collapse.
  *
- * The structured filter panel, the Star and Select columns, the Include-deceased
- * toggle, and the manager/administrator action bar with CSV export are Sessions
- * 3b/3c; the Name Search here is the skeleton's simple substring match, replaced
- * by the Web-Worker fuzzy/phonetic matcher in 3b. The whole dataset is held in
- * memory and every operation runs client-side over it (D4).
+ * Session 3b delivers Name Search: typo-tolerant + phonetic + common-nickname
+ * matching over the tokenized name fields, with the index built in a Web Worker
+ * (D35/D110/D123) so the grid renders immediately on exact/substring matching and
+ * the richer matching switches on when the worker signals ready. The structured
+ * filter panel, the Star and Select columns, the Include-deceased toggle, and the
+ * manager/administrator action bar with CSV export are Session 3c. The whole
+ * dataset is held in memory and every operation runs client-side over it (D4).
  */
 export function Directory() {
   const { state } = useSession();
@@ -65,6 +69,34 @@ export function Directory() {
     [names],
   );
 
+  // The lean name-only records the Name-Search worker indexes (D35/D110) — the
+  // searched fields plus each brother's resolved Canonical Name. Rebuilt only
+  // when the dataset changes, so the worker's index isn't churned on every keystroke.
+  const nameRecords = useMemo<NameRecord[]>(
+    () =>
+      (profiles ?? []).map((p) => ({
+        id: p.id,
+        firstName: p.firstName,
+        middleName: p.middleName,
+        lastName: p.lastName,
+        fullLegalName: p.fullLegalName,
+        mugName: p.mugName,
+        canonicalName: names.get(p.id),
+      })),
+    [profiles, names],
+  );
+
+  const { matchedIds, ready: searchReady } = useNameSearch(nameRecords, q);
+
+  // The marker for matched characters in a result's display name (D35). Empty
+  // when there's no active query, so the name renders plain.
+  const highlight = useMemo(() => {
+    if (q.trim().length === 0) {
+      return () => [];
+    }
+    return (display: string) => highlightRanges(display, q, DEFAULT_SEARCH_CONFIG);
+  }, [q]);
+
   useEffect(() => {
     const controller = new AbortController();
     fetchProfiles(controller.signal)
@@ -82,16 +114,16 @@ export function Directory() {
   const dataColumns = useMemo(() => lens.visible.map((key) => COLUMNS[key]), [lens.visible]);
   const columns = useMemo(() => [COLUMNS.thumbnail, COLUMNS.name, ...dataColumns], [dataColumns]);
 
-  // Search (3a: simple substring over the name fields + Canonical Name) AND-ed
-  // with nothing else yet; then sort by the active column with the canonical
-  // secondary key. Both run over the in-memory set (D4).
+  // Name Search (D35) AND-ed with nothing else yet (filters arrive in 3c), then
+  // sorted by the active column with the canonical secondary key. `matchedIds` is
+  // null for an empty query (show all); otherwise it's the worker's (or, until
+  // ready, the main thread's substring) match set. All client-side over the
+  // in-memory set (D4).
   const rows = useMemo(() => {
     const all = profiles ?? [];
-    const term = q.trim().toLocaleLowerCase();
-    const filtered =
-      term === "" ? all : all.filter((p) => searchableName(p, nameOf(p)).includes(term));
+    const filtered = matchedIds === null ? all : all.filter((p) => matchedIds.has(p.id));
     return [...filtered].sort(makeComparator(sort.sortKey, sort.direction));
-  }, [profiles, q, sort.sortKey, sort.direction, nameOf]);
+  }, [profiles, matchedIds, sort.sortKey, sort.direction]);
 
   const loading = profiles === null && !error;
   const showOverlay = useDelayedFlag(loading, 500);
@@ -106,7 +138,7 @@ export function Directory() {
   }
 
   return (
-    <section aria-labelledby="directory-heading">
+    <section aria-labelledby="directory-heading" data-search-ready={searchReady}>
       {showOverlay && <LoadingOverlay />}
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
@@ -150,6 +182,7 @@ export function Directory() {
           rows={rows}
           columns={columns}
           nameOf={nameOf}
+          highlight={highlight}
           myId={myId}
           sort={sort}
           onReorder={lens.setOrder}
@@ -162,20 +195,13 @@ export function Directory() {
           rows={rows}
           dataColumns={dataColumns}
           nameOf={nameOf}
+          highlight={highlight}
           myId={myId}
           viewKey={location.search}
         />
       )}
     </section>
   );
-}
-
-/** The lower-cased name haystack the simple 3a search matches against. */
-function searchableName(p: DirectoryProfile, canonical: string): string {
-  return [p.firstName, p.middleName, p.lastName, p.fullLegalName, p.mugName, canonical]
-    .filter(Boolean)
-    .join(" ")
-    .toLocaleLowerCase();
 }
 
 /** The result-count readout (§5.6.9): "248 brothers", narrowing to "of N" when filtered. */

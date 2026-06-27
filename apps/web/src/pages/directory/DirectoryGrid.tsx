@@ -14,6 +14,7 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import type { HighlightRange } from "@pbe/name-search";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   type CSSProperties,
@@ -29,6 +30,7 @@ import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import type { ColumnKey, GridColumn } from "./grid-model.js";
+import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import type { DirectorySort } from "./useDirectorySort.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
@@ -59,6 +61,8 @@ export interface DirectoryGridProps {
   /** Ordered render columns: the pinned identity block followed by the lens. */
   columns: GridColumn[];
   nameOf: (profile: DirectoryProfile) => string;
+  /** Character ranges to mark in a brother's display name for the active search (D35). */
+  highlight: (display: string) => HighlightRange[];
   myId: number | null;
   sort: DirectorySort;
   /** Commit a new order of the (non-pinned) data columns after a drag. */
@@ -75,6 +79,7 @@ export function DirectoryGrid({
   rows,
   columns,
   nameOf,
+  highlight,
   myId,
   sort,
   onReorder,
@@ -220,6 +225,7 @@ export function DirectoryGrid({
                   key={profile.id}
                   profile={profile}
                   name={nameOf(profile)}
+                  highlight={highlight}
                   isSelf={profile.id === myId}
                   rowIndex={virtualRow.index + 2}
                   striped={virtualRow.index % 2 === 1}
@@ -449,6 +455,7 @@ function SortGlyph({ active, direction }: { active: boolean; direction: "asc" | 
 interface RowProps {
   profile: DirectoryProfile;
   name: string;
+  highlight: (display: string) => HighlightRange[];
   isSelf: boolean;
   rowIndex: number;
   striped: boolean;
@@ -456,7 +463,16 @@ interface RowProps {
   pinnedLeft: Map<ColumnKey, number>;
 }
 
-function Row({ profile, name, isSelf, rowIndex, striped, columns, pinnedLeft }: RowProps) {
+function Row({
+  profile,
+  name,
+  highlight,
+  isSelf,
+  rowIndex,
+  striped,
+  columns,
+  pinnedLeft,
+}: RowProps) {
   return (
     <tr
       aria-rowindex={rowIndex}
@@ -473,6 +489,7 @@ function Row({ profile, name, isSelf, rowIndex, striped, columns, pinnedLeft }: 
           colIndex={index + 1}
           profile={profile}
           name={name}
+          highlight={highlight}
           isSelf={isSelf}
           left={pinnedLeft.get(column.key)}
         />
@@ -486,6 +503,7 @@ function Cell({
   colIndex,
   profile,
   name,
+  highlight,
   isSelf,
   left,
 }: {
@@ -493,6 +511,7 @@ function Cell({
   colIndex: number;
   profile: DirectoryProfile;
   name: string;
+  highlight: (display: string) => HighlightRange[];
   isSelf: boolean;
   left: number | undefined;
 }) {
@@ -536,7 +555,7 @@ function Cell({
               debrothered && "text-muted-foreground line-through decoration-1",
             )}
           >
-            {name}
+            <HighlightedName text={name} ranges={highlight(name)} />
           </Link>
           {isSelf && (
             <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">
