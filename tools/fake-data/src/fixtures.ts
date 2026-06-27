@@ -48,6 +48,100 @@ export const FIRST_NAMES: readonly string[] = [
   "Brandon",
   "Benjamin",
   "Samuel",
+
+  // The names below extend the pool to reflect PBE's international membership
+  // (PBE and MIT draw brothers from around the world). Given names are real and
+  // correctly spelled — only surnames carry the deliberate-misspelling
+  // convention. Because makeName() draws first and last independently (and
+  // middle names from this same pool), the generator naturally produces the
+  // real-world mixing patterns: a Western given name with an ethnic surname, an
+  // ethnic given name with a Western surname, and a Western first name in front
+  // of an ethnic middle name (as when a brother of Chinese or Korean heritage
+  // goes by a Western first name and keeps his given name as a middle name).
+  // PBE is a male-only organization, so every name here is a male given name:
+  // this list adds ethnic diversity but deliberately never gender diversity.
+
+  // South Asian (Indian)
+  "Arjun",
+  "Rohan",
+  "Vikram",
+  "Rahul",
+  "Aditya",
+  "Nikhil",
+  "Ravi",
+  "Sanjay",
+
+  // East Asian (Chinese, Korean, Japanese, Indonesian)
+  "Wei",
+  "Jian",
+  "Hao",
+  "Minjun",
+  "Jihoon",
+  "Haruto",
+  "Kenji",
+  "Ren",
+  "Budi",
+  "Bayu",
+
+  // Latin American
+  "Mateo",
+  "Santiago",
+  "Diego",
+  "Javier",
+  "Alejandro",
+  "Rafael",
+  "Joaquín",
+  "Emilio",
+
+  // African
+  "Kwame",
+  "Kofi",
+  "Tunde",
+  "Thabo",
+  "Babatunde",
+  "Jabari",
+  "Sipho",
+  "Oluwaseun",
+
+  // Black American
+  "Jamal",
+  "DeShawn",
+  "Marquis",
+  "Darnell",
+  "Malik",
+  "Terrell",
+  "Demetrius",
+  "Xavier",
+
+  // Scandinavian
+  "Lars",
+  "Magnus",
+  "Bjørn",
+  "Henrik",
+  "Sven",
+  "Søren",
+  "Anders",
+  "Nils",
+
+  // Eastern European (Russian, Czech, Polish)
+  "Dmitri",
+  "Sergei",
+  "Nikolai",
+  "Tomáš",
+  "Jakub",
+  "Piotr",
+  "Krzysztof",
+  "Wojciech",
+
+  // Middle Eastern (Arabic, Persian)
+  "Omar",
+  "Khalid",
+  "Tariq",
+  "Yusuf",
+  "Hassan",
+  "Reza",
+  "Darius",
+  "Arash",
 ] as const;
 
 // Plausible but clearly-placeholder surnames (note the deliberate misspellings,
@@ -93,6 +187,84 @@ export const LAST_NAMES: readonly string[] = [
   "Nelsen",
   "Hillman",
   "Ramiro",
+
+  // International surnames extending the pool, carrying the same deliberate
+  // light-misspelling convention as above (e.g. Patell, Nakamuro, Okonkwa) so
+  // they stay obviously fake. (There is no separate "Black American" block:
+  // those surnames overlap the Anglo pool above; the dedicated Black American
+  // *given* names in FIRST_NAMES are what surface that community in the data.)
+
+  // South Asian (Indian)
+  "Patell",
+  "Sharman",
+  "Singhe",
+  "Guptah",
+  "Reddi",
+  "Naire",
+  "Iyar",
+  "Mehtah",
+
+  // East Asian (Chinese, Korean, Japanese, Indonesian)
+  "Chenn",
+  "Zhane",
+  "Huangh",
+  "Kimm",
+  "Parke",
+  "Choie",
+  "Nakamuro",
+  "Satoh",
+  "Tanaki",
+  "Wijayah",
+
+  // Latin American
+  "Fernandes",
+  "Torrez",
+  "Ramirex",
+  "Moralez",
+  "Castillio",
+  "Vargaz",
+  "Reyez",
+  "Mendozah",
+
+  // African
+  "Okonkwa",
+  "Adebaye",
+  "Mensa",
+  "Diallio",
+  "Okafore",
+  "Dlaminy",
+  "Boatenge",
+  "Mwangui",
+
+  // Scandinavian
+  "Johanssen",
+  "Larssen",
+  "Hanssen",
+  "Nilssen",
+  "Bergh",
+  "Lindqvest",
+  "Olsenn",
+  "Halvorson",
+
+  // Eastern European (Russian, Czech, Polish)
+  "Ivanoff",
+  "Petroff",
+  "Volkoff",
+  "Sokoloff",
+  "Novakk",
+  "Svobodah",
+  "Kowalsky",
+  "Lewandowsky",
+
+  // Middle Eastern (Arabic, Persian)
+  "Hassann",
+  "Rahmann",
+  "Nassir",
+  "Khaleel",
+  "Salehh",
+  "Hosseyni",
+  "Karimy",
+  "Tehranni",
 ] as const;
 
 export interface Place {
