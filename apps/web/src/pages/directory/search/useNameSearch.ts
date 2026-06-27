@@ -1,11 +1,15 @@
 import {
   DEFAULT_SEARCH_CONFIG,
+  type HighlightRange,
   type NameRecord,
   type SearchConfig,
+  highlightRanges,
   substringMatch,
 } from "@pbe/name-search";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SearchResponse } from "./protocol.js";
+
+const EMPTY_TOKENS: ReadonlyMap<number, Set<string>> = new Map();
 
 export interface NameSearchResult {
   /**
@@ -13,6 +17,12 @@ export interface NameSearchResult {
    * name filter" — show the whole set). The caller intersects this with its rows.
    */
   matchedIds: Set<number> | null;
+  /**
+   * Compute the highlight ranges to mark in a brother's `display` string (any
+   * name column) — character-level for substring hits, whole-word for the
+   * nickname/typo/phonetic matches the worker reported for that brother (D35).
+   */
+  highlight: (display: string, profileId: number) => HighlightRange[];
   /**
    * Whether the worker's fuzzy/phonetic/nickname index is live. Before it is,
    * matching is exact/substring on the main thread; after, the worker answers.
@@ -29,6 +39,10 @@ export interface NameSearchResult {
  * the synchronous substring match is the fallback both before `ready` and for the
  * brief moment after a keystroke before the worker answers — the result set only
  * ever *grows* into the richer match, so the transition reads as calm.
+ *
+ * The worker also reports, per matched brother, which of his name tokens matched,
+ * which drives highlighting across every name column (including phonetic matches
+ * the main thread can't recompute and matches on non-displayed fields).
  */
 export function useNameSearch(
   records: NameRecord[],
@@ -36,10 +50,11 @@ export function useNameSearch(
   config: SearchConfig = DEFAULT_SEARCH_CONFIG,
 ): NameSearchResult {
   const [ready, setReady] = useState(false);
-  const [workerResult, setWorkerResult] = useState<{ query: string; ids: Set<number> | null }>({
-    query: "",
-    ids: null,
-  });
+  const [workerResult, setWorkerResult] = useState<{
+    query: string;
+    ids: Set<number> | null;
+    tokens: ReadonlyMap<number, Set<string>>;
+  }>({ query: "", ids: null, tokens: EMPTY_TOKENS });
   const workerRef = useRef<Worker | null>(null);
   const seqRef = useRef(0);
 
@@ -55,6 +70,7 @@ export function useNameSearch(
         setWorkerResult({
           query: message.query,
           ids: message.ids === null ? null : new Set(message.ids),
+          tokens: message.tokens ?? EMPTY_TOKENS,
         });
       }
     };
@@ -89,7 +105,20 @@ export function useNameSearch(
   // answer for *this exact query* arrives.
   const substring = useMemo(() => substringMatch(records, query), [records, query]);
 
-  const matchedIds = ready && workerResult.query === query ? workerResult.ids : substring;
+  // Whether the worker's answer is for the query currently on screen.
+  const workerCurrent = ready && workerResult.query === query;
+  const matchedIds = workerCurrent ? workerResult.ids : substring;
+  // Matched tokens only exist once the worker has answered this query; before
+  // that, the substring fallback highlights itself (substring layer only).
+  const matchedTokens = workerCurrent ? workerResult.tokens : EMPTY_TOKENS;
 
-  return { matchedIds, ready };
+  const highlight = useCallback(
+    (display: string, profileId: number): HighlightRange[] =>
+      query.trim().length === 0
+        ? []
+        : highlightRanges(display, query, matchedTokens.get(profileId)),
+    [query, matchedTokens],
+  );
+
+  return { matchedIds, highlight, ready };
 }

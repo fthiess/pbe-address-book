@@ -37,6 +37,7 @@ export type ColumnKey =
   | "country"
   // Non-default selectable columns (off by default):
   | "fullName"
+  | "mugName"
   | "constitutionId"
   // Restricted, manager/administrator only (§5.6.1, off by default):
   | "allowNewsletterEmail"
@@ -220,6 +221,20 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     sortable: true,
     display: (p) => p.fullLegalName ?? EMPTY,
     sortValue: (p) => p.fullLegalName?.toLocaleLowerCase() ?? null,
+  },
+  mugName: {
+    key: "mugName",
+    // A brother's house "mug" name — the fraternity nickname (often whimsical and
+    // unrelated to his given name), a public field and one of the searched name
+    // fields (D35). Off by default, selectable by any role.
+    label: "Mug Name",
+    group: "optional",
+    width: 168,
+    align: "start",
+    pinned: false,
+    sortable: true,
+    display: (p) => p.mugName ?? EMPTY,
+    sortValue: (p) => p.mugName?.toLocaleLowerCase() ?? null,
   },
   constitutionId: {
     key: "constitutionId",

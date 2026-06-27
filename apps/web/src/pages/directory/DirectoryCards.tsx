@@ -30,8 +30,8 @@ export interface DirectoryCardsProps {
   /** The lens's visible data columns (the pinned identity block is implicit). */
   dataColumns: GridColumn[];
   nameOf: (profile: DirectoryProfile) => string;
-  /** Character ranges to mark in a brother's display name for the active search (D35). */
-  highlight: (display: string) => HighlightRange[];
+  /** Character ranges to mark in a brother's name-column text for the active search (D35). */
+  highlight: (display: string, profileId: number) => HighlightRange[];
   myId: number | null;
   viewKey: string;
 }
@@ -100,7 +100,7 @@ export function DirectoryCards({
                           debrothered && "text-muted-foreground line-through decoration-1",
                         )}
                       >
-                        <HighlightedName text={name} ranges={highlight(name)} />
+                        <HighlightedName text={name} ranges={highlight(name, profile.id)} />
                       </span>
                       {profile.id === myId && (
                         <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">
@@ -124,11 +124,18 @@ export function DirectoryCards({
                         return null;
                       }
                       const code = column.key === "major" ? profile.majors?.[0] : undefined;
+                      const searchable = column.key === "fullName" || column.key === "mugName";
                       return (
                         <div key={column.key} className="contents">
                           <dt className="text-muted-foreground">{column.label}</dt>
                           <dd className="m-0 min-w-0 truncate">
-                            {code ? <CourseChip code={code} /> : value}
+                            {code ? (
+                              <CourseChip code={code} />
+                            ) : searchable ? (
+                              <HighlightedName text={value} ranges={highlight(value, profile.id)} />
+                            ) : (
+                              value
+                            )}
                           </dd>
                         </div>
                       );

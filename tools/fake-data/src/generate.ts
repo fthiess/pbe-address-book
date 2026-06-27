@@ -6,7 +6,14 @@ import type {
   PrivacyFlags,
   Profile,
 } from "@pbe/shared";
-import { FIRST_NAMES, LAST_NAMES, PLACES } from "./fixtures.js";
+import {
+  FIRST_NAMES,
+  LAST_NAMES,
+  MUG_ADJECTIVES,
+  MUG_NOUNS,
+  MUG_SINGLE_WORDS,
+  PLACES,
+} from "./fixtures.js";
 import { Random } from "./prng.js";
 
 /**
@@ -103,10 +110,29 @@ function makeName(rng: Random): {
   if (rng.chance(0.4)) {
     name.middleName = rng.pick(FIRST_NAMES);
   }
-  if (rng.chance(0.15)) {
-    name.mugName = rng.pick(FIRST_NAMES);
+  // ~35% carry a whimsical mug name (the house nickname), so the field is well
+  // populated for testing Name Search over it — single words and short phrases,
+  // unrelated to the real name (§5.6.3/D35).
+  if (rng.chance(0.35)) {
+    name.mugName = makeMugName(rng);
   }
   return name;
+}
+
+/**
+ * A whimsical, name-unrelated mug name (D35 examples "Hilbert Space Pilot",
+ * "Lissajous Figure"): a single word, an Adjective+Noun, or an Adjective+Word+Noun
+ * three-word phrase — so multi-word mug-name search has data to exercise.
+ */
+function makeMugName(rng: Random): string {
+  const roll = rng.float();
+  if (roll < 0.4) {
+    return rng.pick(MUG_SINGLE_WORDS);
+  }
+  if (roll < 0.75) {
+    return `${rng.pick(MUG_ADJECTIVES)} ${rng.pick(MUG_NOUNS)}`;
+  }
+  return `${rng.pick(MUG_ADJECTIVES)} ${rng.pick(MUG_SINGLE_WORDS)} ${rng.pick(MUG_NOUNS)}`;
 }
 
 function makeAddress(rng: Random): Address {

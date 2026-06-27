@@ -1,5 +1,5 @@
 import { getHelpEntry } from "@pbe/help-content";
-import { DEFAULT_SEARCH_CONFIG, type NameRecord, highlightRanges } from "@pbe/name-search";
+import type { NameRecord } from "@pbe/name-search";
 import { resolveCanonicalNames } from "@pbe/shared";
 import { useQueryState } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -86,16 +86,9 @@ export function Directory() {
     [profiles, names],
   );
 
-  const { matchedIds, ready: searchReady } = useNameSearch(nameRecords, q);
-
-  // The marker for matched characters in a result's display name (D35). Empty
-  // when there's no active query, so the name renders plain.
-  const highlight = useMemo(() => {
-    if (q.trim().length === 0) {
-      return () => [];
-    }
-    return (display: string) => highlightRanges(display, q, DEFAULT_SEARCH_CONFIG);
-  }, [q]);
+  // Name Search, with the worker-reported highlight builder it returns — so a
+  // result's matched words are marked across every name column (D35).
+  const { matchedIds, highlight, ready: searchReady } = useNameSearch(nameRecords, q);
 
   useEffect(() => {
     const controller = new AbortController();

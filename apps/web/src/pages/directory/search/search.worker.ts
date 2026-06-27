@@ -29,12 +29,15 @@ worker.addEventListener("message", (event) => {
   // A query that arrives before the index is built is ignored — the main thread
   // is still serving exact/substring matches until it sees `ready`.
   if (message.type === "query" && index) {
-    const result = index.search(message.query);
+    const result = index.searchDetailed(message.query);
     worker.postMessage({
       type: "result",
       seq: message.seq,
       query: message.query,
-      ids: result === null ? null : [...result],
+      ids: result === null ? null : [...result.ids],
+      // Map/Set survive structured clone, so the matched-token detail rides along
+      // unchanged — no serialization needed.
+      tokens: result === null ? null : result.tokens,
     });
   }
 });

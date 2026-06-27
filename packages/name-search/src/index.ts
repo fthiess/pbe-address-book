@@ -24,5 +24,11 @@ export { DEFAULT_SEARCH_CONFIG } from "./config.js";
 export { tokenize, normalizeToken } from "./tokenize.js";
 export { expandNickname } from "./nicknames.js";
 export { phoneticCodes } from "./phonetic.js";
-export { buildIndex, substringMatch, recordTokens, type NameIndex } from "./index-build.js";
+export {
+  buildIndex,
+  substringMatch,
+  recordTokens,
+  type NameIndex,
+  type SearchResult,
+} from "./index-build.js";
 export { highlightRanges } from "./highlight.js";

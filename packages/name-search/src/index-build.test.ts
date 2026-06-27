@@ -90,6 +90,38 @@ describe("buildIndex search", () => {
   });
 });
 
+describe("searchDetailed — matched tokens for highlighting", () => {
+  const index = buildIndex(RECORDS, CONFIG);
+
+  it("returns null for an empty query", () => {
+    expect(index.searchDetailed("")).toBeNull();
+  });
+
+  it("reports the brother's own token that matched a phonetic query", () => {
+    // 'smith' matched Smyth (#1) phonetically — the matched token is 'smyth'.
+    const detail = index.searchDetailed("smith");
+    expect(detail?.tokens.get(1)).toEqual(new Set(["smyth"]));
+  });
+
+  it("reports the matched token for a nickname query (D123)", () => {
+    // 'bill' matched William (#1) via the nickname group — token 'william'.
+    expect(index.searchDetailed("bill")?.tokens.get(1)).toContain("william");
+  });
+
+  it("reports a match that came from a non-name-column field (mug name)", () => {
+    // 'pilot' matched #2 only via the mug name 'Hilbert Space Pilot'.
+    const detail = index.searchDetailed("pilot");
+    expect(detail?.ids).toEqual(new Set([2]));
+    expect(detail?.tokens.get(2)).toEqual(new Set(["pilot"]));
+  });
+
+  it("ids agree with search()", () => {
+    for (const q of ["smith", "bill", "jones", "garcia", "hilbert pilot"]) {
+      expect(index.searchDetailed(q)?.ids).toEqual(index.search(q));
+    }
+  });
+});
+
 describe("substringMatch (main-thread fallback)", () => {
   it("matches substrings of name tokens, ANDed across query words", () => {
     expect(ids(substringMatch(RECORDS, "will"))).toEqual([1, 2]); // William, Williamson

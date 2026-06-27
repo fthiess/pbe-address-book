@@ -61,8 +61,8 @@ export interface DirectoryGridProps {
   /** Ordered render columns: the pinned identity block followed by the lens. */
   columns: GridColumn[];
   nameOf: (profile: DirectoryProfile) => string;
-  /** Character ranges to mark in a brother's display name for the active search (D35). */
-  highlight: (display: string) => HighlightRange[];
+  /** Character ranges to mark in a brother's name-column text for the active search (D35). */
+  highlight: (display: string, profileId: number) => HighlightRange[];
   myId: number | null;
   sort: DirectorySort;
   /** Commit a new order of the (non-pinned) data columns after a drag. */
@@ -455,7 +455,7 @@ function SortGlyph({ active, direction }: { active: boolean; direction: "asc" | 
 interface RowProps {
   profile: DirectoryProfile;
   name: string;
-  highlight: (display: string) => HighlightRange[];
+  highlight: (display: string, profileId: number) => HighlightRange[];
   isSelf: boolean;
   rowIndex: number;
   striped: boolean;
@@ -511,7 +511,7 @@ function Cell({
   colIndex: number;
   profile: DirectoryProfile;
   name: string;
-  highlight: (display: string) => HighlightRange[];
+  highlight: (display: string, profileId: number) => HighlightRange[];
   isSelf: boolean;
   left: number | undefined;
 }) {
@@ -555,7 +555,7 @@ function Cell({
               debrothered && "text-muted-foreground line-through decoration-1",
             )}
           >
-            <HighlightedName text={name} ranges={highlight(name)} />
+            <HighlightedName text={name} ranges={highlight(name, profile.id)} />
           </Link>
           {isSelf && (
             <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">
@@ -580,9 +580,18 @@ function Cell({
   }
 
   const value = column.display(profile, name);
+  // The other searched name fields (Full Name, Mug Name) carry highlight marks
+  // too, so a match on them is visible when their column is shown (D35).
+  const searchable = column.key === "fullName" || column.key === "mugName";
   return (
     <td aria-colindex={colIndex} className={cn(common, "text-muted-foreground")}>
-      <span className="block truncate">{value}</span>
+      <span className="block truncate">
+        {searchable ? (
+          <HighlightedName text={value} ranges={highlight(value, profile.id)} />
+        ) : (
+          value
+        )}
+      </span>
     </td>
   );
 }

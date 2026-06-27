@@ -117,7 +117,9 @@ const NAMED = [
     hasHeadshot: false,
   },
   // A brother whose given name has a common nickname (exercises D123: "bill"
-  // must find "William" — a match no substring search can make).
+  // must find "William" — a match no substring search can make). Also carries a
+  // whimsical mug name (a multi-word, name-unrelated house nickname) to exercise
+  // mug-name search, the Mug Name column, and highlighting on it.
   {
     id: 5006,
     firstName: "William",
@@ -125,6 +127,7 @@ const NAMED = [
     classYear: 1988,
     deceased: { isDeceased: false },
     hasHeadshot: false,
+    mugName: "Quantum Walrus",
   },
   // A brother whose surname is a phonetic variant (exercises the Beider-Morse
   // arm end-to-end: "smyth" must find "Smith").
@@ -230,6 +233,43 @@ test.describe("signed-in directory", () => {
     await expect(row).toBeVisible();
     // The matched substring is wrapped in a <mark> so the eye finds the hit.
     await expect(row.locator("mark")).toHaveText(/Webster/i);
+  });
+
+  test("highlights a phonetic (Beider-Morse) match — not just exact ones", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.locator("[data-search-ready='true']").waitFor();
+    await page.getByRole("searchbox", { name: /name search/i }).fill("smyth");
+    const row = page.getByRole("rowheader", { name: /Karl Smith/ });
+    await expect(row).toBeVisible();
+    // 'smyth' is not a substring of 'Smith' — only the worker's phonetic match
+    // can drive this highlight (the fix for the exact-only-highlight gap).
+    await expect(row.locator("mark")).toHaveText(/Smith/i);
+  });
+
+  test("highlights a match that came from the Full Name field when that column is shown", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    await page.locator("[data-search-ready='true']").waitFor();
+    // 'bartholomew' matches Aaron Adams only via his full legal name.
+    await page.getByRole("searchbox", { name: /name search/i }).fill("bartholomew");
+    await page.getByText("Columns", { exact: true }).click();
+    await page.getByRole("checkbox", { name: "Full Name" }).check();
+    const fullNameCell = page.getByRole("cell", { name: /Aaron Bartholomew Adams/ });
+    await expect(fullNameCell.locator("mark")).toHaveText(/Bartholomew/i);
+  });
+
+  test("the Mug Name column is selectable, searchable, and highlighted (D35)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.locator("[data-search-ready='true']").waitFor();
+    // The column is in the picker (it was missing before).
+    await page.getByText("Columns", { exact: true }).click();
+    await page.getByRole("checkbox", { name: "Mug Name" }).check();
+    await expect(page.getByRole("columnheader", { name: /Mug Name/ })).toBeVisible();
+    // Searching a mug-name word finds the brother and marks the matched word.
+    await page.getByRole("searchbox", { name: /name search/i }).fill("walrus");
+    const mugCell = page.getByRole("cell", { name: /Quantum Walrus/ });
+    await expect(mugCell.locator("mark")).toHaveText(/Walrus/i);
   });
 
   test("clicking a column header sorts, toggling direction and updating the URL", async ({

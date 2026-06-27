@@ -295,3 +295,80 @@ export const PLACES: readonly Place[] = [
   { city: "Munich", state: null, country: "DE" },
   { city: "Singapore", state: null, country: "SG" },
 ] as const;
+
+/**
+ * Word pools for whimsical fraternity **mug names** — the house nickname, often a
+ * playful, MIT-flavored phrase unrelated to a brother's real name (the PRD's
+ * "Hilbert Space Pilot," "Lissajous Figure"). Deliberately drawn from
+ * math/physics/engineering whimsy so they're obviously fake and never look like a
+ * real name; composed into one to three words by the generator. They exercise
+ * Name Search over the mug-name field, including multi-word mug names (D35).
+ */
+export const MUG_ADJECTIVES: readonly string[] = [
+  "Quantum",
+  "Tangential",
+  "Recursive",
+  "Asymptotic",
+  "Stochastic",
+  "Hyperbolic",
+  "Orthogonal",
+  "Photonic",
+  "Entropic",
+  "Inverted",
+  "Spurious",
+  "Damped",
+  "Resonant",
+  "Nonlinear",
+  "Adiabatic",
+  "Turbo",
+  "Subsonic",
+  "Cryogenic",
+  "Fractal",
+  "Ballistic",
+];
+
+export const MUG_NOUNS: readonly string[] = [
+  "Pilot",
+  "Figure",
+  "Vector",
+  "Gradient",
+  "Manifold",
+  "Cantilever",
+  "Oscillator",
+  "Goose",
+  "Walrus",
+  "Hovercraft",
+  "Tesseract",
+  "Capacitor",
+  "Phoenix",
+  "Mongoose",
+  "Sasquatch",
+  "Comet",
+  "Gizmo",
+  "Llama",
+  "Dynamo",
+  "Wombat",
+];
+
+export const MUG_SINGLE_WORDS: readonly string[] = [
+  "Lissajous",
+  "Hilbert",
+  "Maxwell",
+  "Schrodinger",
+  "Bernoulli",
+  "Babbage",
+  "Fourier",
+  "Archimedes",
+  "Pythagoras",
+  "Mjolnir",
+  "Voltron",
+  "Zeppelin",
+  "Kraken",
+  "Nimbus",
+  "Boson",
+  "Quark",
+  "Photon",
+  "Tardigrade",
+  "Catalyst",
+  "Paradox",
+];

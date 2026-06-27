@@ -15,4 +15,16 @@ export type SearchRequest =
 /** Worker → main thread. */
 export type SearchResponse =
   | { type: "ready" }
-  | { type: "result"; seq: number; query: string; ids: number[] | null };
+  | {
+      type: "result";
+      seq: number;
+      query: string;
+      ids: number[] | null;
+      /**
+       * Per matched brother, the folded name tokens that matched — so the main
+       * thread can highlight the right words across every name column (including
+       * phonetic matches it can't recompute and matches on non-displayed fields).
+       * `null` for an empty query. `Map`/`Set` survive structured clone.
+       */
+      tokens: Map<number, Set<string>> | null;
+    };
