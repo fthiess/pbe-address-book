@@ -7,6 +7,7 @@ import { Avatar } from "./Avatar.js";
 import { PrivacyFooter } from "./PrivacyFooter.js";
 import { RoleBadge } from "./RoleBadge.js";
 import { type Banner, SystemBanner } from "./SystemBanner.js";
+import { ThemeToggle } from "./ThemeToggle.js";
 
 /**
  * The persistent app shell (Phase 1b; PRD §5): the masthead with the crest,
@@ -36,6 +37,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
             <span className="text-base font-bold tracking-tight">PBE Address Book</span>
           </div>
           <div className="flex items-center gap-3">
+            <ThemeToggle />
             <RoleBadge role={me.role} />
             <details ref={menuRef} className="relative">
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full px-1 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">

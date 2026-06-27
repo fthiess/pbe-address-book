@@ -3,6 +3,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { SessionProvider, useSession } from "./auth/SessionContext.js";
 import { AppShell } from "./components/AppShell.js";
 import { LoadingOverlay } from "./components/LoadingOverlay.js";
+import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
 import { BrotherPlaceholder } from "./pages/BrotherPlaceholder.js";
@@ -47,15 +48,17 @@ function Gate() {
  */
 export function App() {
   return (
-    <BrowserRouter>
-      <NuqsAdapter>
-        <SessionProvider>
-          <Routes>
-            <Route path="/auth/callback" element={<AuthCallback />} />
-            <Route path="*" element={<Gate />} />
-          </Routes>
-        </SessionProvider>
-      </NuqsAdapter>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <NuqsAdapter>
+          <SessionProvider>
+            <Routes>
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="*" element={<Gate />} />
+            </Routes>
+          </SessionProvider>
+        </NuqsAdapter>
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }

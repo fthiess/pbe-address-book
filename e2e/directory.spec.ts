@@ -335,6 +335,14 @@ test.describe("signed-in directory", () => {
     await expect(page).toHaveURL(/cols=/);
   });
 
+  test("the theme toggle switches between light and dark", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: "Dark theme" }).click();
+    await expect(page.locator("html")).toHaveClass(/dark/);
+    await page.getByRole("button", { name: "Light theme" }).click();
+    await expect(page.locator("html")).not.toHaveClass(/dark/);
+  });
+
   test("has no detectable accessibility violations (axe, WCAG 2.2 AA)", async ({ page }) => {
     await gotoDirectory(page);
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
