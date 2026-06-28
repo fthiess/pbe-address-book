@@ -5,6 +5,7 @@ import { parseAsBoolean, useQueryState } from "nuqs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
+import { ClearButton } from "../components/ClearButton.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
 import { fetchProfiles } from "../lib/api.js";
 import type { DirectoryProfile } from "../lib/types.js";
@@ -218,15 +219,22 @@ export function Directory() {
             <label htmlFor="directory-search" className="mb-1 block text-xs font-medium">
               {help?.label ?? "Name Search"}
             </label>
-            <input
-              id="directory-search"
-              type="search"
-              value={q}
-              onChange={(event) => void setQ(event.target.value)}
-              placeholder={help?.placeholder}
-              aria-describedby="directory-search-help"
-              className="w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            />
+            <div className="relative">
+              <input
+                id="directory-search"
+                type="search"
+                value={q}
+                onChange={(event) => void setQ(event.target.value)}
+                placeholder={help?.placeholder}
+                aria-describedby="directory-search-help"
+                className="w-full rounded-lg border border-input bg-background px-3 py-2 pr-9 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+              {q !== "" && (
+                <span className="absolute inset-y-0 right-1 flex items-center">
+                  <ClearButton label={help?.label ?? "Name Search"} onClick={() => void setQ("")} />
+                </span>
+              )}
+            </div>
             <p id="directory-search-help" className="sr-only">
               {help?.helperText}
             </p>

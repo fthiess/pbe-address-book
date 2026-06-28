@@ -44,4 +44,10 @@
     color: var(--foreground);
     font-family: var(--font-sans);
   }
+  /* Suppress the browser-native search clear so the Name Search box uses the
+     same custom "×" (components/ClearButton) as the filter fields. */
+  input[type="search"]::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+  }
 }

@@ -131,6 +131,9 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: true,
     sortable: false,
+    // Fixed width like the Select/Star control columns — no resize handle (the
+    // photo box is a constant 64px; resizing it only ever obscured the avatar).
+    resizable: false,
     display: () => "",
     sortValue: () => null,
   },

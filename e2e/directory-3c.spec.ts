@@ -252,6 +252,24 @@ test.describe("Directory 3c — follow-up fixes", () => {
     await expect(page.getByText(/Membership upkeep/i)).toBeVisible();
     await expect(page.getByLabel("Verification")).toBeVisible();
   });
+
+  test("the Photo column has no resize separator (fixed width)", async ({ page }) => {
+    await gotoDirectory(page);
+    await expect(page.getByRole("separator", { name: /resize the photo/i })).toHaveCount(0);
+    // The data columns are still resizable.
+    await expect(page.getByRole("separator", { name: /resize the email/i })).toBeVisible();
+  });
+
+  test("the Name Search box uses the same custom clear control as the filters", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    const search = page.getByRole("searchbox", { name: /name search/i });
+    await search.fill("webster");
+    // The custom clear button (shared with the filters) appears and clears it.
+    await page.getByRole("button", { name: /clear name search/i }).click();
+    await expect(search).toHaveValue("");
+  });
 });
 
 test.describe("Directory 3c — accessibility", () => {

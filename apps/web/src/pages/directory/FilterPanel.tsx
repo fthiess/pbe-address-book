@@ -1,5 +1,6 @@
 import type { Role } from "@pbe/shared";
 import { useId, useState } from "react";
+import { ClearButton } from "../../components/ClearButton.js";
 import {
   type BoolFilter,
   type DirectoryFilters,
@@ -187,7 +188,9 @@ function Field({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center justify-between">
+      {/* min-h reserves the clear button's height so the row never shifts when
+          the "×" appears or disappears. */}
+      <div className="flex min-h-6 items-center justify-between">
         <label htmlFor={htmlFor} className="text-xs font-medium">
           {label}
         </label>
@@ -466,35 +469,6 @@ function VerificationSelect({
         <option value="never">Never verified</option>
       </select>
     </Field>
-  );
-}
-
-/** The small "×" clear control, shared by the inline inputs and the label rows. */
-function ClearButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      aria-label={`Clear ${label}`}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        onClick();
-      }}
-      className="flex size-6 items-center justify-center rounded text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <svg
-        width="14"
-        height="14"
-        viewBox="0 0 16 16"
-        aria-hidden="true"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-      >
-        <path d="M4 4l8 8M12 4l-8 8" />
-      </svg>
-    </button>
   );
 }
 
