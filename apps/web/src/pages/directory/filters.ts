@@ -1,4 +1,10 @@
-import { type Role, countryName, courseLabel, subdivisionName } from "@pbe/shared";
+import {
+  type Role,
+  compareCourseCodes,
+  countryName,
+  courseLabel,
+  subdivisionName,
+} from "@pbe/shared";
 import type { DirectoryProfile } from "../../lib/types.js";
 
 /**
@@ -289,8 +295,11 @@ export function collectFilterOptions(profiles: readonly DirectoryProfile[]): Fil
   const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.label);
   return {
     // Course options carry "code — Name" so the filter reads "6-3 — Computer
-    // Science and Engineering" rather than a bare code.
-    major: [...majors].map((value) => ({ value, label: courseLabel(value) })).sort(byLabel),
+    // Science and Engineering"; they sort by course NUMBER (2 before 10), not as
+    // strings — Country/State stay alphabetical by label.
+    major: [...majors]
+      .map((value) => ({ value, label: courseLabel(value) }))
+      .sort((a, b) => compareCourseCodes(a.value, b.value)),
     country: [...countries].map((value) => ({ value, label: countryName(value) })).sort(byLabel),
     stateProvince: [...states].map(([value, label]) => ({ value, label })).sort(byLabel),
   };

@@ -110,7 +110,8 @@ describe("collectFilterOptions", () => {
       p({ id: 1, majors: ["6-3"], address: { country: "US", stateProvince: "MA" } }),
       p({ id: 2, majors: ["18", "6-3"], address: { country: "CA", stateProvince: "ON" } }),
     ]);
-    expect(options.major.map((o) => o.value)).toEqual(["18", "6-3"]);
+    // Course options sort by course NUMBER (6 before 18), not as strings.
+    expect(options.major.map((o) => o.value)).toEqual(["6-3", "18"]);
     expect(options.country.map((o) => o.value).sort()).toEqual(["CA", "US"]);
     // State labels resolve through the controlled vocabulary.
     expect(options.stateProvince.find((o) => o.value === "MA")?.label).toContain("Massachusetts");

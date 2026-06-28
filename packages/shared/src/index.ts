@@ -49,4 +49,11 @@ export {
   partitionWritableFields,
 } from "./capabilities.js";
 export { profilesToCsv, neutralizeCsvCell } from "./csv.js";
-export { type Major, MAJORS, MAJOR_CODES, courseName, courseLabel } from "./majors.js";
+export {
+  type Major,
+  MAJORS,
+  MAJOR_CODES,
+  courseName,
+  courseLabel,
+  compareCourseCodes,
+} from "./majors.js";

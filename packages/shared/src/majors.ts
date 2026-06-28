@@ -57,3 +57,22 @@ export function courseLabel(code: string): string {
   const name = courseName(code);
   return name ? `${code} — ${name}` : code;
 }
+
+/**
+ * Order course codes the way MIT lists them — **numerically**, not as strings, so
+ * Course 2 precedes Course 10 (a plain string sort puts "10" before "2"). Compares
+ * the leading number first, then the dash sub-number (6-1 < 6-2 < 6-3, a bare "6"
+ * before its dashed variants). A non-numeric code falls back to a locale compare.
+ */
+export function compareCourseCodes(a: string, b: string): number {
+  const parse = (code: string): [number, number] => {
+    const [main, sub] = code.split("-");
+    return [Number.parseInt(main ?? "", 10), sub === undefined ? -1 : Number.parseInt(sub, 10)];
+  };
+  const [aMain, aSub] = parse(a);
+  const [bMain, bSub] = parse(b);
+  if (Number.isNaN(aMain) || Number.isNaN(bMain)) {
+    return a.localeCompare(b);
+  }
+  return aMain !== bMain ? aMain - bMain : aSub - bSub;
+}
