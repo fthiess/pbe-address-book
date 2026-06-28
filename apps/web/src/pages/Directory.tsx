@@ -124,7 +124,7 @@ export function Directory() {
 
   if (error) {
     return (
-      <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+      <p className="max-w-2xl rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
         We couldn't load the directory just now. Please refresh to try again.
       </p>
     );
@@ -167,7 +167,7 @@ export function Directory() {
       </div>
 
       {profiles && rows.length === 0 ? (
-        <p className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+        <p className="max-w-2xl rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
           {q.trim() === "" ? "No brothers to show." : `No brothers match “${q}”.`}
         </p>
       ) : wide ? (

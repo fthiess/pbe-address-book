@@ -44,6 +44,17 @@ describe("compareCanonical", () => {
   });
 });
 
+describe("classYear column display", () => {
+  it("renders the full 4-digit year, not the 'YY canonical form", () => {
+    expect(COLUMNS.classYear.display(row({ id: 1, classYear: 1972 }), "")).toBe("1972");
+    expect(COLUMNS.classYear.display(row({ id: 2, classYear: 2005 }), "")).toBe("2005");
+  });
+
+  it("shows the em-dash placeholder when the class year is unknown", () => {
+    expect(COLUMNS.classYear.display(row({ id: 3, classYear: null }), "")).toBe("—");
+  });
+});
+
 describe("makeComparator", () => {
   it("sorts the Name column by canonical order ascending and descending", () => {
     const rows = [

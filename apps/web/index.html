@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PBE Address Book</title>
     <!-- No-FOUC theme: set the .dark class before React paints, from the saved
-         preference or the OS setting (D30). The toggle UI lands in Phase 1. -->
+         preference or the OS setting (D30). -->
     <script>
       try {
         var saved = localStorage.getItem("book-theme");
@@ -16,6 +16,20 @@
         }
       } catch (e) {
         /* localStorage unavailable — fall back to the light default. */
+      }
+    </script>
+    <!-- No-FOUC font size: set the root font-size before React paints, from the
+         saved preference (PRD §5.3). Normal is the key's absence. The percentages
+         MUST match SCALE_PERCENT in src/lib/fontScale.ts. -->
+    <script>
+      try {
+        var size = localStorage.getItem("book-font-size");
+        var pct = size === "large" ? "112.5%" : size === "larger" ? "125%" : null;
+        if (pct) {
+          document.documentElement.style.fontSize = pct;
+        }
+      } catch (e) {
+        /* localStorage unavailable — fall back to the default size. */
       }
     </script>
   </head>

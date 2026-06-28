@@ -1,10 +1,4 @@
-import {
-  type Role,
-  countryName,
-  formatClassYear,
-  formatConstitutionId,
-  subdivisionName,
-} from "@pbe/shared";
+import { type Role, countryName, formatConstitutionId, subdivisionName } from "@pbe/shared";
 import type { DirectoryProfile } from "../../lib/types.js";
 
 /**
@@ -127,7 +121,9 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     sortable: true,
     // The numeric year as its own column is what makes it sortable and
     // range-filterable, which the 'YY token inside Canonical Name is not (§5.6.1).
-    display: (p) => (p.classYear == null ? EMPTY : formatClassYear(p.classYear)),
+    // Shown as the full 4-digit year here (e.g. "1972"); the apostrophe-two-digit
+    // 'YY form belongs only to the Canonical Name in the Name column.
+    display: (p) => (p.classYear == null ? EMPTY : String(p.classYear)),
     sortValue: (p) => p.classYear ?? null,
   },
   major: {

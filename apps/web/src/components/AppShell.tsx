@@ -4,6 +4,7 @@ import { useSession } from "../auth/SessionContext.js";
 import type { Me } from "../lib/types.js";
 import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
 import { Avatar } from "./Avatar.js";
+import { FontSizeToggle } from "./FontSizeToggle.js";
 import { PrivacyFooter } from "./PrivacyFooter.js";
 import { RoleBadge } from "./RoleBadge.js";
 import { type Banner, SystemBanner } from "./SystemBanner.js";
@@ -31,12 +32,13 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="border-b border-border bg-card">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-4 px-4 py-3">
+        <div className="flex w-full items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           <div className="flex items-center gap-2.5">
             <img src="/crest.svg" alt="" aria-hidden="true" className="size-7" />
             <span className="text-base font-bold tracking-tight">PBE Address Book</span>
           </div>
           <div className="flex items-center gap-3">
+            <FontSizeToggle />
             <ThemeToggle />
             <RoleBadge role={me.role} />
             <details ref={menuRef} className="relative">
@@ -63,7 +65,11 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
 
       <SystemBanner banner={banner} />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">{children}</main>
+      {/* Full-bleed by design: the Directory grid spans the whole viewport so the
+          widest column sets are visible without horizontal scroll. Reading-oriented
+          pages (sign-in, the future Profile page, the cards below) constrain their
+          own measure rather than relying on a shell-wide cap. */}
+      <main className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
 
       <PrivacyFooter />
     </div>

@@ -47,6 +47,23 @@ export const FAKE_ID_FLOOR = 5001;
 const CURRENT_YEAR = 2026;
 
 /**
+ * A deliberately planted **Canonical Name collision** (DATABASE-SCHEMA §5.1,
+ * D15): the first {@link COLLISION_COUNT} records are forced to share an
+ * identical first name, last name, AND class year, so the directory must
+ * disambiguate **both** of them by appending their Constitution ID — e.g.
+ * `William Evan '19 (#5001)` and `William Evan '19 (#5002)`. Without this, a
+ * collision only ever arises by random chance, which leaves the disambiguation
+ * path effectively untested. The planted brothers are also forced living,
+ * listed, and not de-brothered so both stay visible to every viewing role.
+ */
+export const COLLISION_IDENTITY = {
+  firstName: "William",
+  lastName: "Evan",
+  classYear: 2019,
+} as const;
+export const COLLISION_COUNT = 2;
+
+/**
  * The small course-code pool the fake `majors` are drawn from. These are the
  * codes the generated dataset uses; the test validates against exactly this set.
  */
@@ -239,15 +256,25 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
 
   for (let i = 0; i < count; i++) {
     const id = FAKE_ID_FLOOR + i;
-    const { firstName, lastName, middleName, mugName } = makeName(rng);
+    // The first COLLISION_COUNT records are planted with a shared identity to
+    // guarantee a Canonical Name collision the directory must disambiguate.
+    const planted = i < COLLISION_COUNT;
+    const generated = makeName(rng);
+    const { middleName, mugName } = generated;
+    const firstName = planted ? COLLISION_IDENTITY.firstName : generated.firstName;
+    const lastName = planted ? COLLISION_IDENTITY.lastName : generated.lastName;
 
-    // ~3% unknown class year (null), else a plausible graduation year.
-    const classYear = rng.chance(0.03) ? null : rng.int(1958, CURRENT_YEAR);
+    // ~3% unknown class year (null), else a plausible graduation year. The
+    // planted pair shares a fixed year so its members render an identical name.
+    const randomYear = rng.chance(0.03) ? null : rng.int(1958, CURRENT_YEAR);
+    const classYear = planted ? COLLISION_IDENTITY.classYear : randomYear;
 
     const age = classYear === null ? 40 : CURRENT_YEAR - classYear;
-    const isDeceased = rng.chance(Math.min(0.35, Math.max(0, (age - 35) * 0.012)));
+    // `&& !planted` keeps the planted pair living/listed without skipping the
+    // draw, so the PRNG stream — and every other record — stays byte-stable.
+    const isDeceased = rng.chance(Math.min(0.35, Math.max(0, (age - 35) * 0.012))) && !planted;
     // De-brothering is rare and orthogonal to everything else (D115).
-    const isDebrothered = rng.chance(0.005);
+    const isDebrothered = rng.chance(0.005) && !planted;
 
     const lastModified = timestampFrom(rng);
 
@@ -263,7 +290,8 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
       hasHeadshot: false,
       privacy: makePrivacy(rng),
       // ~3% of living brothers choose to be unlisted (D124); not deceased ones.
-      unlisted: !isDeceased && rng.chance(0.03),
+      // The planted collision pair is forced listed (the draw is still spent).
+      unlisted: !isDeceased && rng.chance(0.03) && !planted,
       // Deceased forces both consent flags off (D49).
       allowNewsletterEmail: !isDeceased && rng.chance(0.9),
       allowCommentReplyEmail: !isDeceased && rng.chance(0.9),

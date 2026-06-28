@@ -1,6 +1,13 @@
-import { validateProfile } from "@pbe/shared";
+import { resolveCanonicalNames, validateProfile } from "@pbe/shared";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_COUNT, FAKE_ID_FLOOR, FAKE_MAJOR_CODES, generateProfiles } from "./generate.js";
+import {
+  COLLISION_COUNT,
+  COLLISION_IDENTITY,
+  DEFAULT_COUNT,
+  FAKE_ID_FLOOR,
+  FAKE_MAJOR_CODES,
+  generateProfiles,
+} from "./generate.js";
 
 const VALID_MAJORS = new Set(FAKE_MAJOR_CODES);
 
@@ -71,6 +78,27 @@ describe("generateProfiles", () => {
     const deceased = profiles.filter((p) => p.deceased.isDeceased);
     expect(deceased.some((p) => p.deceased.dateOfDeath !== undefined)).toBe(true);
     expect(deceased.some((p) => p.deceased.deathYear !== undefined)).toBe(true);
+  });
+
+  it("plants a guaranteed Canonical Name collision that disambiguates by ID (§5.1)", () => {
+    const profiles = generateProfiles({ count: 300, seed: 5 });
+    const planted = profiles.slice(0, COLLISION_COUNT);
+    expect(planted).toHaveLength(2);
+    for (const profile of planted) {
+      // All planted records share one displayed identity (first, last, year)...
+      expect(profile.firstName).toBe(COLLISION_IDENTITY.firstName);
+      expect(profile.lastName).toBe(COLLISION_IDENTITY.lastName);
+      expect(profile.classYear).toBe(COLLISION_IDENTITY.classYear);
+      // ...and stay visible to every viewing role.
+      expect(profile.deceased.isDeceased).toBe(false);
+      expect(profile.unlisted).toBe(false);
+      expect(profile.debrothered.isDebrothered).toBe(false);
+    }
+    // ...so each resolves to the disambiguated `(#id)` form, never the bare name.
+    const names = resolveCanonicalNames(profiles);
+    for (const profile of planted) {
+      expect(names.get(profile.id)).toBe(`William Evan '19 (#${profile.id})`);
+    }
   });
 
   it("emits only records that pass the shared validation rules (§8)", () => {

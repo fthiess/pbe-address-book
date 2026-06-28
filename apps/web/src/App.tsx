@@ -2,6 +2,7 @@ import { NuqsAdapter } from "nuqs/adapters/react-router/v7";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { SessionProvider, useSession } from "./auth/SessionContext.js";
 import { AppShell } from "./components/AppShell.js";
+import { FontSizeProvider } from "./components/FontSizeProvider.js";
 import { LoadingOverlay } from "./components/LoadingOverlay.js";
 import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
@@ -49,16 +50,18 @@ function Gate() {
 export function App() {
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <NuqsAdapter>
-          <SessionProvider>
-            <Routes>
-              <Route path="/auth/callback" element={<AuthCallback />} />
-              <Route path="*" element={<Gate />} />
-            </Routes>
-          </SessionProvider>
-        </NuqsAdapter>
-      </BrowserRouter>
+      <FontSizeProvider>
+        <BrowserRouter>
+          <NuqsAdapter>
+            <SessionProvider>
+              <Routes>
+                <Route path="/auth/callback" element={<AuthCallback />} />
+                <Route path="*" element={<Gate />} />
+              </Routes>
+            </SessionProvider>
+          </NuqsAdapter>
+        </BrowserRouter>
+      </FontSizeProvider>
     </ThemeProvider>
   );
 }

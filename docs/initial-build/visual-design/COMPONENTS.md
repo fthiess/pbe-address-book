@@ -108,3 +108,6 @@ Circle with a radial-gradient ground tinted to the person's color family + white
 
 ## Theme switch
 Segmented control (☀ / ☾ / ◐ = light / dark / system) in the top bar — track `--secondary`, active segment #fff with a small shadow.
+
+## Font-size switch
+Segmented control sitting immediately left of the theme switch, same track/active treatment — three "A" glyphs growing left to right (A / A / A = Normal / Large / Larger) that scale the document root font-size (100% / 112.5% / 125%), so the whole rem-sized UI grows proportionally (PRD §5.3; restored in Phase 3b-2 after being dropped from the original visual pass — DECISIONS N24). Each segment carries a descriptive accessible name ("Normal text size", …) since the letter alone is ambiguous; ≥24px targets, `aria-pressed` on the active step.
