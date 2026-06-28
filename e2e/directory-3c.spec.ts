@@ -210,6 +210,50 @@ test.describe("Directory 3c — role gating", () => {
   });
 });
 
+test.describe("Directory 3c — follow-up fixes", () => {
+  test("a row Select checkbox toggles without opening the profile", async ({ page }) => {
+    await gotoDirectory(page);
+    const box = page.getByRole("checkbox", { name: /^Select Aaron Adams/ });
+    await box.check();
+    await expect(box).toBeChecked();
+    // The selection click must NOT have navigated to the profile (the bug).
+    await expect(page).not.toHaveURL(/\/brother\//);
+    // ...and the selection feeds the export scope.
+    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+  });
+
+  test("a filter field's clear button empties it", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    const year = page.getByLabel("Class Year");
+    await year.fill("1984");
+    await page.getByRole("button", { name: "Clear Class Year" }).click();
+    await expect(year).toHaveValue("");
+  });
+
+  test("the Course filter shows the course name, not just the code", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    // Course is the first multi-select; open its disclosure and confirm a named option.
+    await page.locator("summary").filter({ hasText: "Any" }).first().click();
+    await expect(
+      page.getByRole("checkbox", { name: /6-3 — Computer Science and Engineering/ }),
+    ).toBeVisible();
+  });
+
+  test("a course chip carries the full course name on hover (title)", async ({ page }) => {
+    await gotoDirectory(page);
+    await expect(page.getByTitle("6-3 — Computer Science and Engineering")).toBeVisible();
+  });
+
+  test("staff filters sit under the 'Membership upkeep' divider (admin)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    await expect(page.getByText(/Membership upkeep/i)).toBeVisible();
+    await expect(page.getByLabel("Verification")).toBeVisible();
+  });
+});
+
 test.describe("Directory 3c — accessibility", () => {
   test("the open filter panel has no axe violations (WCAG 2.2 AA)", async ({ page }) => {
     await gotoDirectory(page);

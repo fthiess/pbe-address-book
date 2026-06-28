@@ -1,4 +1,4 @@
-import { resolveCanonicalNames, validateProfile } from "@pbe/shared";
+import { MAJOR_CODES, resolveCanonicalNames, validateProfile } from "@pbe/shared";
 import { describe, expect, it } from "vitest";
 import {
   COLLISION_COUNT,
@@ -10,6 +10,17 @@ import {
 } from "./generate.js";
 
 const VALID_MAJORS = new Set(FAKE_MAJOR_CODES);
+
+// Every code the generator emits must exist in the shared course vocabulary, so
+// the Course filter and chips can always resolve a display name (no bare orphan).
+describe("course vocabulary coverage", () => {
+  it("every generated course code has a name in the shared vocabulary", () => {
+    const known = new Set(MAJOR_CODES);
+    for (const code of FAKE_MAJOR_CODES) {
+      expect(known.has(code)).toBe(true);
+    }
+  });
+});
 
 describe("generateProfiles", () => {
   it("is deterministic for a given seed", () => {

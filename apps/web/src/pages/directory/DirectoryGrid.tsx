@@ -622,14 +622,19 @@ function Cell({
     column.align === "end" ? "text-right tabular-nums" : "text-left",
   );
 
+  // The control cells carry no padding, so the Star/Select control fills the cell
+  // and there is no dead zone that would fall through to the row's open-profile click.
+  const controlCell = cn("border-b border-border p-0 align-middle bg-[var(--row-bg)]");
+
   if (column.key === "select") {
     return (
-      <td aria-colindex={colIndex} className={common} style={frozenStyle(left, false)}>
+      <td aria-colindex={colIndex} className={controlCell} style={frozenStyle(left, false)}>
         {selection && (
           <SelectCheckbox
             checked={selection.isSelected(profile.id)}
             label={`Select ${name}`}
             onToggle={() => selection.toggle(profile.id)}
+            fill
           />
         )}
       </td>
@@ -638,11 +643,12 @@ function Cell({
 
   if (column.key === "star") {
     return (
-      <td aria-colindex={colIndex} className={common} style={frozenStyle(left, false)}>
+      <td aria-colindex={colIndex} className={controlCell} style={frozenStyle(left, false)}>
         <StarButton
           starred={stars.isStarred(profile.id)}
           name={name}
           onToggle={() => stars.toggle(profile.id)}
+          fill
         />
       </td>
     );

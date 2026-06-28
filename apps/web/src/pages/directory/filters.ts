@@ -1,4 +1,4 @@
-import { type Role, countryName, subdivisionName } from "@pbe/shared";
+import { type Role, countryName, courseLabel, subdivisionName } from "@pbe/shared";
 import type { DirectoryProfile } from "../../lib/types.js";
 
 /**
@@ -288,7 +288,9 @@ export function collectFilterOptions(profiles: readonly DirectoryProfile[]): Fil
 
   const byLabel = (a: FilterOption, b: FilterOption) => a.label.localeCompare(b.label);
   return {
-    major: [...majors].map((value) => ({ value, label: value })).sort(byLabel),
+    // Course options carry "code — Name" so the filter reads "6-3 — Computer
+    // Science and Engineering" rather than a bare code.
+    major: [...majors].map((value) => ({ value, label: courseLabel(value) })).sort(byLabel),
     country: [...countries].map((value) => ({ value, label: countryName(value) })).sort(byLabel),
     stateProvince: [...states].map(([value, label]) => ({ value, label })).sort(byLabel),
   };

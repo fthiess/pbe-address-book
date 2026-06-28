@@ -16,11 +16,13 @@ import {
  * (column headers stay reserved for sorting) of typed controls — numeric-grammar
  * text, multi-selects drawn from the data, a substring box, and the staff-only
  * presence/consent/verification controls. "Filterable ⟺ visible": the staff
- * controls appear only for managers/admins, the same gate as their columns.
+ * controls appear only for managers/admins, the same gate as their columns, and
+ * are set apart under a labeled divider so the all-brother filters read cleanly.
  *
  * Built from native form controls (selects, checkboxes, text/date inputs) — the
- * most robust path for the WCAG 2.2 AA gate and the 60+ audience (D79), with no
- * custom popover/listbox to keyboard-trap.
+ * most robust path for the WCAG 2.2 AA gate and the 60+ audience (D79). Every
+ * field carries a **clear** affordance (an "×", echoing the search box) that
+ * appears only when the field is constraining the view.
  */
 export interface FilterPanelProps {
   filters: DirectoryFilters;
@@ -109,9 +111,14 @@ export function FilterPanel({
               value={filters.city}
               onChange={(v) => setFilter("city", v)}
             />
+          </div>
 
-            {staff && (
-              <>
+          {staff && (
+            <div className="mt-6 border-border border-t pt-4">
+              <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Membership upkeep · managers &amp; admins
+              </p>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
                 <PresenceSelect
                   label="Email"
                   value={filters.email}
@@ -146,9 +153,9 @@ export function FilterPanel({
                   value={filters.verifiedBefore}
                   onChange={(v) => setFilter("verifiedBefore", v)}
                 />
-              </>
-            )}
-          </div>
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 flex justify-end">
             <button
@@ -166,17 +173,26 @@ export function FilterPanel({
   );
 }
 
-/** Shared label + control wrapper, so every filter field reads consistently. */
+/** Label row with an optional top-right Clear "×" (shown when the field is set). */
 function Field({
   label,
   htmlFor,
+  onClear,
   children,
-}: { label: string; htmlFor?: string; children: React.ReactNode }) {
+}: {
+  label: string;
+  htmlFor?: string;
+  onClear?: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={htmlFor} className="text-xs font-medium">
-        {label}
-      </label>
+      <div className="flex items-center justify-between">
+        <label htmlFor={htmlFor} className="text-xs font-medium">
+          {label}
+        </label>
+        {onClear && <ClearButton label={label} onClick={onClear} />}
+      </div>
       {children}
     </div>
   );
@@ -185,6 +201,7 @@ function Field({
 const inputClass =
   "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
+/** A text field with an inline trailing "×" clear, echoing the Name Search box. */
 function TextFilter({
   label,
   placeholder,
@@ -199,19 +216,19 @@ function TextFilter({
   const id = useId();
   return (
     <Field label={label} htmlFor={id}>
-      <input
+      <ClearableInput
         id={id}
         type="text"
+        label={label}
         value={value}
         placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-        className={inputClass}
+        onChange={onChange}
       />
     </Field>
   );
 }
 
-/** A numeric-grammar text field that flags unparseable tokens inline (§5.6.4). */
+/** A numeric-grammar text field with an inline clear that flags bad tokens inline (§5.6.4). */
 function NumericFilter({
   label,
   placeholder,
@@ -229,16 +246,16 @@ function NumericFilter({
   const hasErrors = errors.length > 0;
   return (
     <Field label={label} htmlFor={id}>
-      <input
+      <ClearableInput
         id={id}
         type="text"
         inputMode="numeric"
+        label={label}
         value={value}
         placeholder={placeholder}
+        onChange={onChange}
         aria-invalid={hasErrors}
         aria-describedby={hasErrors ? errorId : undefined}
-        onChange={(e) => onChange(e.target.value)}
-        className={inputClass}
       />
       {hasErrors && (
         <p id={errorId} className="text-xs text-destructive">
@@ -249,6 +266,7 @@ function NumericFilter({
   );
 }
 
+/** A date field; its clear lives in the label row (the native picker owns the right edge). */
 function DateFilter({
   label,
   value,
@@ -260,7 +278,7 @@ function DateFilter({
 }) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} onClear={value ? () => onChange("") : undefined}>
       <input
         id={id}
         type="date"
@@ -269,6 +287,48 @@ function DateFilter({
         className={inputClass}
       />
     </Field>
+  );
+}
+
+/** A text/numeric input with an absolutely-positioned trailing "×" when non-empty. */
+function ClearableInput({
+  id,
+  type,
+  label,
+  value,
+  placeholder,
+  inputMode,
+  onChange,
+  ...aria
+}: {
+  id: string;
+  type: "text";
+  label: string;
+  value: string;
+  placeholder?: string;
+  inputMode?: "numeric";
+  onChange: (value: string) => void;
+  "aria-invalid"?: boolean;
+  "aria-describedby"?: string;
+}) {
+  return (
+    <div className="relative">
+      <input
+        id={id}
+        type={type}
+        inputMode={inputMode}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className={`${inputClass} pr-9`}
+        {...aria}
+      />
+      {value !== "" && (
+        <span className="absolute inset-y-0 right-1 flex items-center">
+          <ClearButton label={label} onClick={() => onChange("")} />
+        </span>
+      )}
+    </div>
   );
 }
 
@@ -302,7 +362,7 @@ function MultiSelectFilter({
         : `${selected.length} selected`;
 
   return (
-    <Field label={label}>
+    <Field label={label} onClear={selected.length > 0 ? () => onChange([]) : undefined}>
       <details className="rounded-lg border border-input bg-background">
         <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className={selected.length === 0 ? "text-muted-foreground" : undefined}>
@@ -344,7 +404,7 @@ function PresenceSelect({
 }) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} onClear={value ? () => onChange("") : undefined}>
       <select
         id={id}
         value={value}
@@ -370,7 +430,7 @@ function BoolSelect({
 }) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} onClear={value ? () => onChange("") : undefined}>
       <select
         id={id}
         value={value}
@@ -394,7 +454,7 @@ function VerificationSelect({
 }) {
   const id = useId();
   return (
-    <Field label="Verification" htmlFor={id}>
+    <Field label="Verification" htmlFor={id} onClear={value ? () => onChange("") : undefined}>
       <select
         id={id}
         value={value}
@@ -406,6 +466,35 @@ function VerificationSelect({
         <option value="never">Never verified</option>
       </select>
     </Field>
+  );
+}
+
+/** The small "×" clear control, shared by the inline inputs and the label rows. */
+function ClearButton({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Clear ${label}`}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+      className="flex size-6 items-center justify-center rounded text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <svg
+        width="14"
+        height="14"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      >
+        <path d="M4 4l8 8M12 4l-8 8" />
+      </svg>
+    </button>
   );
 }
 

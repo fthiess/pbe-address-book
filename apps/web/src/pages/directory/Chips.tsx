@@ -1,3 +1,5 @@
+import { courseLabel, courseName } from "@pbe/shared";
+
 /**
  * The Directory's small chips and status badges (visual-design `COMPONENTS.md`).
  * Each carries its meaning in *text* — colour is only reinforcement, never the
@@ -41,10 +43,15 @@ function familyStyle(family: ChipFamily) {
  * everything else → slate). The code text carries the meaning.
  */
 export function CourseChip({ code }: { code: string }) {
+  // The course number is the visible label (how MIT majors are named); the full
+  // course name augments it on hover (native tooltip) and in the accessible name.
+  const name = courseName(code);
   return (
     <span
       className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums"
       style={familyStyle(courseFamily(code))}
+      title={courseLabel(code)}
+      aria-label={name ? `Course ${code}, ${name}` : `Course ${code}`}
     >
       {code}
     </span>

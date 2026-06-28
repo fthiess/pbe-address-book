@@ -3,14 +3,17 @@ import type { MouseEvent } from "react";
 /**
  * The interactive pinned-cell controls — the universal **Star** toggle (§5.6.6,
  * D39) and the manager/admin **Select** checkbox (§5.6.8, D41). Both sit inside a
- * clickable row, so both stop propagation: starring or selecting must never also
- * open the profile (§5.6.7). State is shown by shape **and** fill (and an
- * accessible label / pressed state), never colour alone (D32).
+ * clickable row, so both **stop propagation** so starring or selecting never also
+ * opens the profile (§5.6.7) — but they must NOT `preventDefault` (that would
+ * cancel the checkbox's own toggle). In the grid each control **fills its cell**
+ * (`fill`) so the whole cell is a comfortable target (≥24px, WCAG 2.5.8) with no
+ * dead padding that could fall through to the row's open-profile click; in the
+ * card overlay they keep their intrinsic size. State is shown by shape + fill
+ * (and an accessible label / pressed state), never colour alone (D32).
  */
 
-/** Swallow the row's click/navigation so a control action stays just that. */
-function stop(event: MouseEvent): void {
-  event.preventDefault();
+/** Keep a control's click from bubbling to the row's open-profile handler. */
+function stopRowOpen(event: MouseEvent): void {
   event.stopPropagation();
 }
 
@@ -18,11 +21,14 @@ export function StarButton({
   starred,
   name,
   onToggle,
+  fill = false,
 }: {
   starred: boolean;
   /** The brother's name, woven into the accessible label for context. */
   name: string;
   onToggle: () => void;
+  /** Fill the parent cell (the grid) vs. keep an intrinsic 32px size (the card). */
+  fill?: boolean;
 }) {
   return (
     <button
@@ -30,10 +36,12 @@ export function StarButton({
       aria-pressed={starred}
       aria-label={starred ? `Starred: ${name}. Activate to unstar.` : `Star ${name}.`}
       onClick={(event) => {
-        stop(event);
+        stopRowOpen(event);
         onToggle();
       }}
-      className="flex size-8 items-center justify-center rounded outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+      className={`flex items-center justify-center rounded outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+        fill ? "size-full" : "size-8"
+      }`}
     >
       <StarIcon filled={starred} />
     </button>
@@ -63,19 +71,27 @@ export function SelectCheckbox({
   checked,
   label,
   onToggle,
+  fill = false,
 }: {
   checked: boolean;
   label: string;
   onToggle: () => void;
+  /** Fill the parent cell (the grid) vs. keep an intrinsic 32px size (the card). */
+  fill?: boolean;
 }) {
   return (
-    <input
-      type="checkbox"
-      checked={checked}
-      aria-label={label}
-      onClick={stop}
-      onChange={onToggle}
-      className="size-4 cursor-pointer rounded border-input accent-[var(--brand-gold)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    />
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the label is only a click-propagation guard around a natively-interactive, keyboard-reachable checkbox — activation and keyboard both go through the <input>; the label just keeps a selection click from opening the row's profile (§5.6.7).
+    <label
+      className={`flex cursor-pointer items-center justify-center ${fill ? "size-full" : "size-8"}`}
+      onClick={stopRowOpen}
+    >
+      <input
+        type="checkbox"
+        checked={checked}
+        aria-label={label}
+        onChange={onToggle}
+        className="size-4 cursor-pointer rounded border-input accent-[var(--brand-gold)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      />
+    </label>
   );
 }
