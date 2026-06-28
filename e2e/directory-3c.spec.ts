@@ -270,6 +270,18 @@ test.describe("Directory 3c — follow-up fixes", () => {
     await page.getByRole("button", { name: /clear name search/i }).click();
     await expect(search).toHaveValue("");
   });
+
+  test("the date filter adopts a dark color-scheme so its calendar icon stays visible", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: "Dark theme" }).click();
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    const scheme = await page
+      .getByLabel("Not verified since")
+      .evaluate((el) => getComputedStyle(el).colorScheme);
+    expect(scheme).toBe("dark");
+  });
 });
 
 test.describe("Directory 3c — accessibility", () => {

@@ -50,4 +50,10 @@
     -webkit-appearance: none;
     appearance: none;
   }
+  /* In dark mode, tell the browser native form controls are dark so their
+     UA-drawn parts adapt — notably the date input's calendar-picker indicator
+     and its popup, which otherwise stay black and nearly vanish on a dark field. */
+  .dark input[type="date"] {
+    color-scheme: dark;
+  }
 }
