@@ -77,10 +77,14 @@ await profileRef.update({
   deceased: { isDeceased: false },
 });
 // Grant the linked profile the admin role so the tester can exercise everything.
+// MERGE (not a full set) so the tester's existing `stars` survive — this script
+// runs on every deploy (the N18 autoseed), and a full set would wipe the star
+// list each time. An absent doc is created with just {id, role}; `getStars`
+// treats a missing `stars` field as [], and the first star write creates it.
 await db
   .collection("users")
   .doc(String(profileId))
-  .set({ id: profileId, role: "admin", stars: [] });
+  .set({ id: profileId, role: "admin" }, { merge: true });
 
 console.log(
   `Linked ${email} → fake profile #${profileId} ("${profile.firstName} ${profile.lastName}") as admin in ${projectId}. Let the staging API cold-start (or redeploy) so it re-indexes the new email.`,
