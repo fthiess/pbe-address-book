@@ -145,7 +145,7 @@ export function Directory() {
         </div>
 
         <div className="flex items-end gap-2">
-          <div className="w-full sm:w-64">
+          <div className="w-full sm:w-72">
             <label htmlFor="directory-search" className="mb-1 block text-xs font-medium">
               {help?.label ?? "Name Search"}
             </label>

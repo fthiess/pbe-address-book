@@ -15,11 +15,13 @@ export const helpContent: HelpContent = {
     key: "directory.search",
     label: "Name Search",
     // Accurate to the field's real function (D35/D123): name fields only, with
-    // typo, sound-alike, and common-nickname tolerance. The placeholder gives a
-    // light, accurate example and never carries essential instructions (D111/§5.9).
+    // typo, sound-alike, and common-nickname tolerance. The placeholder stays
+    // short so it never clips inside the field (placeholders can't scroll); the
+    // example and capabilities live in helperText, never carried as essential
+    // instructions in the placeholder (D111/§5.9).
     helperText:
       "Find brothers by name — handles typos, sound-alikes, and nicknames (Bill finds William).",
-    placeholder: "Search by name — e.g. Smyth, or Bill",
+    placeholder: "Search by name…",
   },
   "directory.columns": {
     key: "directory.columns",
