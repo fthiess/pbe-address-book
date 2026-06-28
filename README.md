@@ -74,6 +74,9 @@ npm run test:emulator   # Vitest with the Firestore emulator running
 npm run seed         # seed the deterministic fake dataset into the emulator
 npm run e2e          # Playwright end-to-end
 npm run verify:gate  # the full tests-green gate, end to end
+
+npm run ci:timing            # per-step timing for the latest CI + deploy runs
+npm run ci:timing -- --runs 10   # trend across the last 10 runs (spot pipeline regressions)
 ```
 
 ## Running the app locally
