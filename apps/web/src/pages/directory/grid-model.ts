@@ -18,7 +18,9 @@ import type { DirectoryProfile } from "../../lib/types.js";
 
 /** Every column the grid can show, keyed by a stable id (also its lens key). */
 export type ColumnKey =
-  // Frozen identity block (always present, left, non-reorderable):
+  // Frozen pinned block (always present, left, non-reorderable):
+  | "select" // manager/admin row-selection checkbox (capability-gated)
+  | "star" // universal personal-favorite toggle
   | "thumbnail"
   | "name"
   // Role-identical default data columns (§5.6.1):
@@ -63,6 +65,8 @@ export interface GridColumn {
   align: ColumnAlign;
   pinned: boolean;
   sortable: boolean;
+  /** Whether the column can be resized (default true; false for the fixed control columns). */
+  resizable?: boolean;
   /** Roles allowed to see/select this column; omitted = every role. */
   roles?: readonly Role[];
   /** The cell's display string. `name` is the resolved Canonical Name (passed in). */
@@ -70,6 +74,10 @@ export interface GridColumn {
   /** The comparable sort key, or null when the value is absent/unknown. */
   sortValue: (profile: DirectoryProfile) => string | number | null;
 }
+
+/** The resize bounds shared by the lens, the resize handle, and auto-fit (N16/N27). */
+export const MIN_COLUMN_WIDTH = 64;
+export const MAX_COLUMN_WIDTH = 640;
 
 /** A brother's primary major is the first entry in his (owner-ordered) list (§5.6.1). */
 function primaryMajor(profile: DirectoryProfile): string | null {
@@ -87,6 +95,34 @@ const STAFF: readonly Role[] = ["manager", "admin"];
  * iteration order only seeds the default and the lens menu.
  */
 export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
+  select: {
+    key: "select",
+    label: "Select",
+    group: "pinned",
+    width: 44,
+    align: "start",
+    pinned: true,
+    sortable: false,
+    resizable: false,
+    // Manager/admin-only row selection for Export (§5.6.8); a single capability
+    // predicate (`canSelectRows`) gates it, not scattered role checks (D33).
+    roles: STAFF,
+    display: () => "",
+    sortValue: () => null,
+  },
+  star: {
+    key: "star",
+    label: "Star",
+    group: "pinned",
+    width: 44,
+    align: "start",
+    pinned: true,
+    sortable: false,
+    resizable: false,
+    // The universal personal-favorite toggle, shown to every role (§5.6.6, D39).
+    display: () => "",
+    sortValue: () => null,
+  },
   thumbnail: {
     key: "thumbnail",
     label: "Photo",
@@ -317,8 +353,30 @@ function boolRank(value: boolean | undefined): number | null {
   return value === undefined ? null : value ? 1 : 0;
 }
 
-/** The two frozen identity columns, in fixed left-to-right order (§5.6.1). */
-export const PINNED_KEYS: readonly ColumnKey[] = ["thumbnail", "name"];
+/**
+ * The single capability predicate for the manager/admin **Select** column and
+ * its action bar (D33/D41): one place to decide "may this role select rows,"
+ * rather than role checks scattered through the grid — so the deferred
+ * "share this selection" feature (PRD §3.2) can enable selection for everyone
+ * with a one-line change here.
+ */
+export function canSelectRows(role: Role): boolean {
+  return role === "manager" || role === "admin";
+}
+
+/**
+ * The frozen pinned columns in fixed left-to-right order (§5.6.1): the
+ * capability-gated **Select**, the universal **Star**, then the **Thumbnail** and
+ * **Canonical Name** identity block. These never appear in the lens (they are
+ * always present, never reordered) and freeze as a contiguous block on
+ * horizontal scroll.
+ */
+export function pinnedColumnsForRole(role: Role): GridColumn[] {
+  const keys: ColumnKey[] = canSelectRows(role)
+    ? ["select", "star", "thumbnail", "name"]
+    : ["star", "thumbnail", "name"];
+  return keys.map((key) => COLUMNS[key]);
+}
 
 /**
  * The default visible data columns, the *same set for every role* (§5.6.1), so

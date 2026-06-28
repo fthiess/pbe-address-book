@@ -5,6 +5,8 @@ import {
   COLUMNS,
   type ColumnKey,
   DEFAULT_DATA_KEYS,
+  MAX_COLUMN_WIDTH,
+  MIN_COLUMN_WIDTH,
   columnAllowsRole,
   selectableColumns,
 } from "./grid-model.js";
@@ -28,8 +30,8 @@ import {
  */
 
 const STORAGE_KEY = "pbe.book.directory.columns.v1";
-const MIN_WIDTH = 64;
-const MAX_WIDTH = 640;
+const MIN_WIDTH = MIN_COLUMN_WIDTH;
+const MAX_WIDTH = MAX_COLUMN_WIDTH;
 
 /** The active lens: visible data columns in order, plus per-column width overrides. */
 interface Lens {

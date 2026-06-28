@@ -18,6 +18,7 @@ import {
   projectSelf,
 } from "../projection/projection.js";
 import { negotiateEncoding } from "./encoding.js";
+import { traceId } from "./trace.js";
 
 /** A clock seam so the write path's timestamps stay deterministic under test. */
 export type Clock = () => Date;
@@ -286,16 +287,6 @@ function parseId(request: FastifyRequest): number | null {
   const raw = (request.params as { id?: string }).id;
   const id = Number(raw);
   return Number.isInteger(id) && id > 0 ? id : null;
-}
-
-/** Extract the Cloud Run request-correlation id from `X-Cloud-Trace-Context` (D99). */
-function traceId(request: FastifyRequest): string | undefined {
-  const header = request.headers["x-cloud-trace-context"];
-  if (typeof header !== "string") {
-    return undefined;
-  }
-  const id = header.split("/")[0] ?? "";
-  return id.length > 0 ? id : undefined;
 }
 
 /**

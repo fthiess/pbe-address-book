@@ -27,6 +27,8 @@ export interface DirectorySort {
   direction: SortDirection;
   /** Header click: a new column sorts ascending; the active column toggles direction. */
   toggleSort: (key: ColumnKey) => void;
+  /** Restore the default sort (Canonical Name ascending) — used by Reset (D38). */
+  reset: () => void;
 }
 
 export function useDirectorySort(): DirectorySort {
@@ -59,5 +61,13 @@ export function useDirectorySort(): DirectorySort {
     [sortKey, direction, setKey, setDir],
   );
 
-  return useMemo(() => ({ sortKey, direction, toggleSort }), [sortKey, direction, toggleSort]);
+  const reset = useCallback(() => {
+    void setKey(null);
+    void setDir(null);
+  }, [setKey, setDir]);
+
+  return useMemo(
+    () => ({ sortKey, direction, toggleSort, reset }),
+    [sortKey, direction, toggleSort, reset],
+  );
 }

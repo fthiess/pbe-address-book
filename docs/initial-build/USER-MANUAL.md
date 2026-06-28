@@ -54,7 +54,7 @@ Another brother's profile shows the contact information he has chosen to share. 
 
 ## 6. For managers
 
-If you help maintain the membership, you may have a **manager** role, which the badge by your name will show. Managers see everything a brother sees, plus a few additional fields that help with membership upkeep, and managers can **export** a filtered list from the Directory for offline work. Managers see a brother's privacy and consent settings and the dates on his record, but — like everyone else — a manager does not see a contact detail a brother has chosen to keep private; only an administrator can see through those settings. Managers can correct a brother's information; note that correcting another brother's profile removes its "verified" mark, because only the brother himself can confirm his own details.
+If you help maintain the membership, you may have a **manager** role, which the badge by your name will show. Managers see everything a brother sees, plus a few additional fields that help with membership upkeep, and managers can **export** a list from the Directory for offline work. A slim action bar above the grid carries **Export CSV**: it produces a spreadsheet of the rows you have **selected** (using the checkbox column at the left edge, with a select-all in its header), or — if you've selected nothing — of the whole list as you've currently filtered it. The export contains only the information your role is allowed to see, never photographs. Managers see a brother's privacy and consent settings and the dates on his record, but — like everyone else — a manager does not see a contact detail a brother has chosen to keep private; only an administrator can see through those settings. Managers can correct a brother's information; note that correcting another brother's profile removes its "verified" mark, because only the brother himself can confirm his own details.
 
 ## 7. For administrators
 
@@ -95,6 +95,7 @@ Book is built to be comfortable to read and operate:
 - **Dark mode.** Switch between a light and a dark appearance, or let Book follow your device's setting.
 - **Font size.** Make the text larger in a few steps; the whole interface, including the help icons, grows with it.
 - **Keyboard.** Everything in Book can be operated from the keyboard, in a sensible order, without a mouse.
+- **Column widths.** In the Directory you can widen or narrow any data column by dragging the divider at its right edge — or, from the keyboard, by focusing the divider and using the arrow keys. **Double-click** the divider (or press **Enter** on it) to size the column automatically to its widest entry. Your column choices and widths are remembered.
 - **Screen readers.** Labels and help text are announced by screen readers, and the help bubbles read their contents aloud when opened.
 
 These settings are remembered on the device you set them on.

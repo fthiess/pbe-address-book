@@ -64,6 +64,8 @@ async function buildAuthServer(withBridge = true) {
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [42],
+    addStar: async () => [42],
+    removeStar: async () => [42],
     cookie: { secure: true },
     ghostBridge: withBridge ? { url: "https://pbe400.org/book", target: "staging" } : undefined,
   });

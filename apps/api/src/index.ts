@@ -15,7 +15,7 @@
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
 import { FirestoreProfileStore } from "./data/profiles.js";
-import { ensureUser, getUser } from "./data/users.js";
+import { addStar, ensureUser, getUser, removeStar } from "./data/users.js";
 import { createGhostKeyResolver } from "./identity/ghost-jwks.js";
 import { GhostIdentityProvider } from "./identity/ghost-provider.js";
 import { NonceStore } from "./identity/nonce-store.js";
@@ -64,6 +64,8 @@ async function main(): Promise<void> {
     sessionStore,
     nonceStore,
     getStars: async (profileId) => (await getUser(db, profileId))?.stars ?? [],
+    addStar: (profileId, starId) => addStar(db, profileId, starId),
+    removeStar: (profileId, starId) => removeStar(db, profileId, starId),
     cookie: { secure: true },
     ghostBridge: { url: GHOST_BRIDGE_URL, target: GHOST_BRIDGE_TARGET },
   });

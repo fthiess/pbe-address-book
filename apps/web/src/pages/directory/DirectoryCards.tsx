@@ -5,11 +5,14 @@ import { Link } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
+import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { GridColumn } from "./grid-model.js";
 import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
 import { useScrollRestoration } from "./useScrollRestoration.js";
+import type { Selection } from "./useSelection.js";
+import type { Stars } from "./useStars.js";
 
 /**
  * The Directory's small-screen layout (§5.5/§5.6.9): below `md` the grid
@@ -33,6 +36,10 @@ export interface DirectoryCardsProps {
   /** Character ranges to mark in a brother's name-column text for the active search (D35). */
   highlight: (display: string, profileId: number) => HighlightRange[];
   myId: number | null;
+  /** The viewer's personal stars — the universal Star control (D39). */
+  stars: Stars;
+  /** Row selection, present only for managers/admins (D41). */
+  selection?: Selection;
   viewKey: string;
 }
 
@@ -42,6 +49,8 @@ export function DirectoryCards({
   nameOf,
   highlight,
   myId,
+  stars,
+  selection,
   viewKey,
 }: DirectoryCardsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -86,63 +95,85 @@ export function DirectoryCards({
               className="absolute left-0 top-0 w-full px-0.5 pb-2"
               style={{ transform: `translateY(${virtualRow.start}px)` }}
             >
-              <Link
-                to={`/brother/${profile.id}`}
-                className="block rounded-xl border border-border bg-card p-3 outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span className="flex items-center gap-3">
-                  <Thumbnail profile={profile} name={name} />
-                  <span className="flex min-w-0 flex-col gap-1">
-                    <span className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={cn(
-                          "truncate font-semibold",
-                          debrothered && "text-muted-foreground line-through decoration-1",
-                        )}
-                      >
-                        <HighlightedName text={name} ranges={highlight(name, profile.id)} />
-                      </span>
-                      {profile.id === myId && (
-                        <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">
-                          You
+              {/* The Star (and, for staff, Select) controls sit OUTSIDE the card
+                  anchor — interactive content can't nest inside an <a> — overlaid
+                  in the top-right corner via the relative wrapper. */}
+              <div className="relative">
+                <span className="absolute right-3 top-3 z-10 flex items-center gap-2">
+                  {selection && (
+                    <SelectCheckbox
+                      checked={selection.isSelected(profile.id)}
+                      label={`Select ${name}`}
+                      onToggle={() => selection.toggle(profile.id)}
+                    />
+                  )}
+                  <StarButton
+                    starred={stars.isStarred(profile.id)}
+                    name={name}
+                    onToggle={() => stars.toggle(profile.id)}
+                  />
+                </span>
+                <Link
+                  to={`/brother/${profile.id}`}
+                  className="block rounded-xl border border-border bg-card p-3 pr-20 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <span className="flex items-center gap-3">
+                    <Thumbnail profile={profile} name={name} />
+                    <span className="flex min-w-0 flex-col gap-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            "truncate font-semibold",
+                            debrothered && "text-muted-foreground line-through decoration-1",
+                          )}
+                        >
+                          <HighlightedName text={name} ranges={highlight(name, profile.id)} />
                         </span>
-                      )}
-                    </span>
-                    <span className="flex flex-wrap items-center gap-1.5">
-                      {deceased && <InMemoriamBadge />}
-                      {unlisted && <UnlistedBadge />}
-                      {debrothered && <DebrotheredBadge />}
+                        {profile.id === myId && (
+                          <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium text-accent-foreground">
+                            You
+                          </span>
+                        )}
+                      </span>
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        {deceased && <InMemoriamBadge />}
+                        {unlisted && <UnlistedBadge />}
+                        {debrothered && <DebrotheredBadge />}
+                      </span>
                     </span>
                   </span>
-                </span>
 
-                {dataColumns.length > 0 && (
-                  <dl className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 text-sm">
-                    {dataColumns.map((column) => {
-                      const value = column.display(profile, name);
-                      if (value === "—") {
-                        return null;
-                      }
-                      const code = column.key === "major" ? profile.majors?.[0] : undefined;
-                      const searchable = column.key === "fullName" || column.key === "mugName";
-                      return (
-                        <div key={column.key} className="contents">
-                          <dt className="text-muted-foreground">{column.label}</dt>
-                          <dd className="m-0 min-w-0 truncate">
-                            {code ? (
-                              <CourseChip code={code} />
-                            ) : searchable ? (
-                              <HighlightedName text={value} ranges={highlight(value, profile.id)} />
-                            ) : (
-                              value
-                            )}
-                          </dd>
-                        </div>
-                      );
-                    })}
-                  </dl>
-                )}
-              </Link>
+                  {dataColumns.length > 0 && (
+                    <dl className="mt-3 grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-1 text-sm">
+                      {dataColumns.map((column) => {
+                        const value = column.display(profile, name);
+                        if (value === "—") {
+                          return null;
+                        }
+                        const code = column.key === "major" ? profile.majors?.[0] : undefined;
+                        const searchable = column.key === "fullName" || column.key === "mugName";
+                        return (
+                          <div key={column.key} className="contents">
+                            <dt className="text-muted-foreground">{column.label}</dt>
+                            <dd className="m-0 min-w-0 truncate">
+                              {code ? (
+                                <CourseChip code={code} />
+                              ) : searchable ? (
+                                <HighlightedName
+                                  text={value}
+                                  ranges={highlight(value, profile.id)}
+                                />
+                              ) : (
+                                value
+                              )}
+                            </dd>
+                          </div>
+                        );
+                      })}
+                    </dl>
+                  )}
+                </Link>
+              </div>
             </li>
           );
         })}

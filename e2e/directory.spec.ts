@@ -186,7 +186,9 @@ test.describe("signed-in directory", () => {
     await expect(page.getByRole("columnheader", { name: /Email/ })).toBeVisible();
 
     // Virtualization: the full set's size is reported to assistive tech (U6),
-    // even though only the near-viewport rows are in the DOM.
+    // even though only the near-viewport rows are in the DOM. Include the one
+    // deceased fixture (hidden by the D36 default) so the count is the full set.
+    await page.getByRole("checkbox", { name: "Include deceased" }).check();
     await expect(page.getByRole("table", { name: "Brothers directory" })).toHaveAttribute(
       "aria-rowcount",
       String(TOTAL_ROWS + 1),
@@ -348,6 +350,8 @@ test.describe("signed-in directory", () => {
     page,
   }) => {
     await gotoDirectory(page);
+    // Deceased are hidden by default (D36); reveal them to assert the marker.
+    await page.getByRole("checkbox", { name: "Include deceased" }).check();
     await expect(page.getByRole("img", { name: /Grace Abbott.*In Memoriam/ })).toBeVisible();
   });
 
@@ -368,10 +372,12 @@ test.describe("signed-in directory", () => {
     // The Course column header (renamed from "Major") and a course chip.
     await expect(page.getByRole("columnheader", { name: /Course/ })).toBeVisible();
     await expect(page.getByText("6-3", { exact: true })).toBeVisible();
-    // Status badges (admin view): In Memoriam, Unlisted, De-brothered.
-    await expect(page.getByText("In Memoriam", { exact: true })).toBeVisible();
+    // Status badges (admin view): Unlisted and De-brothered are on living
+    // brothers (shown by default); In Memoriam needs the deceased toggle (D36).
     await expect(page.getByText("Unlisted", { exact: true })).toBeVisible();
     await expect(page.getByText("De-brothered", { exact: true })).toBeVisible();
+    await page.getByRole("checkbox", { name: "Include deceased" }).check();
+    await expect(page.getByText("In Memoriam", { exact: true })).toBeVisible();
   });
 
   test("the column lens offers the Full Name column and shows its data", async ({ page }) => {

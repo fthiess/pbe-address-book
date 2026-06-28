@@ -8,8 +8,10 @@ import { type SessionCookieConfig, requireSession } from "./identity/session-coo
 import type { SessionService } from "./identity/session-store.js";
 import type { IdentityProvider } from "./identity/types.js";
 import { type GhostBridgeConfig, registerAuthRoutes } from "./routes/auth.js";
+import { registerExportRoutes } from "./routes/exports.js";
 import { registerImageRoutes } from "./routes/images.js";
 import { type Clock, registerProfileRoutes } from "./routes/profiles.js";
+import { registerStarsRoutes } from "./routes/stars.js";
 
 export interface BuildServerOptions {
   identityProvider: IdentityProvider;
@@ -27,6 +29,10 @@ export interface BuildServerOptions {
   nonceStore: NonceService;
   /** The caller's starred-brother ids — `[]` if they have no `users` doc yet. */
   getStars: (profileId: number) => Promise<number[]>;
+  /** Add a brother to the caller's stars (arrayUnion); returns the new list (R17). */
+  addStar: (profileId: number, starId: number) => Promise<number[]>;
+  /** Remove a brother from the caller's stars (arrayRemove); returns the new list (R17). */
+  removeStar: (profileId: number, starId: number) => Promise<number[]>;
   /** Session-cookie attributes (notably `Secure`, off only for local http dev). */
   cookie: SessionCookieConfig;
   /** The Ghost relay redirect target; omitted locally (dev uses the role switcher). */
@@ -55,6 +61,10 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
   }));
 
   const gate = requireSession(options.sessionStore);
+  // One audit stream and one clock shared by every mutating route, so their
+  // entries interleave on one timeline and stay deterministic under test.
+  const audit = options.auditLog ?? new AuditLog();
+  const clock = options.clock ?? (() => new Date());
 
   registerAuthRoutes(app, {
     provider: options.identityProvider,
@@ -69,9 +79,15 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     cache: options.profileCache,
     gate,
     store: options.profileStore,
-    audit: options.auditLog ?? new AuditLog(),
-    clock: options.clock ?? (() => new Date()),
+    audit,
+    clock,
   });
+  registerStarsRoutes(app, {
+    gate,
+    addStar: options.addStar,
+    removeStar: options.removeStar,
+  });
+  registerExportRoutes(app, { gate, audit, clock });
   registerImageRoutes(app, gate);
 
   return app;

@@ -48,3 +48,4 @@ export {
   canWriteField,
   partitionWritableFields,
 } from "./capabilities.js";
+export { profilesToCsv, neutralizeCsvCell } from "./csv.js";

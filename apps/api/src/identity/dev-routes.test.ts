@@ -23,6 +23,8 @@ function buildDevServer() {
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],
+    addStar: async () => [],
+    removeStar: async () => [],
     cookie,
   });
   registerDevRoutes(app, provider, { sessionStore, cookie });

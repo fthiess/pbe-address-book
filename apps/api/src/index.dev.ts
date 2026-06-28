@@ -14,7 +14,7 @@
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
 import { FirestoreProfileStore } from "./data/profiles.js";
-import { getUser } from "./data/users.js";
+import { addStar, getUser, removeStar } from "./data/users.js";
 import { DevIdentityProvider } from "./identity/dev-provider.js";
 import { registerDevRoutes } from "./identity/dev-routes.js";
 import { NonceStore } from "./identity/nonce-store.js";
@@ -43,6 +43,8 @@ async function main(): Promise<void> {
     sessionStore,
     nonceStore,
     getStars: async (profileId) => (await getUser(db, profileId))?.stars ?? [],
+    addStar: (profileId, starId) => addStar(db, profileId, starId),
+    removeStar: (profileId, starId) => removeStar(db, profileId, starId),
     cookie,
   });
   registerDevRoutes(app, provider, { sessionStore, cookie });

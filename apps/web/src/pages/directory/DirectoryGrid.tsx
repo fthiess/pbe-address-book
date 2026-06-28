@@ -19,22 +19,26 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
+import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { ColumnKey, GridColumn } from "./grid-model.js";
 import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import type { DirectorySort } from "./useDirectorySort.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
 import { useScrollRestoration } from "./useScrollRestoration.js";
+import type { Selection } from "./useSelection.js";
+import type { Stars } from "./useStars.js";
 
 /**
  * The virtualized Directory grid (PRD §5.6.1/§5.6.2/§5.6.9). A single continuous
@@ -71,6 +75,12 @@ export interface DirectoryGridProps {
   widthOf: (key: ColumnKey) => number;
   /** Commit a column's new width after a resize (drag end or keyboard step). */
   onResize: (key: ColumnKey, width: number) => void;
+  /** Auto-fit a column to its widest data value (the double-click / Enter gesture). */
+  onAutoFit: (key: ColumnKey) => void;
+  /** The viewer's personal stars — the universal Star column (D39). */
+  stars: Stars;
+  /** Row selection, present only when the Select column is shown (manager/admin, D41). */
+  selection?: Selection;
   /** The active view identity (URL search string) — keys scroll restoration. */
   viewKey: string;
 }
@@ -85,9 +95,28 @@ export function DirectoryGrid({
   onReorder,
   widthOf,
   onResize,
+  onAutoFit,
+  stars,
+  selection,
   viewKey,
 }: DirectoryGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Header select-all spans the whole filtered view (every row, not just the
+  // virtualized window — §5.6.8). Derived from the full `rows` set.
+  const allSelected =
+    selection !== undefined && rows.length > 0 && rows.every((r) => selection.isSelected(r.id));
+  const someSelected = selection !== undefined && selection.count > 0 && !allSelected;
+  const toggleSelectAll = useCallback(() => {
+    if (!selection) {
+      return;
+    }
+    if (allSelected) {
+      selection.clear();
+    } else {
+      selection.setAll(rows.map((r) => r.id));
+    }
+  }, [selection, allSelected, rows]);
 
   // A live width while a resize drag is in flight (committed to the lens on
   // drop), so the grid reflows under the cursor without persisting every pixel.
@@ -203,6 +232,12 @@ export function DirectoryGrid({
                       setDrag(null);
                       onResize(column.key, width);
                     }}
+                    onAutoFit={() => onAutoFit(column.key)}
+                    selectAll={
+                      column.key === "select"
+                        ? { all: allSelected, some: someSelected, onToggle: toggleSelectAll }
+                        : undefined
+                    }
                   />
                 ))}
               </SortableContext>
@@ -231,6 +266,8 @@ export function DirectoryGrid({
                   striped={virtualRow.index % 2 === 1}
                   columns={columns}
                   pinnedLeft={pinnedLeft}
+                  stars={stars}
+                  selection={selection}
                 />
               );
             })}
@@ -263,6 +300,8 @@ function HeaderCell({
   width,
   onPreview,
   onResize,
+  onAutoFit,
+  selectAll,
 }: {
   column: GridColumn;
   colIndex: number;
@@ -271,6 +310,9 @@ function HeaderCell({
   width: number;
   onPreview: (width: number) => void;
   onResize: (width: number) => void;
+  onAutoFit: () => void;
+  /** Present only on the Select header — drives the select-all checkbox. */
+  selectAll?: { all: boolean; some: boolean; onToggle: () => void };
 }) {
   const isActive = sort.sortKey === column.key;
   const ariaSort = !column.sortable
@@ -332,7 +374,22 @@ function HeaderCell({
             <GripIcon />
           </button>
         )}
-        {column.sortable ? (
+        {selectAll ? (
+          // The Select header is a select-all checkbox over the whole filtered
+          // view (§5.6.8); "some but not all" shows the indeterminate state.
+          <input
+            type="checkbox"
+            checked={selectAll.all}
+            ref={(el) => {
+              if (el) {
+                el.indeterminate = selectAll.some;
+              }
+            }}
+            aria-label="Select all brothers in the current view"
+            onChange={selectAll.onToggle}
+            className="size-4 cursor-pointer rounded border-input accent-[var(--brand-gold)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          />
+        ) : column.sortable ? (
           <button
             type="button"
             onClick={() => sort.toggleSort(column.key)}
@@ -342,17 +399,19 @@ function HeaderCell({
             <SortGlyph active={isActive} direction={sort.direction} />
           </button>
         ) : (
-          // Non-sortable (thumbnail): the label is for assistive tech only.
+          // Non-sortable controls (Star, Thumbnail): label for assistive tech only.
           <span className="sr-only">{column.label}</span>
         )}
       </span>
-      {/* The thumbnail column is fixed; every other column can be resized. */}
-      {column.key !== "thumbnail" && (
+      {/* The fixed control columns (Select, Star, Thumbnail) aren't resizable;
+          every data column is, and double-click / Enter auto-fits it (N27). */}
+      {column.resizable !== false && (
         <ResizeHandle
           label={column.label}
           width={width}
           onPreview={onPreview}
           onResize={onResize}
+          onAutoFit={onAutoFit}
         />
       )}
     </th>
@@ -371,11 +430,14 @@ function ResizeHandle({
   width,
   onPreview,
   onResize,
+  onAutoFit,
 }: {
   label: string;
   width: number;
   onPreview: (width: number) => void;
   onResize: (width: number) => void;
+  /** Snap to the widest data value — double-click (pointer) or Enter (keyboard), N27. */
+  onAutoFit: () => void;
 }) {
   const KEY_STEP = 16;
 
@@ -408,6 +470,11 @@ function ResizeHandle({
     } else if (event.key === "ArrowRight") {
       event.preventDefault();
       onResize(width + KEY_STEP);
+    } else if (event.key === "Enter") {
+      // The keyboard twin of double-click auto-fit (N27): double-click is
+      // pointer-only, so Enter on the focused separator must do the same (D79).
+      event.preventDefault();
+      onAutoFit();
     }
   };
 
@@ -415,12 +482,13 @@ function ResizeHandle({
     <span
       role="separator"
       aria-orientation="vertical"
-      aria-label={`Resize the ${label} column`}
+      aria-label={`Resize the ${label} column. Press Enter to fit to content.`}
       aria-valuenow={Math.round(width)}
       aria-valuemin={64}
       aria-valuemax={640}
       tabIndex={0}
       onPointerDown={onPointerDown}
+      onDoubleClick={onAutoFit}
       onKeyDown={onKeyDown}
       className="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none outline-none after:absolute after:inset-y-1 after:right-[3px] after:w-px after:bg-border hover:after:bg-foreground/40 focus-visible:after:bg-ring focus-visible:after:w-0.5"
     />
@@ -461,6 +529,8 @@ interface RowProps {
   striped: boolean;
   columns: GridColumn[];
   pinnedLeft: Map<ColumnKey, number>;
+  stars: Stars;
+  selection?: Selection;
 }
 
 function Row({
@@ -472,13 +542,39 @@ function Row({
   striped,
   columns,
   pinnedLeft,
+  stars,
+  selection,
 }: RowProps) {
+  const navigate = useNavigate();
+
+  // Whole-row click opens the profile (§5.6.7). The Canonical Name stays the
+  // real anchor (keyboard, Enter, modified-click → new tab); this only adds the
+  // pointer convenience for plain clicks on the rest of the row. The Star/Select
+  // controls call stopPropagation, so their clicks never reach here; the name
+  // anchor preventDefaults plain clicks, so this won't double-navigate. Modified
+  // clicks fall through to the anchor's native new-tab behaviour.
+  const onRowClick = (event: ReactMouseEvent<HTMLTableRowElement>) => {
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    navigate(`/brother/${profile.id}`);
+  };
+
   return (
+    // biome-ignore lint/a11y/useKeyWithClickEvents: the row click is a pointer-only convenience; the keyboard path is the real Canonical Name anchor in this row (the row itself is not a focusable widget — avoiding a duplicate tab stop), so all functionality stays keyboard-reachable (§5.6.7).
     <tr
       aria-rowindex={rowIndex}
+      onClick={onRowClick}
       className={cn(
         striped ? "[--row-bg:var(--color-muted)]" : "[--row-bg:var(--color-card)]",
-        "hover:[--row-bg:var(--color-accent)] focus-within:[--row-bg:var(--color-accent)]",
+        "cursor-pointer hover:[--row-bg:var(--color-accent)] focus-within:[--row-bg:var(--color-accent)]",
       )}
       style={{ height: ROW_HEIGHT }}
     >
@@ -492,6 +588,8 @@ function Row({
           highlight={highlight}
           isSelf={isSelf}
           left={pinnedLeft.get(column.key)}
+          stars={stars}
+          selection={selection}
         />
       ))}
     </tr>
@@ -506,6 +604,8 @@ function Cell({
   highlight,
   isSelf,
   left,
+  stars,
+  selection,
 }: {
   column: GridColumn;
   colIndex: number;
@@ -514,11 +614,39 @@ function Cell({
   highlight: (display: string, profileId: number) => HighlightRange[];
   isSelf: boolean;
   left: number | undefined;
+  stars: Stars;
+  selection?: Selection;
 }) {
   const common = cn(
     "overflow-hidden whitespace-nowrap border-b border-border px-3 align-middle bg-[var(--row-bg)]",
     column.align === "end" ? "text-right tabular-nums" : "text-left",
   );
+
+  if (column.key === "select") {
+    return (
+      <td aria-colindex={colIndex} className={common} style={frozenStyle(left, false)}>
+        {selection && (
+          <SelectCheckbox
+            checked={selection.isSelected(profile.id)}
+            label={`Select ${name}`}
+            onToggle={() => selection.toggle(profile.id)}
+          />
+        )}
+      </td>
+    );
+  }
+
+  if (column.key === "star") {
+    return (
+      <td aria-colindex={colIndex} className={common} style={frozenStyle(left, false)}>
+        <StarButton
+          starred={stars.isStarred(profile.id)}
+          name={name}
+          onToggle={() => stars.toggle(profile.id)}
+        />
+      </td>
+    );
+  }
 
   if (column.key === "thumbnail") {
     return (

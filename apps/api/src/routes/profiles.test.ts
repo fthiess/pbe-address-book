@@ -82,6 +82,8 @@ async function buildReadServer() {
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],
+    addStar: async () => [],
+    removeStar: async () => [],
     cookie: { secure: true },
   });
   const cookieFor = async (role: Role) =>
@@ -234,6 +236,8 @@ async function buildWriteServer(profiles: Profile[]) {
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],
+    addStar: async () => [],
+    removeStar: async () => [],
     cookie: { secure: true },
     auditLog: new AuditLog({ write: (record) => audited.push(record) }),
     clock: () => FIXED_NOW,

@@ -51,11 +51,22 @@ export interface AuditEntry {
   action: AuditAction;
   /** The acting brother's Constitution ID (the session identity). */
   actorId: number;
-  /** The record or resource acted upon (a Constitution ID for profile actions). */
-  targetId: number;
+  /**
+   * The record or resource acted upon (a Constitution ID for profile actions).
+   * Omitted for whole-collection actions with no single target — notably
+   * `export` (D92), whose subject is the directory, not one brother.
+   */
+  targetId?: number;
   outcome: AuditOutcome;
   /** The names of the fields the write touched — never their values (D61). */
   fields?: readonly string[];
+  /**
+   * The egress scope of an `export` (D92) — e.g. `"selection"` or `"view"`. A
+   * coarse, non-PII label, not a field value, so it stays within the §1.4 boundary.
+   */
+  scope?: string;
+  /** The row count of an `export` (D92) — a count, never the exported data. */
+  count?: number;
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
   trace?: string;
 }
@@ -100,9 +111,11 @@ export class AuditLog {
       timestamp: at,
       action: entry.action,
       actorId: entry.actorId,
-      targetId: entry.targetId,
+      ...(entry.targetId !== undefined ? { targetId: entry.targetId } : {}),
       outcome: entry.outcome,
       ...(entry.fields !== undefined ? { fields: entry.fields } : {}),
+      ...(entry.scope !== undefined ? { scope: entry.scope } : {}),
+      ...(entry.count !== undefined ? { count: entry.count } : {}),
       ...(entry.trace !== undefined ? { trace: entry.trace } : {}),
     });
   }

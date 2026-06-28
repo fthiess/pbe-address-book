@@ -1,5 +1,5 @@
 import type { Role } from "@pbe/shared";
-import type { Firestore } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 
 /**
  * The `users` collection — private per-user state (role + stars), keyed by the
@@ -43,4 +43,49 @@ export async function ensureUser(db: Firestore, profileId: number): Promise<User
     tx.set(ref, record);
     return record;
   });
+}
+
+/**
+ * Add `starId` to a user's private star list and return the resulting list
+ * (API-SPEC §4, `PUT /api/me/stars/{id}`). Implemented as a Firestore
+ * **`arrayUnion`** so the write is idempotent — a repeat add is a no-op (finding
+ * R17) — and **scoped to the `stars` field exclusively**, so this path can never
+ * touch `role` or `id` on the shared `users` doc (D106).
+ */
+export function addStar(db: Firestore, profileId: number, starId: number): Promise<number[]> {
+  return mutateStars(db, profileId, FieldValue.arrayUnion(starId), starId, true);
+}
+
+/**
+ * Remove `starId` from a user's private star list and return the resulting list
+ * (API-SPEC §4, `DELETE /api/me/stars/{id}`). Implemented as a Firestore
+ * **`arrayRemove`** so removing an absent id is a no-op (finding R17), scoped to
+ * the `stars` field only (D106).
+ */
+export function removeStar(db: Firestore, profileId: number, starId: number): Promise<number[]> {
+  return mutateStars(db, profileId, FieldValue.arrayRemove(starId), starId, false);
+}
+
+/**
+ * Apply a `stars`-only `arrayUnion`/`arrayRemove` and read back the resulting
+ * list. The `users` doc normally already exists (created at first sign-in by
+ * {@link ensureUser}); the create-if-absent fallback covers the edge where a star
+ * write arrives before that record exists, creating a minimal `brother` record
+ * rather than failing the toggle.
+ */
+async function mutateStars(
+  db: Firestore,
+  profileId: number,
+  op: FieldValue,
+  starId: number,
+  add: boolean,
+): Promise<number[]> {
+  const ref = db.collection(COLLECTION).doc(String(profileId));
+  try {
+    await ref.update({ stars: op });
+  } catch {
+    await ref.set({ id: profileId, role: "brother", stars: add ? [starId] : [] });
+  }
+  const snapshot = await ref.get();
+  return (snapshot.data() as UserRecord | undefined)?.stars ?? [];
 }

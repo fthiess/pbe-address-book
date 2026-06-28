@@ -89,3 +89,45 @@ export async function devSignIn(role: Role): Promise<void> {
 export async function signOut(): Promise<void> {
   await fetch("/api/auth/signout", { method: "POST", credentials: "same-origin" });
 }
+
+/** Add a brother to the caller's star list (API-SPEC §4); returns the new list. */
+export async function addStar(id: number): Promise<number[]> {
+  const response = await fetch(`/api/me/stars/${id}`, {
+    method: "PUT",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  return (await response.json()).stars;
+}
+
+/** Remove a brother from the caller's star list (API-SPEC §4); returns the new list. */
+export async function removeStar(id: number): Promise<number[]> {
+  const response = await fetch(`/api/me/stars/${id}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  return (await response.json()).stars;
+}
+
+/**
+ * The export-audit ping (API-SPEC §4a; D92). Fire-and-forget — the CSV download
+ * has already happened client-side, so a failed ping must never surface to the
+ * user; it is swallowed. `scope` is the egress scope, `count` the row count.
+ */
+export async function notifyExport(scope: "selection" | "view", count: number): Promise<void> {
+  try {
+    await fetch("/api/exports", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, count }),
+    });
+  } catch {
+    // The audit ping is best-effort; the export itself already succeeded.
+  }
+}

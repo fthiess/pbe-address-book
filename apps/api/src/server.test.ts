@@ -24,6 +24,8 @@ describe("buildServer", () => {
       sessionStore: new InMemorySessionStore(),
       nonceStore: new InMemoryNonceStore(),
       getStars: async () => [],
+      addStar: async () => [],
+      removeStar: async () => [],
       cookie: { secure: true },
     });
     const response = await app.inject({ method: "GET", url: "/api/health" });
