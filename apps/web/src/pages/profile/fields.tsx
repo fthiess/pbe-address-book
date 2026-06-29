@@ -1,0 +1,241 @@
+import { type ReactNode, useId } from "react";
+import { cn } from "../../lib/utils.js";
+
+/**
+ * The Profile page's shared field primitives — the view-mode read-outs and the
+ * edit-mode inputs, plus the two "you may not see / may not change this" markers
+ * the role projection produces (§5.7.2). Each input wires its label, helper, and
+ * error together with `htmlFor`/`aria-describedby`/`aria-invalid` so validation is
+ * programmatically associated and announced (§5.7.8, D32).
+ */
+
+/** A section eyebrow + its body, the two-up grid's repeating unit (§5.7.1). */
+export function Section({
+  title,
+  id,
+  children,
+  locked = false,
+}: {
+  title: string;
+  id?: string;
+  children: ReactNode;
+  /** Show a lock on the eyebrow — the manager's read-only restricted block. */
+  locked?: boolean;
+}) {
+  const headingId = useId();
+  return (
+    <section aria-labelledby={id ?? headingId} className="min-w-0">
+      <h2
+        id={id ?? headingId}
+        className="mb-3 flex items-center gap-1.5 text-[length:var(--text-label-up)] font-bold uppercase tracking-wide text-primary"
+      >
+        {title}
+        {locked && (
+          <span aria-hidden="true" title="Read-only">
+            🔒
+          </span>
+        )}
+      </h2>
+      <div className="space-y-4">{children}</div>
+    </section>
+  );
+}
+
+/** A view-mode label/value read-out (e.g. EMAIL · rbrown@mit.edu). */
+export function ReadField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <p className="text-[length:var(--text-label-up)] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <div className="mt-0.5 text-[length:var(--text-body-lg)] text-foreground">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * The manager's "this field is private" marker (§5.7.2): shown where a brother's
+ * share-toggle is *off*, so a manager sees that a field exists and is private
+ * without seeing the protected value (which stays with the owner and admins).
+ */
+export function PrivateMarker({ label }: { label: string }) {
+  return (
+    <div>
+      <p className="text-[length:var(--text-label-up)] font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-1 flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-2 text-[length:var(--text-body-sm)] text-muted-foreground">
+        <span aria-hidden="true">🔒</span>
+        This field is private — visible to the owner and administrators only.
+      </p>
+    </div>
+  );
+}
+
+/** Shared input/label/helper/error markup for the text-like edit fields. */
+function FieldShell({
+  id,
+  label,
+  helper,
+  error,
+  children,
+}: {
+  id: string;
+  label: string;
+  helper?: string;
+  error?: string;
+  children: (describedBy: string | undefined) => ReactNode;
+}) {
+  const helperId = `${id}-help`;
+  const errorId = `${id}-error`;
+  const describedBy =
+    [error ? errorId : null, helper ? helperId : null].filter(Boolean).join(" ") || undefined;
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-[length:var(--text-label)] font-semibold">
+        {label}
+      </label>
+      {children(describedBy)}
+      {helper && !error && (
+        <p id={helperId} className="mt-1 text-[length:var(--text-body-sm)] text-muted-foreground">
+          {helper}
+        </p>
+      )}
+      {error && (
+        <p id={errorId} className="mt-1 text-[length:var(--text-body-sm)] text-destructive">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+const inputClass =
+  "w-full rounded-[var(--radius-md)] border border-input bg-background px-3 py-2.5 text-[length:var(--text-body-lg)] outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring aria-[invalid=true]:border-destructive";
+
+export function TextField({
+  id: providedId,
+  label,
+  value,
+  onChange,
+  onBlur,
+  error,
+  helper,
+  type = "text",
+  inputMode,
+  autoComplete,
+  placeholder,
+  mono = false,
+  disabled = false,
+}: {
+  id?: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  error?: string;
+  helper?: string;
+  type?: string;
+  inputMode?: "text" | "email" | "tel" | "numeric";
+  autoComplete?: string;
+  placeholder?: string;
+  mono?: boolean;
+  disabled?: boolean;
+}) {
+  const fallbackId = useId();
+  const id = providedId ?? fallbackId;
+  return (
+    <FieldShell id={id} label={label} helper={helper} error={error}>
+      {(describedBy) => (
+        <input
+          id={id}
+          type={type}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          inputMode={inputMode}
+          autoComplete={autoComplete}
+          placeholder={placeholder}
+          disabled={disabled}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          className={cn(
+            inputClass,
+            mono && "font-mono",
+            disabled && "bg-muted text-muted-foreground",
+          )}
+        />
+      )}
+    </FieldShell>
+  );
+}
+
+export function TextAreaField({
+  id: providedId,
+  label,
+  value,
+  onChange,
+  onBlur,
+  error,
+  helper,
+  rows = 3,
+}: {
+  id?: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  error?: string;
+  helper?: string;
+  rows?: number;
+}) {
+  const fallbackId = useId();
+  const id = providedId ?? fallbackId;
+  return (
+    <FieldShell id={id} label={label} helper={helper} error={error}>
+      {(describedBy) => (
+        <textarea
+          id={id}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          rows={rows}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          className={cn(inputClass, "resize-y")}
+        />
+      )}
+    </FieldShell>
+  );
+}
+
+/**
+ * A read-only, visibly **locked** field (COMPONENTS.md "Read-only / locked"):
+ * the Constitution ID on this page (set only at Add-Brother), and any value a
+ * role may see but not change.
+ */
+export function LockedField({
+  label,
+  value,
+  note,
+}: { label: string; value: string; note?: string }) {
+  const id = useId();
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1 block text-[length:var(--text-label)] font-semibold">
+        {label}
+      </label>
+      {/* COMPONENTS.md specifies --text-4 here, but that on --muted is only
+          2.88:1 — below AA. The CI-gated AA requirement (D79) wins, so the
+          locked text uses --muted-foreground. */}
+      <div
+        id={id}
+        className="flex items-center gap-2 rounded-[var(--radius-md)] border border-border bg-muted px-3 py-2.5 text-[length:var(--text-body-lg)] text-muted-foreground"
+      >
+        <span aria-hidden="true">🔒</span>
+        <span>{value}</span>
+        {note && <span className="text-[length:var(--text-body-sm)]">— {note}</span>}
+      </div>
+    </div>
+  );
+}

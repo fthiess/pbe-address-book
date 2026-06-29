@@ -9,6 +9,16 @@ import type { HelpContent, HelpEntry } from "./types.js";
  * phase; the deeper `toggleTip` enrichment is wired in Phase 6.
  *
  * Phase 3a — the Directory grid's baseline controls.
+ *
+ * PHASE 6 PICKUP (do not forget): the Profile page's privacy/consent switch copy
+ * — the inline active-side consequence AND the `?` counterfactual — currently
+ * lives in `apps/web/src/pages/profile/consent.ts` (the live 4a source), and the
+ * Profile field helper texts are inline in `apps/web/src/pages/profile/`. Phase 6
+ * must fold that copy into THIS registry (label + helperText = on-consequence;
+ * toggleTip = off-consequence) so the in-page help and the assembled USER-MANUAL
+ * share one source (D53), and replace the interim native-`<details>` `HelpTip`
+ * with the standard Radix `CircleHelp` toggle-tip used across every page (the
+ * plan's Phase 6 §149).
  */
 export const helpContent: HelpContent = {
   "directory.search": {

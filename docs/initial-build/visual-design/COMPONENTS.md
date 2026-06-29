@@ -38,7 +38,7 @@ Track 42×24, radius 999px; knob 20×20 circle #fff inset 2px.
 ## Inputs / fields
 Height 42px, radius 9px, border 1px `--input` #808A92, bg #fff, padding 0 12px, value 15px.
 - **Focused**: 2px `--primary` border + `--ring-shadow`.
-- **Read-only / locked**: bg `--muted` #F6F7F8, border `--border`, text `--text-4`, leading 🔒 and "— read-only" note (e.g. Constitution ID).
+- **Read-only / locked**: bg `--muted` #F6F7F8, border `--border`, text `--muted-foreground` #5A6470, leading 🔒 and "— read-only" note (e.g. Constitution ID). (Was `--text-4`, but `--text-4` on `--muted` is 2.88:1 — below WCAG AA; the locked text uses `--muted-foreground` so it passes. `--text-4` stays a faint accent for placeholders / text on white, where it's legitimate — this was a bad *pairing*, not a bad token.)
 - Helper text below: 12.5px `--muted-foreground`.
 - Short inputs (year fields) use `--font-mono`, placeholder "YYYY".
 

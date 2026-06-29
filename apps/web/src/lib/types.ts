@@ -20,6 +20,16 @@ export interface ProfilesResponse {
   majors: unknown[];
 }
 
+/**
+ * A single profile as the SPA receives it from `GET /api/profiles/:id` (and the
+ * `PATCH` response). Structurally the server's projected record (D3): `id` is the
+ * one guaranteed key; for the **owner** the server sends the full self-record, for
+ * everyone else the role projection, so the SPA treats all non-`id` fields as
+ * optional and reads them defensively (the Profile page, like the Directory,
+ * cannot tell "not visible" from "not set").
+ */
+export type ProfileRecord = Partial<Profile> & Pick<Profile, "id">;
+
 /** `GET /api/me` — the caller's own private state and own full record (D82). */
 export interface Me {
   profileId: number;

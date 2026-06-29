@@ -157,6 +157,38 @@ const TOTAL_ROWS = PROFILES.profiles.length;
 async function gotoDirectory(page: Page) {
   await page.route("**/api/me", (route) => route.fulfill({ json: ME }));
   await page.route("**/api/profiles", (route) => route.fulfill({ json: PROFILES }));
+  // A single-record read for the Profile page the directory rows link to. The
+  // record is synthesized from the requested id (reusing a NAMED brother when
+  // one matches) so a row click lands on a real profile, with an ETag.
+  await page.route(/\/api\/profiles\/\d+$/, (route) => {
+    const id = Number(/(\d+)$/.exec(route.request().url())?.[1]);
+    const named = PROFILES.profiles.find((p) => p.id === id);
+    route.fulfill({
+      headers: { ETag: "v1" },
+      json: {
+        id,
+        firstName: named?.firstName ?? "Test",
+        lastName: named?.lastName ?? "Brother",
+        classYear: named?.classYear ?? 1990,
+        deceased: { isDeceased: false },
+        debrothered: { isDebrothered: false },
+        hasHeadshot: false,
+        privacy: {
+          shareEmail: true,
+          sharePhone: true,
+          shareAddress: true,
+          shareEmergency: false,
+          shareSpousePartner: false,
+        },
+        unlisted: false,
+        allowNewsletterEmail: true,
+        allowCommentReplyEmail: true,
+        allowShareWithMITAA: false,
+        lastModified: "2026-06-03T12:00:00.000Z",
+        newsletterConsentChangedAt: "2026-06-03T12:00:00.000Z",
+      },
+    });
+  });
   // The image-serving path: every thumbnail request gets a real WEBP fixture.
   await page.route("**/img/thumbnails/**", (route) => route.fulfill({ path: THUMB_FIXTURE }));
   await page.goto("/");
@@ -316,7 +348,7 @@ test.describe("signed-in directory", () => {
       .getByRole("rowheader", { name: /Aaron Adams/ })
       .getByRole("link")
       .click();
-    await expect(page.getByRole("heading", { name: /Brother #5001/ })).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1, name: /Aaron Adams/ })).toBeVisible();
     await page.goBack();
     await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
 

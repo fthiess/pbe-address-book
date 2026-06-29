@@ -7,8 +7,8 @@ import { LoadingOverlay } from "./components/LoadingOverlay.js";
 import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
-import { BrotherPlaceholder } from "./pages/BrotherPlaceholder.js";
 import { Directory } from "./pages/Directory.js";
+import { Profile } from "./pages/Profile.js";
 import { SignIn } from "./pages/SignIn.js";
 
 /**
@@ -35,7 +35,8 @@ function Gate() {
   return (
     <AppShell me={state.me}>
       <Routes>
-        <Route path="/brother/:id" element={<BrotherPlaceholder />} />
+        <Route path="/brother/:id/edit" element={<Profile mode="edit" />} />
+        <Route path="/brother/:id" element={<Profile mode="view" />} />
         <Route path="*" element={<Directory />} />
       </Routes>
     </AppShell>
