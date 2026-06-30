@@ -7,11 +7,18 @@ import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
  * scroll of a *virtualized* list on their own (only the near-viewport rows exist
  * in the DOM), so we persist the scroll offset ourselves.
  *
- * The offset is kept in **History API state** (D31), namespaced per *view* (the
- * URL search string), so it travels with the history entry but never leaks into a
- * shared link. We merge into `history.state` rather than replace it, so React
- * Router's own navigation state is preserved. Restoration runs once, after the
- * list is ready to measure; saving runs throttled to animation frames.
+ * The offset is kept in **History API state** (D31), namespaced by the history
+ * entry's **stable `location.key`** (not the URL search string), so it travels
+ * with the history entry but never leaks into a shared link. Keying by the entry
+ * key — rather than the search string — is deliberate (4a-3): under the data
+ * router the URL's query params (a sort, the column-lens `?cols=` mirror) are
+ * written by nuqs *after* mount, so a search-string key saved a forward offset
+ * under the not-yet-updated key while the back-navigation restored under the
+ * browser-restored full URL — a mismatch that silently lost the scroll. The
+ * entry key is identical on save and on the return POP regardless of param
+ * timing. We merge into `history.state` rather than replace it, so React Router's
+ * own navigation state is preserved. Restoration runs once, after the list is
+ * ready to measure; saving runs throttled to animation frames.
  */
 
 const STATE_KEY = "directoryScroll";

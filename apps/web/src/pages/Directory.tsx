@@ -292,7 +292,7 @@ export function Directory() {
           onAutoFit={onAutoFit}
           stars={stars}
           selection={staff ? selection : undefined}
-          viewKey={location.search}
+          viewKey={location.key}
         />
       ) : (
         <DirectoryCards
@@ -303,7 +303,7 @@ export function Directory() {
           myId={myId}
           stars={stars}
           selection={staff ? selection : undefined}
-          viewKey={location.search}
+          viewKey={location.key}
         />
       )}
     </section>

@@ -368,6 +368,33 @@ test.describe("signed-in directory", () => {
       .toBeGreaterThan(800);
   });
 
+  test("Back restores scroll even with active URL state (sort/cols in the URL)", async ({
+    page,
+  }) => {
+    // Regression (4a-3): scroll restoration is keyed by the stable history-entry
+    // key, not the URL search string — so a view that carries query params (a
+    // sort, or the column-lens `?cols=` mirror) still restores its scroll on Back.
+    // Keying by `location.search` failed here: nuqs writes the params *after* the
+    // forward save but the browser restores the full URL *before* the back read,
+    // so the two looked under different keys and nothing was restored.
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: "Class", exact: true }).click();
+    await expect(page).toHaveURL(/sort=classYear/);
+
+    const scroller = page.getByTestId("directory-scroll");
+    await scroller.evaluate((el) => el.scrollTo(0, 1500));
+    await page.waitForTimeout(150); // let the rAF-throttled save write history state
+    await scroller.getByRole("link").nth(6).click();
+    await expect(page).toHaveURL(/\/brother\/\d+/);
+
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    await expect(page).toHaveURL(/sort=classYear/);
+    await expect
+      .poll(() => page.getByTestId("directory-scroll").evaluate((el) => el.scrollTop))
+      .toBeGreaterThan(800);
+  });
+
   test("retrieves and displays thumbnails for brothers with a headshot", async ({ page }) => {
     // The retrieval path must actually fire a request to the `/img` serving route.
     const thumbRequest = page.waitForRequest(/\/img\/thumbnails\/5001\/v1\.webp/);
