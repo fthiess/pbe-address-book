@@ -14,7 +14,7 @@ import { LoadingOverlay } from "../components/LoadingOverlay.js";
 import { ApiError, fetchProfile, patchProfile } from "../lib/api.js";
 import type { DirectoryProfile, ProfileRecord } from "../lib/types.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
-import { useRoster } from "../lib/useRoster.js";
+import { applyProfileToRoster, useRoster } from "../lib/useRoster.js";
 import type { SubmitResult } from "./profile/ProfileEdit.js";
 import { ProfileEdit } from "./profile/ProfileEdit.js";
 import { ProfileView } from "./profile/ProfileView.js";
@@ -116,6 +116,9 @@ export function ProfileContainer() {
         if (outcome.status === "ok") {
           setRecord(outcome.profile);
           setEtag(outcome.etag);
+          // Keep the cached roster in step so the *other* brother's derived Little-
+          // Brother list reflects a re-pointed bigBrotherId (§5.7.4).
+          applyProfileToRoster(outcome.profile);
           return { status: "ok" };
         }
         if (outcome.status === "stale") {

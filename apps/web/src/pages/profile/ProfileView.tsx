@@ -4,6 +4,7 @@ import { Link } from "react-router-dom";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
+import { RelationshipChip } from "./RelationshipChip.js";
 import { CONSENT_COPY, PRIVACY_COPY, activeConsequence } from "./consent.js";
 import {
   addressLines,
@@ -300,12 +301,7 @@ function RelationshipsSection({
     <Section title="Relationships">
       {record.bigBrotherId != null && (
         <ReadField label="Big Brother">
-          <Link
-            to={`/brother/${record.bigBrotherId}`}
-            className="font-medium text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
-          >
-            {bigBrotherName ?? "View his profile"}
-          </Link>
+          <RelationshipChip id={record.bigBrotherId} name={bigBrotherName ?? "View his profile"} />
         </ReadField>
       )}
       {littles.length > 0 && (
@@ -313,12 +309,7 @@ function RelationshipsSection({
           <ul className="flex flex-wrap gap-1.5">
             {littles.map((little) => (
               <li key={little.id}>
-                <Link
-                  to={`/brother/${little.id}`}
-                  className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-[length:var(--text-body-sm)] text-foreground underline-offset-2 hover:underline"
-                >
-                  {little.name}
-                </Link>
+                <RelationshipChip id={little.id} name={little.name} />
               </li>
             ))}
           </ul>

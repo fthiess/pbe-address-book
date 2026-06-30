@@ -169,6 +169,59 @@ test.describe("profile 4b-1 — Big Brother & Little Brothers", () => {
     await expect(page).toHaveURL(/\/brother\/5247$/);
     expect(saved).toMatchObject({ bigBrotherId: 5001 });
   });
+
+  test("a newly-set Big Brother shows the brother as a Little Brother on his page", async ({
+    page,
+  }) => {
+    // Little Brothers are *derived* from the cached roster, so a save must patch
+    // that cache or the Big Brother's page would still show the pre-save edge.
+    const records: Record<number, ReturnType<typeof ownerRecord>> = {
+      5247: ownerRecord(),
+      5001: {
+        ...ownerRecord(),
+        id: 5001,
+        firstName: "Robert",
+        lastName: "Brown",
+        fullLegalName: "Robert Brown",
+        classYear: 1979,
+        majors: [],
+        emergencyContacts: undefined,
+      } as ReturnType<typeof ownerRecord>,
+    };
+    await page.route("**/api/me", (route) => route.fulfill({ json: me("brother", 5247) }));
+    await page.route("**/api/profiles", (route) =>
+      route.fulfill({ json: { profiles: roster(), majors: [] } }),
+    );
+    await page.route(/\/api\/profiles\/\d+$/, async (route) => {
+      const id = Number(
+        route
+          .request()
+          .url()
+          .match(/\/profiles\/(\d+)/)?.[1],
+      );
+      const current = records[id] ?? ownerRecord();
+      if (route.request().method() === "PATCH") {
+        const body = JSON.parse(route.request().postData() ?? "{}");
+        records[id] = { ...current, ...body, lastVerifiedDate: "2026-06-30" };
+        return route.fulfill({ headers: { ETag: 'W/"v2"' }, json: records[id] });
+      }
+      return route.fulfill({ headers: { ETag: 'W/"v1"' }, json: current });
+    });
+
+    await page.goto("/brother/5247/edit");
+    await expect(page.getByText("Editing", { exact: true })).toBeVisible();
+    await page.getByRole("combobox", { name: /Search for a Big Brother/ }).fill("Brown");
+    await page.getByRole("option", { name: /Robert Brown '79/ }).click();
+    await page.getByRole("button", { name: "Save changes" }).click();
+    await expect(page).toHaveURL(/\/brother\/5247$/);
+
+    // Follow the Big-Brother chip to Robert's profile; it now lists James beneath
+    // Little Brothers (computed from the patched roster, no second download).
+    await page.getByRole("link", { name: /Robert Brown '79/ }).click();
+    await expect(page).toHaveURL(/\/brother\/5001$/);
+    await expect(page.getByRole("heading", { level: 1, name: /Robert Brown/ })).toBeVisible();
+    await expect(page.getByRole("link", { name: /James Smyth '84/ })).toBeVisible();
+  });
 });
 
 test.describe("profile 4b-1 — country-driven address", () => {
@@ -182,13 +235,19 @@ test.describe("profile 4b-1 — country-driven address", () => {
     await expect(page.getByLabel("State / Province", { exact: true })).toHaveValue("");
   });
 
-  test("switches the subdivision to free text for a non-US/CA country", async ({ page }) => {
+  test("switches to a free-text region for a non-US/CA country and drops the stranded code", async ({
+    page,
+  }) => {
     await mockProfile(page, { meDoc: me("brother", 5247), record: ownerRecord() });
     await gotoEdit(page);
 
+    // US "MA" → United Kingdom: the controlled dropdown gives way to a free-text
+    // region field, and the now-meaningless "MA" is cleared (not left behind).
     await page.getByLabel("Country").selectOption("GB");
-    // The controlled dropdown gives way to a free-text region field.
-    await expect(page.getByLabel(/State \/ Province \/ Region/)).toBeVisible();
+    const region = page.getByLabel(/State \/ Province \/ Region/);
+    await expect(region).toBeVisible();
+    await expect(region).toHaveValue("");
+    await expect(page.getByText(/didn't match the new country/)).toBeVisible();
   });
 });
 

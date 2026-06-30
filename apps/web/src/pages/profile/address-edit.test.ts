@@ -10,11 +10,17 @@ describe("applyCountryChange", () => {
     expect(next.country).toBe("CA");
   });
 
-  it("keeps the value as free text when switching to a country with no controlled vocabulary", () => {
-    // GB has no controlled subdivisions, so the prior value becomes free text (not cleared).
+  it("clears a stranded controlled code when leaving US/CA for a free-text country", () => {
+    // A US code carries no meaning under the UK, so it must not survive as bare "CA".
     const { next, cleared } = applyCountryChange({ country: "US", stateProvince: "CA" }, "GB");
-    expect(cleared).toBe(false);
-    expect(next.stateProvince).toBe("CA");
+    expect(cleared).toBe(true);
+    expect(next.stateProvince).toBeUndefined();
+  });
+
+  it("clears a free-text region that isn't a code under a newly-controlled country", () => {
+    const { next, cleared } = applyCountryChange({ country: "GB", stateProvince: "Devon" }, "US");
+    expect(cleared).toBe(true);
+    expect(next.stateProvince).toBeUndefined();
   });
 
   it("keeps a valid subdivision under the new country", () => {

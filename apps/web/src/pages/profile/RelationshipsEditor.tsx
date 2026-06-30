@@ -1,7 +1,7 @@
 import { useId, useMemo } from "react";
-import { Link } from "react-router-dom";
 import { Combobox } from "../../components/Combobox.js";
 import type { DirectoryProfile } from "../../lib/types.js";
+import { RelationshipChip } from "./RelationshipChip.js";
 import { Section } from "./fields.js";
 import { littleBrothers, rosterNames } from "./relationships.js";
 
@@ -63,22 +63,12 @@ export function RelationshipsEditor({
           </p>
         ) : bigBrotherId != null ? (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-[length:var(--text-body)]">
-              <Link
-                to={`/brother/${bigBrotherId}`}
-                className="font-medium text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
-              >
-                {bigBrotherName}
-              </Link>
-              <button
-                type="button"
-                onClick={() => onChange(null)}
-                aria-label={`Remove Big Brother ${bigBrotherName}`}
-                className="flex size-5 items-center justify-center rounded-full text-muted-foreground outline-none hover:bg-black/5 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </span>
+            <RelationshipChip
+              id={bigBrotherId}
+              name={bigBrotherName ?? `#${bigBrotherId}`}
+              onRemove={() => onChange(null)}
+              removeLabel={`Remove Big Brother ${bigBrotherName}`}
+            />
           </div>
         ) : roster && names ? (
           <Combobox
@@ -113,12 +103,7 @@ export function RelationshipsEditor({
           <ul className="mt-1 flex flex-wrap gap-1.5">
             {littles.map((little) => (
               <li key={little.id}>
-                <Link
-                  to={`/brother/${little.id}`}
-                  className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-[length:var(--text-body-sm)] text-foreground underline-offset-2 hover:underline"
-                >
-                  {little.name}
-                </Link>
+                <RelationshipChip id={little.id} name={little.name} />
               </li>
             ))}
           </ul>
