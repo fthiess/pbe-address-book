@@ -33,7 +33,19 @@ export type ProfileRecord = Partial<Profile> & Pick<Profile, "id">;
 /** `GET /api/me` — the caller's own private state and own full record (D82). */
 export interface Me {
   profileId: number;
+  /**
+   * The **effective** role — the "View as" projection the SPA gates its UI on
+   * (N31). Equals {@link realRole} unless impersonating a lower role.
+   */
   role: Role;
+  /**
+   * The immutable real role. The masthead's "View as …" / "Stop viewing" controls
+   * key on this, never the (possibly lowered) effective role, so the way back is
+   * always available.
+   */
+  realRole: Role;
+  /** Whether a "View as" impersonation is active (`role` ≠ `realRole`). */
+  impersonating: boolean;
   stars: number[];
   profile: Profile | null;
 }

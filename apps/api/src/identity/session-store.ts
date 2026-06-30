@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import type { Role } from "@pbe/shared";
 import { type Firestore, Timestamp } from "firebase-admin/firestore";
 import type { Session } from "./types.js";
 
@@ -29,6 +30,13 @@ import type { Session } from "./types.js";
 export interface SessionService {
   create(session: Session): Promise<string>;
   get(id: string, now?: number): Promise<Session | null>;
+  /**
+   * Set or clear the session's effective ("View as") role in place, keeping the
+   * same session id (DECISIONS N31). `null` clears the overlay (stop viewing-as).
+   * Persisted so the impersonation survives a scale-to-zero cold start, exactly
+   * like the rest of the session record. A no-op if the session is unknown.
+   */
+  setEffectiveRole(id: string, role: Role | null): Promise<void>;
   destroy(id: string): Promise<void>;
 }
 
@@ -91,6 +99,32 @@ export class SessionStore implements SessionService {
     }
     this.cache.set(id, stored.session);
     return stored.session;
+  }
+
+  /**
+   * Set or clear the effective ("View as") role on the stored session (N31).
+   * Reads the live record, writes the mutated session back to Firestore, and
+   * refreshes the in-memory cache so the next request (warm or cold) sees the new
+   * projection. The session id is unchanged — impersonation is a state change on
+   * the *same* session, not a new one — so the start/stop endpoints never reissue
+   * the cookie. Unknown/lapsed session ⇒ no-op (the gate will 401 it anyway).
+   */
+  async setEffectiveRole(id: string, role: Role | null): Promise<void> {
+    const session = await this.get(id);
+    if (!session) {
+      return;
+    }
+    // Clearing must *omit* the field, not store `undefined` — the Admin SDK is
+    // configured to reject undefined values, and a persisted `undefined` would
+    // also defeat the `?? identity.role` fallback on read.
+    const { effectiveRole: _drop, ...base } = session;
+    const next: Session = role === null ? base : { ...base, effectiveRole: role };
+    const record: StoredSession = {
+      session: next,
+      expiresAt: Timestamp.fromMillis(next.expiresAt),
+    };
+    await this.db.collection(COLLECTION).doc(id).set(record);
+    this.cache.set(id, next);
   }
 
   /** Invalidate a session (explicit sign-out, or lazy expiry cleanup). */

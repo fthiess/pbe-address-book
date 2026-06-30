@@ -1,5 +1,6 @@
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
+import { effectiveRole } from "../identity/types.js";
 import type { Clock } from "./profiles.js";
 import { traceId } from "./trace.js";
 
@@ -29,11 +30,15 @@ const SCOPES = new Set(["selection", "view"]);
 
 export function registerExportRoutes(app: FastifyInstance, config: ExportRoutesConfig): void {
   app.post("/api/exports", { preHandler: config.gate }, async (request, reply) => {
-    const actor = request.session?.identity;
-    if (!actor) {
+    const session = request.session;
+    if (!session) {
       return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
     }
-    if (actor.role !== "manager" && actor.role !== "admin") {
+    // The effective role gates export, so a "View as brother" admin is correctly
+    // refused — they have no export UI in that projection and the server agrees (N31).
+    const actor = session.identity;
+    const role = effectiveRole(session);
+    if (role !== "manager" && role !== "admin") {
       return reply.code(403).send({ error: "forbidden", message: "Export is staff-only." });
     }
 

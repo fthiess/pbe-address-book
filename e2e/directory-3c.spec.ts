@@ -15,6 +15,8 @@ function meFor(role: "admin" | "brother") {
   return {
     profileId: 5002,
     role,
+    realRole: role,
+    impersonating: false,
     stars: [] as number[],
     profile: {
       id: 5002,

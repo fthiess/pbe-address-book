@@ -132,6 +132,42 @@ export function canWriteField(role: Role, isOwner: boolean, field: keyof Profile
   }
 }
 
+/**
+ * The role hierarchy, low → high (DATABASE-SCHEMA §8). The single source of the
+ * *ordering* the step-down impersonation rule reads; the projection/write rules
+ * above are deliberately not ordinal (they branch on the role name), so this rank
+ * exists only where a comparison is genuinely needed.
+ */
+const ROLE_RANK: Record<Role, number> = { brother: 0, manager: 1, admin: 2 };
+
+/**
+ * "View as" — may a caller whose **real** role is `realRole` step **down** to
+ * `targetRole` for testing (DECISIONS N31)? The rule is strictly ordinal and
+ * one-directional: an admin may view as a manager or a brother, a manager as a
+ * brother, a brother as no one. Escalation and same-role are both `false`, so a
+ * caller can never gain powers they lack — impersonation only ever *restricts*
+ * the view (which is why it is safe to expose in production).
+ *
+ * This is the **mechanism's** name (the endpoints, the audit actions, and the
+ * session field all say "impersonate"); the *user-facing* affordance is worded
+ * "View as" (N31), since nobody is being deceived and the object is a role, not a
+ * person.
+ */
+export function canImpersonate(realRole: Role, targetRole: Role): boolean {
+  return ROLE_RANK[targetRole] < ROLE_RANK[realRole];
+}
+
+/**
+ * The roles `realRole` may step down to, highest-first (so an admin yields
+ * `["manager", "brother"]`). The masthead builds its "View as …" items straight
+ * from this, and an empty list (a brother) is what hides the affordance entirely.
+ */
+export function impersonatableRoles(realRole: Role): Role[] {
+  return (["admin", "manager", "brother"] as const).filter((role) =>
+    canImpersonate(realRole, role),
+  );
+}
+
 /** Partition a set of would-be-written field names into accepted and rejected. */
 export function partitionWritableFields(
   role: Role,

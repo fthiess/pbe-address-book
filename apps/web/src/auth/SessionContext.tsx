@@ -1,5 +1,12 @@
+import type { Role } from "@pbe/shared";
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
-import { ApiError, signOut as apiSignOut, fetchMe } from "../lib/api.js";
+import {
+  ApiError,
+  impersonate as apiImpersonate,
+  signOut as apiSignOut,
+  stopImpersonating as apiStopImpersonating,
+  fetchMe,
+} from "../lib/api.js";
 import type { Me } from "../lib/types.js";
 
 /**
@@ -18,6 +25,14 @@ interface SessionContextValue {
   refresh: () => Promise<void>;
   /** Clear the Book session and return to the signed-out state. */
   signOut: () => Promise<void>;
+  /**
+   * Start "View as" impersonation, then hard-reload so the directory re-downloads
+   * at the new projection (N31 — a soft `/api/me` refresh would leave the already-
+   * fetched bulk dataset at the old role).
+   */
+  viewAs: (role: Role) => Promise<void>;
+  /** Stop "View as" impersonation, then hard-reload back to the real role (N31). */
+  stopViewingAs: () => Promise<void>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -43,12 +58,22 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setState({ status: "unauthenticated" });
   }, []);
 
+  const viewAs = useCallback(async (role: Role) => {
+    await apiImpersonate(role);
+    window.location.reload();
+  }, []);
+
+  const stopViewingAs = useCallback(async () => {
+    await apiStopImpersonating();
+    window.location.reload();
+  }, []);
+
   useEffect(() => {
     void refresh();
   }, [refresh]);
 
   return (
-    <SessionContext.Provider value={{ state, refresh, signOut }}>
+    <SessionContext.Provider value={{ state, refresh, signOut, viewAs, stopViewingAs }}>
       {children}
     </SessionContext.Provider>
   );

@@ -164,6 +164,34 @@ export async function signOut(): Promise<void> {
   await fetch("/api/auth/signout", { method: "POST", credentials: "same-origin" });
 }
 
+/**
+ * Start "View as" impersonation — step the session's effective role *down* to
+ * `role` (N31). The server enforces the step-down on the real role; the caller is
+ * expected to reload afterward so the directory re-downloads at the new projection.
+ */
+export async function impersonate(role: Role): Promise<void> {
+  const response = await fetch("/api/me/impersonate", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+}
+
+/** Stop "View as" impersonation — return the session to the real role (N31). */
+export async function stopImpersonating(): Promise<void> {
+  const response = await fetch("/api/me/impersonate", {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+}
+
 /** Add a brother to the caller's star list (API-SPEC §4); returns the new list. */
 export async function addStar(id: number): Promise<number[]> {
   const response = await fetch(`/api/me/stars/${id}`, {

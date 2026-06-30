@@ -25,6 +25,10 @@
 /** The audited actions (ENGINEERING-DESIGN §6.1). Grown by later phases. */
 export type AuditAction =
   | "profile.update"
+  // "View as" impersonation start/stop — security-relevant because the actor's
+  // effective powers change (DECISIONS N31).
+  | "impersonate.start"
+  | "impersonate.stop"
   // Reserved for the phases that build their dedicated server actions:
   | "profile.create"
   | "profile.delete"
@@ -65,6 +69,12 @@ export interface AuditEntry {
    * coarse, non-PII label, not a field value, so it stays within the §1.4 boundary.
    */
   scope?: string;
+  /**
+   * The role an `impersonate.start` steps down to (N31) — a role name, not a
+   * field value, so it is within the §1.4 boundary (the same way `scope` is). The
+   * actor's real role is `actorId`'s; this records which projection they assumed.
+   */
+  targetRole?: string;
   /** The row count of an `export` (D92) — a count, never the exported data. */
   count?: number;
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
@@ -115,6 +125,7 @@ export class AuditLog {
       outcome: entry.outcome,
       ...(entry.fields !== undefined ? { fields: entry.fields } : {}),
       ...(entry.scope !== undefined ? { scope: entry.scope } : {}),
+      ...(entry.targetRole !== undefined ? { targetRole: entry.targetRole } : {}),
       ...(entry.count !== undefined ? { count: entry.count } : {}),
       ...(entry.trace !== undefined ? { trace: entry.trace } : {}),
     });

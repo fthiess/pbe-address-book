@@ -58,7 +58,14 @@ function ownerRecord() {
 }
 
 function me(role: "brother" | "manager" | "admin", profileId: number) {
-  return { profileId, role, stars: [], profile: { ...ownerRecord(), id: profileId } };
+  return {
+    profileId,
+    role,
+    realRole: role,
+    impersonating: false,
+    stars: [],
+    profile: { ...ownerRecord(), id: profileId },
+  };
 }
 
 /**

@@ -34,6 +34,27 @@ export interface Session {
    * not invalidate it (D22/D125).
    */
   expiresAt: number;
+  /**
+   * The **effective role** for "View as" impersonation (DECISIONS N31): a
+   * step-**down** testing overlay an admin/manager sets to exercise a lower
+   * projection. Absent ⇒ not impersonating, and the immutable real role
+   * ({@link Identity.role}) governs. Stored on the *session*, never on identity:
+   * who the caller is does not change, only which role the role-authorization
+   * checks read. Persisted alongside the session so it survives a cold start, and
+   * always a strict step-down ({@link "@pbe/shared".canImpersonate}) — it can only
+   * ever restrict the view, never grant power the real role lacks.
+   */
+  effectiveRole?: Role;
+}
+
+/**
+ * The role the role-authorization checks must read — the effective (impersonated)
+ * role when one is set, otherwise the immutable real role. The single accessor
+ * every projection/capability site goes through, so the N31 split (identity stays,
+ * role steps down) lives in exactly one place.
+ */
+export function effectiveRole(session: Session): Role {
+  return session.effectiveRole ?? session.identity.role;
 }
 
 /** Inputs to {@link IdentityProvider.createSession}. */

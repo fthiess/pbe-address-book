@@ -1,4 +1,6 @@
+import { type Role, canImpersonate } from "@pbe/shared";
 import type { FastifyInstance } from "fastify";
+import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { NonceService } from "../identity/nonce-store.js";
 import {
@@ -9,8 +11,10 @@ import {
   setSessionCookie,
 } from "../identity/session-cookie.js";
 import type { SessionService } from "../identity/session-store.js";
-import { AuthError, type IdentityProvider } from "../identity/types.js";
+import { AuthError, type IdentityProvider, effectiveRole } from "../identity/types.js";
 import { projectSelf } from "../projection/projection.js";
+import type { Clock } from "./profiles.js";
+import { traceId } from "./trace.js";
 
 /**
  * Where to send a user to start the Ghost handshake. The relay lives on the live
@@ -35,6 +39,10 @@ export interface AuthRoutesConfig {
   cookie: SessionCookieConfig;
   /** Undefined locally (the SPA uses the dev role switcher, not the Ghost bridge). */
   ghostBridge?: GhostBridgeConfig;
+  /** The audit stream (D61) — records "View as" start/stop (N31). */
+  audit: AuditLog;
+  /** "Now" for the impersonation audit stamps; shared with the write path. */
+  clock: Clock;
 }
 
 /**
@@ -42,6 +50,13 @@ export interface AuthRoutesConfig {
  * every environment; the *provider* behind `POST /api/auth/session` differs
  * (Ghost in production, never reached locally where `/api/dev/session` is used).
  */
+const ROLES = new Set<Role>(["brother", "manager", "admin"]);
+
+/** Narrow an untrusted request body value to a known `Role`. */
+function isRole(value: unknown): value is Role {
+  return typeof value === "string" && ROLES.has(value as Role);
+}
+
 export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfig): void {
   const gate = requireSession(config.sessionStore);
 
@@ -100,12 +115,93 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
     if (!session) {
       return reply.code(401).send({ error: "unauthenticated" });
     }
-    const { profileId, role } = session.identity;
+    const { profileId, role: realRole } = session.identity;
+    // `role` is the **effective** role (the "View as" projection the SPA gates its
+    // UI on); `realRole` and `impersonating` let the masthead show the un-spoofable
+    // "View as …" / "Stop" controls, both gated on the real role (N31). The owner's
+    // own `profile` is the role-independent self-view, unchanged by impersonation.
+    const role = effectiveRole(session);
     const own = config.cache.getById(profileId);
     const profile = own ? projectSelf(own) : null;
     const stars = await config.getStars(profileId);
     reply.header("Cache-Control", "no-store");
-    return { profileId, role, stars, profile };
+    return { profileId, role, realRole, impersonating: role !== realRole, stars, profile };
+  });
+
+  /**
+   * Start "View as" impersonation (DECISIONS N31). Sets a step-**down** effective
+   * role on the session so the lower projection is genuinely fetched and the lower
+   * powers genuinely enforced — gated on the **real** role (`canImpersonate`), so
+   * a caller can only ever restrict their own view, never escalate. The SPA reloads
+   * after this resolves so the bulk directory re-downloads at the new projection.
+   */
+  app.post("/api/me/impersonate", { preHandler: gate }, async (request, reply) => {
+    const session = request.session;
+    const id = readSessionId(request);
+    if (!session || !id) {
+      return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+    }
+    const realRole = session.identity.role;
+    const body = (request.body ?? {}) as { role?: unknown };
+    if (!isRole(body.role)) {
+      return reply.code(400).send({ error: "bad_request", message: "Unknown role." });
+    }
+    const target = body.role;
+    if (!canImpersonate(realRole, target)) {
+      // Escalation or same-role — refused on the real role, audited as a denial.
+      config.audit.record(
+        {
+          action: "impersonate.start",
+          actorId: session.identity.profileId,
+          outcome: "denied",
+          targetRole: target,
+          trace: traceId(request),
+        },
+        config.clock().toISOString(),
+      );
+      return reply
+        .code(403)
+        .send({ error: "forbidden", message: "You may only view as a lower role." });
+    }
+    await config.sessionStore.setEffectiveRole(id, target);
+    config.audit.record(
+      {
+        action: "impersonate.start",
+        actorId: session.identity.profileId,
+        outcome: "ok",
+        targetRole: target,
+        trace: traceId(request),
+      },
+      config.clock().toISOString(),
+    );
+    return reply.code(204).send();
+  });
+
+  /**
+   * Stop "View as" impersonation (N31): clear the effective role and return to the
+   * real role. Available to anyone authenticated — the check is on the **real**
+   * role, never the (possibly lowered) effective one, so a user can never lock
+   * themselves out of their own powers. A no-op if not currently impersonating.
+   */
+  app.delete("/api/me/impersonate", { preHandler: gate }, async (request, reply) => {
+    const session = request.session;
+    const id = readSessionId(request);
+    if (!session || !id) {
+      return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+    }
+    if (session.effectiveRole !== undefined) {
+      await config.sessionStore.setEffectiveRole(id, null);
+      config.audit.record(
+        {
+          action: "impersonate.stop",
+          actorId: session.identity.profileId,
+          outcome: "ok",
+          trace: traceId(request),
+        },
+        config.clock().toISOString(),
+      );
+    }
+    return reply.code(204).send();
   });
 
   /** Clears the Book session and the cookie (API-SPEC §2 `/api/auth/signout`). */

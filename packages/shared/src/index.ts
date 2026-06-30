@@ -45,7 +45,9 @@ export {
   type WriteRule,
   WRITE_RULE,
   canActOnProfile,
+  canImpersonate,
   canWriteField,
+  impersonatableRoles,
   partitionWritableFields,
 } from "./capabilities.js";
 export { profilesToCsv, neutralizeCsvCell } from "./csv.js";

@@ -65,9 +65,20 @@ Completes the auth bridge. Called by the `/auth/callback` SPA page, which reads 
 The caller's own private state **and own full profile**, used by the SPA on load. This is the self-fetch half of the split read (decision D82): the bulk `GET /api/profiles` carries only a *plain role-projection* of the caller's own record, and the SPA overlays the full own record returned here onto its own row.
 
 - **Auth:** any authenticated user.
-- **Response 200:** `{ "profileId": 5247, "role": "manager", "stars": [5012, 5305], "profile": { /* the caller's own full Profile — own off-toggle contact values, but never their own adminNote */ } }`
+- **Response 200:** `{ "profileId": 5247, "role": "manager", "realRole": "admin", "impersonating": true, "stars": [5012, 5305], "profile": { /* the caller's own full Profile — own off-toggle contact values, but never their own adminNote */ } }`
 - **Caching:** served **`no-store`** — like `/api/profiles`, this response now carries the caller's own contact values, so D95's no-disk-PII rationale applies.
+- **`role` vs. `realRole` (decision N31).** `role` is the **effective** role — the projection the caller is currently being served, which equals `realRole` unless a "View as" impersonation is active. `realRole` is the immutable real role and `impersonating` is `role !== realRole`. The SPA gates its UI on `role`, but the masthead's "View as …" / "Stop viewing" controls key on `realRole`, so the way back is always available. `profile` is the role-independent self-view, unchanged by impersonation.
 - **Errors:** `401` if no/expired session.
+
+### `POST /api/me/impersonate` · `DELETE /api/me/impersonate`
+"View as" role impersonation — a step-**down** testing overlay (decision N31). `POST { "role": "brother" | "manager" }` sets the session's **effective role** so the lower projection is genuinely fetched and the lower powers genuinely enforced (`/api/profiles`, `/api/profiles/{id}`, the PATCH capability gates, and `/api/exports` all read the effective role); `DELETE` clears it, returning to the real role.
+
+- **Auth:** any authenticated user; the step-down is checked on the **real** role.
+- **Behavior:** `POST` requires a strict step-down (admin → manager/brother, manager → brother); escalation or same-role is **`403`**, never applied. `DELETE` is always permitted (it can only *restore* powers), so a caller can never lock themselves out. Both transitions are **audited** (decision D61). Identity (`profileId`) is unchanged — only the role. The SPA reloads after either call so the bulk directory re-downloads at the new projection.
+- **Response 204** on success.
+- **Errors:** `400` (unknown/missing role on `POST`); `401` (no session); `403` (not a permitted step-down).
+
+> Impersonation is **available in production**, not staging-only: an admin already sees all data, so stepping down only *restricts* their view — useful for support ("what does this brother see?") and for exercising every later projection/permission change without a second test account.
 
 ### `POST /api/auth/signout`
 Clears the Book session (decision D95, reversing D24's "no logout"). Mirrors Ghost's avatar-menu sign-out in Book's top-right.

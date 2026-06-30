@@ -3,7 +3,9 @@ import {
   WRITE_RULE,
   type WriteRule,
   canActOnProfile,
+  canImpersonate,
   canWriteField,
+  impersonatableRoles,
   partitionWritableFields,
 } from "./capabilities.js";
 import type { Profile, Role } from "./types.js";
@@ -96,6 +98,30 @@ describe("canWriteField — the per-field write truth table (§8)", () => {
       expect(canWriteField("manager", false, field)).toBe(false);
       expect(canWriteField("admin", false, field)).toBe(true);
     }
+  });
+});
+
+describe("canImpersonate — step-down only (N31)", () => {
+  it("lets each role view as strictly lower roles, never up or sideways", () => {
+    // Full truth table over real × target.
+    const expected: Record<Role, Record<Role, boolean>> = {
+      admin: { brother: true, manager: true, admin: false },
+      manager: { brother: true, manager: false, admin: false },
+      brother: { brother: false, manager: false, admin: false },
+    };
+    for (const real of ROLES) {
+      for (const target of ROLES) {
+        expect(canImpersonate(real, target)).toBe(expected[real][target]);
+      }
+    }
+  });
+});
+
+describe("impersonatableRoles — the menu source, highest-first", () => {
+  it("yields the step-down targets in descending rank", () => {
+    expect(impersonatableRoles("admin")).toEqual(["manager", "brother"]);
+    expect(impersonatableRoles("manager")).toEqual(["brother"]);
+    expect(impersonatableRoles("brother")).toEqual([]);
   });
 });
 

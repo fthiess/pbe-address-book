@@ -11,6 +11,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandl
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import { MissingProfileError, type ProfileStore, StaleWriteError } from "../data/profiles.js";
+import { effectiveRole } from "../identity/types.js";
 import {
   type ProjectedProfile,
   type SelfProfile,
@@ -71,7 +72,10 @@ export function registerProfileRoutes(app: FastifyInstance, deps: ProfileRouteDe
  */
 function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDeps): void {
   app.get("/api/profiles", { preHandler: gate }, async (request, reply) => {
-    const role = request.session?.identity.role ?? "brother";
+    // The **effective** role selects the projection, so a "View as" admin actually
+    // downloads the lower role's smaller payload — not the full set behind a flag (N31).
+    const session = request.session;
+    const role = session ? effectiveRole(session) : "brother";
     const payload = await cache.payloadForRole(role);
     const encoding = negotiateEncoding(request.headers["accept-encoding"]);
 
@@ -103,10 +107,15 @@ function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDep
  */
 function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteDeps): void {
   app.get("/api/profiles/:id", { preHandler: gate }, async (request, reply) => {
-    const actor = request.session?.identity;
-    if (!actor) {
+    const session = request.session;
+    if (!session) {
       return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
     }
+    // Identity (who/own-row) stays real; the **effective** role drives the
+    // projection and the brother-hidden 404 — a "View as brother" admin sees the
+    // brother projection and 404s on hidden records, exactly as a brother would (N31).
+    const actor = session.identity;
+    const role = effectiveRole(session);
     const id = parseId(request);
     if (id === null) {
       return reply.code(400).send({ error: "bad_request", message: "Invalid profile id." });
@@ -118,11 +127,11 @@ function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteD
     }
 
     const isOwner = actor.profileId === id;
-    if (!isOwner && actor.role === "brother" && hiddenFromBrothers(stored)) {
+    if (!isOwner && role === "brother" && hiddenFromBrothers(stored)) {
       return reply.code(404).send({ error: "not_found", message: "No such brother." });
     }
 
-    return sendRecord(reply, stored, actor.role, isOwner, cache.concurrencyToken(id) ?? "");
+    return sendRecord(reply, stored, role, isOwner, cache.concurrencyToken(id) ?? "");
   });
 }
 
@@ -147,10 +156,15 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
   const { cache, gate, store, audit, clock } = deps;
 
   app.patch("/api/profiles/:id", { preHandler: gate }, async (request, reply) => {
-    const actor = request.session?.identity;
-    if (!actor) {
+    const session = request.session;
+    if (!session) {
       return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
     }
+    // Identity (the actor's own id, ownership, the verification stamp) stays real;
+    // the **effective** role drives the two write gates and the response projection,
+    // so a "View as" admin genuinely holds the lower role's powers (N31).
+    const actor = session.identity;
+    const role = effectiveRole(session);
     const id = parseId(request);
     if (id === null) {
       return reply.code(400).send({ error: "bad_request", message: "Invalid profile id." });
@@ -159,7 +173,7 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
     const trace = traceId(request);
 
     // 1. Object-level predicate — before touching the record (the IDOR guard).
-    if (!canActOnProfile(actor.role, actor.profileId, id)) {
+    if (!canActOnProfile(role, actor.profileId, id)) {
       audit.record(
         {
           action: "profile.update",
@@ -196,7 +210,7 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
     }
     const isOwner = actor.profileId === id;
     const patchFields = Object.keys(patch) as (keyof Profile)[];
-    const { rejected } = partitionWritableFields(actor.role, isOwner, patchFields);
+    const { rejected } = partitionWritableFields(role, isOwner, patchFields);
     if (rejected.length > 0) {
       audit.record(
         {
@@ -231,7 +245,7 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
     const changed = patchFields.filter((field) => !deepEqual(stored[field], typedPatch[field]));
     if (changed.length === 0) {
       // A no-op save: nothing changed, so no write, no verification touch, no audit.
-      return sendRecord(reply, stored, actor.role, isOwner, cache.concurrencyToken(id) ?? ifMatch);
+      return sendRecord(reply, stored, role, isOwner, cache.concurrencyToken(id) ?? ifMatch);
     }
 
     // 6. Verification side-effect (D28) + server-stamped housekeeping.
@@ -273,7 +287,7 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
       now.toISOString(),
     );
 
-    return sendRecord(reply, next, actor.role, isOwner, token);
+    return sendRecord(reply, next, role, isOwner, token);
   });
 }
 

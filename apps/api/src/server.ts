@@ -74,6 +74,8 @@ export function buildServer(options: BuildServerOptions): FastifyInstance {
     getStars: options.getStars,
     cookie: options.cookie,
     ghostBridge: options.ghostBridge,
+    audit,
+    clock,
   });
   registerProfileRoutes(app, {
     cache: options.profileCache,

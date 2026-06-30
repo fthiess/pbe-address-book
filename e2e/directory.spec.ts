@@ -32,6 +32,8 @@ const THUMB_FIXTURE = join(
 const ME = {
   profileId: 5002,
   role: "admin" as const,
+  realRole: "admin" as const,
+  impersonating: false,
   stars: [],
   profile: {
     id: 5002,

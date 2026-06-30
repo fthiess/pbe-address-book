@@ -1,3 +1,4 @@
+import type { Role } from "@pbe/shared";
 import {
   INITIAL_CONCURRENCY_TOKEN,
   type ProfileStore,
@@ -35,6 +36,15 @@ export class InMemorySessionStore implements SessionService {
       return null;
     }
     return session;
+  }
+
+  async setEffectiveRole(id: string, role: Role | null): Promise<void> {
+    const session = this.sessions.get(id);
+    if (!session) {
+      return;
+    }
+    const { effectiveRole: _drop, ...base } = session;
+    this.sessions.set(id, role === null ? base : { ...base, effectiveRole: role });
   }
 
   async destroy(id: string): Promise<void> {

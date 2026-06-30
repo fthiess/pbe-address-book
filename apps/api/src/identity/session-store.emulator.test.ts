@@ -58,4 +58,20 @@ describe.skipIf(!hasEmulator)("SessionStore (emulator)", () => {
     expect(await store.get(id)).toBeNull();
     expect(await new SessionStore(db).get(id)).toBeNull();
   });
+
+  it("persists and clears the effective ('View as') role across a cold start (N31)", async () => {
+    const writer = new SessionStore(db);
+    const id = await writer.create(makeSession(5004, Date.now() + 60_000));
+
+    await writer.setEffectiveRole(id, "brother");
+    // A fresh store proves the overlay is persisted, not just cached in memory —
+    // the same scale-to-zero durability the rest of the session record gets.
+    expect((await new SessionStore(db).get(id))?.effectiveRole).toBe("brother");
+
+    await writer.setEffectiveRole(id, null);
+    // Cleared by *omission*, so the `?? realRole` fallback engages on read.
+    const cleared = await new SessionStore(db).get(id);
+    expect(cleared?.effectiveRole).toBeUndefined();
+    expect(cleared?.identity.role).toBe("brother"); // the real role is intact
+  });
 });
