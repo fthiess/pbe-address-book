@@ -81,8 +81,10 @@ export interface DirectoryGridProps {
   stars: Stars;
   /** Row selection, present only when the Select column is shown (manager/admin, D41). */
   selection?: Selection;
-  /** The active view identity (URL search string) — keys scroll restoration. */
+  /** The active view identity (the history-entry `location.key`) — keys scroll restoration. */
   viewKey: string;
+  /** Whether the row set is final (search settled) so scroll restoration may apply. */
+  restoreReady: boolean;
 }
 
 export function DirectoryGrid({
@@ -99,6 +101,7 @@ export function DirectoryGrid({
   stars,
   selection,
   viewKey,
+  restoreReady,
 }: DirectoryGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -151,7 +154,7 @@ export function DirectoryGrid({
     overscan: 8,
   });
 
-  useScrollRestoration(scrollRef, viewKey, rows.length > 0);
+  useScrollRestoration(scrollRef, viewKey, rows.length > 0 && restoreReady);
   useIdlePrefetch(rows);
 
   const dataKeys = useMemo(() => columns.filter((c) => !c.pinned).map((c) => c.key), [columns]);

@@ -117,7 +117,12 @@ export function Directory() {
     [profiles, names],
   );
 
-  const { matchedIds, highlight, ready: searchReady } = useNameSearch(nameRecords, q);
+  const {
+    matchedIds,
+    highlight,
+    ready: searchReady,
+    settled: searchSettled,
+  } = useNameSearch(nameRecords, q);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -293,6 +298,7 @@ export function Directory() {
           stars={stars}
           selection={staff ? selection : undefined}
           viewKey={location.key}
+          restoreReady={searchSettled}
         />
       ) : (
         <DirectoryCards
@@ -304,6 +310,7 @@ export function Directory() {
           stars={stars}
           selection={staff ? selection : undefined}
           viewKey={location.key}
+          restoreReady={searchSettled}
         />
       )}
     </section>

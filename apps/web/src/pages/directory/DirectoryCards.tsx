@@ -41,6 +41,8 @@ export interface DirectoryCardsProps {
   /** Row selection, present only for managers/admins (D41). */
   selection?: Selection;
   viewKey: string;
+  /** Whether the row set is final (search settled) so scroll restoration may apply. */
+  restoreReady: boolean;
 }
 
 export function DirectoryCards({
@@ -52,6 +54,7 @@ export function DirectoryCards({
   stars,
   selection,
   viewKey,
+  restoreReady,
 }: DirectoryCardsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -62,7 +65,7 @@ export function DirectoryCards({
     overscan: 6,
   });
 
-  useScrollRestoration(scrollRef, viewKey, rows.length > 0);
+  useScrollRestoration(scrollRef, viewKey, rows.length > 0 && restoreReady);
   useIdlePrefetch(rows);
 
   return (

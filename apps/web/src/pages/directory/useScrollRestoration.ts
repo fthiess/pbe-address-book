@@ -54,8 +54,13 @@ function writeOffset(viewKey: string, offset: number): void {
 /**
  * Wire scroll save/restore onto a scroll container.
  * @param scrollRef the scrollable element (the grid/card viewport).
- * @param viewKey   the active view identity (URL search string).
- * @param ready     true once rows are present and the list can be measured.
+ * @param viewKey   the active view identity (the history-entry `location.key`).
+ * @param ready     true once the row set is **final and measurable** — rows are
+ *                  present AND any async result (the Name-Search worker) has
+ *                  settled. Restoring before the set is final would clamp the
+ *                  offset against an interim, shorter list (the worker only ever
+ *                  *grows* the match), and the once-per-view guard would then keep
+ *                  it stuck there — the search-then-Back regression (4a-3).
  */
 export function useScrollRestoration(
   scrollRef: RefObject<HTMLElement | null>,
@@ -85,6 +90,13 @@ export function useScrollRestoration(
     }
     let frame = 0;
     const onScroll = () => {
+      // Only record once this view has been restored. A transient scroll while
+      // the list is still settling (the worker growing the row set, the
+      // virtualizer sizing) must not overwrite the saved offset before it has
+      // been applied — otherwise the restore reads back the clobbered value.
+      if (restoredFor.current !== viewKey) {
+        return;
+      }
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => writeOffset(viewKey, element.scrollTop));
     };

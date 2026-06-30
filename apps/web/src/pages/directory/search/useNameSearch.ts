@@ -29,6 +29,14 @@ export interface NameSearchResult {
    * Surfaced so the UI can announce the progressive-enhancement transition (D110).
    */
   ready: boolean;
+  /**
+   * Whether `matchedIds` reflects the **final** answer for the query on screen —
+   * true for an empty query, or once the worker has answered *this* query. While
+   * false, `matchedIds` is the interim substring set that will still grow into the
+   * richer worker match, so anything that depends on the row set being stable
+   * (scroll restoration) must wait for this rather than for `ready` alone.
+   */
+  settled: boolean;
 }
 
 /**
@@ -120,5 +128,11 @@ export function useNameSearch(
     [query, matchedTokens],
   );
 
-  return { matchedIds, highlight, ready };
+  // The row set is final when there is no query, or when the worker's answer is
+  // for the query currently on screen. (Index-`ready` alone is not enough: after
+  // the index builds there is still a query round-trip during which `matchedIds`
+  // is the interim substring set.)
+  const settled = query.trim().length === 0 || workerCurrent;
+
+  return { matchedIds, highlight, ready, settled };
 }
