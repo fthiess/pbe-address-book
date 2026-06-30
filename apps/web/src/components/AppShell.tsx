@@ -84,12 +84,14 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                 <Avatar name={name} seed={me.profile?.id} size={34} />
                 <span className="hidden text-sm font-medium sm:inline">{name}</span>
               </summary>
-              <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg">
+              {/* z-30 to clear the Directory's sticky header cells (z-21), matching
+                  the Columns dropdown precedent — a lower z draws under the grid. */}
+              <div className="absolute right-0 z-30 mt-2 w-56 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg">
                 <p className="truncate px-3 py-2 text-xs text-muted-foreground">
                   {me.profile?.email ?? name}
                 </p>
                 <Link to={`/brother/${me.profileId}`} onClick={closeMenu} className={MENU_ITEM}>
-                  Profile
+                  My profile
                 </Link>
 
                 {viewAsTargets.length > 0 && (

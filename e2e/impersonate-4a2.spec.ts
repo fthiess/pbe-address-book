@@ -85,9 +85,10 @@ function openAvatarMenu(page: Page) {
 
 test.describe("View as impersonation (N31)", () => {
   test("an admin steps down to brother and back through the avatar menu", async ({ page }) => {
-    // Run on the calm Profile page so no virtualized grid sits under the menu
-    // popover; the masthead/menu are identical on every authenticated route.
-    await gotoApp(page, "/brother/5002");
+    // Deliberately on the Directory, whose sticky header (z-21) sits under the
+    // menu popover (z-30) — this guards the stacking fix: a lower z-index let the
+    // grid intercept clicks on the menu's lower items.
+    await gotoApp(page);
 
     // Real admin: the solid role badge, and the step-down items are offered.
     await expect(page.getByText("Admin", { exact: true })).toBeVisible();
@@ -109,10 +110,10 @@ test.describe("View as impersonation (N31)", () => {
     await expect(page.getByText("Admin", { exact: true })).toBeVisible();
   });
 
-  test("the Profile shortcut navigates to one's own record", async ({ page }) => {
+  test("the My profile shortcut navigates to one's own record", async ({ page }) => {
     await gotoApp(page);
     await openAvatarMenu(page);
-    await page.getByRole("link", { name: "Profile" }).click();
+    await page.getByRole("link", { name: "My profile" }).click();
     await expect(page).toHaveURL(/\/brother\/5002$/);
   });
 
