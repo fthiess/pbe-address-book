@@ -64,9 +64,30 @@ const ME = {
 // row click lands on the editable record.
 const LIST = {
   profiles: [
-    { id: 5247, firstName: "James", lastName: "Smyth", classYear: 1984, deceased: { isDeceased: false }, hasHeadshot: false },
-    { id: 5300, firstName: "Aaron", lastName: "Adams", classYear: 1980, deceased: { isDeceased: false }, hasHeadshot: false },
-    { id: 5301, firstName: "Carl", lastName: "Young", classYear: 1990, deceased: { isDeceased: false }, hasHeadshot: false },
+    {
+      id: 5247,
+      firstName: "James",
+      lastName: "Smyth",
+      classYear: 1984,
+      deceased: { isDeceased: false },
+      hasHeadshot: false,
+    },
+    {
+      id: 5300,
+      firstName: "Aaron",
+      lastName: "Adams",
+      classYear: 1980,
+      deceased: { isDeceased: false },
+      hasHeadshot: false,
+    },
+    {
+      id: 5301,
+      firstName: "Carl",
+      lastName: "Young",
+      classYear: 1990,
+      deceased: { isDeceased: false },
+      hasHeadshot: false,
+    },
   ],
   majors: [],
 };
@@ -102,7 +123,10 @@ async function gotoDirectory(page: Page) {
 
 /** Open the exemplar's profile by clicking its Directory row link. */
 async function openFromDirectory(page: Page) {
-  await page.getByRole("rowheader", { name: /James Smyth/ }).getByRole("link").click();
+  await page
+    .getByRole("rowheader", { name: /James Smyth/ })
+    .getByRole("link")
+    .click();
   await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
 }
 
