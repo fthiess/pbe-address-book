@@ -1,5 +1,5 @@
 import { NuqsAdapter } from "nuqs/adapters/react-router/v7";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { Outlet, RouterProvider, createBrowserRouter } from "react-router-dom";
 import { SessionProvider, useSession } from "./auth/SessionContext.js";
 import { AppShell } from "./components/AppShell.js";
 import { FontSizeProvider } from "./components/FontSizeProvider.js";
@@ -8,17 +8,32 @@ import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
 import { Directory } from "./pages/Directory.js";
-import { Profile } from "./pages/Profile.js";
+import { ProfileContainer, ProfileEditRoute, ProfileViewRoute } from "./pages/Profile.js";
 import { SignIn } from "./pages/SignIn.js";
 
 /**
- * The authenticated app, gated on session state. While `/api/me` is in flight a
+ * The root layout. nuqs's URL-state adapter reads the router's location, so it
+ * has to live **inside** the router (a data router renders its tree through
+ * `RouterProvider`, not as `BrowserRouter` children); this layout route is that
+ * inside-the-router home. The session/theme/font providers don't touch router
+ * state and so wrap `RouterProvider` in {@link App}.
+ */
+function RootLayout() {
+  return (
+    <NuqsAdapter>
+      <Outlet />
+    </NuqsAdapter>
+  );
+}
+
+/**
+ * The authenticated shell, gated on session state. While `/api/me` is in flight a
  * cold start can take a few seconds (scale-to-zero), so the loading overlay is
  * threshold-gated (D119): the warm path shows a bare background and never the
  * overlay. Signed-out → the sign-in screen; signed-in → the shell wrapping the
- * authenticated routes (the Directory and, from Phase 4, the Profile page).
+ * authenticated routes (rendered through the `Outlet`).
  */
-function Gate() {
+function GateLayout() {
   const { state } = useSession();
   const showOverlay = useDelayedFlag(state.status === "loading", 500);
 
@@ -34,34 +49,55 @@ function Gate() {
   }
   return (
     <AppShell me={state.me}>
-      <Routes>
-        <Route path="/brother/:id/edit" element={<Profile mode="edit" />} />
-        <Route path="/brother/:id" element={<Profile mode="view" />} />
-        <Route path="*" element={<Directory />} />
-      </Routes>
+      <Outlet />
     </AppShell>
   );
 }
 
 /**
- * The SPA root: the persistent shell, identity, and routing (React Router +
- * nuqs) of the Phase 1b walking skeleton. `/auth/callback` completes the Ghost
- * bridge; every other path resolves through the session gate.
+ * The route tree, on a **data router** (`createBrowserRouter`) so the Profile
+ * page can use `useBlocker` for the unified unsaved-changes guard (OFC-65/N33).
+ * `/auth/callback` completes the Ghost bridge outside the session gate; every
+ * other path resolves through {@link GateLayout}. The Profile page is a single
+ * `brother/:id` route whose container owns the record and hosts the view and
+ * `edit` children as a shared layout — so the view↔edit switch never remounts or
+ * refetches (N33).
+ */
+const router = createBrowserRouter([
+  {
+    element: <RootLayout />,
+    children: [
+      { path: "/auth/callback", element: <AuthCallback /> },
+      {
+        element: <GateLayout />,
+        children: [
+          { index: true, element: <Directory /> },
+          {
+            path: "brother/:id",
+            element: <ProfileContainer />,
+            children: [
+              { index: true, element: <ProfileViewRoute /> },
+              { path: "edit", element: <ProfileEditRoute /> },
+            ],
+          },
+          { path: "*", element: <Directory /> },
+        ],
+      },
+    ],
+  },
+]);
+
+/**
+ * The SPA root: the theme/font/session providers (none of which read router
+ * state) wrapping the data router that carries the rest of the app.
  */
 export function App() {
   return (
     <ThemeProvider>
       <FontSizeProvider>
-        <BrowserRouter>
-          <NuqsAdapter>
-            <SessionProvider>
-              <Routes>
-                <Route path="/auth/callback" element={<AuthCallback />} />
-                <Route path="*" element={<Gate />} />
-              </Routes>
-            </SessionProvider>
-          </NuqsAdapter>
-        </BrowserRouter>
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>
       </FontSizeProvider>
     </ThemeProvider>
   );

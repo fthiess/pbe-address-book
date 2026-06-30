@@ -564,7 +564,7 @@ function Row({
     ) {
       return;
     }
-    navigate(`/brother/${profile.id}`);
+    navigate(`/brother/${profile.id}`, { state: { fromDirectory: true } });
   };
 
   return (
@@ -683,6 +683,7 @@ function Cell({
               interactive Star/Select cells land with their behaviour in 3c. */}
           <Link
             to={`/brother/${profile.id}`}
+            state={{ fromDirectory: true }}
             className={cn(
               "min-w-0 max-w-full truncate font-medium underline-offset-2 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring",
               // De-brothered: struck through and muted (D115); managers/admins only.

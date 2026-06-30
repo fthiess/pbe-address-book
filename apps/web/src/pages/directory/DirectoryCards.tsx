@@ -115,6 +115,7 @@ export function DirectoryCards({
                 </span>
                 <Link
                   to={`/brother/${profile.id}`}
+                  state={{ fromDirectory: true }}
                   className="block rounded-xl border border-border bg-card p-3 pr-20 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="flex items-center gap-3">

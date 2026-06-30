@@ -63,10 +63,17 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
       <header className="border-b border-border bg-card">
         <div className="flex w-full items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex items-center gap-2.5">
+          {/* The masthead crest + wordmark is the conventional "home" affordance:
+              it always returns to the Directory landing view (a fresh navigation,
+              not a history pop), available on every page. In edit mode the dirty-form
+              blocker still intercepts it, so unsaved edits stay protected. */}
+          <Link
+            to="/"
+            className="flex items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
             <img src="/crest.svg" alt="" aria-hidden="true" className="size-7" />
             <span className="text-base font-bold tracking-tight">PBE Address Book</span>
-          </div>
+          </Link>
           <div className="flex items-center gap-3">
             <FontSizeToggle />
             <ThemeToggle />

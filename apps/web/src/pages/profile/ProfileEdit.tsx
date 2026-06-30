@@ -1,5 +1,6 @@
 import type { Profile, ValidationIssue } from "@pbe/shared";
-import { useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
+import { useBlocker } from "react-router-dom";
 import type { ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
@@ -53,28 +54,39 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
  * repeatable groups) and the headshot / verification / mark-deceased / admin
  * controls are the 4b and 4c passes; here those fields render **read-only** so the
  * form is complete and saveable without them.
+ *
+ * The unsaved-changes guard has two layers (D43, OFC-65): `useUnsavedGuard` arms
+ * `beforeunload` for browser-level exits (reload, tab close, a typed URL), and
+ * `useBlocker` catches every in-app navigation while the form is dirty — Back, the
+ * masthead links, Cancel — funnelling them through one "Discard changes?" dialog.
+ * A deliberate Save bypasses the blocker (a ref flipped before it navigates) so it
+ * never prompts the user about their own save.
  */
 export function ProfileEdit({
   record,
   viewer,
   submit,
-  onCancel,
-  onSaved,
+  showToast,
+  exitEdit,
 }: {
   record: ProfileRecord;
   viewer: Viewer;
   submit: (patch: Partial<Profile>) => Promise<SubmitResult>;
-  onCancel: () => void;
-  onSaved: () => void;
+  showToast: (message: string) => void;
+  exitEdit: () => void;
 }) {
   const form = useProfileDraft(record, viewer);
   useUnsavedGuard(form.dirty);
 
   const formRef = useRef<HTMLFormElement>(null);
   const [saving, setSaving] = useState(false);
-  const [confirmDiscard, setConfirmDiscard] = useState(false);
   const [reconcile, setReconcile] = useState<string[] | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+
+  // Block in-app navigation away from a dirty form. A successful Save flips
+  // `bypass` first so the blocker waves its own exit through without a prompt.
+  const bypass = useRef(false);
+  const blocker = useBlocker(useCallback(() => form.dirty && !bypass.current, [form.dirty]));
 
   const consentLocked = !(viewer.isOwner || viewer.role === "admin");
   const isStaff = viewer.role === "manager" || viewer.role === "admin";
@@ -98,7 +110,9 @@ export function ProfileEdit({
     try {
       const result = await submit(form.patch());
       if (result.status === "ok") {
-        onSaved();
+        showToast(viewer.isOwner ? "Saved — verified as of today." : "Saved.");
+        bypass.current = true;
+        exitEdit();
         return;
       }
       if (result.status === "stale") {
@@ -116,12 +130,11 @@ export function ProfileEdit({
     }
   }
 
+  // Cancel is just another exit: when the form is dirty the blocker intercepts it
+  // and raises the same "Discard changes?" dialog as Back; when clean it leaves at
+  // once. (No separate confirm path — one dialog for every dirty exit.)
   function onCancelClick() {
-    if (form.dirty) {
-      setConfirmDiscard(true);
-    } else {
-      onCancel();
-    }
+    exitEdit();
   }
 
   return (
@@ -470,17 +483,14 @@ export function ProfileEdit({
         </div>
       </form>
 
-      {confirmDiscard && (
+      {blocker.state === "blocked" && (
         <ConfirmDialog
           title="Discard your changes?"
           confirmLabel="Discard changes"
           cancelLabel="Keep editing"
           tone="destructive"
-          onConfirm={() => {
-            setConfirmDiscard(false);
-            onCancel();
-          }}
-          onCancel={() => setConfirmDiscard(false)}
+          onConfirm={() => blocker.proceed?.()}
+          onCancel={() => blocker.reset?.()}
         >
           You have unsaved edits on this profile. Discarding will lose them.
         </ConfirmDialog>

@@ -22,13 +22,28 @@ import { type Viewer, canEdit, managerSeesPrivate, seesRestricted } from "./view
  * (preferences/consent + record status) renders only for the owner, managers, and
  * admins; a deceased record opens with the In Memoriam treatment (§5.7.7).
  */
-export function ProfileView({ record, viewer }: { record: ProfileRecord; viewer: Viewer }) {
+export function ProfileView({
+  record,
+  viewer,
+  onBackToDirectory,
+}: {
+  record: ProfileRecord;
+  viewer: Viewer;
+  onBackToDirectory: () => void;
+}) {
   const name = canonicalName(record);
   const deceased = record.deceased?.isDeceased === true;
   const restricted = seesRestricted(viewer);
 
   return (
     <article className="mx-auto max-w-5xl">
+      <button
+        type="button"
+        onClick={onBackToDirectory}
+        className="mb-3 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-[length:var(--text-label)] font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span aria-hidden="true">←</span> Directory
+      </button>
       <div className="overflow-hidden rounded-[var(--radius-2xl)] border border-border bg-card shadow-[var(--shadow-card)]">
         {deceased && <MemorialBanner />}
 
@@ -119,6 +134,7 @@ function IdentityHeader({
       {canEdit(viewer) && !deceased && (
         <Link
           to={`/brother/${record.id}/edit`}
+          state={{ fromProfile: true }}
           className="shrink-0 rounded-[var(--radius-md)] bg-primary px-4 py-2.5 text-[length:var(--text-label)] font-semibold text-primary-foreground outline-none hover:opacity-90 focus-visible:ring-2 focus-visible:ring-ring"
         >
           Edit profile

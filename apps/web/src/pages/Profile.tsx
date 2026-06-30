@@ -1,12 +1,21 @@
 import type { Profile as ProfileType } from "@pbe/shared";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Link,
+  Navigate,
+  Outlet,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+  useParams,
+} from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
 import { ApiError, fetchProfile, patchProfile } from "../lib/api.js";
 import type { ProfileRecord } from "../lib/types.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
-import { ProfileEdit, type SubmitResult } from "./profile/ProfileEdit.js";
+import type { SubmitResult } from "./profile/ProfileEdit.js";
+import { ProfileEdit } from "./profile/ProfileEdit.js";
 import { ProfileView } from "./profile/ProfileView.js";
 import { valuesEqual } from "./profile/patch.js";
 import { type Viewer, canEdit } from "./profile/viewer.js";
@@ -21,18 +30,38 @@ const HOUSEKEEPING = new Set<string>([
 ]);
 
 /**
- * The Profile page (§5.7) — Book's read/edit surface for one brother. It loads
- * the record (and its concurrency token) from `GET /api/profiles/:id`, derives
- * the viewer's relationship to it from `/api/me`, and renders the view or the
- * edit form. Edit mode is its own URL (`/brother/:id/edit`); a viewer who may not
- * edit is redirected to the view. Save is orchestrated here — the PATCH-first
- * sequence, the `412` reconcile re-fetch, and the success toast (§5.7.9).
+ * Everything the view and edit child routes need from the container, shared
+ * through the `Outlet` context so the container can own the record (and survive
+ * the view↔edit switch without remounting — N33).
  */
-export function Profile({ mode }: { mode: "view" | "edit" }) {
+export interface ProfileOutletContext {
+  record: ProfileRecord;
+  viewer: Viewer;
+  /** The PATCH-first save with the 412 reconcile (§5.7.9). */
+  submit: (patch: Partial<ProfileType>) => Promise<SubmitResult>;
+  /** Show a transient confirmation toast (the non-URL channel, N33). */
+  showToast: (message: string) => void;
+  /** Leave edit mode back to the view: pop the edit entry, or replace it on a cold deep-link. */
+  exitEdit: () => void;
+  /** The "← Directory" action: return to the Directory entry, or `/` on a cold deep-link. */
+  backToDirectory: () => void;
+}
+
+/**
+ * The Profile page container (§5.7) — Book's read/edit surface for one brother.
+ * It loads the record (and its concurrency token) from `GET /api/profiles/:id`,
+ * derives the viewer's relationship to it from `/api/me`, owns the save
+ * orchestration, and renders the view or edit child through the `Outlet`. Because
+ * the container stays mounted across the view↔edit switch (a shared layout route),
+ * a save updates the record in place from the PATCH response — no second GET — and
+ * the confirmation toast lives here rather than travelling in the URL (N33).
+ */
+export function ProfileContainer() {
   const { id: idParam } = useParams();
   const id = Number(idParam);
   const { state } = useSession();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const me = state.status === "authenticated" ? state.me : null;
   const viewer: Viewer | null = me ? { role: me.role, isOwner: me.profileId === id } : null;
@@ -40,6 +69,7 @@ export function Profile({ mode }: { mode: "view" | "edit" }) {
   const [record, setRecord] = useState<ProfileRecord | null>(null);
   const [etag, setEtag] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "notfound" | "error">("loading");
+  const [toast, setToast] = useState<string | null>(null);
   const showOverlay = useDelayedFlag(status === "loading", 500);
 
   useEffect(() => {
@@ -62,9 +92,10 @@ export function Profile({ mode }: { mode: "view" | "edit" }) {
         setStatus(error instanceof ApiError && error.status === 404 ? "notfound" : "error");
       });
     return () => controller.abort();
-    // Re-fetch on id change. The view↔edit transition needs no re-fetch: a save
-    // updates `record`/`etag` in place, Cancel leaves them untouched, and a stale
-    // edit baseline is caught by the 412 reconcile.
+    // Re-fetch only on id change (a different brother). The view↔edit transition
+    // does NOT refetch: a save updates `record`/`etag` in place from the PATCH
+    // response, Cancel leaves them untouched, and a stale edit baseline is caught
+    // by the 412 reconcile (so the old post-save GET is gone — N33).
   }, [id]);
 
   // The save sequence (§5.7.9): PATCH with If-Match; on 412 re-fetch to get the
@@ -106,12 +137,30 @@ export function Profile({ mode }: { mode: "view" | "edit" }) {
     [id, etag, record],
   );
 
-  const onSaved = useCallback(() => {
-    const message = viewer?.isOwner ? "Saved — verified as of today." : "Saved.";
-    navigate(`/brother/${id}`, { state: { toast: message } });
-  }, [navigate, id, viewer?.isOwner]);
+  const showToast = useCallback((message: string) => setToast(message), []);
 
-  const onCancel = useCallback(() => navigate(`/brother/${id}`), [navigate, id]);
+  // The no-anachronistic-history model (N33): Edit pushed one entry tagged
+  // `fromProfile`, so leaving edit pops it (Back from the view then reaches the
+  // Directory). A cold deep-link straight to `/edit` has nothing to pop, so we
+  // replace it with the display URL instead.
+  const exitEdit = useCallback(() => {
+    if ((location.state as { fromProfile?: boolean } | null)?.fromProfile) {
+      navigate(-1);
+    } else {
+      navigate(`/brother/${id}`, { replace: true });
+    }
+  }, [location.state, navigate, id]);
+
+  // "← Directory": prefer popping back to the Directory entry (restoring its URL
+  // filters and history-state scroll) when we arrived from a row; otherwise fall
+  // back to the Directory home. Full prev/next "return to where I was" is 4d (N32).
+  const backToDirectory = useCallback(() => {
+    if ((location.state as { fromDirectory?: boolean } | null)?.fromDirectory) {
+      navigate(-1);
+    } else {
+      navigate("/");
+    }
+  }, [location.state, navigate]);
 
   if (status === "loading") {
     return showOverlay ? <LoadingOverlay /> : <div className="min-h-[40vh]" />;
@@ -127,51 +176,62 @@ export function Profile({ mode }: { mode: "view" | "edit" }) {
     );
   }
 
-  if (mode === "edit") {
-    if (!canEdit(viewer)) {
-      navigate(`/brother/${id}`, { replace: true });
-      return null;
-    }
-    return (
-      <ProfileEdit
-        record={record}
-        viewer={viewer}
-        submit={submit}
-        onCancel={onCancel}
-        onSaved={onSaved}
-      />
-    );
-  }
-
+  const context: ProfileOutletContext = {
+    record,
+    viewer,
+    submit,
+    showToast,
+    exitEdit,
+    backToDirectory,
+  };
   return (
     <>
-      <SavedToast />
-      <ProfileView record={record} viewer={viewer} />
+      <ProfileToast message={toast} onDone={() => setToast(null)} />
+      <Outlet context={context} />
     </>
   );
 }
 
-/** A transient "Saved" confirmation read from navigation state (§5.7.6 toast). */
-function SavedToast() {
-  const location = useLocation();
-  const message = (location.state as { toast?: string } | null)?.toast;
-  const [visible, setVisible] = useState(Boolean(message));
-  const cleared = useRef(false);
+/** The view child route (`/brother/:id`) — pulls the record from the container. */
+export function ProfileViewRoute() {
+  const { record, viewer, backToDirectory } = useOutletContext<ProfileOutletContext>();
+  return <ProfileView record={record} viewer={viewer} onBackToDirectory={backToDirectory} />;
+}
 
+/**
+ * The edit child route (`/brother/:id/edit`). A viewer who may not edit is sent to
+ * the view (replace, so Back still reaches the Directory).
+ */
+export function ProfileEditRoute() {
+  const { record, viewer, submit, showToast, exitEdit } = useOutletContext<ProfileOutletContext>();
+  if (!canEdit(viewer)) {
+    return <Navigate to={`/brother/${record.id}`} replace />;
+  }
+  return (
+    <ProfileEdit
+      record={record}
+      viewer={viewer}
+      submit={submit}
+      showToast={showToast}
+      exitEdit={exitEdit}
+    />
+  );
+}
+
+/**
+ * A transient "Saved" confirmation (§5.7.6 toast). Driven by container state (the
+ * non-URL channel — N33), so a save that pops back to the view still announces.
+ */
+function ProfileToast({ message, onDone }: { message: string | null; onDone: () => void }) {
   useEffect(() => {
     if (!message) {
       return;
     }
-    // Drop the message from history state so a refresh doesn't replay it.
-    if (!cleared.current) {
-      cleared.current = true;
-      window.history.replaceState({ ...window.history.state, usr: null }, "");
-    }
-    const timer = setTimeout(() => setVisible(false), 4000);
+    const timer = setTimeout(onDone, 4000);
     return () => clearTimeout(timer);
-  }, [message]);
+  }, [message, onDone]);
 
-  if (!message || !visible) {
+  if (!message) {
     return null;
   }
   return (
