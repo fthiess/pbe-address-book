@@ -61,7 +61,17 @@ const PROFILES = { profiles: GENERATED, majors: [] };
 
 async function gotoDirectory(page: Page) {
   await page.route("**/api/me", (route) => route.fulfill({ json: ME }));
-  await page.route("**/api/profiles", (route) => route.fulfill({ json: PROFILES }));
+  // Delay the *return*-side refetch so the grid remounts empty and the virtualizer
+  // sizes the list a few frames after restoration would naively fire — the
+  // condition that exposed the virtualizer-sizing clamp on staging.
+  let bulkHits = 0;
+  await page.route("**/api/profiles", async (route) => {
+    bulkHits += 1;
+    if (bulkHits > 1) {
+      await new Promise((r) => setTimeout(r, 600));
+    }
+    return route.fulfill({ json: PROFILES });
+  });
   await page.route(/\/api\/profiles\/\d+$/, (route) => {
     const id = Number(/(\d+)$/.exec(route.request().url())?.[1]);
     route.fulfill({
@@ -107,13 +117,17 @@ test("Back restores scroll under an active (worker-resolved) search", async ({ p
   await scroller.evaluate((el) => el.scrollTo(0, 4000));
   await page.waitForTimeout(150); // let the rAF-throttled save write history state
   await scroller.getByRole("link").nth(3).click();
+  // The profile genuinely opens (the Directory unmounts), so Back is a true remount.
+  await expect(page.getByRole("heading", { level: 1, name: /William/ })).toBeVisible();
   await expect(page).toHaveURL(/\/brother\/\d+/);
 
   await page.goBack();
   await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
   await expect(page).toHaveURL(/q=bill/);
-  // Restoration waits for the worker to settle, then applies the deep offset —
-  // it must land far down the list, not clamped near the top.
+  // The deep offset must be restored, not clamped near the top. This exercises
+  // both halves of the fix: restoration waits for the worker to settle (right row
+  // set) AND re-applies across frames until the virtualizer has sized the list
+  // (so the offset isn't clamped against an interim tiny scroll height).
   await expect
     .poll(() => page.getByTestId("directory-scroll").evaluate((el) => el.scrollTop))
     .toBeGreaterThan(3000);

@@ -17,8 +17,10 @@ import { type RefObject, useEffect, useLayoutEffect, useRef } from "react";
  * browser-restored full URL — a mismatch that silently lost the scroll. The
  * entry key is identical on save and on the return POP regardless of param
  * timing. We merge into `history.state` rather than replace it, so React Router's
- * own navigation state is preserved. Restoration runs once, after the list is
- * ready to measure; saving runs throttled to animation frames.
+ * own navigation state is preserved. Restoration re-applies the offset across
+ * animation frames until it sticks (the virtualized content grows to its full
+ * height a frame or two after mount); saving runs throttled to animation frames
+ * and only after the view has been restored.
  */
 
 const STATE_KEY = "directoryScroll";
@@ -77,10 +79,48 @@ export function useScrollRestoration(
       return;
     }
     const saved = readOffset(viewKey);
-    if (saved != null) {
-      element.scrollTop = saved;
+    if (saved == null || saved === 0) {
+      // Nothing to restore (or the top): mark done so saving can begin.
+      restoredFor.current = viewKey;
+      return;
     }
-    restoredFor.current = viewKey;
+
+    // Apply across frames until it *sticks*. The grid is virtualized, so when the
+    // restore runs the scroll container's content height is briefly tiny — the
+    // virtualizer computes the full height a frame or two later (and, on Back, the
+    // data refetch + Name-Search worker grow the list after mount). A single
+    // `scrollTop = saved` would clamp against that interim height and the
+    // once-per-view guard would then leave it stuck near the top — the bug Forrest
+    // hit. So we keep re-applying until the offset is reached (the content has
+    // grown tall enough) or the content has visibly stopped growing.
+    let cancelled = false;
+    let frame = 0;
+    let attempts = 0;
+    let lastHeight = -1;
+    let stableFrames = 0;
+    const apply = () => {
+      if (cancelled || !element) {
+        return;
+      }
+      element.scrollTop = saved;
+      const reached = Math.abs(element.scrollTop - saved) <= 1;
+      const height = element.scrollHeight;
+      stableFrames = height === lastHeight ? stableFrames + 1 : 0;
+      lastHeight = height;
+      attempts += 1;
+      // Done when we land on the offset, when the content has settled but is
+      // genuinely too short to reach it, or after a safety cap (~1s at 60fps).
+      if (reached || stableFrames >= 5 || attempts >= 60) {
+        restoredFor.current = viewKey;
+        return;
+      }
+      frame = requestAnimationFrame(apply);
+    };
+    apply();
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+    };
   }, [ready, viewKey, scrollRef]);
 
   useEffect(() => {
