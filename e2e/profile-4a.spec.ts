@@ -83,6 +83,12 @@ async function mockProfile(
 ) {
   const state = { record: options.record, etag: 'W/"v1"' };
   await page.route("**/api/me", (route) => route.fulfill({ json: options.meDoc }));
+  // The Profile container loads the bulk roster (4b-1, for Big Brother / Little
+  // Brothers). These 4a cases don't exercise it — an empty roster keeps the page
+  // behaviour identical and avoids the dead dev-proxy call.
+  await page.route("**/api/profiles", (route) =>
+    route.fulfill({ json: { profiles: [], majors: [] } }),
+  );
   await page.route(/\/api\/profiles\/\d+$/, async (route) => {
     if (route.request().method() === "PATCH") {
       const body = JSON.parse(route.request().postData() ?? "{}");
@@ -185,7 +191,11 @@ test.describe("profile — edit mode", () => {
     await firstName.fill("Jim");
     await page.getByRole("button", { name: "Save changes" }).click();
 
-    await expect(page.getByRole("status")).toContainText("Saved — verified as of today");
+    // Scope to the toast: the majors editor's dnd-kit context also has a role=status
+    // live region (empty), so match the save-confirmation status specifically.
+    await expect(page.getByRole("status").filter({ hasText: "Saved" })).toContainText(
+      "Saved — verified as of today",
+    );
     await expect(page).toHaveURL(/\/brother\/5247$/);
     await expect(page.getByRole("heading", { level: 1, name: /Jim Smyth/ })).toBeVisible();
   });
@@ -215,7 +225,11 @@ test.describe("profile — edit mode", () => {
     await gotoEdit(page);
 
     await expect(page.getByLabel("Alternate email")).toBeEnabled();
-    await page.getByLabel("Email", { exact: true }).fill("");
+    // Scope to the Contact section: the emergency-contact editor (4b-1) also has an "Email".
+    await page
+      .getByRole("region", { name: "Contact", exact: true })
+      .getByLabel("Email", { exact: true })
+      .fill("");
     await expect(page.getByLabel("Alternate email")).toBeDisabled();
   });
 

@@ -16,6 +16,7 @@
     "@pbe/help-content": "*",
     "@pbe/name-search": "*",
     "@pbe/shared": "*",
+    "@radix-ui/react-popover": "^1.1.18",
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.4",
     "clsx": "^2.1.1",

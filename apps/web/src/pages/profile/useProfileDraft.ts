@@ -1,4 +1,7 @@
 import {
+  type Address,
+  type EmergencyContact,
+  type Link,
   type PrivacyFlags,
   type Profile,
   type ValidationIssue,
@@ -6,7 +9,9 @@ import {
 } from "@pbe/shared";
 import { useCallback, useMemo, useState } from "react";
 import type { ProfileRecord } from "../../lib/types.js";
+import { isBlankAddress } from "./address-edit.js";
 import { buildPatch, isDirty } from "./patch.js";
+import { sanitizeRepeatables } from "./repeatables.js";
 import type { Viewer } from "./viewer.js";
 
 /**
@@ -48,6 +53,16 @@ export interface ProfileDraft {
   setPrivacy: (flag: keyof PrivacyFlags, value: boolean) => void;
   /** Set a top-level boolean consent (`allow*`, `unlisted`). */
   setBool: (key: keyof Profile, value: boolean) => void;
+  /** Replace the ordered majors list; an empty list clears the field. */
+  setMajors: (codes: string[]) => void;
+  /** Set the Big Brother pointer; `null` clears it (no Big Brother). */
+  setBigBrother: (id: number | null) => void;
+  /** Replace the address block; a fully-blank address clears the field. */
+  setAddress: (address: Address | undefined) => void;
+  /** Replace the links list (may carry a trailing blank in-progress row). */
+  setLinks: (links: Link[]) => void;
+  /** Replace the emergency-contacts list (may carry a trailing blank row). */
+  setEmergencyContacts: (contacts: EmergencyContact[]) => void;
   /** Mark a field touched (on blur), so its error may show. */
   touch: (field: string) => void;
   /** Reveal every error (on a Save attempt); returns the first invalid field. */
@@ -125,6 +140,39 @@ export function useProfileDraft(record: ProfileRecord, viewer: Viewer): ProfileD
     [clearServerIssue],
   );
 
+  const setMajors = useCallback(
+    (codes: string[]) => {
+      setDraft((d) => ({ ...d, majors: codes.length > 0 ? codes : undefined }));
+      clearServerIssue("majors");
+    },
+    [clearServerIssue],
+  );
+
+  const setBigBrother = useCallback(
+    (bigBrotherId: number | null) => {
+      setDraft((d) => ({ ...d, bigBrotherId }));
+      clearServerIssue("bigBrotherId");
+    },
+    [clearServerIssue],
+  );
+
+  const setAddress = useCallback(
+    (address: Address | undefined) => {
+      setDraft((d) => ({ ...d, address: isBlankAddress(address) ? undefined : address }));
+      clearServerIssue("address.country");
+      clearServerIssue("address.stateProvince");
+    },
+    [clearServerIssue],
+  );
+
+  const setLinks = useCallback((links: Link[]) => {
+    setDraft((d) => ({ ...d, links: links.length > 0 ? links : undefined }));
+  }, []);
+
+  const setEmergencyContacts = useCallback((contacts: EmergencyContact[]) => {
+    setDraft((d) => ({ ...d, emergencyContacts: contacts.length > 0 ? contacts : undefined }));
+  }, []);
+
   const touch = useCallback((field: string) => {
     setTouched((prev) => {
       const next = new Set(prev);
@@ -133,10 +181,12 @@ export function useProfileDraft(record: ProfileRecord, viewer: Viewer): ProfileD
     });
   }, []);
 
-  // The authoritative client validation: the shared validator over the draft,
-  // with the always-required fields enforced (this IS a full record edit).
+  // The authoritative client validation: the shared validator over the draft (with
+  // blank in-progress repeatable rows dropped), the always-required fields enforced
+  // (this IS a full record edit).
+  const sanitized = useMemo(() => sanitizeRepeatables(draft), [draft]);
   const errors = useMemo(() => {
-    const { issues } = validateProfile(draft, { currentYear, requireRequired: true });
+    const { issues } = validateProfile(sanitized, { currentYear, requireRequired: true });
     const map: Record<string, string> = {};
     for (const issue of issues) {
       if (!(issue.field in map)) {
@@ -144,7 +194,7 @@ export function useProfileDraft(record: ProfileRecord, viewer: Viewer): ProfileD
       }
     }
     return map;
-  }, [draft, currentYear]);
+  }, [sanitized, currentYear]);
 
   const revealAll = useCallback((): string | null => {
     setSubmitted(true);
@@ -173,12 +223,12 @@ export function useProfileDraft(record: ProfileRecord, viewer: Viewer): ProfileD
   }, []);
 
   const dirty = useMemo(
-    () => isDirty(record, draft, viewer.role, viewer.isOwner),
-    [record, draft, viewer.role, viewer.isOwner],
+    () => isDirty(record, sanitized, viewer.role, viewer.isOwner),
+    [record, sanitized, viewer.role, viewer.isOwner],
   );
 
   const patch = useCallback(
-    () => buildPatch(record, draft, viewer.role, viewer.isOwner),
+    () => buildPatch(record, sanitizeRepeatables(draft), viewer.role, viewer.isOwner),
     [record, draft, viewer.role, viewer.isOwner],
   );
 
@@ -189,6 +239,11 @@ export function useProfileDraft(record: ProfileRecord, viewer: Viewer): ProfileD
     setClassYear,
     setPrivacy,
     setBool,
+    setMajors,
+    setBigBrother,
+    setAddress,
+    setLinks,
+    setEmergencyContacts,
     touch,
     revealAll,
     errorFor,

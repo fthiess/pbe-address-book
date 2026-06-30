@@ -1,6 +1,7 @@
 import { type EmergencyContact, formatClassYear, formatConstitutionId } from "@pbe/shared";
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import type { ProfileRecord } from "../../lib/types.js";
+import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
 import { CONSENT_COPY, PRIVACY_COPY, activeConsequence } from "./consent.js";
@@ -12,6 +13,7 @@ import {
   lifespanLine,
 } from "./display.js";
 import { PrivateMarker, ReadField, Section } from "./fields.js";
+import { littleBrothers, rosterNames } from "./relationships.js";
 import { type Viewer, canEdit, managerSeesPrivate, seesRestricted } from "./viewer.js";
 
 /**
@@ -25,10 +27,12 @@ import { type Viewer, canEdit, managerSeesPrivate, seesRestricted } from "./view
 export function ProfileView({
   record,
   viewer,
+  roster,
   onBackToDirectory,
 }: {
   record: ProfileRecord;
   viewer: Viewer;
+  roster: DirectoryProfile[] | null;
   onBackToDirectory: () => void;
 }) {
   const name = canonicalName(record);
@@ -59,7 +63,7 @@ export function ProfileView({
 
           <Row>
             <ProfessionalSection record={record} viewer={viewer} />
-            <RelationshipsSection record={record} />
+            <RelationshipsSection record={record} roster={roster} />
           </Row>
 
           {restricted && (
@@ -242,29 +246,84 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
           </ul>
         </ReadField>
       )}
+      {record.links && record.links.length > 0 && (
+        <ReadField label="Links">
+          <ul className="space-y-1">
+            {record.links.map((link) => (
+              <li key={`${link.label}-${link.url}`}>
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
+                >
+                  {link.label || link.url}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </ReadField>
+      )}
     </Section>
   );
 }
 
 /**
- * Relationships (§5.7.4). The Big Brother link to his profile is shown here; the
- * **typeahead editor and the derived Little Brothers list arrive in 4b** (they
- * need the in-memory dataset, which this single-record view does not load).
+ * Relationships (§5.7.4). The Big Brother link carries his Canonical Name (from
+ * the roster once it loads, falling back to a neutral link meanwhile), and the
+ * **derived Little Brothers** — the brothers who name this one as their Big
+ * Brother — render read-only beneath, each a link. Both are free reads of the
+ * in-memory dataset; nothing here is stored. The section is absent when there is
+ * neither a Big Brother nor any Little Brother.
  */
-function RelationshipsSection({ record }: { record: ProfileRecord }) {
-  if (record.bigBrotherId == null) {
+function RelationshipsSection({
+  record,
+  roster,
+}: {
+  record: ProfileRecord;
+  roster: DirectoryProfile[] | null;
+}) {
+  const names = useMemo(() => (roster ? rosterNames(roster) : null), [roster]);
+  const littles = useMemo(
+    () => (roster && names ? littleBrothers(roster, names, record.id) : []),
+    [roster, names, record.id],
+  );
+
+  if (record.bigBrotherId == null && littles.length === 0) {
     return null;
   }
+
+  const bigBrotherName =
+    record.bigBrotherId != null ? (names?.get(record.bigBrotherId) ?? null) : null;
+
   return (
     <Section title="Relationships">
-      <ReadField label="Big Brother">
-        <Link
-          to={`/brother/${record.bigBrotherId}`}
-          className="font-medium text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
-        >
-          View his profile
-        </Link>
-      </ReadField>
+      {record.bigBrotherId != null && (
+        <ReadField label="Big Brother">
+          <Link
+            to={`/brother/${record.bigBrotherId}`}
+            className="font-medium text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
+          >
+            {bigBrotherName ?? "View his profile"}
+          </Link>
+        </ReadField>
+      )}
+      {littles.length > 0 && (
+        <ReadField label="Little Brothers">
+          <ul className="flex flex-wrap gap-1.5">
+            {littles.map((little) => (
+              <li key={little.id}>
+                <Link
+                  to={`/brother/${little.id}`}
+                  className="inline-flex items-center rounded-full border border-border bg-muted px-2.5 py-0.5 text-[length:var(--text-body-sm)] text-foreground underline-offset-2 hover:underline"
+                >
+                  {little.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </ReadField>
+      )}
     </Section>
   );
 }

@@ -7,10 +7,10 @@ import { courseLabel, courseName } from "@pbe/shared";
  */
 
 /** Course-area chip palette families, keyed off the leading course number. */
-type ChipFamily = "teal" | "gold" | "green" | "purple" | "red" | "slate";
+export type ChipFamily = "teal" | "gold" | "green" | "purple" | "red" | "slate";
 
 /** Map an MIT course code (e.g. "6-3", "18") to its area's chip family. */
-function courseFamily(code: string): ChipFamily {
+export function courseFamily(code: string): ChipFamily {
   const lead = Number.parseInt(code, 10);
   switch (lead) {
     case 6:
@@ -29,7 +29,7 @@ function courseFamily(code: string): ChipFamily {
 }
 
 /** Inline style drawing a family's three chip tokens from the token layer. */
-function familyStyle(family: ChipFamily) {
+export function familyStyle(family: ChipFamily) {
   return {
     color: `var(--chip-${family}-fg)`,
     backgroundColor: `var(--chip-${family}-bg)`,

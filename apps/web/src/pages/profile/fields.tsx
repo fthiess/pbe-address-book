@@ -170,6 +170,46 @@ export function TextField({
   );
 }
 
+export function SelectField({
+  id: providedId,
+  label,
+  value,
+  onChange,
+  onBlur,
+  error,
+  helper,
+  children,
+}: {
+  id?: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  onBlur?: () => void;
+  error?: string;
+  helper?: string;
+  children: ReactNode;
+}) {
+  const fallbackId = useId();
+  const id = providedId ?? fallbackId;
+  return (
+    <FieldShell id={id} label={label} helper={helper} error={error}>
+      {(describedBy) => (
+        <select
+          id={id}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={describedBy}
+          className={cn(inputClass, "appearance-none bg-background")}
+        >
+          {children}
+        </select>
+      )}
+    </FieldShell>
+  );
+}
+
 export function TextAreaField({
   id: providedId,
   label,

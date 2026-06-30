@@ -12,8 +12,9 @@ import {
 import { useSession } from "../auth/SessionContext.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
 import { ApiError, fetchProfile, patchProfile } from "../lib/api.js";
-import type { ProfileRecord } from "../lib/types.js";
+import type { DirectoryProfile, ProfileRecord } from "../lib/types.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
+import { useRoster } from "../lib/useRoster.js";
 import type { SubmitResult } from "./profile/ProfileEdit.js";
 import { ProfileEdit } from "./profile/ProfileEdit.js";
 import { ProfileView } from "./profile/ProfileView.js";
@@ -37,6 +38,10 @@ const HOUSEKEEPING = new Set<string>([
 export interface ProfileOutletContext {
   record: ProfileRecord;
   viewer: Viewer;
+  /** The session-cached roster — Big Brother typeahead + derived Little Brothers (§5.7.4). */
+  roster: DirectoryProfile[] | null;
+  /** Whether the roster fetch failed (the picker degrades gracefully). */
+  rosterError: boolean;
   /** The PATCH-first save with the 412 reconcile (§5.7.9). */
   submit: (patch: Partial<ProfileType>) => Promise<SubmitResult>;
   /** Show a transient confirmation toast (the non-URL channel, N33). */
@@ -65,6 +70,7 @@ export function ProfileContainer() {
 
   const me = state.status === "authenticated" ? state.me : null;
   const viewer: Viewer | null = me ? { role: me.role, isOwner: me.profileId === id } : null;
+  const { profiles: roster, error: rosterError } = useRoster();
 
   const [record, setRecord] = useState<ProfileRecord | null>(null);
   const [etag, setEtag] = useState("");
@@ -179,6 +185,8 @@ export function ProfileContainer() {
   const context: ProfileOutletContext = {
     record,
     viewer,
+    roster,
+    rosterError,
     submit,
     showToast,
     exitEdit,
@@ -194,8 +202,15 @@ export function ProfileContainer() {
 
 /** The view child route (`/brother/:id`) — pulls the record from the container. */
 export function ProfileViewRoute() {
-  const { record, viewer, backToDirectory } = useOutletContext<ProfileOutletContext>();
-  return <ProfileView record={record} viewer={viewer} onBackToDirectory={backToDirectory} />;
+  const { record, viewer, roster, backToDirectory } = useOutletContext<ProfileOutletContext>();
+  return (
+    <ProfileView
+      record={record}
+      viewer={viewer}
+      roster={roster}
+      onBackToDirectory={backToDirectory}
+    />
+  );
 }
 
 /**
@@ -203,7 +218,8 @@ export function ProfileViewRoute() {
  * the view (replace, so Back still reaches the Directory).
  */
 export function ProfileEditRoute() {
-  const { record, viewer, submit, showToast, exitEdit } = useOutletContext<ProfileOutletContext>();
+  const { record, viewer, roster, rosterError, submit, showToast, exitEdit } =
+    useOutletContext<ProfileOutletContext>();
   if (!canEdit(viewer)) {
     return <Navigate to={`/brother/${record.id}`} replace />;
   }
@@ -211,6 +227,8 @@ export function ProfileEditRoute() {
     <ProfileEdit
       record={record}
       viewer={viewer}
+      roster={roster}
+      rosterError={rosterError}
       submit={submit}
       showToast={showToast}
       exitEdit={exitEdit}

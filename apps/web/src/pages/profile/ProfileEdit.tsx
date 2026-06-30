@@ -1,13 +1,16 @@
 import type { Profile, ValidationIssue } from "@pbe/shared";
 import { useCallback, useRef, useState } from "react";
 import { useBlocker } from "react-router-dom";
-import type { ProfileRecord } from "../../lib/types.js";
-import { CourseChip } from "../directory/Chips.js";
+import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
+import { AddressEditor } from "./AddressEditor.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { ConsentSwitch } from "./ConsentSwitch.js";
+import { MajorsEditor } from "./MajorsEditor.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
+import { RelationshipsEditor } from "./RelationshipsEditor.js";
+import { EmergencyContactsEditor, LinksEditor } from "./RepeatableEditors.js";
 import { CONSENT_COPY, PRIVACY_COPY } from "./consent.js";
-import { addressLines, canonicalName, hasAddress } from "./display.js";
+import { canonicalName } from "./display.js";
 import { LockedField, ReadField, Section, TextAreaField, TextField } from "./fields.js";
 import { useProfileDraft } from "./useProfileDraft.js";
 import { useUnsavedGuard } from "./useUnsavedGuard.js";
@@ -51,9 +54,8 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
  * draft: per-field inline validation (on blur, then all on Save), the PATCH-first
  * save with the 412 reconcile notice, and the unsaved-changes guard. The "special
  * controls" (majors chips, big-brother typeahead, country-driven state/province,
- * repeatable groups) and the headshot / verification / mark-deceased / admin
- * controls are the 4b and 4c passes; here those fields render **read-only** so the
- * form is complete and saveable without them.
+ * repeatable groups) landed in 4b-1; the headshot / verification / mark-deceased /
+ * admin controls are the 4c pass and still render read-only here.
  *
  * The unsaved-changes guard has two layers (D43, OFC-65): `useUnsavedGuard` arms
  * `beforeunload` for browser-level exits (reload, tab close, a typed URL), and
@@ -65,12 +67,16 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
 export function ProfileEdit({
   record,
   viewer,
+  roster,
+  rosterError,
   submit,
   showToast,
   exitEdit,
 }: {
   record: ProfileRecord;
   viewer: Viewer;
+  roster: DirectoryProfile[] | null;
+  rosterError: boolean;
   submit: (patch: Partial<Profile>) => Promise<SubmitResult>;
   showToast: (message: string) => void;
   exitEdit: () => void;
@@ -304,26 +310,21 @@ export function ProfileEdit({
                 inputMode="tel"
                 autoComplete="tel"
               />
-              {hasAddress(form.draft.address) && (
-                <ReadField label="Mailing address">
-                  {addressLines(form.draft.address).map((line) => (
-                    <span key={line} className="block">
-                      {line}
-                    </span>
-                  ))}
-                </ReadField>
-              )}
+              <AddressEditor
+                address={form.draft.address}
+                onChange={form.setAddress}
+                countryError={form.errorFor("address.country")}
+                stateError={form.errorFor("address.stateProvince")}
+              />
             </Section>
 
             <Section title="Emergency contacts">
-              {(form.draft.emergencyContacts ?? []).map((contact, i) => (
-                <ReadField
-                  key={`${contact.name ?? ""}-${i}`}
-                  label={i === 0 ? "Primary" : "Secondary"}
-                >
-                  {[contact.name, contact.phone, contact.email].filter(Boolean).join("  ·  ")}
-                </ReadField>
-              ))}
+              <EmergencyContactsEditor
+                contacts={form.draft.emergencyContacts}
+                onChange={form.setEmergencyContacts}
+                errorFor={form.errorFor}
+                touch={form.touch}
+              />
               <ConsentSwitch
                 copy={PRIVACY_COPY.shareEmergency}
                 value={form.draft.privacy?.shareEmergency ?? false}
@@ -372,26 +373,30 @@ export function ProfileEdit({
                   />
                 </div>
               </div>
-              {form.draft.majors && form.draft.majors.length > 0 && (
-                <ReadField label="Majors">
-                  <ul className="flex flex-wrap gap-1.5">
-                    {form.draft.majors.map((code) => (
-                      <li key={code}>
-                        <CourseChip code={code} />
-                      </li>
-                    ))}
-                  </ul>
-                </ReadField>
-              )}
+              <MajorsEditor
+                codes={form.draft.majors ?? []}
+                onChange={form.setMajors}
+                error={form.errorFor("majors")}
+              />
+              <div>
+                <p className="mb-1 block text-[length:var(--text-label)] font-semibold">Links</p>
+                <LinksEditor
+                  links={form.draft.links}
+                  onChange={form.setLinks}
+                  errorFor={form.errorFor}
+                  touch={form.touch}
+                />
+              </div>
             </Section>
 
-            {form.draft.bigBrotherId != null ? (
-              <Section title="Relationships">
-                <ReadField label="Big Brother">Set in this brother's profile.</ReadField>
-              </Section>
-            ) : (
-              <div />
-            )}
+            <RelationshipsEditor
+              selfId={record.id}
+              roster={roster}
+              rosterError={rosterError}
+              bigBrotherId={form.draft.bigBrotherId}
+              onChange={form.setBigBrother}
+              error={form.errorFor("bigBrotherId")}
+            />
           </EditRow>
 
           {/* Preferences & consent ‖ Record status (restricted). */}
