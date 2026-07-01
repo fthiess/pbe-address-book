@@ -9,6 +9,15 @@ import { cn } from "../../lib/utils.js";
  * programmatically associated and announced (§5.7.8, D32).
  */
 
+/**
+ * The one field-name style, shared by the view read-outs and the edit inputs so a
+ * field label looks identical in both modes and across every field (uppercase,
+ * letter-spaced, muted — distinct from the teal, bold section eyebrows). Any
+ * ad-hoc field label elsewhere on the page composes this same class.
+ */
+export const FIELD_LABEL_CLASS =
+  "text-[length:var(--text-label-up)] font-semibold uppercase tracking-wide text-muted-foreground";
+
 /** A section eyebrow + its body, the two-up grid's repeating unit (§5.7.1). */
 export function Section({
   title,
@@ -45,9 +54,7 @@ export function Section({
 export function ReadField({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div>
-      <p className="text-[length:var(--text-label-up)] font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
+      <p className={FIELD_LABEL_CLASS}>{label}</p>
       <div className="mt-0.5 text-[length:var(--text-body-lg)] text-foreground">{children}</div>
     </div>
   );
@@ -61,9 +68,7 @@ export function ReadField({ label, children }: { label: string; children: ReactN
 export function PrivateMarker({ label }: { label: string }) {
   return (
     <div>
-      <p className="text-[length:var(--text-label-up)] font-semibold uppercase tracking-wide text-muted-foreground">
-        {label}
-      </p>
+      <p className={FIELD_LABEL_CLASS}>{label}</p>
       <p className="mt-1 flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-2 text-[length:var(--text-body-sm)] text-muted-foreground">
         <span aria-hidden="true">🔒</span>
         This field is private — visible to the owner and administrators only.
@@ -92,7 +97,7 @@ function FieldShell({
     [error ? errorId : null, helper ? helperId : null].filter(Boolean).join(" ") || undefined;
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-[length:var(--text-label)] font-semibold">
+      <label htmlFor={id} className={cn("mb-1 block", FIELD_LABEL_CLASS)}>
         {label}
       </label>
       {children(describedBy)}
@@ -262,7 +267,7 @@ export function LockedField({
   const id = useId();
   return (
     <div>
-      <label htmlFor={id} className="mb-1 block text-[length:var(--text-label)] font-semibold">
+      <label htmlFor={id} className={cn("mb-1 block", FIELD_LABEL_CLASS)}>
         {label}
       </label>
       {/* COMPONENTS.md specifies --text-4 here, but that on --muted is only

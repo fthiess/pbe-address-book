@@ -81,29 +81,9 @@ export function AddressEditor({
           onChange={(v) => update({ city: v || undefined })}
           autoComplete="address-level2"
         />
-        <TextField
-          label="Postal code"
-          value={address?.postalCode ?? ""}
-          onChange={(v) => update({ postalCode: v || undefined })}
-          autoComplete="postal-code"
-        />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <SelectField
-          label="Country"
-          value={country}
-          onChange={onCountryChange}
-          error={countryError}
-        >
-          {countryOptions.map(([code, name]) => (
-            <option key={code} value={code}>
-              {name}
-            </option>
-          ))}
-        </SelectField>
         {controlled ? (
           <SelectField
-            label="State / Province"
+            label="State/Province"
             value={address?.stateProvince ?? ""}
             onChange={(v) => update({ stateProvince: v || undefined })}
             error={stateError}
@@ -118,13 +98,33 @@ export function AddressEditor({
           </SelectField>
         ) : (
           <TextField
-            label="State / Province / Region"
+            label="State/Province/Region"
             value={address?.stateProvince ?? ""}
             onChange={(v) => update({ stateProvince: v || undefined })}
             error={stateError}
             helper={clearedNote ? "Cleared — it didn't match the new country." : undefined}
           />
         )}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextField
+          label="Postal/ZIP code"
+          value={address?.postalCode ?? ""}
+          onChange={(v) => update({ postalCode: v || undefined })}
+          autoComplete="postal-code"
+        />
+        <SelectField
+          label="Country"
+          value={country}
+          onChange={onCountryChange}
+          error={countryError}
+        >
+          {countryOptions.map(([code, name]) => (
+            <option key={code} value={code}>
+              {name}
+            </option>
+          ))}
+        </SelectField>
       </div>
     </div>
   );

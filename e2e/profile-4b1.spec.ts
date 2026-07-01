@@ -232,7 +232,7 @@ test.describe("profile 4b-1 — country-driven address", () => {
     // US → Canada: Massachusetts isn't a Canadian province, so it clears with a note.
     await page.getByLabel("Country").selectOption("CA");
     await expect(page.getByText(/didn't match the new country/)).toBeVisible();
-    await expect(page.getByLabel("State / Province", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("State/Province", { exact: true })).toHaveValue("");
   });
 
   test("switches to a free-text region for a non-US/CA country and drops the stranded code", async ({
@@ -244,7 +244,7 @@ test.describe("profile 4b-1 — country-driven address", () => {
     // US "MA" → United Kingdom: the controlled dropdown gives way to a free-text
     // region field, and the now-meaningless "MA" is cleared (not left behind).
     await page.getByLabel("Country").selectOption("GB");
-    const region = page.getByLabel(/State \/ Province \/ Region/);
+    const region = page.getByLabel(/State\/Province\/Region/);
     await expect(region).toBeVisible();
     await expect(region).toHaveValue("");
     await expect(page.getByText(/didn't match the new country/)).toBeVisible();

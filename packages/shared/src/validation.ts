@@ -104,9 +104,12 @@ export function normalizePhone(raw: string): string | null {
     return null;
   }
   if (hasPlus) {
-    // Explicit country code: `+1` + 10 digits is NANP; anything else is E.164.
-    if (digits.startsWith("1") && digits.length === 11) {
-      return formatNanp(digits.slice(1));
+    // Country code 1 is the entire NANP, and no other country code begins with 1,
+    // so a `+1` number must be exactly 11 digits (1 + 10 national). One that is
+    // too short or too long is invalid — it must NOT fall through to the generic
+    // E.164 branch (which would wrongly accept `+16175551` / `+16175551345678…`).
+    if (digits.startsWith("1")) {
+      return digits.length === 11 ? formatNanp(digits.slice(1)) : null;
     }
     if (digits.length < E164_MIN_DIGITS || digits.length > E164_MAX_DIGITS) {
       return null;

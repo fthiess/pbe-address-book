@@ -133,7 +133,15 @@ describe("normalizePhone — canonical form (N35)", () => {
     expect(normalizePhone("   ")).toBeNull();
     expect(normalizePhone("letters")).toBeNull();
     expect(normalizePhone("+1 (617) 555-12ab")).toBeNull();
-    expect(normalizePhone("+1234567")).toBeNull(); // 7 digits, below the E.164 floor
+  });
+
+  it("rejects a +1 (NANP) number that is not exactly 11 digits, with or without the +", () => {
+    // A `+1` code is NANP and must be 1 + 10 digits — a too-short/too-long one must
+    // not slip through the generic E.164 branch just because it carries a leading +.
+    expect(normalizePhone("+16175551")).toBeNull(); // too short
+    expect(normalizePhone("+161755513456789")).toBeNull(); // too long
+    expect(normalizePhone("6175551")).toBeNull(); // bare, too short
+    expect(normalizePhone("61755513456789")).toBeNull(); // bare, too long
   });
 });
 

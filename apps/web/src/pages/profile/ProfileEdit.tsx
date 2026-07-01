@@ -11,7 +11,14 @@ import { RelationshipsEditor } from "./RelationshipsEditor.js";
 import { EmergencyContactsEditor, LinksEditor } from "./RepeatableEditors.js";
 import { CONSENT_COPY, PRIVACY_COPY } from "./consent.js";
 import { canonicalName } from "./display.js";
-import { LockedField, ReadField, Section, TextAreaField, TextField } from "./fields.js";
+import {
+  FIELD_LABEL_CLASS,
+  LockedField,
+  ReadField,
+  Section,
+  TextAreaField,
+  TextField,
+} from "./fields.js";
 import { useProfileDraft } from "./useProfileDraft.js";
 import { useUnsavedGuard } from "./useUnsavedGuard.js";
 import type { Viewer } from "./viewer.js";
@@ -195,79 +202,81 @@ export function ProfileEdit({
         )}
 
         <div className="space-y-0 px-6 pb-6 sm:px-8">
-          {/* Identity (full width). */}
-          <div className="flex flex-wrap items-start gap-5 py-6">
-            <div className="flex flex-col items-center gap-2">
-              <ProfileHeadshot record={record} name={name} responsive />
-              <p className="max-w-[132px] text-center text-[length:var(--text-body-sm)] text-muted-foreground">
-                Photo editing arrives soon.
-              </p>
-            </div>
-            <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2">
-              <TextField
-                id="profile-firstName"
-                label="First name"
-                value={form.draft.firstName ?? ""}
-                onChange={(v) => form.setText("firstName", v)}
-                onBlur={() => form.touch("firstName")}
-                error={form.errorFor("firstName")}
-                autoComplete="given-name"
-              />
-              <TextField
-                id="profile-lastName"
-                label="Last name"
-                value={form.draft.lastName ?? ""}
-                onChange={(v) => form.setText("lastName", v)}
-                onBlur={() => form.touch("lastName")}
-                error={form.errorFor("lastName")}
-                autoComplete="family-name"
-              />
-              <TextField
-                id="profile-middleName"
-                label="Middle name"
-                value={form.draft.middleName ?? ""}
-                onChange={(v) => form.setText("middleName", v)}
-                onBlur={() => form.touch("middleName")}
-                error={form.errorFor("middleName")}
-              />
-              <TextField
-                id="profile-fullLegalName"
-                label="Full name"
-                value={form.draft.fullLegalName ?? ""}
-                onChange={(v) => form.setText("fullLegalName", v)}
-                onBlur={() => form.touch("fullLegalName")}
-                error={form.errorFor("fullLegalName")}
-                helper="Including suffixes (Jr., III) and any compound name."
-              />
-              <TextField
-                id="profile-classYear"
-                label="Class year"
-                value={form.classYearText}
-                onChange={form.setClassYear}
-                onBlur={() => form.touch("classYear")}
-                error={form.errorFor("classYear")}
-                inputMode="numeric"
-                mono
-                placeholder="YYYY"
-                helper="A 4-digit year, or “unknown”."
-              />
-              <TextField
-                id="profile-mugName"
-                label="Mug name"
-                value={form.draft.mugName ?? ""}
-                onChange={(v) => form.setText("mugName", v)}
-                onBlur={() => form.touch("mugName")}
-                error={form.errorFor("mugName")}
-                helper="The nickname printed on your PBE mug."
-              />
-              <div className="sm:col-span-2">
-                <LockedField
-                  label="Constitution ID"
-                  value={`#${record.id}`}
-                  note="assigned, read-only"
-                />
+          {/* Identity. */}
+          <div className="py-6">
+            <Section title="Identity">
+              <div className="flex flex-wrap items-start gap-5">
+                <div className="flex flex-col items-center gap-2">
+                  <ProfileHeadshot record={record} name={name} responsive />
+                  <p className="max-w-[132px] text-center text-[length:var(--text-body-sm)] text-muted-foreground">
+                    Photo editing arrives soon.
+                  </p>
+                </div>
+                <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2">
+                  <TextField
+                    id="profile-firstName"
+                    label="First name"
+                    value={form.draft.firstName ?? ""}
+                    onChange={(v) => form.setText("firstName", v)}
+                    onBlur={() => form.touch("firstName")}
+                    error={form.errorFor("firstName")}
+                    autoComplete="given-name"
+                  />
+                  <TextField
+                    id="profile-lastName"
+                    label="Last name"
+                    value={form.draft.lastName ?? ""}
+                    onChange={(v) => form.setText("lastName", v)}
+                    onBlur={() => form.touch("lastName")}
+                    error={form.errorFor("lastName")}
+                    autoComplete="family-name"
+                  />
+                  <TextField
+                    id="profile-middleName"
+                    label="Middle name"
+                    value={form.draft.middleName ?? ""}
+                    onChange={(v) => form.setText("middleName", v)}
+                    onBlur={() => form.touch("middleName")}
+                    error={form.errorFor("middleName")}
+                  />
+                  <TextField
+                    id="profile-fullLegalName"
+                    label="Full name"
+                    value={form.draft.fullLegalName ?? ""}
+                    onChange={(v) => form.setText("fullLegalName", v)}
+                    onBlur={() => form.touch("fullLegalName")}
+                    error={form.errorFor("fullLegalName")}
+                    helper="Including suffixes (Jr., III) and any compound names."
+                  />
+                  <TextField
+                    id="profile-classYear"
+                    label="Class year"
+                    value={form.classYearText}
+                    onChange={form.setClassYear}
+                    onBlur={() => form.touch("classYear")}
+                    error={form.errorFor("classYear")}
+                    inputMode="numeric"
+                    mono
+                    placeholder="YYYY"
+                    helper="A 4-digit year, or “unknown”."
+                  />
+                  <TextField
+                    id="profile-mugName"
+                    label="Mug name"
+                    value={form.draft.mugName ?? ""}
+                    onChange={(v) => form.setText("mugName", v)}
+                    onBlur={() => form.touch("mugName")}
+                    error={form.errorFor("mugName")}
+                    helper="The nickname printed on your PBE mug."
+                  />
+                  <LockedField
+                    label="Constitution signer number"
+                    value={`#${record.id}`}
+                    note="assigned, read-only"
+                  />
+                </div>
               </div>
-            </div>
+            </Section>
           </div>
 
           {/* Contact ‖ Emergency. */}
@@ -361,9 +370,7 @@ export function ProfileEdit({
                     autoComplete="organization-title"
                   />
                   <div>
-                    <p className="mb-1 block text-[length:var(--text-label)] font-semibold">
-                      Links
-                    </p>
+                    <p className={`mb-1 block ${FIELD_LABEL_CLASS}`}>Links</p>
                     <LinksEditor
                       links={form.draft.links}
                       onChange={form.setLinks}

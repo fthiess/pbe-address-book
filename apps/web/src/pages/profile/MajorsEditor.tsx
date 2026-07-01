@@ -6,6 +6,7 @@ import { type CSSProperties, type KeyboardEvent, useId } from "react";
 import { Combobox } from "../../components/Combobox.js";
 import { cn } from "../../lib/utils.js";
 import { type ChipFamily, courseFamily, familyStyle } from "../directory/Chips.js";
+import { FIELD_LABEL_CLASS } from "./fields.js";
 
 /**
  * The **majors chip editor** (§5.7.4, D46; COMPONENTS.md "Chip editor"). Majors
@@ -59,7 +60,7 @@ export function MajorsEditor({
 
   return (
     <div>
-      <p id={helpId} className="mb-1 block text-[length:var(--text-label)] font-semibold">
+      <p id={helpId} className={cn("mb-1 block", FIELD_LABEL_CLASS)}>
         Courses
       </p>
       <div

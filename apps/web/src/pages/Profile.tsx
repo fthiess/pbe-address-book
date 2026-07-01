@@ -257,8 +257,9 @@ function ProfileToast({ message, onDone }: { message: string | null; onDone: () 
   }
   return (
     // <output> carries an implicit ARIA "status" polite live region (matching
-    // LoadingOverlay) so the save confirmation is announced.
-    <output className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-[var(--radius-lg)] border border-[var(--success-border)] bg-[#1b262b] px-4 py-2.5 text-[length:var(--text-body)] text-white shadow-[var(--shadow-popover-strong)]">
+    // LoadingOverlay) so the save confirmation is announced. Positioned high (a
+    // third down) so it's noticed — the bottom of a long profile was easy to miss.
+    <output className="fixed left-1/2 top-1/3 z-50 -translate-x-1/2 rounded-[var(--radius-lg)] border border-[var(--success-border)] bg-[#1b262b] px-4 py-2.5 text-[length:var(--text-body)] text-white shadow-[var(--shadow-popover-strong)]">
       <span aria-hidden="true" className="mr-2 text-[var(--success)]">
         ✓
       </span>

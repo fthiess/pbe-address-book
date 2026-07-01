@@ -76,12 +76,12 @@ export const CONSENT_COPY: Record<
   allowNewsletterEmail: {
     label: "PBE News newsletter",
     whenOn: "You will receive PBE News by email.",
-    whenOff: "You don't receive PBE News by email.",
+    whenOff: "You won't receive PBE News by email.",
   },
   allowCommentReplyEmail: {
     label: "Comment-reply emails",
-    whenOn: "You're emailed when someone replies to your comments.",
-    whenOff: "You're not emailed about replies to your comments.",
+    whenOn: "You'll be emailed when someone replies to your comments.",
+    whenOff: "You won't be emailed when someone replies to your comments.",
   },
   allowShareWithMITAA: {
     label: "Share with the MIT Alumni Association",

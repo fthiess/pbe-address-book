@@ -2,7 +2,7 @@ import { useId, useMemo } from "react";
 import { Combobox } from "../../components/Combobox.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { RelationshipChip } from "./RelationshipChip.js";
-import { Section } from "./fields.js";
+import { FIELD_LABEL_CLASS, Section } from "./fields.js";
 import { littleBrothers, rosterNames } from "./relationships.js";
 
 /**
@@ -56,7 +56,7 @@ export function RelationshipsEditor({
   return (
     <Section title="Relationships">
       <div>
-        <p className="mb-1 block text-[length:var(--text-label)] font-semibold">Big Brother</p>
+        <p className={`mb-1 block ${FIELD_LABEL_CLASS}`}>Big Brother</p>
         {rosterError ? (
           <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
             The brotherhood list couldn't load, so the Big Brother picker is unavailable right now.
@@ -94,7 +94,7 @@ export function RelationshipsEditor({
 
       {littles.length > 0 && (
         <div>
-          <p className="flex items-center gap-1.5 text-[length:var(--text-label-up)] font-semibold uppercase tracking-wide text-muted-foreground">
+          <p className={`flex items-center gap-1.5 ${FIELD_LABEL_CLASS}`}>
             Little Brothers
             <span aria-hidden="true" title="Set in each brother's own profile">
               🔒
@@ -108,7 +108,7 @@ export function RelationshipsEditor({
             ))}
           </ul>
           <p className="mt-1 text-[length:var(--text-body-sm)] text-muted-foreground">
-            Derived from who names this brother as their Big Brother — set it on their profiles.
+            Set automatically based on who names this brother as their Big Brother.
           </p>
         </div>
       )}
