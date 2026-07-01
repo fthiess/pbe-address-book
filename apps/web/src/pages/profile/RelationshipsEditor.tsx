@@ -1,6 +1,8 @@
-import { useId, useMemo } from "react";
-import { Combobox } from "../../components/Combobox.js";
+import type { NameRecord } from "@pbe/name-search";
+import { useCallback, useId, useMemo, useState } from "react";
+import { Combobox, type ComboboxOption } from "../../components/Combobox.js";
 import type { DirectoryProfile } from "../../lib/types.js";
+import { useNameSearch } from "../directory/search/useNameSearch.js";
 import { RelationshipChip } from "./RelationshipChip.js";
 import { FIELD_LABEL_CLASS, Section } from "./fields.js";
 import { littleBrothers, rosterNames } from "./relationships.js";
@@ -37,19 +39,6 @@ export function RelationshipsEditor({
     [roster, names, selfId],
   );
 
-  const options = useMemo(() => {
-    if (!roster || !names) {
-      return [];
-    }
-    return roster
-      .filter((p) => p.id !== selfId && p.id !== bigBrotherId)
-      .map((p) => ({
-        value: String(p.id),
-        label: names.get(p.id) ?? `#${p.id}`,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
-  }, [roster, names, selfId, bigBrotherId]);
-
   const bigBrotherName =
     bigBrotherId != null ? (names?.get(bigBrotherId) ?? `#${bigBrotherId}`) : null;
 
@@ -71,14 +60,12 @@ export function RelationshipsEditor({
             />
           </div>
         ) : roster && names ? (
-          <Combobox
-            options={options}
-            onSelect={(value) => onChange(Number(value))}
-            inputLabel="Search for a Big Brother by name"
-            placeholder="Search by name…"
-            emptyMessage="No matching brother."
+          <BigBrotherPicker
+            roster={roster}
+            names={names}
+            selfId={selfId}
+            onSelect={onChange}
             describedBy={error ? errorId : undefined}
-            adornment={<SearchIcon />}
           />
         ) : (
           <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
@@ -113,6 +100,79 @@ export function RelationshipsEditor({
         </div>
       )}
     </Section>
+  );
+}
+
+/**
+ * The Big-Brother typeahead, matched by the **same** Name Search the Directory
+ * uses — `useNameSearch` (fuzzy + Beider-Morse phonetics + the common-nickname
+ * dictionary, in the Web Worker with an instant substring fallback; D35/D110/D123).
+ * So "Bill" surfaces the Williams here exactly as it does on the Directory. The
+ * matcher runs only while this picker is on screen (a brother with no Big Brother),
+ * so the index isn't built on every profile open. The Combobox reports its query
+ * back through `onQueryChange`; the resulting id set drives the option filter.
+ */
+function BigBrotherPicker({
+  roster,
+  names,
+  selfId,
+  onSelect,
+  describedBy,
+}: {
+  roster: DirectoryProfile[];
+  names: Map<number, string>;
+  selfId: number;
+  onSelect: (id: number) => void;
+  describedBy?: string;
+}) {
+  const [query, setQuery] = useState("");
+
+  const nameRecords = useMemo<NameRecord[]>(
+    () =>
+      roster
+        .filter((p) => p.id !== selfId)
+        .map((p) => ({
+          id: p.id,
+          firstName: p.firstName,
+          middleName: p.middleName,
+          lastName: p.lastName,
+          fullLegalName: p.fullLegalName,
+          mugName: p.mugName,
+          canonicalName: names.get(p.id),
+        })),
+    [roster, selfId, names],
+  );
+
+  const { matchedIds } = useNameSearch(nameRecords, query);
+
+  const options = useMemo(
+    () =>
+      roster
+        .filter((p) => p.id !== selfId)
+        .map((p) => ({ value: String(p.id), label: names.get(p.id) ?? `#${p.id}` }))
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    [roster, selfId, names],
+  );
+
+  // Filter through Name Search: `null` (empty query) shows everyone; otherwise keep
+  // only the matched ids. (The Combobox's own substring filter is bypassed.)
+  const filter = useCallback(
+    (option: ComboboxOption) => matchedIds === null || matchedIds.has(Number(option.value)),
+    [matchedIds],
+  );
+
+  return (
+    <Combobox
+      options={options}
+      onSelect={(value) => onSelect(Number(value))}
+      onQueryChange={setQuery}
+      filter={filter}
+      inputLabel="Search for a Big Brother by name"
+      placeholder="Search by name…"
+      emptyMessage="No matching brother."
+      describedBy={describedBy}
+      adornment={<SearchIcon />}
+    />
   );
 }
 

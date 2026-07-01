@@ -45,6 +45,12 @@ interface ComboboxProps {
   emptyMessage?: string;
   /** Match predicate; defaults to a case-insensitive substring over label + hint. */
   filter?: (option: ComboboxOption, query: string) => boolean;
+  /**
+   * Notified whenever the typed query changes (and reset to "" on select). Lets a
+   * parent run a richer matcher (e.g. the Directory's fuzzy/phonetic Name Search)
+   * and feed the result back through {@link ComboboxProps.filter}.
+   */
+  onQueryChange?: (query: string) => void;
   id?: string;
   /** Forwarded to `aria-describedby` (a helper/error association). */
   describedBy?: string;
@@ -71,6 +77,7 @@ export function Combobox({
   inputLabel,
   emptyMessage = "No matches.",
   filter = defaultFilter,
+  onQueryChange,
   id: providedId,
   describedBy,
   disabled = false,
@@ -107,6 +114,7 @@ export function Combobox({
     }
     onSelect(option.value);
     setQuery("");
+    onQueryChange?.("");
     setActiveIndex(0);
     setOpen(false);
     // Stay on the field so several picks in a row need no re-focus.
@@ -189,6 +197,7 @@ export function Combobox({
             value={query}
             onChange={(event) => {
               setQuery(event.target.value);
+              onQueryChange?.(event.target.value);
               setActiveIndex(0);
               show();
             }}

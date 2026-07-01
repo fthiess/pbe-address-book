@@ -73,6 +73,8 @@ function roster() {
     { id: 5247, firstName: "James", lastName: "Smyth", classYear: 1984 },
     { id: 5001, firstName: "Robert", lastName: "Brown", classYear: 1979 },
     { id: 5103, firstName: "Carl", lastName: "Adams", classYear: 1985 },
+    // A "William" so the Big-Brother typeahead can prove nickname matching (Bill → William).
+    { id: 5222, firstName: "William", lastName: "Hayes", classYear: 1982 },
     { id: 5400, firstName: "Tom", lastName: "Wills", classYear: 1990, bigBrotherId: 5247 },
   ];
 }
@@ -168,6 +170,19 @@ test.describe("profile 4b-1 — Big Brother & Little Brothers", () => {
     await page.getByRole("button", { name: "Save changes" }).click();
     await expect(page).toHaveURL(/\/brother\/5247$/);
     expect(saved).toMatchObject({ bigBrotherId: 5001 });
+  });
+
+  test("finds a Big Brother by nickname — the same Name Search the Directory uses (Bill → William)", async ({
+    page,
+  }) => {
+    await mockProfile(page, { meDoc: me("brother", 5247), record: ownerRecord() });
+    await gotoEdit(page);
+
+    // "Bill" is not a substring of "William" — only the worker's nickname
+    // expansion (D123), shared with the Directory, surfaces William Hayes. The
+    // option appears once the worker is ready (Playwright retries until then).
+    await page.getByRole("combobox", { name: /Search for a Big Brother/ }).fill("Bill");
+    await expect(page.getByRole("option", { name: /William Hayes '82/ })).toBeVisible();
   });
 
   test("a newly-set Big Brother shows the brother as a Little Brother on his page", async ({

@@ -25,11 +25,13 @@ export function AddressEditor({
   onChange,
   countryError,
   stateError,
+  postalError,
 }: {
   address: Address | undefined;
   onChange: (address: Address | undefined) => void;
   countryError?: string;
   stateError?: string;
+  postalError?: string;
 }) {
   const [clearedNote, setClearedNote] = useState(false);
   const country = address?.country ?? "US";
@@ -111,6 +113,7 @@ export function AddressEditor({
           label="Postal/ZIP code"
           value={address?.postalCode ?? ""}
           onChange={(v) => update({ postalCode: v || undefined })}
+          error={postalError}
           autoComplete="postal-code"
         />
         <SelectField

@@ -56,6 +56,9 @@ export interface ValidationContext {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 const PHONE_ALLOWED_RE = /^\+?[0-9().\-\s]+$/u;
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/u;
+// US ZIP: five digits, optionally + four (ZIP+4). Only US postal codes are
+// validated — the rest of the world has too many formats to check (N38).
+const US_ZIP_RE = /^\d{5}(-\d{4})?$/u;
 
 const E164_MIN_DIGITS = 8;
 const E164_MAX_DIGITS = 15;
@@ -230,7 +233,7 @@ export function validateProfile(
 
   // --- address ---
   if (input.address !== undefined) {
-    const { country, stateProvince } = input.address;
+    const { country, stateProvince, postalCode } = input.address;
     if (country !== undefined && country !== "" && !isCountryCode(country)) {
       add("address.country", "Select a valid country.");
     }
@@ -240,6 +243,16 @@ export function validateProfile(
       !isSubdivisionCode(country, stateProvince)
     ) {
       add("address.stateProvince", "Select a valid state or province.");
+    }
+    // Only US ZIP codes are format-checked (the majority of the membership); every
+    // other country's postal code is left free — too many formats to validate (N38).
+    if (
+      country === "US" &&
+      postalCode !== undefined &&
+      postalCode !== "" &&
+      !US_ZIP_RE.test(postalCode.trim())
+    ) {
+      add("address.postalCode", "Enter a ZIP code as NNNNN or NNNNN-NNNN.");
     }
   }
 

@@ -325,6 +325,7 @@ export function ProfileEdit({
                 onChange={form.setAddress}
                 countryError={form.errorFor("address.country")}
                 stateError={form.errorFor("address.stateProvince")}
+                postalError={form.errorFor("address.postalCode")}
               />
             </Section>
 

@@ -1,5 +1,5 @@
 import type { EmergencyContact, Link } from "@pbe/shared";
-import { TextField } from "./fields.js";
+import { FIELD_LABEL_CLASS, TextField } from "./fields.js";
 import { isBlankContact, isBlankLink } from "./repeatables.js";
 
 /**
@@ -78,7 +78,7 @@ export function LinksEditor({
         <fieldset
           // biome-ignore lint/suspicious/noArrayIndexKey: positional rows (≤5); only end add/remove.
           key={i}
-          className="m-0 grid gap-3 border-0 p-0 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+          className="m-0 grid gap-3 border-0 p-0 sm:grid-cols-[1fr_1fr_auto] sm:items-start"
         >
           <legend className="sr-only">Link {i + 1}</legend>
           <TextField
@@ -99,10 +99,17 @@ export function LinksEditor({
             error={errorFor(`links.${i}.url`)}
             placeholder="https://…"
           />
-          <RemoveButton
-            label={`Remove link ${i + 1}`}
-            onClick={() => onChange(rows.filter((_, index) => index !== i))}
-          />
+          {/* A label-height spacer (sm+) so the Remove button lines up with the
+              inputs, not the labels — and a field's error text can't shove it. */}
+          <div className="flex flex-col">
+            <span aria-hidden="true" className={`mb-1 hidden sm:block ${FIELD_LABEL_CLASS}`}>
+              &nbsp;
+            </span>
+            <RemoveButton
+              label={`Remove link ${i + 1}`}
+              onClick={() => onChange(rows.filter((_, index) => index !== i))}
+            />
+          </div>
         </fieldset>
       ))}
       {!atCap && (

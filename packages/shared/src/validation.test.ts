@@ -83,6 +83,18 @@ describe("validateProfile — address (§8/D37)", () => {
   it("accepts a valid US state code", () => {
     expect(fields({ address: { country: "US", stateProvince: "MA" } })).toEqual([]);
   });
+  it("checks US ZIP format (NNNNN or NNNNN-NNNN) but leaves other countries free (N38)", () => {
+    expect(fields({ address: { country: "US", postalCode: "02139" } })).toEqual([]);
+    expect(fields({ address: { country: "US", postalCode: "02139-4307" } })).toEqual([]);
+    expect(fields({ address: { country: "US", postalCode: "2139" } })).toEqual([
+      "address.postalCode",
+    ]);
+    expect(fields({ address: { country: "US", postalCode: "ABCDE" } })).toEqual([
+      "address.postalCode",
+    ]);
+    // Non-US postal codes are not format-checked.
+    expect(fields({ address: { country: "GB", postalCode: "SW1A 1AA" } })).toEqual([]);
+  });
 });
 
 describe("validateProfile — collections", () => {
