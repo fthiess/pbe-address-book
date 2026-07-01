@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Profile } from "./types.js";
-import { type ValidationContext, validateProfile } from "./validation.js";
+import { type ValidationContext, normalizePhone, validateProfile } from "./validation.js";
 
 const CTX: ValidationContext = { currentYear: 2026, validMajorCodes: new Set(["6-3", "18"]) };
 
@@ -103,6 +103,46 @@ describe("validateProfile — collections", () => {
     expect(fields({ emergencyContacts: [{ phone: "letters" }] })).toEqual([
       "emergencyContacts.0.phone",
     ]);
+  });
+});
+
+describe("normalizePhone — canonical form (N35)", () => {
+  it("formats a NANP number to +1 (AAA) BBB-CCCC from any accepted shape", () => {
+    // Both accepted NANP shapes, with and without the country code, converge.
+    expect(normalizePhone("(617) 555-1234")).toBe("+1 (617) 555-1234");
+    expect(normalizePhone("617-555-1234")).toBe("+1 (617) 555-1234");
+    expect(normalizePhone("+1 617-555-1234")).toBe("+1 (617) 555-1234");
+    expect(normalizePhone("+1 (617) 555-1234")).toBe("+1 (617) 555-1234");
+    expect(normalizePhone("16175551234")).toBe("+1 (617) 555-1234");
+    expect(normalizePhone("  617.555.1234  ")).toBe("+1 (617) 555-1234");
+  });
+
+  it("reduces a non-NANP international number to E.164 (no NANP grouping)", () => {
+    expect(normalizePhone("+44 20 7123 4567")).toBe("+442071234567");
+    expect(normalizePhone("+52 55 1234 5678")).toBe("+525512345678");
+  });
+
+  it("requires a country code when a bare number is not a NANP length", () => {
+    // No leading + and not 10 (or 11-with-1) digits → ambiguous → rejected.
+    expect(normalizePhone("2071234567890")).toBeNull();
+    expect(normalizePhone("12345")).toBeNull();
+  });
+
+  it("rejects empties, letters, and out-of-range lengths", () => {
+    expect(normalizePhone("")).toBeNull();
+    expect(normalizePhone("   ")).toBeNull();
+    expect(normalizePhone("letters")).toBeNull();
+    expect(normalizePhone("+1 (617) 555-12ab")).toBeNull();
+    expect(normalizePhone("+1234567")).toBeNull(); // 7 digits, below the E.164 floor
+  });
+});
+
+describe("validateProfile — phone (N35)", () => {
+  it("accepts anything normalizePhone can canonicalize; flags what it can't", () => {
+    expect(fields({ phone: "(617) 555-1234" })).toEqual([]);
+    expect(fields({ phone: "+44 20 7123 4567" })).toEqual([]);
+    expect(fields({ phone: "letters" })).toEqual(["phone"]);
+    expect(fields({ phone: "12345" })).toEqual(["phone"]);
   });
 });
 

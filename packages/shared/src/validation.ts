@@ -54,8 +54,11 @@ export interface ValidationContext {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
-const PHONE_RE = /^[0-9+().\-\s]+$/u;
+const PHONE_ALLOWED_RE = /^\+?[0-9().\-\s]+$/u;
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/u;
+
+const E164_MIN_DIGITS = 8;
+const E164_MAX_DIGITS = 15;
 
 const MIN_CLASS_YEAR = 1890;
 const CLASS_YEAR_FUTURE_MARGIN = 6;
@@ -79,9 +82,54 @@ function isValidEmail(value: string): boolean {
   return EMAIL_RE.test(value.trim());
 }
 
+/**
+ * Canonicalize a phone number to the one stored form (DECISIONS N35). A **NANP**
+ * number (country code `+1`) is formatted `+1 (AAA) BBB-CCCC`; every other
+ * international number is reduced to **E.164** (`+` then its digits, no
+ * separators). A bare number with no `+` is assumed NANP — the default country
+ * code, `+1` — when its length fits (10 digits, or 11 with a leading `1`);
+ * otherwise it needs an explicit country code and is rejected. Returns `null` for
+ * anything that isn't a usable number, so a single function serves both roles:
+ * validation reads `null` as invalid, and the write path stores the non-null
+ * canonical form.
+ */
+export function normalizePhone(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === "" || !PHONE_ALLOWED_RE.test(trimmed)) {
+    return null;
+  }
+  const hasPlus = trimmed.startsWith("+");
+  const digits = trimmed.replace(/\D/gu, "");
+  if (digits.length === 0) {
+    return null;
+  }
+  if (hasPlus) {
+    // Explicit country code: `+1` + 10 digits is NANP; anything else is E.164.
+    if (digits.startsWith("1") && digits.length === 11) {
+      return formatNanp(digits.slice(1));
+    }
+    if (digits.length < E164_MIN_DIGITS || digits.length > E164_MAX_DIGITS) {
+      return null;
+    }
+    return `+${digits}`;
+  }
+  // No country code: default to NANP (+1) when the length fits, else require one.
+  if (digits.length === 10) {
+    return formatNanp(digits);
+  }
+  if (digits.length === 11 && digits.startsWith("1")) {
+    return formatNanp(digits.slice(1));
+  }
+  return null;
+}
+
+/** Format ten NANP digits as the canonical `+1 (AAA) BBB-CCCC`. */
+function formatNanp(ten: string): string {
+  return `+1 (${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
+}
+
 function isValidPhone(value: string): boolean {
-  const trimmed = value.trim();
-  return trimmed.length > 0 && PHONE_RE.test(trimmed) && /\d/u.test(trimmed);
+  return normalizePhone(value) !== null;
 }
 
 /** A URL restricted to the strict http/https scheme allowlist (D107). */

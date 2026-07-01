@@ -62,10 +62,14 @@ export function ProfileView({
             <EmergencySection record={record} viewer={viewer} />
           </Row>
 
-          <Row>
+          {/* Professional full width so spouse & courses sit to the right of the
+              employer column (N35); Relationships follows full width. */}
+          <div className="border-t border-border-hairline py-6">
             <ProfessionalSection record={record} viewer={viewer} />
+          </div>
+          <div className="border-t border-border-hairline py-6">
             <RelationshipsSection record={record} roster={roster} />
-          </Row>
+          </div>
 
           {restricted && (
             <Row>
@@ -102,7 +106,7 @@ function IdentityHeader({
   const lifespan = deceased && record.deceased ? lifespanLine(record.deceased) : null;
   return (
     <header className="flex flex-wrap items-start gap-5 px-6 pt-6 sm:px-8">
-      <ProfileHeadshot record={record} name={name} />
+      <ProfileHeadshot record={record} name={name} responsive />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
           <h1 className="text-[length:var(--text-h1)] font-bold leading-tight tracking-tight">
@@ -114,6 +118,11 @@ function IdentityHeader({
             </span>
           )}
         </div>
+        {record.mugName && (
+          <p className="mt-0.5 text-[length:var(--text-body)] italic text-muted-foreground">
+            “{record.mugName}”
+          </p>
+        )}
         {lifespan && (
           <p className="mt-0.5 whitespace-nowrap text-lg text-[var(--memorial-fg)]">{lifespan}</p>
         )}
@@ -230,41 +239,47 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
   const showSpouse = managerSeesPrivate(record, viewer, "shareSpousePartner");
   return (
     <Section title="Professional &amp; personal">
-      {employer && <ReadField label="Employer">{employer}</ReadField>}
-      {record.spousePartnerName ? (
-        <ReadField label="Spouse / partner">{record.spousePartnerName}</ReadField>
-      ) : (
-        showSpouse && <PrivateMarker label="Spouse / partner" />
-      )}
-      {record.majors && record.majors.length > 0 && (
-        <ReadField label="Majors">
-          <ul className="flex flex-wrap gap-1.5">
-            {record.majors.map((code) => (
-              <li key={code}>
-                <CourseChip code={code} />
-              </li>
-            ))}
-          </ul>
-        </ReadField>
-      )}
-      {record.links && record.links.length > 0 && (
-        <ReadField label="Links">
-          <ul className="space-y-1">
-            {record.links.map((link) => (
-              <li key={`${link.label}-${link.url}`}>
-                <a
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
-                >
-                  {link.label || link.url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </ReadField>
-      )}
+      <div className="grid gap-x-12 gap-y-4 sm:grid-cols-2">
+        <div className="space-y-4">
+          {employer && <ReadField label="Employer">{employer}</ReadField>}
+          {record.links && record.links.length > 0 && (
+            <ReadField label="Links">
+              <ul className="space-y-1">
+                {record.links.map((link) => (
+                  <li key={`${link.label}-${link.url}`}>
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
+                    >
+                      {link.label || link.url}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            </ReadField>
+          )}
+        </div>
+        <div className="space-y-4">
+          {record.spousePartnerName ? (
+            <ReadField label="Spouse / partner">{record.spousePartnerName}</ReadField>
+          ) : (
+            showSpouse && <PrivateMarker label="Spouse / partner" />
+          )}
+          {record.majors && record.majors.length > 0 && (
+            <ReadField label="Courses">
+              <ul className="flex flex-wrap gap-1.5">
+                {record.majors.map((code) => (
+                  <li key={code}>
+                    <CourseChip code={code} />
+                  </li>
+                ))}
+              </ul>
+            </ReadField>
+          )}
+        </div>
+      </div>
     </Section>
   );
 }
@@ -351,7 +366,9 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
     });
   }
   if (record.unlisted) {
-    lines.push({ on: true, text: activeConsequence(CONSENT_COPY.unlisted, true) });
+    // Shown in the positive "Listed" framing (N35); an unlisted record is the
+    // off-state — a hollow marker with the "you don't appear" consequence.
+    lines.push({ on: false, text: activeConsequence(CONSENT_COPY.listed, false) });
   }
 
   return (

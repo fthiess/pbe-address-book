@@ -39,7 +39,7 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
   employerName: "Employer",
   jobTitle: "Job title",
   spousePartnerName: "Spouse / partner",
-  majors: "Majors",
+  majors: "Courses",
   bigBrotherId: "Big Brother",
   privacy: "Privacy settings",
   unlisted: "Directory listing",
@@ -147,6 +147,7 @@ export function ProfileEdit({
     <article className="mx-auto max-w-5xl">
       <form
         ref={formRef}
+        noValidate
         onSubmit={(event) => {
           event.preventDefault();
           void onSave();
@@ -197,8 +198,8 @@ export function ProfileEdit({
           {/* Identity (full width). */}
           <div className="flex flex-wrap items-start gap-5 py-6">
             <div className="flex flex-col items-center gap-2">
-              <ProfileHeadshot record={record} name={name} />
-              <p className="max-w-[120px] text-center text-[length:var(--text-body-sm)] text-muted-foreground">
+              <ProfileHeadshot record={record} name={name} responsive />
+              <p className="max-w-[132px] text-center text-[length:var(--text-body-sm)] text-muted-foreground">
                 Photo editing arrives soon.
               </p>
             </div>
@@ -334,61 +335,74 @@ export function ProfileEdit({
             </Section>
           </EditRow>
 
-          {/* Professional ‖ Relationships. */}
-          <EditRow>
+          {/* Professional — employer & job title (with links) on the left, spouse
+              and courses to the right (N35). Full width so the second column has
+              room; DOM order stays reading order (WCAG 1.3.2, D32). */}
+          <div className="border-t border-border-hairline py-6">
             <Section title="Professional &amp; personal">
-              <TextField
-                id="profile-employerName"
-                label="Employer"
-                value={form.draft.employerName ?? ""}
-                onChange={(v) => form.setText("employerName", v)}
-                onBlur={() => form.touch("employerName")}
-                error={form.errorFor("employerName")}
-                autoComplete="organization"
-              />
-              <TextField
-                id="profile-jobTitle"
-                label="Job title"
-                value={form.draft.jobTitle ?? ""}
-                onChange={(v) => form.setText("jobTitle", v)}
-                onBlur={() => form.touch("jobTitle")}
-                error={form.errorFor("jobTitle")}
-                autoComplete="organization-title"
-              />
-              <div>
-                <TextField
-                  id="profile-spousePartnerName"
-                  label="Spouse / partner"
-                  value={form.draft.spousePartnerName ?? ""}
-                  onChange={(v) => form.setText("spousePartnerName", v)}
-                  onBlur={() => form.touch("spousePartnerName")}
-                  error={form.errorFor("spousePartnerName")}
-                />
-                <div className="mt-2">
-                  <ConsentSwitch
-                    copy={PRIVACY_COPY.shareSpousePartner}
-                    value={form.draft.privacy?.shareSpousePartner ?? false}
-                    onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
-                    locked={consentLocked}
+              <div className="grid gap-x-12 gap-y-4 sm:grid-cols-2">
+                <div className="space-y-4">
+                  <TextField
+                    id="profile-employerName"
+                    label="Employer"
+                    value={form.draft.employerName ?? ""}
+                    onChange={(v) => form.setText("employerName", v)}
+                    onBlur={() => form.touch("employerName")}
+                    error={form.errorFor("employerName")}
+                    autoComplete="organization"
+                  />
+                  <TextField
+                    id="profile-jobTitle"
+                    label="Job title"
+                    value={form.draft.jobTitle ?? ""}
+                    onChange={(v) => form.setText("jobTitle", v)}
+                    onBlur={() => form.touch("jobTitle")}
+                    error={form.errorFor("jobTitle")}
+                    autoComplete="organization-title"
+                  />
+                  <div>
+                    <p className="mb-1 block text-[length:var(--text-label)] font-semibold">
+                      Links
+                    </p>
+                    <LinksEditor
+                      links={form.draft.links}
+                      onChange={form.setLinks}
+                      errorFor={form.errorFor}
+                      touch={form.touch}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <TextField
+                      id="profile-spousePartnerName"
+                      label="Spouse / partner"
+                      value={form.draft.spousePartnerName ?? ""}
+                      onChange={(v) => form.setText("spousePartnerName", v)}
+                      onBlur={() => form.touch("spousePartnerName")}
+                      error={form.errorFor("spousePartnerName")}
+                    />
+                    <div className="mt-2">
+                      <ConsentSwitch
+                        copy={PRIVACY_COPY.shareSpousePartner}
+                        value={form.draft.privacy?.shareSpousePartner ?? false}
+                        onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
+                        locked={consentLocked}
+                      />
+                    </div>
+                  </div>
+                  <MajorsEditor
+                    codes={form.draft.majors ?? []}
+                    onChange={form.setMajors}
+                    error={form.errorFor("majors")}
                   />
                 </div>
               </div>
-              <MajorsEditor
-                codes={form.draft.majors ?? []}
-                onChange={form.setMajors}
-                error={form.errorFor("majors")}
-              />
-              <div>
-                <p className="mb-1 block text-[length:var(--text-label)] font-semibold">Links</p>
-                <LinksEditor
-                  links={form.draft.links}
-                  onChange={form.setLinks}
-                  errorFor={form.errorFor}
-                  touch={form.touch}
-                />
-              </div>
             </Section>
+          </div>
 
+          {/* Relationships (full width beneath Professional). */}
+          <div className="border-t border-border-hairline py-6">
             <RelationshipsEditor
               selfId={record.id}
               roster={roster}
@@ -397,7 +411,7 @@ export function ProfileEdit({
               onChange={form.setBigBrother}
               error={form.errorFor("bigBrotherId")}
             />
-          </EditRow>
+          </div>
 
           {/* Preferences & consent ‖ Record status (restricted). */}
           <EditRow>
@@ -406,7 +420,10 @@ export function ProfileEdit({
                 Each switch shows what's true now; the <strong>?</strong> says what changes if you
                 flip it.
               </p>
-              <div className="space-y-3">
+              {/* The primary per-field switches carry the same box insets (border +
+                  p-3) as the boxed subgroups below — transparent here — so every
+                  switch track and ? button lines up down the column (N35). */}
+              <div className="space-y-3 rounded-[var(--radius-lg)] border border-transparent p-3">
                 <ConsentSwitch
                   copy={PRIVACY_COPY.shareEmail}
                   value={form.draft.privacy?.shareEmail ?? false}
@@ -452,10 +469,12 @@ export function ProfileEdit({
               </Subgroup>
 
               <Subgroup title="Directory listing">
+                {/* Presented positively as "Listed" (on = listed); the stored
+                    field is `unlisted`, so the value and change are inverted (N35). */}
                 <ConsentSwitch
-                  copy={CONSENT_COPY.unlisted}
-                  value={form.draft.unlisted ?? false}
-                  onChange={(v) => form.setBool("unlisted", v)}
+                  copy={CONSENT_COPY.listed}
+                  value={!(form.draft.unlisted ?? false)}
+                  onChange={(v) => form.setBool("unlisted", !v)}
                   locked={consentLocked}
                 />
               </Subgroup>

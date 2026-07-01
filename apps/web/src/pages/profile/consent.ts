@@ -48,7 +48,7 @@ export const PRIVACY_COPY: Record<
   },
   shareAddress: {
     label: "Share address with brothers",
-    whenOn: "Your city & state are visible to brothers.",
+    whenOn: "Your mailing address is visible to brothers.",
     whenOff: "Your mailing address is hidden from other brothers.",
   },
   sharePhone: {
@@ -68,14 +68,14 @@ export const PRIVACY_COPY: Record<
   },
 };
 
-/** The three consent flags + the self-service Unlisted hide (top-level booleans). */
+/** The three consent flags + the self-service directory-listing switch (top-level booleans). */
 export const CONSENT_COPY: Record<
-  "allowNewsletterEmail" | "allowCommentReplyEmail" | "allowShareWithMITAA" | "unlisted",
+  "allowNewsletterEmail" | "allowCommentReplyEmail" | "allowShareWithMITAA" | "listed",
   ConsentCopy
 > = {
   allowNewsletterEmail: {
     label: "PBE News newsletter",
-    whenOn: "You receive PBE News by email.",
+    whenOn: "You will receive PBE News by email.",
     whenOff: "You don't receive PBE News by email.",
   },
   allowCommentReplyEmail: {
@@ -85,14 +85,16 @@ export const CONSENT_COPY: Record<
   },
   allowShareWithMITAA: {
     label: "Share with the MIT Alumni Association",
-    whenOn: "Shared with the MIT Alumni Association.",
-    whenOff: "Not shared with the MIT Alumni Association.",
+    whenOn: "May be shared with the MIT Alumni Association.",
+    whenOff: "Will not be shared with the MIT Alumni Association.",
   },
-  unlisted: {
-    label: "Unlisted — hide me from the directory",
-    // `unlisted` is inverted: true is the privacy action (hide), false is listed.
-    whenOn:
+  // Presented as the positive "Listed in the directory" (on = listed/visible), so
+  // it reads like every other privacy switch — the stored field stays `unlisted`,
+  // inverted at the call site (N35). `listed` true is the visible state.
+  listed: {
+    label: "Listed in the directory",
+    whenOn: "You appear in the directory for all brothers.",
+    whenOff:
       "You don't appear in the directory for other brothers; managers and administrators can still see your record.",
-    whenOff: "You appear in the directory for all brothers.",
   },
 };

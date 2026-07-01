@@ -308,17 +308,18 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
       method: "PATCH",
       url: "/api/profiles/5001",
       headers: { cookie, "if-match": etag, "x-cloud-trace-context": "trace-abc/1;o=1" },
-      payload: { phone: "555-0002" },
+      payload: { phone: "617-555-0002" },
     });
 
     expect(response.statusCode).toBe(200);
     expect(response.headers.etag).toBeTruthy();
     expect(response.headers.etag).not.toBe(etag);
-    expect(response.json()).toMatchObject({ phone: "555-0002" });
+    // Stored + returned in the one canonical NANP form (N35), not as entered.
+    expect(response.json()).toMatchObject({ phone: "+1 (617) 555-0002" });
 
     // Read-your-writes: the cache reflects the edit, plus the D28 owner auto-verify.
     const stored = cache.getById(5001);
-    expect(stored?.phone).toBe("555-0002");
+    expect(stored?.phone).toBe("+1 (617) 555-0002");
     expect(stored?.lastVerifiedDate).toBe("2026-06-26");
     expect(stored?.verifiedBy).toBe(5001);
     expect(stored?.lastModified).toBe(FIXED_NOW.toISOString());
@@ -338,6 +339,28 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
     await app.close();
   });
 
+  it("canonicalizes the primary and emergency-contact phones on save (N35)", async () => {
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: {
+        phone: "(617) 555-0143",
+        emergencyContacts: [{ name: "Susan Smyth", phone: "617.555.0188", email: "" }],
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const stored = cache.getById(5001);
+    expect(stored?.phone).toBe("+1 (617) 555-0143");
+    expect(stored?.emergencyContacts?.[0]?.phone).toBe("+1 (617) 555-0188");
+    await app.close();
+  });
+
   it("requires If-Match (428) and rejects a stale token (412)", async () => {
     const { app, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5001 })]);
     const cookie = await cookieAs(5001, "brother");
@@ -346,7 +369,7 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
       method: "PATCH",
       url: "/api/profiles/5001",
       headers: { cookie },
-      payload: { phone: "555-0100" },
+      payload: { phone: "617-555-0100" },
     });
     expect(missing.statusCode).toBe(428);
 
@@ -354,7 +377,7 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
       method: "PATCH",
       url: "/api/profiles/5001",
       headers: { cookie, "if-match": "not-the-current-token" },
-      payload: { phone: "555-0100" },
+      payload: { phone: "617-555-0100" },
     });
     expect(stale.statusCode).toBe(412);
     expect(stale.json()).toMatchObject({ error: "stale_write" });
@@ -365,13 +388,13 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
       method: "PATCH",
       url: "/api/profiles/5001",
       headers: { cookie, "if-match": etag },
-      payload: { phone: "555-0001" },
+      payload: { phone: "617-555-0001" },
     });
     const second = await app.inject({
       method: "PATCH",
       url: "/api/profiles/5001",
       headers: { cookie, "if-match": etag },
-      payload: { phone: "555-0002" },
+      payload: { phone: "617-555-0002" },
     });
     expect(second.statusCode).toBe(412);
     await app.close();
@@ -444,11 +467,11 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
       method: "PATCH",
       url: "/api/profiles/5003",
       headers: { cookie, "if-match": etag },
-      payload: { phone: "555-0007" },
+      payload: { phone: "617-555-0007" },
     });
     expect(response.statusCode).toBe(200);
     const stored = cache.getById(5003);
-    expect(stored?.phone).toBe("555-0007");
+    expect(stored?.phone).toBe("+1 (617) 555-0007");
     expect(stored?.lastVerifiedDate).toBeUndefined();
     expect(stored?.verifiedBy).toBeUndefined();
     await app.close();

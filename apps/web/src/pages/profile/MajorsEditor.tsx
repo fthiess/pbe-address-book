@@ -89,7 +89,7 @@ export function MajorsEditor({
             options={options}
             onSelect={(code) => onChange([...codes, code])}
             inputLabel="Add a course"
-            placeholder="Add major…"
+            placeholder="Add a course…"
             emptyMessage="No more courses to add."
             describedBy={error ? errorId : helpId}
             adornment={<PlusIcon />}

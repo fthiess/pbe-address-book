@@ -65,6 +65,7 @@ export function Avatar({
   name,
   seed,
   size = 40,
+  sizeVar,
   deceased = false,
   className,
 }: {
@@ -72,10 +73,19 @@ export function Avatar({
   /** Stable color-family seed (the Constitution id); falls back to a name hash. */
   seed?: number;
   size?: number;
+  /**
+   * A CSS length expression for the diameter, overriding the numeric `size` when
+   * given — lets a caller drive a **responsive** avatar from a breakpoint-set CSS
+   * variable (e.g. `"var(--headshot-size)"`) so the ground, silhouette, and
+   * initials all scale together. The initials size stays the same 0.38 ratio.
+   */
+  sizeVar?: string;
   deceased?: boolean;
   className?: string;
 }) {
   const ground = groundFor(seed ?? hashString(name), deceased);
+  const dim = sizeVar ?? `${size}px`;
+  const fontSize = sizeVar ? `calc(${sizeVar} * 0.38)` : `${Math.round(size * 0.38)}px`;
   return (
     <span
       aria-hidden="true"
@@ -83,7 +93,7 @@ export function Avatar({
         "relative inline-grid shrink-0 place-items-center overflow-hidden rounded-full",
         className,
       )}
-      style={{ width: size, height: size, background: ground.background }}
+      style={{ width: dim, height: dim, background: ground.background }}
     >
       {/* Translucent white silhouette watermark (generic head + shoulders). */}
       <svg
@@ -95,10 +105,7 @@ export function Avatar({
         <circle cx="20" cy="15" r="7" />
         <path d="M7 40 C7 28 33 28 33 40 Z" />
       </svg>
-      <span
-        className="relative font-semibold leading-none"
-        style={{ color: ground.ink, fontSize: Math.round(size * 0.38) }}
-      >
+      <span className="relative font-semibold leading-none" style={{ color: ground.ink, fontSize }}>
         {initialsOf(name)}
       </span>
     </span>

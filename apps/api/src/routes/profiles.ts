@@ -4,6 +4,7 @@ import {
   type ValidationIssue,
   canActOnProfile,
   normalizeEmail,
+  normalizePhone,
   partitionWritableFields,
   validateProfile,
 } from "@pbe/shared";
@@ -232,6 +233,10 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
 
     // 5. Validation — shared rules over the merged record, plus structural checks.
     const typedPatch = patch as Partial<Profile>;
+    // Canonicalize phone numbers to the one stored form before validation and
+    // write (N35): the primary phone and each emergency contact's phone. An
+    // unparseable value is left as-is so the shared validator reports it inline.
+    canonicalizePhones(typedPatch);
     const merged = { ...stored, ...typedPatch } as Profile;
     const issues = [
       ...validateProfile(merged, { currentYear: now.getUTCFullYear() }).issues,
@@ -301,6 +306,27 @@ function parseId(request: FastifyRequest): number | null {
   const raw = (request.params as { id?: string }).id;
   const id = Number(raw);
   return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * Rewrite a patch's phone fields to the one canonical stored form (N35): the
+ * primary `phone` and each `emergencyContacts[].phone`. Applied server-side so
+ * the stored representation is authoritative regardless of the client. A value
+ * that `normalizePhone` can't parse is left untouched, so the shared validator
+ * still reports it as the field's inline error rather than silently dropping it;
+ * an empty string (a cleared field) is left alone for the same reason.
+ */
+function canonicalizePhones(patch: Partial<Profile>): void {
+  if (typeof patch.phone === "string" && patch.phone !== "") {
+    patch.phone = normalizePhone(patch.phone) ?? patch.phone;
+  }
+  if (Array.isArray(patch.emergencyContacts)) {
+    patch.emergencyContacts = patch.emergencyContacts.map((contact) =>
+      typeof contact.phone === "string" && contact.phone !== ""
+        ? { ...contact, phone: normalizePhone(contact.phone) ?? contact.phone }
+        : contact,
+    );
+  }
 }
 
 /**

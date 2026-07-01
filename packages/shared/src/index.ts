@@ -31,6 +31,7 @@ export {
   subdivisionName,
 } from "./geo.js";
 export {
+  normalizePhone,
   validateProfile,
   type ValidationContext,
   type ValidationIssue,

@@ -29,6 +29,7 @@ Track 42×24, radius 999px; knob 20×20 circle #fff inset 2px.
 - Pair every switch with **inline consequence text** = the currently-true statement (e.g. "Brothers can reach you by email"). The counterfactual goes in the `?` popover.
 - A11y: `role="switch"` + `aria-checked`.
 - **Resting states are NOT uniform.** On the Profile privacy set (8 switches) three default **off**: emergency-contact share, spouse/partner share, and "Share with the MIT Alumni Association" — they govern sharing beyond the brotherhood. The per-field toggles (emergency, spouse/partner) live inline with their fields; the rest live in the Privacy & consent panel.
+- **Every switch reads in the positive direction** (on = the thing the label names is true). The directory-listing switch is therefore presented as **"Listed in the directory"** (on = listed/visible), not "Unlisted — hide me"; the stored field stays `unlisted` and the presentation is inverted at the call site (N35). In the Privacy & consent panel the first three per-field switches carry the same box insets (border + `p-3`, transparent) as the boxed subgroups below, so every switch track and `?` button aligns down the column.
 
 ## `?` Help popover
 - Trigger: 22–26px circle, border 1.5–2px `--track`; on open it goes teal (`--primary` border + `#E2F0F3` bg + `--ring-shadow`).
@@ -45,8 +46,8 @@ Height 42px, radius 9px, border 1px `--input` #808A92, bg #fff, padding 0 12px, 
 ## Chip (course-area / status)
 Pill, radius 999px, padding 3×10, 12px/600. Colors from the **course-area chip palette** in `tokens.css` (teal=Course 6, gold=2, green=7, purple=18, red=10, slate=neutral). The major **code text** carries the meaning; color is reinforcement.
 
-### Chip editor (Profile › Majors, edit mode)
-Wrapping field, min-height 48px, dashed-free 1px `--input` border. Each chip gains a grab handle (`⠿`) on the left and an `×` remove circle on the right. "Drag to reorder; first shows in the directory." An "Add major…" placeholder ends the row. Locked relationship chips (Little Brothers) render flat with a 🔒 on the section label and an explanatory note — not editable.
+### Chip editor (Profile › Courses, edit mode)
+Wrapping field, min-height 48px, dashed-free 1px `--input` border. Each chip gains a grab handle (`⠿`) on the left and an `×` remove circle on the right. "Drag to reorder; the course listed first appears in the directory." An "Add a course…" placeholder ends the row. The section is labelled **Courses** (the data field stays `majors`; matches the Directory's N15 rename). Locked relationship chips (Little Brothers) render flat with a 🔒 on the section label and an explanatory note — not editable.
 
 ## UNLISTED badge  ← (privacy hide; manager/admin-only)
 - Calm, neutral, **present-but-private** — deliberately NOT an alarm and NOT a strike.
@@ -67,6 +68,9 @@ Name `text-decoration: line-through` (`--text-5` strike color), name + class go 
   - death year only → `d. 2024`
   - birth year only, or neither → render nothing (an open "1940–" misreads as still-living)
   - The full **Date of death** still appears as its own detail field below the banner, independent of the lifespan line, alongside Obituary and In Memoriam article links.
+
+## Profile layout — fuller second column (view & edit; N35)
+One layout, four projections, DOM order = reading order (WCAG 1.3.2). The identity band leads with the enlarged responsive headshot beside the name/identity fields; the mug name shows under the name as a quoted nickname (it is editable, so it must not be write-only). Below, **Professional & personal runs full width with an internal two-column grid** so **spouse and courses sit to the right of the employer/job-title (+links) column** — the "fuller use of the second column." Relationships follows full width; Contact / Emergency and the restricted Privacy / Record-status pairs keep the two-up rows. (First cut of the reflow — refined against the rendered staging page.)
 
 ## Deceased field group (Profile edit, managers/admins)
 Marking deceased = the **soft confirmation** (gentle · reversible). On confirm the group reveals and **focus moves into the first field**. Five fields:
@@ -104,7 +108,7 @@ Past a short threshold only. Translucent `--muted` scrim + 2px blur, 38px teal s
 Quiet success: dark surface `#1B262B`, 1px `--success-border`, ✓ in a small circle, "Saved — verified as of today."
 
 ## Avatars
-Circle with a radial-gradient ground tinted to the person's color family + white silhouette + initials. Ring: `--shadow-avatar`. Sizes: 120 (profile), 40 (row), 34/30 (compact), 22–24 (chip).
+Circle with a radial-gradient ground tinted to the person's color family + white silhouette + initials. Ring: `--shadow-avatar`. Sizes: **96→132 responsive (profile — smaller on mobile, larger on desktop; N35)**, 40 (row), 34/30 (compact), 22–24 (chip). The Profile headshot (real photo or avatar fallback) sizes from a `--headshot-size` CSS variable set at the `sm` breakpoint so photo and fallback scale identically.
 
 ## Theme switch
 Segmented control (☀ / ☾ / ◐ = light / dark / system) in the top bar — track `--secondary`, active segment #fff with a small shadow.
