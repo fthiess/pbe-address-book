@@ -111,15 +111,56 @@ export function projectRecord(profile: Profile, role: Role): ProjectedProfile {
 }
 
 /**
+ * The staff-internal fields the owner nonetheless sees on his **own** record.
+ * `unlisted`/`debrothered` are classified `staff-internal` for the *bulk* read
+ * (they hide the record from peers, N10), but a brother sees and sets his own
+ * listing/status state via the self read. `adminNote` — the other staff-internal
+ * field — is deliberately absent, so it stays hidden from the owner (§9).
+ */
+const OWNER_VISIBLE_STAFF_FIELDS: ReadonlySet<keyof Profile> = new Set(["unlisted", "debrothered"]);
+
+/**
+ * Whether the owner sees a field on his own self read. Driven off the exhaustive
+ * table so the safe default is *inverted* correctly (OFC-97): `public`/`toggle`/
+ * `restricted` are owner-visible (his own data, incl. off-toggle values), a
+ * `staff-internal` field is owner-visible only if explicitly allow-listed above,
+ * and `system-internal` is never sent to any client. A newly-added `Profile`
+ * field therefore cannot leak into `/api/me` by being forgotten — a new
+ * staff-internal/system-internal field stays hidden until deliberately opted in.
+ */
+function ownerSeesField(field: keyof Profile): boolean {
+  switch (FIELD_VISIBILITY[field].cls) {
+    case "public":
+    case "toggle":
+    case "restricted":
+      return true;
+    case "staff-internal":
+      return OWNER_VISIBLE_STAFF_FIELDS.has(field);
+    case "system-internal":
+      return false;
+  }
+}
+
+/**
  * Project a caller's **own** record for the out-of-band self read (D82). Returns
  * the full record save `adminNote` and `ghostMemberId` — see {@link SelfProfile}.
- * Destructured rather than table-walked so the type is exact; the companion test
- * asserts (against the visibility table) that every system-internal field is
- * excluded, so a future system-internal field cannot silently slip through here.
+ * Table-walked (not spread-with-omit) so the exhaustive-table safe default
+ * protects this path too: unlike a `{ ...profile }` minus a hard-coded omit list,
+ * a new non-owner-visible field cannot ship to the owner unless it is
+ * deliberately classified owner-visible (OFC-97). The companion test asserts
+ * (against the table) that the excluded classes stay excluded.
  */
 export function projectSelf(profile: Profile): SelfProfile {
-  const { adminNote: _adminNote, ghostMemberId: _ghostMemberId, ...visible } = profile;
-  return visible;
+  const result = { id: profile.id } as ProjectedProfile;
+  for (const field of PROFILE_FIELDS) {
+    if (field === "id") {
+      continue; // always present
+    }
+    if (ownerSeesField(field)) {
+      copyField(profile, result, field);
+    }
+  }
+  return result as SelfProfile;
 }
 
 /** Copy an optional field onto the projection only when it is present on the source. */

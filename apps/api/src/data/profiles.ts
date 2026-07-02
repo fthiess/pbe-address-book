@@ -78,8 +78,23 @@ export function encodeToken(updateTime: Timestamp): string {
   return `${updateTime.seconds}.${updateTime.nanoseconds}`;
 }
 
-/** Decode an ETag token back to the `Timestamp` Firestore wants as a precondition. */
-export function decodeToken(token: string): Timestamp {
+/** The exact shape {@link encodeToken} emits: `<seconds>.<nanoseconds>`, digits only. */
+const TOKEN_RE = /^\d+\.\d+$/u;
+
+/**
+ * Decode an ETag token back to the `Timestamp` Firestore wants as a
+ * precondition, or `null` if the token is not a well-formed `<sec>.<nanos>`.
+ * A client-supplied `If-Match` that is any other opaque value (`"abc"`, a quoted
+ * tag, `*`) would otherwise yield `Timestamp(NaN, NaN)`, whose constructor throws
+ * an error carrying no gRPC `.code` — so the store's catch (which maps only
+ * FAILED_PRECONDITION/NOT_FOUND) would rethrow it as a 500 instead of the
+ * intended 412 stale-write reconcile (OFC-90). Returning `null` lets the store
+ * treat a malformed token as a failed precondition.
+ */
+export function decodeToken(token: string): Timestamp | null {
+  if (!TOKEN_RE.test(token)) {
+    return null;
+  }
   const [seconds, nanoseconds] = token.split(".");
   return new Timestamp(Number(seconds), Number(nanoseconds));
 }
@@ -98,12 +113,18 @@ export class FirestoreProfileStore implements ProfileStore {
     // is written as-is. `update()` replaces named fields and leaves the rest, so
     // a structured field (e.g. `address`) carried whole in `set` is replaced
     // whole — the PATCH semantics the SPA sends (changed fields, full sub-objects).
+    const precondition = decodeToken(write.precondition);
+    // A malformed token never matched any record we issued — treat it as a stale
+    // write (→ 412 reconcile), not a 500 (OFC-90).
+    if (precondition === null) {
+      throw new StaleWriteError();
+    }
     const data: Record<string, unknown> = { ...write.set };
     for (const field of write.remove) {
       data[field] = FieldValue.delete();
     }
     try {
-      const result = await ref.update(data, { lastUpdateTime: decodeToken(write.precondition) });
+      const result = await ref.update(data, { lastUpdateTime: precondition });
       return encodeToken(result.writeTime);
     } catch (error) {
       const code = (error as { code?: number }).code;

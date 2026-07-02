@@ -76,13 +76,16 @@ describe("ProfileCache", () => {
     });
   });
 
-  it("marks an email claimed by two profiles as ambiguous (fail closed)", async () => {
+  it("marks an email claimed by two profiles as ambiguous (fail closed), naming the claimants", async () => {
     const cache = new ProfileCache();
     await cache.load([
       makeProfile({ id: 5001, email: "dup@example.test" }),
       makeProfile({ id: 5002, email: "DUP@example.test" }),
     ]);
-    expect(cache.resolveByEmail("dup@example.test")).toEqual({ kind: "ambiguous" });
+    expect(cache.resolveByEmail("dup@example.test")).toEqual({
+      kind: "ambiguous",
+      claimantIds: [5001, 5002],
+    });
   });
 
   it("marks one profile's primary clashing with another's alternate as ambiguous", async () => {
@@ -91,7 +94,33 @@ describe("ProfileCache", () => {
       makeProfile({ id: 5001, email: "shared@example.test" }),
       makeProfile({ id: 5002, email: "other@example.test", alternateEmail: "shared@example.test" }),
     ]);
-    expect(cache.resolveByEmail("shared@example.test")).toEqual({ kind: "ambiguous" });
+    expect(cache.resolveByEmail("shared@example.test")).toEqual({
+      kind: "ambiguous",
+      claimantIds: [5001, 5002],
+    });
+  });
+
+  it("does NOT self-ambiguate one record whose primary and alternate are the same address (OFC-88)", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ id: 5001, email: "same@example.test", alternateEmail: "SAME@example.test" }),
+    ]);
+    // One profile claiming an address via both fields resolves to itself, not ambiguous.
+    expect(cache.resolveByEmail("same@example.test")).toEqual({
+      kind: "found",
+      profile: expect.objectContaining({ id: 5001 }),
+    });
+  });
+
+  it("skips empty/whitespace-only email keys so two blank records do not collide (OFC-88)", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ id: 5001, email: "" }),
+      makeProfile({ id: 5002, email: "   " }),
+    ]);
+    // A shared "" key would otherwise flip both to ambiguous and lock them out.
+    expect(cache.resolveByEmail("")).toEqual({ kind: "none" });
+    expect(cache.getById(5001)?.id).toBe(5001);
   });
 
   it("compresses the bulk payload well (repeated keys at scale)", async () => {

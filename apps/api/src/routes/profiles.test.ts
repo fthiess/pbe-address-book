@@ -512,6 +512,96 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
     await app.close();
   });
 
+  it("returns 422 (not 500) when a string field arrives as JSON null (OFC-89)", async () => {
+    const { app, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    for (const [field, payload] of [
+      ["email", { email: null }],
+      ["phone", { phone: null }],
+    ] as const) {
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/profiles/5001",
+        headers: { cookie, "if-match": etag },
+        payload,
+      });
+      expect(response.statusCode, `${field}: null should be a clean 422, not a 500`).toBe(422);
+      expect(response.json().issues).toContainEqual(expect.objectContaining({ field }));
+    }
+    await app.close();
+  });
+
+  it("emits a quoted ETag and accepts a weak/quoted If-Match back (OFC-92)", async () => {
+    const { app, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    // The tag is a spec-compliant quoted entity-tag…
+    expect(etag).toMatch(/^".+"$/);
+    // …and the server strips an intermediary's `W/` weak prefix + quotes on the way
+    // back in, so a normalized round-trip still matches (would 412 every save if not).
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": `W/${etag}` },
+      payload: { jobTitle: "Engineer" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.etag).toMatch(/^".+"$/);
+    await app.close();
+  });
+
+  it("lets an owner save over his own address without a self-conflict (OFC-87)", async () => {
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer([
+      makeProfile({ id: 5001, email: "mine@example.test" }),
+    ]);
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    // Re-send the unchanged own email alongside a real change: the ownership
+    // exemption must clear the uniqueness check for an address only he holds.
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: "mine@example.test", jobTitle: "Engineer" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(cache.getById(5001)?.jobTitle).toBe("Engineer");
+    await app.close();
+  });
+
+  it("treats a re-sent sub-object differing only by an undefined key as a no-op (OFC-94)", async () => {
+    const { app, cache, audited, cookieAs, etagOf } = await buildWriteServer([
+      makeProfile({
+        id: 5003,
+        address: { city: "Cambridge", country: "US", stateProvince: undefined },
+        lastVerifiedDate: "2026-01-01",
+        verifiedBy: 5003,
+      }),
+    ]);
+    const cookie = await cookieAs(9001, "manager");
+    const etag = await etagOf(5003, cookie);
+
+    // The manager re-saves the semantically-identical address (the stored copy
+    // carries stateProvince as an explicit undefined; the re-sent one omits it).
+    // This must be a no-op — no write, no verification clear, no audit entry.
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5003",
+      headers: { cookie, "if-match": etag },
+      payload: { address: { city: "Cambridge", country: "US" } },
+    });
+    expect(response.statusCode).toBe(200);
+    const stored = cache.getById(5003);
+    expect(stored?.lastVerifiedDate).toBe("2026-01-01"); // NOT cleared
+    expect(stored?.verifiedBy).toBe(5003);
+    expect(audited).toHaveLength(0); // no mutation audited
+    await app.close();
+  });
+
   it("404s a PATCH to a non-existent record", async () => {
     const { app, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
     const cookie = await cookieAs(9001, "admin");

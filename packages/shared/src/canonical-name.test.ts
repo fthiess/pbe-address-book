@@ -73,4 +73,18 @@ describe("buildAmbiguityIndex / resolveCanonicalNames", () => {
       canonicalNameKey(brother({ id: 2, firstName: "James" })),
     );
   });
+
+  it("collapses EVERY internal whitespace run, not just the first (OFC-93)", () => {
+    // Two separate internal runs: a non-global collapse leaves the second doubled,
+    // so the messy and clean spellings would key apart and escape disambiguation.
+    const messy = canonicalNameKey(brother({ id: 1, lastName: "van  der  Berg" }));
+    const clean = canonicalNameKey(brother({ id: 2, lastName: "van der Berg" }));
+    expect(messy).toBe(clean);
+    const names = resolveCanonicalNames([
+      brother({ id: 5247, lastName: "van  der  Berg" }),
+      brother({ id: 5248, lastName: "van der Berg" }),
+    ]);
+    expect(names.get(5247)).toContain("(#5247)");
+    expect(names.get(5248)).toContain("(#5248)");
+  });
 });

@@ -56,3 +56,65 @@ describe.skipIf(!hasEmulator)("ProfileCache.hydrateFromFirestore (emulator)", ()
     expect(body.profiles.map((p) => p.id)).toEqual([5001, 5003]);
   });
 });
+
+describe.skipIf(!hasEmulator)(
+  "ProfileCache.hydrateFromFirestore — malformed records (OFC-91)",
+  () => {
+    let db: Firestore;
+
+    beforeAll(async () => {
+      if (getApps().length === 0) {
+        initializeApp({ projectId: "demo-pbe-book" });
+      }
+      db = getFirestore();
+
+      // A good record, a pre-Phase-2a-shaped record missing the required
+      // `deceased`/`debrothered`/`privacy` sub-objects (the exact shape that used to
+      // throw inside the projection and 500 the whole bulk read), and a document
+      // with no usable Constitution id.
+      await db
+        .collection("profiles")
+        .doc("5001")
+        .set(makeProfile({ id: 5001 }));
+      await db.collection("profiles").doc("5002").set({
+        id: 5002,
+        firstName: "Old",
+        lastName: "Shape",
+        classYear: 1970,
+        hasHeadshot: false,
+        unlisted: false,
+        allowNewsletterEmail: true,
+        allowCommentReplyEmail: true,
+        allowShareWithMITAA: false,
+        lastModified: "2026-01-01T00:00:00.000Z",
+        newsletterConsentChangedAt: "2026-01-01T00:00:00.000Z",
+      });
+      await db.collection("profiles").doc("junk").set({ firstName: "No", lastName: "Id" });
+    });
+
+    afterAll(async () => {
+      const snapshot = await db.collection("profiles").get();
+      const batch = db.batch();
+      for (const doc of snapshot.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+    });
+
+    it("degrades gracefully: fills defaults on a malformed record and drops the id-less doc", async () => {
+      const cache = new ProfileCache();
+      // The whole hydration must not throw on the malformed shapes.
+      await expect(cache.hydrateFromFirestore(db)).resolves.toBeUndefined();
+
+      // The id-less document is dropped; the good and normalized records survive.
+      expect(cache.size).toBe(2);
+      const normalized = cache.getById(5002);
+      expect(normalized?.deceased).toEqual({ isDeceased: false });
+      expect(normalized?.debrothered).toEqual({ isDebrothered: false });
+
+      // The bulk projection now builds without throwing on the normalized record.
+      const body = JSON.parse(cache.brotherPayload().json) as DecodedBody;
+      expect(body.profiles.map((p) => p.id)).toEqual([5001, 5002]);
+    });
+  },
+);

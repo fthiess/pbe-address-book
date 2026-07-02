@@ -81,8 +81,18 @@ function isNonEmpty(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function isValidEmail(value: string): boolean {
-  return EMAIL_RE.test(value.trim());
+// The field predicates below accept `unknown` and guard `typeof === "string"`
+// before touching string methods. A JSON `null` (or any non-string) reaching an
+// optional string field passes the `!== undefined` presence guard at the call
+// site, so without this guard `.trim()`/regex would throw a TypeError and the
+// route would 500 instead of returning a clean 422 (OFC-89).
+function isValidEmail(value: unknown): boolean {
+  return typeof value === "string" && EMAIL_RE.test(value.trim());
+}
+
+/** True if `value` is a US ZIP in NNNNN or NNNNN-NNNN form (non-strings rejected). */
+function isUsZip(value: unknown): boolean {
+  return typeof value === "string" && US_ZIP_RE.test(value.trim());
 }
 
 /**
@@ -134,12 +144,15 @@ function formatNanp(ten: string): string {
   return `+1 (${ten.slice(0, 3)}) ${ten.slice(3, 6)}-${ten.slice(6)}`;
 }
 
-function isValidPhone(value: string): boolean {
-  return normalizePhone(value) !== null;
+function isValidPhone(value: unknown): boolean {
+  return typeof value === "string" && normalizePhone(value) !== null;
 }
 
 /** A URL restricted to the strict http/https scheme allowlist (D107). */
-function isHttpUrl(value: string): boolean {
+function isHttpUrl(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
   let parsed: URL;
   try {
     parsed = new URL(value.trim());
@@ -150,7 +163,10 @@ function isHttpUrl(value: string): boolean {
 }
 
 /** A real `YYYY-MM-DD` calendar date (rejects e.g. 2026-02-31). */
-function isValidIsoDate(value: string): boolean {
+function isValidIsoDate(value: unknown): boolean {
+  if (typeof value !== "string") {
+    return false;
+  }
   const match = ISO_DATE_RE.exec(value.trim());
   if (match === null) {
     return false;
@@ -232,7 +248,10 @@ export function validateProfile(
   }
 
   // --- address ---
-  if (input.address !== undefined) {
+  // Guard against a JSON `null` (or non-object) reaching the destructure — the
+  // field is optional and reachable on the PATCH path, so a null would throw
+  // here rather than at a string method (OFC-89).
+  if (input.address !== undefined && input.address !== null && typeof input.address === "object") {
     const { country, stateProvince, postalCode } = input.address;
     if (country !== undefined && country !== "" && !isCountryCode(country)) {
       add("address.country", "Select a valid country.");
@@ -246,12 +265,7 @@ export function validateProfile(
     }
     // Only US ZIP codes are format-checked (the majority of the membership); every
     // other country's postal code is left free — too many formats to validate (N38).
-    if (
-      country === "US" &&
-      postalCode !== undefined &&
-      postalCode !== "" &&
-      !US_ZIP_RE.test(postalCode.trim())
-    ) {
+    if (country === "US" && postalCode !== undefined && postalCode !== "" && !isUsZip(postalCode)) {
       add("address.postalCode", "Enter a ZIP code as NNNNN or NNNNN-NNNN.");
     }
   }
@@ -334,7 +348,8 @@ function validateDeceased(
   add: (field: string, message: string) => void,
 ): void {
   const deceased = input.deceased;
-  if (deceased === undefined) {
+  // Tolerate a JSON `null`/non-object rather than dereferencing it (OFC-89).
+  if (deceased === undefined || deceased === null || typeof deceased !== "object") {
     return;
   }
   const onDeceasedRecord = deceased.isDeceased === true;
@@ -375,8 +390,15 @@ function validateDeceased(
     } else if (deceased.dateOfDeath !== undefined) {
       // Mutually exclusive with a full date — the year is derived from the date (D122).
       add("deceased.deathYear", "Provide either a full date of death or a death year, not both.");
-    } else if (!Number.isInteger(deceased.deathYear) || deceased.deathYear > currentYear) {
-      add("deceased.deathYear", `Death year must be ${currentYear} or earlier.`);
+    } else if (
+      !Number.isInteger(deceased.deathYear) ||
+      deceased.deathYear < MIN_BIRTH_YEAR ||
+      deceased.deathYear > currentYear
+    ) {
+      // Floor the year-only death path the way `birthYear` is floored — without a
+      // lower bound an implausible year (e.g. 200, 1500) drives a nonsensical In
+      // Memoriam lifespan on a record that carries no `birthYear` to compare (OFC-96).
+      add("deceased.deathYear", `Death year must be between ${MIN_BIRTH_YEAR} and ${currentYear}.`);
     } else if (
       deceased.birthYear !== undefined &&
       Number.isInteger(deceased.birthYear) &&
