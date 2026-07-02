@@ -474,24 +474,64 @@ export function makeComparator(
   }
 
   const column = COLUMNS[key];
-  return (a, b) => {
-    const av = column.sortValue(a);
-    const bv = column.sortValue(b);
-    // Nulls (absent/withheld) always sort last, in BOTH directions — checked
-    // before the direction sign so a descending sort never floats "unknown" to
-    // the top. Two nulls fall through to the canonical secondary key.
-    if (av === null || bv === null) {
-      if (av !== null) {
-        return -1;
-      }
-      if (bv !== null) {
-        return 1;
-      }
-      return compareCanonical(a, b);
+  return (a, b) => compareSortValues(column.sortValue(a), column.sortValue(b), sign, a, b);
+}
+
+/**
+ * Sort rows by the active column, deriving each row's sort key **once** (O(n))
+ * instead of inside the comparator, where it would be recomputed O(log n) times
+ * per row (~13k derivations over 1166 rows). That derivation is locale-heavy for
+ * the `country`/`stateProvince` columns (`countryName`/`subdivisionName` +
+ * `toLocaleLowerCase`), and the sort re-runs on every search keystroke and filter
+ * change — so the repeated work compounds on exactly the frugal older hardware
+ * this audience uses (OFC-104). Decorate-sort-undecorate: map to `{ key, profile }`
+ * computing each `sortValue` once, sort on the primitive key (canonical name as
+ * the secondary tiebreak), then unwrap. The Name column has no single primitive
+ * key — it sorts by the structured (last, first, year) tuple — so it stays on
+ * {@link compareCanonical} directly.
+ */
+export function sortRows<T extends DirectoryProfile>(
+  rows: readonly T[],
+  key: ColumnKey,
+  direction: SortDirection,
+): T[] {
+  const sign = direction === "asc" ? 1 : -1;
+
+  if (key === "name") {
+    return [...rows].sort((a, b) => sign * compareCanonical(a, b));
+  }
+
+  const column = COLUMNS[key];
+  const decorated = rows.map((profile) => ({ key: column.sortValue(profile), profile }));
+  decorated.sort((a, b) => compareSortValues(a.key, b.key, sign, a.profile, b.profile));
+  return decorated.map((entry) => entry.profile);
+}
+
+/**
+ * Order two rows by their (already-derived) sort values. Nulls (absent/withheld)
+ * always sort last, in BOTH directions — checked before the direction sign so a
+ * descending sort never floats "unknown" to the top; two nulls fall through to
+ * the canonical secondary key. Shared by {@link makeComparator} and
+ * {@link sortRows} so their ordering can never drift apart.
+ */
+function compareSortValues(
+  av: string | number | null,
+  bv: string | number | null,
+  sign: number,
+  a: DirectoryProfile,
+  b: DirectoryProfile,
+): number {
+  if (av === null || bv === null) {
+    if (av !== null) {
+      return -1;
     }
-    const primary = compareNonNull(av, bv) * sign;
-    return primary !== 0 ? primary : compareCanonical(a, b);
-  };
+    if (bv !== null) {
+      return 1;
+    }
+    return compareCanonical(a, b);
+  }
+  const primary = compareNonNull(av, bv) * sign;
+  return primary !== 0 ? primary : compareCanonical(a, b);
 }
 
 /** Compare two present sort values: numerically for numbers, by locale for strings. */

@@ -233,26 +233,59 @@ export function buildIndex(records: readonly NameRecord[], config: SearchConfig)
   };
 }
 
+/** One record's Constitution ID paired with its precomputed folded name tokens. */
+export interface RecordTokens {
+  id: number;
+  tokens: string[];
+}
+
 /**
- * The **immediate, main-thread** matcher used before the Web-Worker index is
- * ready (D110): plain exact/substring over the name tokens, ANDed across query
- * words. No Fuse, no phonetics — so the grid filters instantly on first paint and
- * the richer matching switches on when the worker signals ready.
+ * Precompute the `{ id, tokens }` list once per dataset, so the main-thread
+ * {@link substringMatchIndexed} fallback can scan cached tokens instead of
+ * re-tokenizing every record on every keystroke (OFC-105). `tokenize` is
+ * expensive (NFKD normalize + two regex replaces + lowercase over six name
+ * fields), and the pre-worker fallback runs on the hot typing path — so this
+ * derivation must happen once, not ~6–7k times per keystroke.
  */
-export function substringMatch(records: readonly NameRecord[], query: string): Set<number> | null {
+export function buildSubstringIndex(records: readonly NameRecord[]): RecordTokens[] {
+  return records.map((record) => ({ id: record.id, tokens: recordTokens(record) }));
+}
+
+/**
+ * Substring match over a prebuilt {@link buildSubstringIndex} — plain
+ * exact/substring over the cached name tokens, ANDed across query words. Returns
+ * `null` for an empty query (no filter).
+ */
+export function substringMatchIndexed(
+  index: readonly RecordTokens[],
+  query: string,
+): Set<number> | null {
   const queryTokens = tokenize(query);
   if (queryTokens.length === 0) {
     return null;
   }
   const ids = new Set<number>();
-  for (const record of records) {
-    const tokens = recordTokens(record);
+  for (const { id, tokens } of index) {
     const everyMatches = queryTokens.every((queryToken) =>
       tokens.some((token) => token.includes(queryToken)),
     );
     if (everyMatches) {
-      ids.add(record.id);
+      ids.add(id);
     }
   }
   return ids;
+}
+
+/**
+ * The **immediate, main-thread** matcher used before the Web-Worker index is
+ * ready (D110): plain exact/substring over the name tokens, ANDed across query
+ * words. No Fuse, no phonetics — so the grid filters instantly on first paint and
+ * the richer matching switches on when the worker signals ready.
+ *
+ * Convenience wrapper that builds the token index and matches in one call; the
+ * SPA memoizes {@link buildSubstringIndex} across keystrokes and calls
+ * {@link substringMatchIndexed} directly, so it never rebuilds per query (OFC-105).
+ */
+export function substringMatch(records: readonly NameRecord[], query: string): Set<number> | null {
+  return substringMatchIndexed(buildSubstringIndex(records), query);
 }

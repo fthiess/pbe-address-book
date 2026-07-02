@@ -66,12 +66,30 @@ export function removeStar(db: Firestore, profileId: number, starId: number): Pr
   return mutateStars(db, profileId, FieldValue.arrayRemove(starId), starId, false);
 }
 
+/** gRPC status code for a missing document — what `update()` throws on an absent doc. */
+const GRPC_NOT_FOUND = 5;
+
+/** Whether a thrown Firestore error is specifically "document does not exist". */
+function isNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" && err !== null && (err as { code?: number }).code === GRPC_NOT_FOUND
+  );
+}
+
 /**
  * Apply a `stars`-only `arrayUnion`/`arrayRemove` and read back the resulting
  * list. The `users` doc normally already exists (created at first sign-in by
  * {@link ensureUser}); the create-if-absent fallback covers the edge where a star
  * write arrives before that record exists, creating a minimal `brother` record
  * rather than failing the toggle.
+ *
+ * The fallback is scoped strictly to the **document-absent** case (gRPC
+ * `NOT_FOUND`): any other failure — a transient `ABORTED`/`UNAVAILABLE`/
+ * `DEADLINE_EXCEEDED`, a network blip — is **re-thrown**, never swallowed. A blind
+ * catch here would let a transient error fall into a full-document `set()` that
+ * resets an existing admin/manager to `role: "brother"` and wipes their star list
+ * (D5/D82 make role the single visibility gate, so that is a silent privilege
+ * downgrade — OFC-98).
  */
 async function mutateStars(
   db: Firestore,
@@ -83,7 +101,11 @@ async function mutateStars(
   const ref = db.collection(COLLECTION).doc(String(profileId));
   try {
     await ref.update({ stars: op });
-  } catch {
+  } catch (err) {
+    if (!isNotFound(err)) {
+      throw err;
+    }
+    // Genuinely absent → create the minimal brother record with just this star.
     await ref.set({ id: profileId, role: "brother", stars: add ? [starId] : [] });
   }
   const snapshot = await ref.get();

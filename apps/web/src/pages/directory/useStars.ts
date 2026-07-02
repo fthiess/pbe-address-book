@@ -4,9 +4,17 @@ import { addStar as apiAddStar, removeStar as apiRemoveStar } from "../../lib/ap
 /**
  * The viewer's personal star set, with **optimistic** toggling (D39, PRD §5.6.6).
  * Clicking a star flips it immediately while the `PUT`/`DELETE /api/me/stars/{id}`
- * is in flight; a failed write **reverts** the flip. The set seeds from the
- * caller's own `/api/me` stars (delivered with the session) and is the source of
- * truth for the Star column and the "Starred only" filter thereafter.
+ * is in flight; on success the set is **reconciled to the server's authoritative
+ * list** (the endpoints return the recomputed `number[]`), and a failed write
+ * **reverts** the flip. The set seeds from the caller's own `/api/me` stars
+ * (delivered with the session) and is the source of truth for the Star column,
+ * the "Starred only" filter, and CSV export thereafter.
+ *
+ * Adopting the returned list (rather than trusting the local flip alone) keeps
+ * this tab from drifting when another tab or an earlier session changed the list,
+ * and settles the optimistic state on the server's truth (OFC-103). A per-toggle
+ * generation guard drops a stale in-flight response so it can't stomp a newer
+ * toggle the user has since made.
  *
  * The toggle reads the *current* membership from a ref (not a closed-over value),
  * so rapid clicks across rows never act on a stale snapshot, and the async write
@@ -27,10 +35,16 @@ export function useStars(initial: readonly number[]): Stars {
   const starsRef = useRef(stars);
   starsRef.current = stars;
 
+  // Monotonic toggle generation: only the latest toggle's settled response is
+  // honored, so a slow older request (success or failure) can't stomp the state a
+  // newer toggle has since established (OFC-103, the revert-race).
+  const genRef = useRef(0);
+
   const isStarred = useCallback((id: number) => stars.has(id), [stars]);
 
   const toggle = useCallback((id: number) => {
     const willStar = !starsRef.current.has(id);
+    const gen = ++genRef.current;
     const flip = (add: boolean) =>
       setStars((prev) => {
         const next = new Set(prev);
@@ -44,7 +58,22 @@ export function useStars(initial: readonly number[]): Stars {
 
     flip(willStar); // optimistic
     const write = willStar ? apiAddStar(id) : apiRemoveStar(id);
-    write.catch(() => flip(!willStar)); // revert on failure
+    write.then(
+      // Reconcile to the server's authoritative list so this tab never drifts
+      // from a change made elsewhere; ignore a stale response from an older toggle.
+      (serverStars) => {
+        if (gen === genRef.current) {
+          setStars(new Set(serverStars));
+        }
+      },
+      // Revert the optimistic flip on failure — but only if no newer toggle has
+      // superseded this one (else we'd undo the newer action).
+      () => {
+        if (gen === genRef.current) {
+          flip(!willStar);
+        }
+      },
+    );
   }, []);
 
   return { isStarred, toggle, set: stars };

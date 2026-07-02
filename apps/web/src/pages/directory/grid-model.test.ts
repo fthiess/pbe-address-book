@@ -3,9 +3,11 @@ import type { DirectoryProfile } from "../../lib/types.js";
 import {
   COLUMNS,
   type ColumnKey,
+  type SortDirection,
   compareCanonical,
   makeComparator,
   selectableColumns,
+  sortRows,
 } from "./grid-model.js";
 
 /** A minimal directory record — only the fields a given assertion exercises. */
@@ -93,6 +95,57 @@ describe("makeComparator", () => {
       row({ id: 2, firstName: "Amy", lastName: "Adams" }),
     ];
     expect(order(rows, makeComparator("phone", "asc"))).toEqual([2, 1]);
+  });
+});
+
+describe("sortRows (decorate-sort-undecorate, OFC-104)", () => {
+  // A fixture exercising every sort shape: present/absent country keys (the
+  // locale-heavy path), a numeric column, and ties that fall to the canonical key.
+  const rows = [
+    row({ id: 1, firstName: "Brett", lastName: "Brown", classYear: 1984 }),
+    row({ id: 2, firstName: "Aaron", lastName: "Adams", classYear: 1984 }),
+    row({ id: 3, firstName: "Cyril", lastName: "Clark", classYear: 1980 }),
+    row({ id: 4, firstName: "Zed", lastName: "Zimmer" }), // no classYear → null
+  ];
+
+  const keys: ColumnKey[] = ["name", "classYear", "email", "country"];
+  const directions: SortDirection[] = ["asc", "desc"];
+
+  it("orders identically to makeComparator for every key and direction", () => {
+    for (const key of keys) {
+      for (const direction of directions) {
+        const viaSort = sortRows(rows, key, direction).map((r) => r.id);
+        const viaComparator = [...rows].sort(makeComparator(key, direction)).map((r) => r.id);
+        expect(viaSort, `${key}/${direction}`).toEqual(viaComparator);
+      }
+    }
+  });
+
+  it("derives each row's sort key exactly once (O(n), not per-comparison)", () => {
+    const many = Array.from({ length: 50 }, (_, i) =>
+      row({ id: i + 1, firstName: `F${i}`, lastName: `L${i % 7}`, classYear: 1980 + (i % 20) }),
+    );
+    let derivations = 0;
+    const original = COLUMNS.classYear.sortValue;
+    // Wrap the column's key accessor to count derivations for this one sort.
+    (COLUMNS.classYear as { sortValue: typeof original }).sortValue = (p) => {
+      derivations += 1;
+      return original(p);
+    };
+    try {
+      sortRows(many, "classYear", "asc");
+    } finally {
+      (COLUMNS.classYear as { sortValue: typeof original }).sortValue = original;
+    }
+    // Exactly one derivation per row — never the O(n log n) the comparator incurs.
+    expect(derivations).toBe(many.length);
+  });
+
+  it("returns a new array, leaving the input order untouched", () => {
+    const input = [...rows];
+    const sorted = sortRows(input, "classYear", "asc");
+    expect(sorted).not.toBe(input);
+    expect(input.map((r) => r.id)).toEqual([1, 2, 3, 4]);
   });
 });
 

@@ -28,8 +28,8 @@ import {
   COLUMNS,
   type ColumnKey,
   canSelectRows,
-  makeComparator,
   pinnedColumnsForRole,
+  sortRows,
 } from "./directory/grid-model.js";
 import { filterRows } from "./directory/query.js";
 import { useNameSearch } from "./directory/search/useNameSearch.js";
@@ -157,7 +157,7 @@ export function Directory() {
       starredOnly,
       stars: stars.set,
     });
-    return matched.sort(makeComparator(sort.sortKey, sort.direction));
+    return sortRows(matched, sort.sortKey, sort.direction);
   }, [
     profiles,
     matchedIds,
