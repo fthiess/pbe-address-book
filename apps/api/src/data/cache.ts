@@ -5,13 +5,16 @@ import type { Firestore } from "firebase-admin/firestore";
 import { type ProjectedProfile, projectForRole } from "../projection/projection.js";
 import { INITIAL_CONCURRENCY_TOKEN, encodeToken } from "./profiles.js";
 
-/** The sentinel an email index entry carries when more than one profile claims it. */
-const AMBIGUOUS = Symbol("ambiguous-email");
-
-/** Outcome of resolving a normalized email against the in-memory index. */
+/**
+ * Outcome of resolving a normalized email against the in-memory index. The
+ * `ambiguous` case carries the **claimant ids** (not a bare sentinel) so callers
+ * can decide per identity — e.g. the PATCH email-uniqueness check treats an
+ * address as a conflict only when a claimant *other than the editor* holds it
+ * (OFC-87/OFC-88).
+ */
 export type EmailResolution =
   | { readonly kind: "found"; readonly profile: Profile }
-  | { readonly kind: "ambiguous" }
+  | { readonly kind: "ambiguous"; readonly claimantIds: readonly number[] }
   | { readonly kind: "none" };
 
 const brotliCompress = promisify(zlib.brotliCompress);
@@ -51,22 +54,34 @@ interface ProfilesBody {
  * Build the by-id and by-email lookup indexes from a source record set, as fresh
  * maps (a pure function — it touches no instance state). Returning new maps lets
  * {@link ProfileCache.load}/{@link ProfileCache.applyUpdate} assign every field
- * atomically after their last `await` (OFC-82). Primary and alternate addresses
- * share one namespace (§5.1/D97); an address claimed twice is marked
- * {@link AMBIGUOUS} so resolution fails closed (D97).
+ * atomically after their last `await` (OFC-82).
+ *
+ * Primary and alternate addresses share one namespace (§5.1/D97). The email
+ * index maps each normalized address to the **set of profile ids** that claim
+ * it, so resolution can distinguish a single profile claiming its own address
+ * via both primary+alternate (one id → `found`) from two different profiles
+ * genuinely colliding (two ids → `ambiguous`), and can report *which* profiles
+ * collide (OFC-87/OFC-88). Empty/whitespace-only addresses are skipped — the old
+ * `email !== null` guard implicitly did this before the port to `=== undefined`,
+ * and a shared `""` key must never make two records self-ambiguous (OFC-88).
  */
 function buildIndexes(profiles: readonly Profile[]): {
   byId: Map<number, Profile>;
-  byEmail: Map<string, Profile | typeof AMBIGUOUS>;
+  byEmail: Map<string, Set<number>>;
 } {
   const byId = new Map<number, Profile>();
-  const byEmail = new Map<string, Profile | typeof AMBIGUOUS>();
+  const byEmail = new Map<string, Set<number>>();
   const indexEmail = (email: string | undefined, profile: Profile): void => {
-    if (email === undefined) {
+    if (email === undefined || email.trim() === "") {
       return;
     }
     const key = normalizeEmail(email);
-    byEmail.set(key, byEmail.has(key) ? AMBIGUOUS : profile);
+    const claimants = byEmail.get(key);
+    if (claimants) {
+      claimants.add(profile.id);
+    } else {
+      byEmail.set(key, new Set([profile.id]));
+    }
   };
   for (const profile of profiles) {
     byId.set(profile.id, profile);
@@ -74,6 +89,65 @@ function buildIndexes(profiles: readonly Profile[]): {
     indexEmail(profile.alternateEmail, profile);
   }
   return { byId, byEmail };
+}
+
+/**
+ * Fill safe defaults for the required sub-objects/flags a record's downstream
+ * consumers hard-dereference (`deceased.isDeceased`, `debrothered.isDebrothered`,
+ * `privacy[flag]`), returning a well-shaped record — or `null` for a doc with no
+ * usable Constitution id, which the caller skips-and-logs.
+ *
+ * Firestore documents are hydrated with a bare `as Profile` cast (no runtime
+ * shape check), so a single pre-Phase-2a or hand-edited doc missing one of these
+ * sub-objects would otherwise throw inside the projection and 500 the whole bulk
+ * read for the single instance — a global directory outage from one bad record
+ * (OFC-91). Normalizing here makes a malformed record degrade gracefully. The
+ * privacy toggles fail **closed** (all off) when absent/corrupt, so an
+ * unrecoverable record hides its contact fields from peers rather than exposing
+ * them. Greenfield seed-on-deploy data never needs this; it is pure defense.
+ */
+function normalizeHydratedProfile(raw: Profile, log: (message: string) => void): Profile | null {
+  if (!Number.isInteger(raw.id) || raw.id <= 0) {
+    log("ProfileCache: skipping a Firestore document with no valid Constitution id");
+    return null;
+  }
+  const isObject = (value: unknown): value is Record<string, unknown> =>
+    typeof value === "object" && value !== null && !Array.isArray(value);
+
+  const deceased = isObject(raw.deceased)
+    ? { ...raw.deceased, isDeceased: raw.deceased.isDeceased === true }
+    : { isDeceased: false };
+  const debrothered = isObject(raw.debrothered)
+    ? { ...raw.debrothered, isDebrothered: raw.debrothered.isDebrothered === true }
+    : { isDebrothered: false };
+  const privacy = isObject(raw.privacy)
+    ? {
+        shareEmail: raw.privacy.shareEmail === true,
+        sharePhone: raw.privacy.sharePhone === true,
+        shareAddress: raw.privacy.shareAddress === true,
+        shareEmergency: raw.privacy.shareEmergency === true,
+        shareSpousePartner: raw.privacy.shareSpousePartner === true,
+      }
+    : {
+        shareEmail: false,
+        sharePhone: false,
+        shareAddress: false,
+        shareEmergency: false,
+        shareSpousePartner: false,
+      };
+
+  if (!isObject(raw.deceased) || !isObject(raw.debrothered) || !isObject(raw.privacy)) {
+    log(`ProfileCache: normalized a malformed record (#${raw.id}) with default sub-objects`);
+  }
+
+  return {
+    ...raw,
+    deceased,
+    debrothered,
+    privacy,
+    unlisted: raw.unlisted === true,
+    hasHeadshot: raw.hasHeadshot === true,
+  };
 }
 
 async function compress(json: string, brotliQuality: number): Promise<NegotiablePayload> {
@@ -107,13 +181,14 @@ export class ProfileCache {
   /** Raw records by Constitution ID — backs `/api/me` and single-record reads. */
   private byId = new Map<number, Profile>();
   /**
-   * Normalized-email → record index for sign-in resolution (ENGINEERING-DESIGN
-   * §2.1). A value of {@link AMBIGUOUS} marks an address claimed by more than one
-   * profile, so resolution can fail closed (`ambiguous_member`, D97) rather than
-   * guess. Primary `email` and `alternateEmail` share this **one namespace**
-   * (§5.1/§8, D97) — no address appears twice anywhere in Book.
+   * Normalized-email → claimant-id-set index for sign-in resolution
+   * (ENGINEERING-DESIGN §2.1). A key held by more than one *distinct* profile
+   * resolves `ambiguous`, so resolution fails closed (`ambiguous_member`, D97)
+   * rather than guess; a key held by one profile (even via both its primary and
+   * alternate) resolves to that profile. Primary `email` and `alternateEmail`
+   * share this **one namespace** (§5.1/§8, D97).
    */
-  private byEmail = new Map<string, Profile | typeof AMBIGUOUS>();
+  private byEmail = new Map<string, Set<number>>();
   /**
    * Per-record optimistic-concurrency token (D25): Firestore's `updateTime`,
    * surfaced to clients as the `ETag` and required back as `If-Match`. Kept in
@@ -179,18 +254,27 @@ export class ProfileCache {
    */
   async hydrateFromFirestore(db: Firestore): Promise<void> {
     const snapshot = await db.collection("profiles").get();
-    const docs = [...snapshot.docs].sort(
-      (a, b) => (a.data() as Profile).id - (b.data() as Profile).id,
-    );
-    const profiles = docs.map((doc) => doc.data() as Profile);
-    // The concurrency token is the document's server-authoritative `updateTime`
-    // (D25), captured here so reads can emit a correct `ETag` without re-reading.
+    // Normalize/skip each doc BEFORE sorting or dereferencing: the raw cast is
+    // unchecked, so a malformed record must degrade gracefully — filled with
+    // defaults, or dropped if it has no usable id — rather than throw and 500 the
+    // whole projection (OFC-91). The concurrency token is the document's
+    // server-authoritative `updateTime` (D25), captured so reads emit a correct
+    // `ETag` without re-reading; it is kept only for records that survive.
     const tokens = new Map<number, string>();
-    for (const doc of docs) {
+    const profiles: Profile[] = [];
+    for (const doc of snapshot.docs) {
+      const profile = normalizeHydratedProfile(doc.data() as Profile, (message) =>
+        process.stderr.write(`${message}\n`),
+      );
+      if (profile === null) {
+        continue;
+      }
+      profiles.push(profile);
       if (doc.updateTime) {
-        tokens.set((doc.data() as Profile).id, encodeToken(doc.updateTime));
+        tokens.set(profile.id, encodeToken(doc.updateTime));
       }
     }
+    profiles.sort((a, b) => a.id - b.id);
     await this.load(profiles, tokens);
   }
 
@@ -291,14 +375,16 @@ export class ProfileCache {
    * guess (ENGINEERING-DESIGN §2.1).
    */
   resolveByEmail(email: string): EmailResolution {
-    const hit = this.byEmail.get(normalizeEmail(email));
-    if (hit === undefined) {
+    const claimants = this.byEmail.get(normalizeEmail(email));
+    if (claimants === undefined || claimants.size === 0) {
       return { kind: "none" };
     }
-    if (hit === AMBIGUOUS) {
-      return { kind: "ambiguous" };
+    if (claimants.size > 1) {
+      return { kind: "ambiguous", claimantIds: [...claimants] };
     }
-    return { kind: "found", profile: hit };
+    const [onlyId] = claimants;
+    const profile = onlyId === undefined ? undefined : this.byId.get(onlyId);
+    return profile ? { kind: "found", profile } : { kind: "none" };
   }
 
   /** Count of source profiles last loaded — for startup/diagnostic logging. */

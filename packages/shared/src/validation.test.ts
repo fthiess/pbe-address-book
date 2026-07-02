@@ -118,6 +118,21 @@ describe("validateProfile — collections", () => {
   });
 });
 
+describe("validateProfile — malformed (non-string) input is flagged, not thrown (OFC-89)", () => {
+  it("flags a JSON null on a string field instead of throwing a TypeError", () => {
+    expect(fields({ email: null as unknown as string })).toContain("email");
+    expect(fields({ phone: null as unknown as string })).toContain("phone");
+    expect(fields({ address: { country: null as unknown as string } })).toContain(
+      "address.country",
+    );
+  });
+
+  it("tolerates a null address or deceased object without throwing", () => {
+    expect(() => fields({ address: null as unknown as undefined })).not.toThrow();
+    expect(() => fields({ deceased: null as unknown as undefined })).not.toThrow();
+  });
+});
+
 describe("normalizePhone — canonical form (N35)", () => {
   it("formats a NANP number to +1 (AAA) BBB-CCCC from any accepted shape", () => {
     // Both accepted NANP shapes, with and without the country code, converge.
@@ -193,6 +208,16 @@ describe("validateProfile — deceased lifespan (D122)", () => {
     expect(fields({ deceased: { isDeceased: true, birthYear: 1990, deathYear: 1980 } })).toEqual([
       "deceased.deathYear",
     ]);
+  });
+  it("rejects an implausibly low year-only death year (has a floor now — OFC-96)", () => {
+    expect(fields({ deceased: { isDeceased: true, deathYear: 200 } })).toEqual([
+      "deceased.deathYear",
+    ]);
+    expect(fields({ deceased: { isDeceased: true, deathYear: 1500 } })).toEqual([
+      "deceased.deathYear",
+    ]);
+    // A plausible year-only death (no birthYear to compare) still passes.
+    expect(fields({ deceased: { isDeceased: true, deathYear: 1975 } })).toEqual([]);
   });
   it("rejects a bad date of death", () => {
     expect(fields({ deceased: { isDeceased: true, dateOfDeath: "2020-02-31" } })).toEqual([

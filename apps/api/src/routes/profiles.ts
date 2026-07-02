@@ -199,14 +199,19 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
           .send({ error: "forbidden", message: "You may not edit this record." });
       }
 
-      // 2. If-Match required.
-      const ifMatch = request.headers["if-match"];
-      if (typeof ifMatch !== "string" || ifMatch.length === 0) {
+      // 2. If-Match required. Normalize the header before use: an intermediary
+      //    (Firebase Hosting fronting Cloud Run, D126) or the browser may quote or
+      //    weak-prefix the tag we emit, so we strip an optional `W/` and the
+      //    surrounding quotes back to the raw `<sec>.<nanos>` token we compare and
+      //    decode against (OFC-92). Everything downstream deals in the raw token.
+      const ifMatchHeader = request.headers["if-match"];
+      if (typeof ifMatchHeader !== "string" || ifMatchHeader.length === 0) {
         return reply.code(428).send({
           error: "precondition_required",
           message: "This edit requires an If-Match token.",
         });
       }
+      const ifMatch = normalizeIfMatch(ifMatchHeader);
 
       // 3. Record must exist.
       const stored = cache.getById(id);
@@ -309,6 +314,23 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
   );
 }
 
+/**
+ * Reduce an `If-Match` header to the raw concurrency token: strip an optional
+ * weak-validator `W/` prefix and the surrounding double quotes a spec-compliant
+ * entity-tag carries. A value that is neither (e.g. the bare token our own
+ * `app.inject` tests send) passes through unchanged (OFC-92).
+ */
+function normalizeIfMatch(value: string): string {
+  let token = value.trim();
+  if (token.startsWith("W/")) {
+    token = token.slice(2).trim();
+  }
+  if (token.length >= 2 && token.startsWith('"') && token.endsWith('"')) {
+    token = token.slice(1, -1);
+  }
+  return token;
+}
+
 /** Parse and validate the `:id` route param as a positive Constitution ID. */
 function parseId(request: FastifyRequest): number | null {
   const raw = (request.params as { id?: string }).id;
@@ -358,10 +380,16 @@ function checkStructural(
     if (typeof raw !== "string" || raw === "") {
       continue;
     }
+    // A conflict is an address held by *someone other than this record*. The
+    // ownership exemption must apply to the ambiguous branch too, or a brother
+    // whose own address is part of an ambiguous key (e.g. re-submitting his
+    // unchanged email) is locked out of editing his own record (OFC-87). With the
+    // claimant-id resolver, "ambiguous" carries the ids, so we exempt self in
+    // both cases.
     const resolution = cache.resolveByEmail(raw);
     const claimedByAnother =
-      resolution.kind === "ambiguous" ||
-      (resolution.kind === "found" && resolution.profile.id !== selfId);
+      (resolution.kind === "found" && resolution.profile.id !== selfId) ||
+      (resolution.kind === "ambiguous" && resolution.claimantIds.some((cid) => cid !== selfId));
     if (claimedByAnother) {
       issues.push({ field, message: "This email address is already in use." });
     }
@@ -468,11 +496,17 @@ function sendRecord(
   const body: ProjectedProfile | SelfProfile = isOwner
     ? projectSelf(profile)
     : projectRecord(profile, role);
-  return reply
-    .header("Cache-Control", "no-store")
-    .header("ETag", token)
-    .header("Content-Type", "application/json; charset=utf-8")
-    .send(body);
+  return (
+    reply
+      .header("Cache-Control", "no-store")
+      // A spec-compliant quoted entity-tag (RFC 9110 §8.8.3). The raw token is
+      // digits-and-a-dot, which an intermediary may quote/normalize; emitting the
+      // quotes ourselves and stripping them on the way back in keeps the round-trip
+      // stable (OFC-92). `normalizeIfMatch` reverses this on the next PATCH.
+      .header("ETag", `"${token}"`)
+      .header("Content-Type", "application/json; charset=utf-8")
+      .send(body)
+  );
 }
 
 /** Today's date as `YYYY-MM-DD` (UTC) — the verification date format (D28). */
@@ -495,14 +529,19 @@ function deepEqual(a: unknown, b: unknown): boolean {
     return a.every((value, index) => deepEqual(value, b[index]));
   }
   if (typeof a === "object" && typeof b === "object") {
-    const aKeys = Object.keys(a as object);
-    const bKeys = Object.keys(b as object);
+    const aRecord = a as Record<string, unknown>;
+    const bRecord = b as Record<string, unknown>;
+    // Ignore keys whose value is `undefined` so an absent key and a present-but-
+    // `undefined` key compare equal. A sub-object (address/privacy/deceased)
+    // re-sent identically but for one optional key omitted on one side is then a
+    // no-op, not a spurious change that forces a write, a verification re-stamp or
+    // clear, and an audit entry (OFC-94).
+    const aKeys = Object.keys(aRecord).filter((key) => aRecord[key] !== undefined);
+    const bKeys = Object.keys(bRecord).filter((key) => bRecord[key] !== undefined);
     if (aKeys.length !== bKeys.length) {
       return false;
     }
-    return aKeys.every((key) =>
-      deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]),
-    );
+    return aKeys.every((key) => deepEqual(aRecord[key], bRecord[key]));
   }
   return false;
 }

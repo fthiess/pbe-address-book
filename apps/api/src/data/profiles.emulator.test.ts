@@ -85,6 +85,15 @@ describe.skipIf(!hasEmulator)("FirestoreProfileStore (emulator) — optimistic c
     expect(snap.data()?.phone).toBe("+1-617-555-0199");
   });
 
+  it("rejects a malformed concurrency token as a StaleWriteError (→ 412), not a 500 (OFC-90)", async () => {
+    // A token that is not `<sec>.<nanos>` would build `Timestamp(NaN)` and throw a
+    // code-less error the catch cannot map — surfacing as 500. It must instead be
+    // treated as a failed precondition.
+    await expect(
+      store.update(5247, { set: { phone: "555" }, remove: [], precondition: "not-a-token" }),
+    ).rejects.toBeInstanceOf(StaleWriteError);
+  });
+
   it("fails the precondition (StaleWriteError) when the document has been deleted", async () => {
     // A delete moves the record out from under a held token. Firestore reports an
     // `updateTime` precondition against a now-missing document as a precondition

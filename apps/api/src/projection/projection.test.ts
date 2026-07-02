@@ -232,4 +232,20 @@ describe("projectSelf — the owner's own full record (§9 / D82)", () => {
       }
     }
   });
+
+  it("hides staff-internal fields except the allow-listed unlisted/debrothered (OFC-97)", () => {
+    // projectSelf is now table-driven, so the safe default is inverted: a
+    // staff-internal field is owner-hidden unless explicitly owner-visible. adminNote
+    // stays hidden; unlisted/debrothered (the owner's own status) stay visible. A
+    // FUTURE staff-internal field would be caught here — hidden until opted in.
+    const self = projectSelf(fullProfile(SHARED)) as Record<string, unknown>;
+    for (const [field, vis] of Object.entries(FIELD_VISIBILITY)) {
+      if (vis.cls === "staff-internal") {
+        const ownerVisible = field === "unlisted" || field === "debrothered";
+        expect(Object.hasOwn(self, field), `${field} owner-visible=${ownerVisible}`).toBe(
+          ownerVisible,
+        );
+      }
+    }
+  });
 });

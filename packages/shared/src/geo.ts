@@ -49,9 +49,14 @@ const COUNTRY_CODE_LIST =
 /** The set of valid ISO 3166-1 alpha-2 codes (uppercase). */
 export const COUNTRY_CODES: ReadonlySet<string> = new Set(COUNTRY_CODE_LIST.split(" "));
 
-/** True if `code` is a valid ISO 3166-1 alpha-2 country code (case-insensitive). */
-export function isCountryCode(code: string): boolean {
-  return COUNTRY_CODES.has(code.trim().toUpperCase());
+/**
+ * True if `code` is a valid ISO 3166-1 alpha-2 country code (case-insensitive).
+ * Accepts `unknown` and returns false for any non-string, so a malformed value
+ * that slips past the type (a JSON `null`/number on a write) is rejected rather
+ * than throwing inside `.trim()` — the caller reports it as a validation issue.
+ */
+export function isCountryCode(code: unknown): boolean {
+  return typeof code === "string" && COUNTRY_CODES.has(code.trim().toUpperCase());
 }
 
 /**
@@ -66,7 +71,18 @@ const regionDisplay =
 
 export function countryName(code: string): string {
   const upper = code.trim().toUpperCase();
-  return regionDisplay?.of(upper) ?? upper;
+  if (regionDisplay === null) {
+    return upper;
+  }
+  // `Intl.DisplayNames.of` *throws* a RangeError on structurally-invalid input
+  // (e.g. "USA", "England", ""), which the `?? upper` fallback would not catch —
+  // it only handles a returned `undefined`. Guard the throw so a stray free-text
+  // or 3-letter code degrades to the raw code, as the doc above promises.
+  try {
+    return regionDisplay.of(upper) ?? upper;
+  } catch {
+    return upper;
+  }
 }
 
 /** US states, the District of Columbia, the main territories, and the military codes (§8). */
@@ -164,7 +180,10 @@ export function hasControlledSubdivisions(country: string | undefined): boolean 
  * any other country (or none) the value is free text and always passes here —
  * the caller decides whether a free-text value is acceptable in context.
  */
-export function isSubdivisionCode(country: string | undefined, code: string): boolean {
+export function isSubdivisionCode(country: string | undefined, code: unknown): boolean {
+  if (typeof code !== "string") {
+    return false;
+  }
   const upperCountry = country?.trim().toUpperCase();
   const upperCode = code.trim().toUpperCase();
   if (upperCountry === "US") {

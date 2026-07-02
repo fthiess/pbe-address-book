@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  countryName,
   hasControlledSubdivisions,
   isCountryCode,
   isSubdivisionCode,
@@ -18,6 +19,27 @@ describe("isCountryCode", () => {
     expect(isCountryCode("USA")).toBe(false);
     expect(isCountryCode("ZZ")).toBe(false);
     expect(isCountryCode("")).toBe(false);
+  });
+
+  it("rejects non-string input without throwing (OFC-89 hardening)", () => {
+    expect(isCountryCode(null as unknown as string)).toBe(false);
+    expect(isCountryCode(123 as unknown as string)).toBe(false);
+    expect(isSubdivisionCode("US", null as unknown as string)).toBe(false);
+  });
+});
+
+describe("countryName", () => {
+  it("derives an English display name for a valid code", () => {
+    expect(countryName("US")).toMatch(/United States/);
+    expect(countryName("gb")).toMatch(/United Kingdom/);
+  });
+
+  it("falls back to the raw code on input Intl.DisplayNames throws on (OFC-95)", () => {
+    // "USA", "England", and "" all make Intl.DisplayNames.of throw a RangeError,
+    // which the old `?? upper` fallback did not catch — the render must not crash.
+    expect(countryName("USA")).toBe("USA");
+    expect(countryName("England")).toBe("ENGLAND");
+    expect(countryName("")).toBe("");
   });
 });
 
