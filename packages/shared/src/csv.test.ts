@@ -18,9 +18,24 @@ describe("neutralizeCsvCell (S9)", () => {
     }
   });
 
+  it("prefixes a leading line-break/whitespace control (OFC-99): \\n, \\v, \\f, NEL, LS, PS", () => {
+    for (const lead of ["\n", "\v", "\f", "\u0085", "\u2028", "\u2029"]) {
+      expect(neutralizeCsvCell(`${lead}=cmd|'/C calc'!A1`)).toBe(`'${lead}=cmd|'/C calc'!A1`);
+    }
+  });
+
   it("leaves an ordinary value untouched", () => {
     expect(neutralizeCsvCell("Smyth")).toBe("Smyth");
     expect(neutralizeCsvCell("")).toBe("");
+  });
+});
+
+describe("profilesToCsv — newline-leading formula injection (OFC-99)", () => {
+  it("neutralizes a `\\n`-leading formula and RFC-4180-quotes the newline cell", () => {
+    // A free-text field beginning with a newline then a formula: the emitted cell
+    // must carry the protective leading quote (before the newline) and be quoted.
+    const csv = profilesToCsv(rows({ id: 5247, employerName: "\n=cmd|'/C calc'!A1" }), "brother");
+    expect(csv).toContain(`"'\n=cmd|'/C calc'!A1"`);
   });
 });
 

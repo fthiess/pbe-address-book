@@ -155,14 +155,34 @@ function columnsForRole(role: Role): CsvColumn[] {
   );
 }
 
-/** Characters that make a spreadsheet treat a leading cell as a formula (OWASP / S9). */
-const FORMULA_LEADERS = new Set(["=", "+", "-", "@", "\t", "\r"]);
+/**
+ * Characters that make a spreadsheet treat a leading cell as a formula (OWASP /
+ * S9). Besides the four formula sigils, this covers every line-break/whitespace
+ * control an importer may strip off the front of a cell before evaluating what
+ * follows: tab, CR, **LF (OFC-99 — a `\n=…` cell was slipping through)**, vertical
+ * tab, form feed, next-line (NEL), and the Unicode line/paragraph separators.
+ */
+const FORMULA_LEADERS = new Set([
+  "=",
+  "+",
+  "-",
+  "@",
+  "\t",
+  "\r",
+  "\n",
+  "\v",
+  "\f",
+  "\u0085", // next line (NEL)
+  "\u2028", // line separator
+  "\u2029", // paragraph separator
+]);
 
 /**
- * Neutralize a formula-injection attempt: a cell beginning with `= + - @`, a tab,
- * or a carriage return is prefixed with a single quote so the spreadsheet renders
- * it as text rather than executing it (DATABASE-SCHEMA §10, finding S9). Applied
- * to every cell, in both this export and the MITAA export.
+ * Neutralize a formula-injection attempt: a cell beginning with `= + - @`, or any
+ * line-break/whitespace control an importer might strip (tab, CR, LF, …), is
+ * prefixed with a single quote so the spreadsheet renders it as text rather than
+ * executing it (DATABASE-SCHEMA §10, finding S9). Applied to every cell, in both
+ * this export and the MITAA export.
  */
 export function neutralizeCsvCell(value: string): string {
   return value.length > 0 && FORMULA_LEADERS.has(value[0] as string) ? `'${value}` : value;

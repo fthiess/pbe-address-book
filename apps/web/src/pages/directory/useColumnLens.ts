@@ -62,7 +62,7 @@ function isDefaultLens(lens: Lens): boolean {
  * key joins the visible order (its width, if given, overrides the default); a
  * **pinned** key (e.g. `name`) is a width-only override and does not affect order.
  */
-function parseLens(raw: string, role: Role): Lens {
+export function parseLens(raw: string, role: Role): Lens {
   const order: ColumnKey[] = [];
   const widths: Partial<Record<ColumnKey, number>> = {};
   const seen = new Set<ColumnKey>();
@@ -84,13 +84,16 @@ function parseLens(raw: string, role: Role): Lens {
       order.push(key);
     }
   }
-  // A lens that parsed to no visible data columns is treated as the default,
-  // so a malformed `cols` can never leave the grid with the identity block only.
-  return order.length === 0 && Object.keys(widths).length === 0 ? defaultLens() : { order, widths };
+  // A lens that parsed to no visible data columns is treated as the default, so
+  // a malformed — or pinned-width-only (e.g. `?cols=name:300`) — `cols` can never
+  // leave the grid showing the identity block alone (OFC-100). The check is on
+  // `order` only: a non-empty `widths` (a pinned override with no data columns)
+  // must NOT suppress the fallback, or the grid renders zero data columns.
+  return order.length === 0 ? defaultLens() : { order, widths };
 }
 
 /** Serialise a lens to its `cols` string (pinned width overrides lead, then the order). */
-function serializeLens(lens: Lens): string {
+export function serializeLens(lens: Lens): string {
   const tokens: string[] = [];
   // Pinned (e.g. name) width overrides — width-only tokens that don't affect order.
   for (const key of Object.keys(lens.widths) as ColumnKey[]) {
@@ -156,6 +159,17 @@ export function useColumnLens(role: Role): ColumnLens {
     savedRef.current = loadSaved(role) ?? defaultLens();
   }
 
+  // Whether this view arrived carrying a shared `?cols=` link — captured once,
+  // from the initial URL, on first render. Edits to a shared-link view update the
+  // URL (so the view stays shareable and walks history) but must NEVER be written
+  // back to the recipient's own localStorage default: opening someone's shared
+  // link and tweaking a column must not clobber the column setup the recipient
+  // had saved (D30/D31, OFC-101). Only edits to the user's *own* view persist.
+  const fromSharedLink = useRef<boolean | null>(null);
+  if (fromSharedLink.current === null) {
+    fromSharedLink.current = cols != null;
+  }
+
   // Active lens = the URL when present, else the saved default.
   const active = useMemo<Lens>(
     () => (cols != null ? parseLens(cols, role) : (savedRef.current ?? defaultLens())),
@@ -179,8 +193,12 @@ export function useColumnLens(role: Role): ColumnLens {
 
   const apply = useCallback(
     (next: Lens) => {
-      saveLens(next);
-      savedRef.current = next;
+      // Persist to the user's own saved default only when this is their own view;
+      // a shared-link view is transient (URL-only) and never touches localStorage.
+      if (!fromSharedLink.current) {
+        saveLens(next);
+        savedRef.current = next;
+      }
       void setCols(isDefaultLens(next) ? null : serializeLens(next), { history: "push" });
     },
     [setCols],

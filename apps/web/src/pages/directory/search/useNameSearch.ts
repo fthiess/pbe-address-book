@@ -3,8 +3,9 @@ import {
   type HighlightRange,
   type NameRecord,
   type SearchConfig,
+  buildSubstringIndex,
   highlightRanges,
-  substringMatch,
+  substringMatchIndexed,
 } from "@pbe/name-search";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SearchResponse } from "./protocol.js";
@@ -109,9 +110,17 @@ export function useNameSearch(
     worker.postMessage({ type: "query", seq: seqRef.current, query });
   }, [ready, query]);
 
+  // Per-record folded name tokens, precomputed once per dataset so the keystroke
+  // fallback below never re-tokenizes all ~1166 records on every keypress (OFC-105).
+  const substringIndex = useMemo(() => buildSubstringIndex(records), [records]);
+
   // The immediate main-thread match — the value shown until the worker's richer
-  // answer for *this exact query* arrives.
-  const substring = useMemo(() => substringMatch(records, query), [records, query]);
+  // answer for *this exact query* arrives. Scans the cached token index, so each
+  // keystroke is a cheap substring pass, not a full re-tokenization.
+  const substring = useMemo(
+    () => substringMatchIndexed(substringIndex, query),
+    [substringIndex, query],
+  );
 
   // Whether the worker's answer is for the query currently on screen.
   const workerCurrent = ready && workerResult.query === query;

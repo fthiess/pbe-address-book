@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildIndex, recordTokens, substringMatch } from "./index-build.js";
+import {
+  buildIndex,
+  buildSubstringIndex,
+  recordTokens,
+  substringMatch,
+  substringMatchIndexed,
+} from "./index-build.js";
 import type { NameRecord, SearchConfig } from "./types.js";
 
 const RECORDS: NameRecord[] = [
@@ -134,5 +140,24 @@ describe("substringMatch (main-thread fallback)", () => {
 
   it("returns null for an empty query", () => {
     expect(substringMatch(RECORDS, "")).toBeNull();
+  });
+});
+
+describe("buildSubstringIndex / substringMatchIndexed (OFC-105)", () => {
+  it("matches identically to substringMatch over a prebuilt index", () => {
+    const index = buildSubstringIndex(RECORDS);
+    for (const q of ["will", "space pilot", "bill", "garcia", ""]) {
+      expect(substringMatchIndexed(index, q)).toEqual(substringMatch(RECORDS, q));
+    }
+  });
+
+  it("tokenizes each record exactly once regardless of how many queries run", () => {
+    // The index is the single tokenization pass; querying it never re-tokenizes.
+    const index = buildSubstringIndex(RECORDS);
+    expect(index).toHaveLength(RECORDS.length);
+    expect(index[0]).toEqual({ id: 1, tokens: expect.arrayContaining(["william", "smyth"]) });
+    // Repeated queries reuse the cached tokens (no throw, stable results).
+    expect(ids(substringMatchIndexed(index, "will"))).toEqual([1, 2]);
+    expect(ids(substringMatchIndexed(index, "will"))).toEqual([1, 2]);
   });
 });

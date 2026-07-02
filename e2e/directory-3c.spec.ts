@@ -88,8 +88,20 @@ async function gotoDirectory(page: Page, role: "admin" | "brother" = "admin") {
   await page.route("**/api/me", (route) => route.fulfill({ json: meFor(role) }));
   await page.route("**/api/profiles", (route) => route.fulfill({ json: PROFILES }));
   await page.route("**/img/thumbnails/**", (route) => route.fulfill({ status: 404 }));
-  // Star writes echo the resulting list; the SPA toggles optimistically regardless.
-  await page.route("**/api/me/stars/**", (route: Route) => route.fulfill({ json: { stars: [] } }));
+  // Star writes echo the *resulting* list — as the real endpoint does — so the SPA
+  // can reconcile its optimistic set to the server's authoritative array (OFC-103).
+  // A static list would be adopted verbatim and undo the toggle, so track state.
+  const starred = new Set<number>();
+  await page.route("**/api/me/stars/**", (route: Route) => {
+    const request = route.request();
+    const id = Number(request.url().split("/").pop());
+    if (request.method() === "DELETE") {
+      starred.delete(id);
+    } else {
+      starred.add(id);
+    }
+    return route.fulfill({ json: { stars: [...starred] } });
+  });
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
 }

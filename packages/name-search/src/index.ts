@@ -27,8 +27,11 @@ export { phoneticCodes } from "./phonetic.js";
 export {
   buildIndex,
   substringMatch,
+  buildSubstringIndex,
+  substringMatchIndexed,
   recordTokens,
   type NameIndex,
+  type RecordTokens,
   type SearchResult,
 } from "./index-build.js";
 export { highlightRanges } from "./highlight.js";

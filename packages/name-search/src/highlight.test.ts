@@ -27,6 +27,16 @@ describe("highlightRanges (D35)", () => {
     expect(slice(text, highlightRanges(text, "khalid", new Set(["khalid"])))).toEqual(["Khalíd"]);
   });
 
+  it("marks an accented name at the character level pre-worker (OFC-102)", () => {
+    // Before the worker posts `ready` there are no matchedTokens, so only the
+    // substring layer can fire. A folded query ("jose") must still character-mark
+    // the accented display word ("José") — the diacritic-fold offset map aligns it.
+    expect(slice("José Díaz", highlightRanges("José Díaz", "jose"))).toEqual(["José"]);
+    // A partial accented prefix maps back to exactly the covered original chars.
+    expect(slice("José Díaz", highlightRanges("José Díaz", "diaz"))).toEqual(["Díaz"]);
+    expect(slice("Renée Fournét", highlightRanges("Renée Fournét", "renee"))).toEqual(["Renée"]);
+  });
+
   it("does NOT whole-word-mark without a worker match (pre-ready: substring only)", () => {
     // 'bill' is not a substring of 'William', and no matchedTokens were supplied.
     expect(highlightRanges("William Smyth '84", "bill")).toEqual([]);

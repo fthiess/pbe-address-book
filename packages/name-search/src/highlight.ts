@@ -23,6 +23,38 @@ import type { HighlightRange } from "./types.js";
 /** Maximal runs of letters — the display's word spans, with their offsets. */
 const WORD = /\p{L}+/gu;
 
+/**
+ * A display word folded to its comparison form (as {@link normalizeToken} folds
+ * query tokens: NFKD + strip diacritics + lowercase), paired with, for each
+ * folded character, the source character's `[start, end)` offset span within the
+ * original word. The span lets a match found in the *folded* string map back to
+ * the exact characters to mark in the *original* string — necessary because
+ * folding is not length-preserving (`"José"` → `"jose"` here happens to match,
+ * but a ligature like `"ﬀ"` → `"ff"` does not).
+ */
+interface FoldedWord {
+  folded: string;
+  /** `spans[k]` = the source char offsets `[start, end)` of folded char `k`. */
+  spans: { start: number; end: number }[];
+}
+
+/** Fold a display word character-by-character, tracking each folded char's origin. */
+function foldWithOffsets(word: string): FoldedWord {
+  let folded = "";
+  const spans: { start: number; end: number }[] = [];
+  let offset = 0;
+  for (const char of word) {
+    const start = offset;
+    const end = offset + char.length; // UTF-16 length (handles surrogate pairs)
+    for (const foldedChar of normalizeToken(char)) {
+      folded += foldedChar;
+      spans.push({ start, end });
+    }
+    offset = end;
+  }
+  return { folded, spans };
+}
+
 export function highlightRanges(
   display: string,
   query: string,
@@ -37,14 +69,24 @@ export function highlightRanges(
   for (const match of display.matchAll(WORD)) {
     const word = match[0];
     const at = match.index ?? 0;
-    const lower = word.toLocaleLowerCase(); // length-preserving, for substring offsets
+    // Fold the word the same way query tokens are folded (diacritics included),
+    // so an accented display word ("José") still matches a folded query ("jose").
+    // The offset map carries each folded-string hit back to the original chars —
+    // this is what was missing before (OFC-102): the old length-preserving
+    // lower-case never folded diacritics, so accented names got no character mark.
+    const { folded, spans } = foldWithOffsets(word);
 
     // Character-level substring hits for any query token.
     let substringHit = false;
     for (const queryToken of queryTokens) {
-      const subIndex = lower.indexOf(queryToken);
-      if (subIndex >= 0) {
-        ranges.push({ start: at + subIndex, end: at + subIndex + queryToken.length });
+      const subIndex = folded.indexOf(queryToken);
+      // Map the folded [subIndex, subIndex+len) run back to original offsets:
+      // the start of the first matched folded char, the end of the last. Both
+      // spans exist whenever indexOf hit (spans.length === folded.length).
+      const startSpan = spans[subIndex];
+      const endSpan = spans[subIndex + queryToken.length - 1];
+      if (subIndex >= 0 && startSpan && endSpan) {
+        ranges.push({ start: at + startSpan.start, end: at + endSpan.end });
         substringHit = true;
       }
     }
