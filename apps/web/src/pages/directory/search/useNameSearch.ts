@@ -103,16 +103,19 @@ export function useNameSearch(
     };
   }, [enabled]);
 
-  // (Re)build the index whenever the dataset or config changes; the richer
+  // (Re)build the index whenever the dataset or config changes — and when the
+  // worker is first created (`enabled` flips true for a lazily-gated picker), so
+  // the just-created worker actually receives its build and posts `ready`; without
+  // `enabled` in the deps a gated worker would never build (OFC-119). The richer
   // matching is offline until the worker posts `ready` again.
   useEffect(() => {
     const worker = workerRef.current;
-    if (!worker) {
+    if (!enabled || !worker) {
       return;
     }
     setReady(false);
     worker.postMessage({ type: "build", records, config });
-  }, [records, config]);
+  }, [records, config, enabled]);
 
   // Once ready, send each query to the worker; stale answers are dropped by seq.
   useEffect(() => {
