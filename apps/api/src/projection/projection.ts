@@ -64,8 +64,13 @@ export function projectForRole(profiles: readonly Profile[], role: Role): Projec
   return projected;
 }
 
-/** Whether a record is hidden from brothers as a whole (D124 unlisted / D115 de-brothered). */
-function hiddenFromBrothers(profile: Profile): boolean {
+/**
+ * Whether a record is hidden from brothers as a whole (D124 unlisted / D115
+ * de-brothered). Exported as Book's **one** definition of the whole-record hide
+ * so the bulk projection here and the single-record read in `routes/profiles.ts`
+ * enforce byte-identical visibility — the drift D5/D82 exist to prevent (OFC-75).
+ */
+export function hiddenFromBrothers(profile: Profile): boolean {
   return profile.unlisted || profile.debrothered.isDebrothered;
 }
 

@@ -11,13 +11,22 @@ import type { Me } from "../lib/types.js";
 
 /**
  * The app-wide auth state. The SPA loads `GET /api/me` once on mount (the
- * self-fetch half of the split read, D82); a `401`/`403` means "signed out",
- * which routes the user to the sign-in screen.
+ * self-fetch half of the split read, D82). A `401`/`403` means "signed out",
+ * which routes the user to the sign-in screen; a *transient* failure (a network
+ * blip or a scale-to-zero cold-start timeout) instead lands on the retryable
+ * `error` state after one automatic retry, rather than bouncing an already
+ * signed-in member through the whole Ghost flow (OFC-76).
  */
 export type SessionState =
   | { status: "loading" }
   | { status: "authenticated"; me: Me }
-  | { status: "unauthenticated" };
+  | { status: "unauthenticated" }
+  | { status: "error" };
+
+/** Backoff before the single automatic retry of a transient `/api/me` failure. */
+const REFRESH_RETRY_DELAY_MS = 1500;
+
+const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 interface SessionContextValue {
   state: SessionState;
@@ -41,15 +50,30 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({ status: "loading" });
 
   const refresh = useCallback(async () => {
-    try {
-      const me = await fetchMe();
-      setState({ status: "authenticated", me });
-    } catch (error) {
-      // 401/403 (or any load failure) lands the user on the sign-in screen.
-      if (!(error instanceof ApiError)) {
-        // A genuine network error is still "not signed in" for routing purposes.
+    setState({ status: "loading" });
+    // Two attempts: a transient failure gets one automatic retry after a short
+    // backoff before the retryable error screen is shown (OFC-76).
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const me = await fetchMe();
+        setState({ status: "authenticated", me });
+        return;
+      } catch (error) {
+        // A real auth failure (401/403, carried as ApiError) is a definitive
+        // "signed out" — no retry, straight to the sign-in screen.
+        if (error instanceof ApiError) {
+          setState({ status: "unauthenticated" });
+          return;
+        }
+        // A non-ApiError is a network error or a cold-start timeout — recoverable.
+        // Retry once, then surface the error state (which offers a manual retry)
+        // instead of forcing a full Ghost re-login on a momentary blip.
+        if (attempt === 1) {
+          await delay(REFRESH_RETRY_DELAY_MS);
+          continue;
+        }
+        setState({ status: "error" });
       }
-      setState({ status: "unauthenticated" });
     }
   }, []);
 

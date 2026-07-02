@@ -47,6 +47,35 @@ interface ProfilesBody {
   majors: unknown[];
 }
 
+/**
+ * Build the by-id and by-email lookup indexes from a source record set, as fresh
+ * maps (a pure function — it touches no instance state). Returning new maps lets
+ * {@link ProfileCache.load}/{@link ProfileCache.applyUpdate} assign every field
+ * atomically after their last `await` (OFC-82). Primary and alternate addresses
+ * share one namespace (§5.1/D97); an address claimed twice is marked
+ * {@link AMBIGUOUS} so resolution fails closed (D97).
+ */
+function buildIndexes(profiles: readonly Profile[]): {
+  byId: Map<number, Profile>;
+  byEmail: Map<string, Profile | typeof AMBIGUOUS>;
+} {
+  const byId = new Map<number, Profile>();
+  const byEmail = new Map<string, Profile | typeof AMBIGUOUS>();
+  const indexEmail = (email: string | undefined, profile: Profile): void => {
+    if (email === undefined) {
+      return;
+    }
+    const key = normalizeEmail(email);
+    byEmail.set(key, byEmail.has(key) ? AMBIGUOUS : profile);
+  };
+  for (const profile of profiles) {
+    byId.set(profile.id, profile);
+    indexEmail(profile.email, profile);
+    indexEmail(profile.alternateEmail, profile);
+  }
+  return { byId, byEmail };
+}
+
 async function compress(json: string, brotliQuality: number): Promise<NegotiablePayload> {
   const raw = Buffer.from(json, "utf-8");
   const [br, gzip] = await Promise.all([
@@ -93,20 +122,44 @@ export class ProfileCache {
    * model stays consistent with what was just committed (read-your-writes).
    */
   private tokenById = new Map<number, string>();
+  /**
+   * Per-role memoized manager/admin payloads (OFC-73). The staff projections are
+   * computed fresh (D82) but were recomputed *and brotli-compressed on every*
+   * `GET /api/profiles` call — unbounded CPU on the single instance (D83). They
+   * are now cached here and invalidated together with the brother payload on any
+   * write ({@link applyUpdate}) or reload ({@link load}). An **in-flight promise**
+   * is stored (not the resolved value) so concurrent first-callers share one
+   * computation rather than each starting their own; a rejected computation is
+   * evicted so a later request retries.
+   */
+  private staffPayloads = new Map<Role, Promise<NegotiablePayload>>();
 
   /**
    * (Re)load the cache from an in-memory profile set, rebuilding the precomputed
    * payload. Used by tests and the seed/restore paths. Each record is assigned
    * the {@link INITIAL_CONCURRENCY_TOKEN}; the Firestore-hydrated path
    * ({@link hydrateFromFirestore}) supplies real `updateTime` tokens instead.
+   *
+   * Everything is built into locals first and the instance fields are assigned
+   * together at the end with **no `await` in between** (OFC-82), so a concurrent
+   * reader can never observe a torn state — a fresh `payload` against stale (or,
+   * on first load, empty) indexes. This is latent today (loads run only at cold
+   * start, before `listen()`), but becomes live the moment a hot "reload cache"
+   * path calls `load()` while the server is serving traffic.
    */
   async load(profiles: readonly Profile[], tokens?: ReadonlyMap<number, string>): Promise<void> {
-    this.payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
-    this.sourceCount = profiles.length;
-    this.rebuildIndexes(profiles);
-    this.tokenById = new Map(
+    const payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
+    const { byId, byEmail } = buildIndexes(profiles);
+    const tokenById = new Map(
       profiles.map((p) => [p.id, tokens?.get(p.id) ?? INITIAL_CONCURRENCY_TOKEN]),
     );
+    // Atomic swap (OFC-82): all fields together, after the last await.
+    this.payload = payload;
+    this.sourceCount = profiles.length;
+    this.byId = byId;
+    this.byEmail = byEmail;
+    this.tokenById = tokenById;
+    this.staffPayloads.clear();
   }
 
   /** Project a profile set to a role and precompress the `GET /api/profiles` body. */
@@ -117,27 +170,6 @@ export class ProfileCache {
   ): Promise<NegotiablePayload> {
     const body: ProfilesBody = { profiles: projectForRole(profiles, role), majors: [] };
     return compress(JSON.stringify(body), brotliQuality);
-  }
-
-  /** Rebuild the by-id and by-email lookup indexes from the source records. */
-  private rebuildIndexes(profiles: readonly Profile[]): void {
-    this.byId = new Map();
-    this.byEmail = new Map();
-    for (const profile of profiles) {
-      this.byId.set(profile.id, profile);
-      // Primary and alternate addresses share one namespace (§5.1/D97).
-      this.indexEmail(profile.email, profile);
-      this.indexEmail(profile.alternateEmail, profile);
-    }
-  }
-
-  /** Add one address to the email index, marking it ambiguous on a second claim. */
-  private indexEmail(email: string | undefined, profile: Profile): void {
-    if (email === undefined) {
-      return;
-    }
-    const key = normalizeEmail(email);
-    this.byEmail.set(key, this.byEmail.has(key) ? AMBIGUOUS : profile);
   }
 
   /**
@@ -182,7 +214,24 @@ export class ProfileCache {
     if (role === "brother") {
       return this.brotherPayload();
     }
-    return this.projectAndCompress(this.orderedProfiles(), role, STAFF_BROTLI_QUALITY);
+    const cached = this.staffPayloads.get(role);
+    if (cached) {
+      return cached;
+    }
+    // Snapshot the ordered records synchronously (before the first await) so the
+    // memoized payload is consistent with the dataset at call time. Store the
+    // pending promise so concurrent callers coalesce onto one compression; evict
+    // on failure so a later request can retry rather than cache a rejection.
+    const pending = this.projectAndCompress(this.orderedProfiles(), role, STAFF_BROTLI_QUALITY);
+    this.staffPayloads.set(role, pending);
+    try {
+      return await pending;
+    } catch (error) {
+      if (this.staffPayloads.get(role) === pending) {
+        this.staffPayloads.delete(role);
+      }
+      throw error;
+    }
   }
 
   /** All loaded records, ordered by Constitution id for a deterministic payload. */
@@ -215,11 +264,24 @@ export class ProfileCache {
    * correct, which is what the access-control floor needs first.
    */
   async applyUpdate(updated: Profile, token: string): Promise<void> {
-    this.byId.set(updated.id, updated);
-    this.tokenById.set(updated.id, token);
-    const profiles = this.orderedProfiles();
-    this.rebuildIndexes(profiles);
-    this.payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
+    // Build the next state into locals, then swap it in atomically (OFC-82) —
+    // same discipline as {@link load}. The ordered set for the reprojection is
+    // derived from a *copy* with the update applied, so `this.byId` is not mutated
+    // before the new payload is ready.
+    const nextById = new Map(this.byId);
+    nextById.set(updated.id, updated);
+    const profiles = [...nextById.values()].sort((a, b) => a.id - b.id);
+    const payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
+    const { byId, byEmail } = buildIndexes(profiles);
+    const tokenById = new Map(this.tokenById);
+    tokenById.set(updated.id, token);
+    // Atomic swap, after the last await.
+    this.byId = byId;
+    this.byEmail = byEmail;
+    this.tokenById = tokenById;
+    this.payload = payload;
+    // Invalidate the memoized staff payloads so the next staff read reprojects.
+    this.staffPayloads.clear();
   }
 
   /**

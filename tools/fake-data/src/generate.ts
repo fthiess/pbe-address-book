@@ -1,10 +1,11 @@
-import type {
-  Address,
-  DeceasedInfo,
-  EmergencyContact,
-  Link,
-  PrivacyFlags,
-  Profile,
+import {
+  type Address,
+  type DeceasedInfo,
+  type EmergencyContact,
+  FAKE_ID_FLOOR,
+  type Link,
+  type PrivacyFlags,
+  type Profile,
 } from "@pbe/shared";
 import {
   FIRST_NAMES,
@@ -41,8 +42,9 @@ export interface GenerateOptions {
 export const DEFAULT_SEED = 0x50424500;
 export const DEFAULT_COUNT = 1200;
 
-/** The lowest fake Constitution ID. Real signing numbers are below this. */
-export const FAKE_ID_FLOOR = 5001;
+// The lowest fake Constitution ID now lives in @pbe/shared (OFC-83), re-exported
+// here so existing importers (and the generator's own test) keep one source.
+export { FAKE_ID_FLOOR };
 
 const CURRENT_YEAR = 2026;
 

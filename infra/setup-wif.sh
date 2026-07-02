@@ -34,6 +34,13 @@
 # service_account). They are NOT secrets — there is nothing to rotate.
 set -euo pipefail
 
+# Load the shared environment values (single source of truth; OFC-84) so this
+# script, provision-staging.sh, and the deploy workflow agree. The ${VAR:-default}
+# fallbacks below still apply to anything the file omits (or if it is absent).
+ENV_FILE="$(dirname "$0")/environments/staging.env"
+# shellcheck disable=SC1090,SC1091
+if [ -f "${ENV_FILE}" ]; then set -a; . "${ENV_FILE}"; set +a; fi
+
 PROJECT_ID="${PROJECT_ID:-pbe-book-staging}"
 GITHUB_REPO="${GITHUB_REPO:-fthiess/pbe-address-book}"
 
@@ -65,21 +72,42 @@ if ! gcloud iam workload-identity-pools describe "${POOL_ID}" \
     --display-name="GitHub Actions"
 fi
 
-# 2. OIDC provider trusting GitHub, LOCKED to this one repository.
+# 2. OIDC provider trusting GitHub, LOCKED to this one repository AND to `main`.
 #    The attribute-condition is the security control — drop it and any repo could
-#    assume the deployer SA. attribute.ref is mapped so a future workflow/binding
-#    could tighten to a branch; today the repo scope + push-to-main flow suffice.
+#    assume the deployer SA. The `ref` clause (OFC-72) narrows the trust boundary
+#    to the `main` branch's OIDC tokens: on a PUBLIC repo, without it any branch,
+#    tag, or PR-triggered workflow requesting `id-token: write` could mint a
+#    Google-trusted token and deploy, bypassing deploy-staging.yml's own
+#    branch/event `if:` gate (which is app-level, not the IAM trust boundary).
+#    The mapping + condition are the source of truth here: an ABSENT provider is
+#    created with them, and an EXISTING one is CONVERGED to them (OFC-72 follow-up)
+#    — so editing the trust boundary and re-running this script actually applies,
+#    rather than silently no-op'ing past the create guard. If you ever need to
+#    deploy a different ref from CI, widen the condition here and re-run.
+ATTR_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref"
+ATTR_CONDITION="assertion.repository=='${GITHUB_REPO}' && assertion.ref=='refs/heads/main'"
 if ! gcloud iam workload-identity-pools providers describe "${PROVIDER_ID}" \
       --location=global --workload-identity-pool="${POOL_ID}" \
       --project "${PROJECT_ID}" >/dev/null 2>&1; then
-  echo "==> Creating OIDC provider ${PROVIDER_ID} (repo-locked)"
+  echo "==> Creating OIDC provider ${PROVIDER_ID} (repo- and main-locked)"
   gcloud iam workload-identity-pools providers create-oidc "${PROVIDER_ID}" \
     --location=global --workload-identity-pool="${POOL_ID}" \
     --project "${PROJECT_ID}" \
     --display-name="GitHub" \
     --issuer-uri="https://token.actions.githubusercontent.com" \
-    --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
-    --attribute-condition="assertion.repository=='${GITHUB_REPO}'"
+    --attribute-mapping="${ATTR_MAPPING}" \
+    --attribute-condition="${ATTR_CONDITION}"
+else
+  # Converge an existing provider's mapping + condition. update-oidc is
+  # idempotent — re-applying identical values is a no-op — so this is safe to run
+  # every time, and it is what makes a tightened `ref` clause take effect on a
+  # provider that already exists (the create branch above is skipped for it).
+  echo "==> Updating OIDC provider ${PROVIDER_ID} (converging repo/ref condition)"
+  gcloud iam workload-identity-pools providers update-oidc "${PROVIDER_ID}" \
+    --location=global --workload-identity-pool="${POOL_ID}" \
+    --project "${PROJECT_ID}" \
+    --attribute-mapping="${ATTR_MAPPING}" \
+    --attribute-condition="${ATTR_CONDITION}"
 fi
 
 # 3. Dedicated deployer service account.

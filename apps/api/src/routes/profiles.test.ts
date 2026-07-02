@@ -75,7 +75,7 @@ async function buildReadServer() {
     makeProfile({ id: 5004, debrothered: { isDebrothered: true } }),
   ]);
   const sessionStore = new InMemorySessionStore();
-  const app = buildServer({
+  const app = await buildServer({
     identityProvider: stubProvider,
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),
@@ -229,7 +229,7 @@ async function buildWriteServer(profiles: Profile[]) {
   await cache.load(profiles);
   const sessionStore = new InMemorySessionStore();
   const audited: Record<string, unknown>[] = [];
-  const app = buildServer({
+  const app = await buildServer({
     identityProvider: stubProvider,
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),

@@ -13,6 +13,13 @@ function isRole(value: unknown): value is Role {
 export interface DevRoutesConfig {
   sessionStore: SessionService;
   cookie: SessionCookieConfig;
+  /**
+   * The caller's starred-brother ids (empty if they have no `users` doc yet) —
+   * mirrors `AuthRoutesConfig.getStars` so the dev session route returns real
+   * star state instead of a hardcoded `[]` (OFC-78), making the starred-profiles
+   * feature testable through the dev-login path.
+   */
+  getStars: (profileId: number) => Promise<number[]>;
 }
 
 /**
@@ -39,10 +46,7 @@ export function registerDevRoutes(
     const session = await provider.createSession({ role: body.role as Role | undefined });
     const id = await config.sessionStore.create(session);
     setSessionCookie(reply, id, config.cookie);
-    return {
-      profileId: session.identity.profileId,
-      role: session.identity.role,
-      stars: [] as number[],
-    };
+    const stars = await config.getStars(session.identity.profileId);
+    return { profileId: session.identity.profileId, role: session.identity.role, stars };
   });
 }

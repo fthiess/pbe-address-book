@@ -57,7 +57,7 @@ async function main(): Promise<void> {
     algorithms: process.env.GHOST_JWT_ALGS?.split(",").map((a) => a.trim()),
   });
 
-  const app = buildServer({
+  const app = await buildServer({
     identityProvider: provider,
     profileCache,
     profileStore: new FirestoreProfileStore(db),

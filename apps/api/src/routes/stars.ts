@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, preHandlerHookHandler } from "fastify";
+import { writeRateLimit } from "../security/rate-limit.js";
 
 /**
  * The caller's private star list (API-SPEC §4). A star is per-user state living
@@ -22,34 +23,42 @@ export interface StarsRoutesConfig {
 
 export function registerStarsRoutes(app: FastifyInstance, config: StarsRoutesConfig): void {
   /** `PUT /api/me/stars/{id}` — add brother `{id}` to the caller's list (idempotent). */
-  app.put("/api/me/stars/:id", { preHandler: config.gate }, async (request, reply) => {
-    const profileId = request.session?.identity.profileId;
-    if (profileId === undefined) {
-      return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-    }
-    const id = parseStarId(request);
-    if (id === null) {
-      return reply.code(400).send({ error: "bad_request", message: "Invalid brother id." });
-    }
-    const stars = await config.addStar(profileId, id);
-    reply.header("Cache-Control", "no-store");
-    return { stars };
-  });
+  app.put(
+    "/api/me/stars/:id",
+    { preHandler: config.gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const profileId = request.session?.identity.profileId;
+      if (profileId === undefined) {
+        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+      }
+      const id = parseStarId(request);
+      if (id === null) {
+        return reply.code(400).send({ error: "bad_request", message: "Invalid brother id." });
+      }
+      const stars = await config.addStar(profileId, id);
+      reply.header("Cache-Control", "no-store");
+      return { stars };
+    },
+  );
 
   /** `DELETE /api/me/stars/{id}` — remove brother `{id}` from the caller's list (idempotent). */
-  app.delete("/api/me/stars/:id", { preHandler: config.gate }, async (request, reply) => {
-    const profileId = request.session?.identity.profileId;
-    if (profileId === undefined) {
-      return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-    }
-    const id = parseStarId(request);
-    if (id === null) {
-      return reply.code(400).send({ error: "bad_request", message: "Invalid brother id." });
-    }
-    const stars = await config.removeStar(profileId, id);
-    reply.header("Cache-Control", "no-store");
-    return { stars };
-  });
+  app.delete(
+    "/api/me/stars/:id",
+    { preHandler: config.gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const profileId = request.session?.identity.profileId;
+      if (profileId === undefined) {
+        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+      }
+      const id = parseStarId(request);
+      if (id === null) {
+        return reply.code(400).send({ error: "bad_request", message: "Invalid brother id." });
+      }
+      const stars = await config.removeStar(profileId, id);
+      reply.header("Cache-Control", "no-store");
+      return { stars };
+    },
+  );
 }
 
 /** Parse the `:id` route param as a positive Constitution ID, else null. */

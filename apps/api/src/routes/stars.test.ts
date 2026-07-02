@@ -43,7 +43,7 @@ async function buildStarsServer() {
   const calls: { op: "add" | "remove"; profileId: number; starId: number }[] = [];
   const lists = new Map<number, number[]>();
 
-  const app = buildServer({
+  const app = await buildServer({
     identityProvider: stubProvider,
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),

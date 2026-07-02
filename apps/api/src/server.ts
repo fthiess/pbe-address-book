@@ -12,6 +12,7 @@ import { registerExportRoutes } from "./routes/exports.js";
 import { registerImageRoutes } from "./routes/images.js";
 import { type Clock, registerProfileRoutes } from "./routes/profiles.js";
 import { registerStarsRoutes } from "./routes/stars.js";
+import { registerRateLimit } from "./security/rate-limit.js";
 
 export interface BuildServerOptions {
   identityProvider: IdentityProvider;
@@ -51,9 +52,18 @@ export interface BuildServerOptions {
  * `/api/auth/*` and `/api/me` endpoints, and the session `gate` that protects
  * the bulk read and image reads — closing the 1a interim un-gated path.
  */
-export function buildServer(options: BuildServerOptions): FastifyInstance {
-  const app = Fastify({ logger: false });
+export async function buildServer(options: BuildServerOptions): Promise<FastifyInstance> {
+  // `trustProxy`: Book runs behind Firebase Hosting → Cloud Run (D126), so the
+  // real client IP is in `X-Forwarded-For`, not the socket. The rate limiter's
+  // IP keying (security/rate-limit.ts) depends on `request.ip` being the client,
+  // not the shared proxy; nothing else in the server reads `request.ip`.
+  const app = Fastify({ logger: false, trustProxy: true });
   app.register(cookie);
+  // Awaited before the routes register so the plugin's onRoute hook is in place to
+  // see each route's `config.rateLimit`; `global: false`, so only routes that opt
+  // in are limited. (A non-awaited register loads too late — the limits silently
+  // would not apply; see registerRateLimit's note.)
+  await registerRateLimit(app);
 
   app.get("/api/health", async () => ({
     status: "ok",

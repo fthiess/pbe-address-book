@@ -57,7 +57,7 @@ async function buildAuthServer(withBridge = true) {
     }),
   ]);
   const sessionStore = new InMemorySessionStore();
-  const app = buildServer({
+  const app = await buildServer({
     identityProvider: provider,
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),

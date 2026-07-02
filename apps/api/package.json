@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",
+    "@fastify/rate-limit": "^10.3.0",
     "@pbe/shared": "*",
     "fastify": "^5.2.1",
     "firebase-admin": "^13.0.2",

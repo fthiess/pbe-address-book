@@ -36,18 +36,22 @@ async function main(): Promise<void> {
   const sessionStore = new SessionStore(db);
   const nonceStore = new NonceStore(db);
 
-  const app = buildServer({
+  // Shared between the production-shaped bulk read and the dev session route so
+  // dev sign-in reports real starred state, not a hardcoded `[]` (OFC-78).
+  const getStars = async (profileId: number) => (await getUser(db, profileId))?.stars ?? [];
+
+  const app = await buildServer({
     identityProvider: provider,
     profileCache,
     profileStore: new FirestoreProfileStore(db),
     sessionStore,
     nonceStore,
-    getStars: async (profileId) => (await getUser(db, profileId))?.stars ?? [],
+    getStars,
     addStar: (profileId, starId) => addStar(db, profileId, starId),
     removeStar: (profileId, starId) => removeStar(db, profileId, starId),
     cookie,
   });
-  registerDevRoutes(app, provider, { sessionStore, cookie });
+  registerDevRoutes(app, provider, { sessionStore, cookie, getStars });
 
   const address = await app.listen({ port, host: "127.0.0.1" });
   console.log(

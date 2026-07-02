@@ -1,4 +1,4 @@
-import type { Role } from "@pbe/shared";
+import { DEV_PROFILE_IDS, type Role } from "@pbe/shared";
 import { assertDevProviderAllowed } from "./dev-guard.js";
 import type { Identity, IdentityProvider, Session, SessionRequest } from "./types.js";
 
@@ -21,15 +21,12 @@ const DISPLAY_NAME: Record<Role, string> = {
 
 /**
  * Each dev role maps to a fixed fake profile id so a dev session has a real
- * record to back `/api/me` and the directory's own-row overlay (D82). These ids
- * sit at the bottom of the generated fake range (`FAKE_ID_FLOOR` = 5001), so the
- * default 1200-profile dataset always contains them.
+ * record to back `/api/me` and the directory's own-row overlay (D82). Sourced
+ * from the shared {@link DEV_PROFILE_IDS} (OFC-83) — the first three ids of the
+ * generator's `FAKE_ID_FLOOR`-based range — so this can never drift out of sync
+ * with the seed shape.
  */
-const PROFILE_ID: Record<Role, number> = {
-  brother: 5001,
-  manager: 5002,
-  admin: 5003,
-};
+const PROFILE_ID = DEV_PROFILE_IDS;
 
 /**
  * The test/dev implementation of the `IdentityProvider` seam (D72): mints a

@@ -31,8 +31,16 @@ export function SignIn() {
 
   async function chooseDevRole(role: Role) {
     setBusy(true);
-    await devSignIn(role);
-    await refresh();
+    setMessage(null);
+    try {
+      await devSignIn(role);
+      await refresh();
+    } catch {
+      // Without this, a dev-sign-in failure (API restart, blip) left `busy` true
+      // forever, disabling every sign-in button with no error and no retry (OFC-77).
+      setBusy(false);
+      setMessage("Sign-in is unavailable right now. Please try again in a moment.");
+    }
   }
 
   return (

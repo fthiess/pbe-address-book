@@ -4,6 +4,7 @@ import { SessionProvider, useSession } from "./auth/SessionContext.js";
 import { AppShell } from "./components/AppShell.js";
 import { FontSizeProvider } from "./components/FontSizeProvider.js";
 import { LoadingOverlay } from "./components/LoadingOverlay.js";
+import { SessionError } from "./components/SessionError.js";
 import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
@@ -34,7 +35,7 @@ function RootLayout() {
  * authenticated routes (rendered through the `Outlet`).
  */
 function GateLayout() {
-  const { state } = useSession();
+  const { state, refresh } = useSession();
   const showOverlay = useDelayedFlag(state.status === "loading", 500);
 
   if (state.status === "loading") {
@@ -46,6 +47,11 @@ function GateLayout() {
   }
   if (state.status === "unauthenticated") {
     return <SignIn />;
+  }
+  // A transient `/api/me` failure (survived one auto-retry) — offer a manual
+  // retry rather than a forced re-login (OFC-76).
+  if (state.status === "error") {
+    return <SessionError onRetry={() => void refresh()} />;
   }
   return (
     <AppShell me={state.me}>

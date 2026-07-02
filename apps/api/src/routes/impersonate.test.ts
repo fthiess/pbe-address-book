@@ -53,7 +53,7 @@ async function buildImpersonateServer() {
   ]);
   const sessionStore = new InMemorySessionStore();
   const audited: Record<string, unknown>[] = [];
-  const app = buildServer({
+  const app = await buildServer({
     identityProvider: stubProvider,
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),
