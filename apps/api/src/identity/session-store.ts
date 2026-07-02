@@ -108,23 +108,45 @@ export class SessionStore implements SessionService {
    * projection. The session id is unchanged — impersonation is a state change on
    * the *same* session, not a new one — so the start/stop endpoints never reissue
    * the cookie. Unknown/lapsed session ⇒ no-op (the gate will 401 it anyway).
+   *
+   * The read-modify-write runs in a **transaction** (OFC-74), matching
+   * {@link NonceStore.consume}. Both `POST` and `DELETE /api/me/impersonate`
+   * reach this on the same session id, so a stop racing an in-flight start (or a
+   * double-clicked "View as") would otherwise both read the pre-mutation document
+   * and write divergent states, the second silently clobbering the first (a lost
+   * update that could leave the user still impersonating). The transaction makes
+   * the second writer re-read and serialize behind the first.
    */
   async setEffectiveRole(id: string, role: Role | null): Promise<void> {
-    const session = await this.get(id);
-    if (!session) {
-      return;
+    const ref = this.db.collection(COLLECTION).doc(id);
+    const next = await this.db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      if (!snapshot.exists) {
+        return null;
+      }
+      const stored = snapshot.data() as StoredSession;
+      // A lapsed session is treated as absent — never resurrected by a View-as write.
+      if (stored.session.expiresAt <= Date.now()) {
+        return null;
+      }
+      // Clearing must *omit* the field, not store `undefined` — the Admin SDK is
+      // configured to reject undefined values, and a persisted `undefined` would
+      // also defeat the `?? identity.role` fallback on read.
+      const { effectiveRole: _drop, ...base } = stored.session;
+      const nextSession: Session = role === null ? base : { ...base, effectiveRole: role };
+      const record: StoredSession = {
+        session: nextSession,
+        expiresAt: Timestamp.fromMillis(nextSession.expiresAt),
+      };
+      tx.set(ref, record);
+      return nextSession;
+    });
+    if (next) {
+      this.cache.set(id, next);
+    } else {
+      // Unknown/lapsed: drop any stale cache entry so a later read falls through.
+      this.cache.delete(id);
     }
-    // Clearing must *omit* the field, not store `undefined` — the Admin SDK is
-    // configured to reject undefined values, and a persisted `undefined` would
-    // also defeat the `?? identity.role` fallback on read.
-    const { effectiveRole: _drop, ...base } = session;
-    const next: Session = role === null ? base : { ...base, effectiveRole: role };
-    const record: StoredSession = {
-      session: next,
-      expiresAt: Timestamp.fromMillis(next.expiresAt),
-    };
-    await this.db.collection(COLLECTION).doc(id).set(record);
-    this.cache.set(id, next);
   }
 
   /** Invalidate a session (explicit sign-out, or lazy expiry cleanup). */

@@ -1,6 +1,7 @@
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import { effectiveRole } from "../identity/types.js";
+import { writeRateLimit } from "../security/rate-limit.js";
 import type { Clock } from "./profiles.js";
 import { traceId } from "./trace.js";
 
@@ -29,44 +30,49 @@ export interface ExportRoutesConfig {
 const SCOPES = new Set(["selection", "view"]);
 
 export function registerExportRoutes(app: FastifyInstance, config: ExportRoutesConfig): void {
-  app.post("/api/exports", { preHandler: config.gate }, async (request, reply) => {
-    const session = request.session;
-    if (!session) {
-      return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-    }
-    // The effective role gates export, so a "View as brother" admin is correctly
-    // refused — they have no export UI in that projection and the server agrees (N31).
-    const actor = session.identity;
-    const role = effectiveRole(session);
-    if (role !== "manager" && role !== "admin") {
-      return reply.code(403).send({ error: "forbidden", message: "Export is staff-only." });
-    }
+  app.post(
+    "/api/exports",
+    { preHandler: config.gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const session = request.session;
+      if (!session) {
+        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+      }
+      // The effective role gates export, so a "View as brother" admin is correctly
+      // refused — they have no export UI in that projection and the server agrees (N31).
+      const actor = session.identity;
+      const role = effectiveRole(session);
+      if (role !== "manager" && role !== "admin") {
+        return reply.code(403).send({ error: "forbidden", message: "Export is staff-only." });
+      }
 
-    const body = (request.body ?? {}) as { scope?: unknown; count?: unknown };
-    const scope = typeof body.scope === "string" && SCOPES.has(body.scope) ? body.scope : undefined;
-    const count =
-      typeof body.count === "number" && Number.isInteger(body.count) && body.count >= 0
-        ? body.count
-        : undefined;
-    if (scope === undefined || count === undefined) {
-      return reply.code(400).send({
-        error: "bad_request",
-        message: "An export ping needs a scope ('selection' | 'view') and a non-negative count.",
-      });
-    }
+      const body = (request.body ?? {}) as { scope?: unknown; count?: unknown };
+      const scope =
+        typeof body.scope === "string" && SCOPES.has(body.scope) ? body.scope : undefined;
+      const count =
+        typeof body.count === "number" && Number.isInteger(body.count) && body.count >= 0
+          ? body.count
+          : undefined;
+      if (scope === undefined || count === undefined) {
+        return reply.code(400).send({
+          error: "bad_request",
+          message: "An export ping needs a scope ('selection' | 'view') and a non-negative count.",
+        });
+      }
 
-    config.audit.record(
-      {
-        action: "export",
-        actorId: actor.profileId,
-        outcome: "ok",
-        scope,
-        count,
-        trace: traceId(request),
-      },
-      config.clock().toISOString(),
-    );
+      config.audit.record(
+        {
+          action: "export",
+          actorId: actor.profileId,
+          outcome: "ok",
+          scope,
+          count,
+          trace: traceId(request),
+        },
+        config.clock().toISOString(),
+      );
 
-    return reply.code(204).send();
-  });
+      return reply.code(204).send();
+    },
+  );
 }

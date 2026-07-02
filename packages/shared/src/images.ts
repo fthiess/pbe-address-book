@@ -26,6 +26,26 @@ export function headshotObjectKey(id: number, version: string): string {
   return `headshots/${id}/${version}.webp`;
 }
 
+/**
+ * The exact shape of a key {@link thumbnailObjectKey}/{@link headshotObjectKey}
+ * can produce: a `thumbnails/` or `headshots/` prefix, a numeric Constitution id,
+ * an opaque version token (`[A-Za-z0-9._-]+`, e.g. `v3`), and the `.webp`
+ * extension. Anchored, with no `/` permitted inside the version, so nothing but a
+ * member thumbnail/headshot can match — the `/img/*` route validates against this
+ * before touching the bucket so a session holder cannot stream *any other* object
+ * that happens to live there (e.g. an export CSV). See {@link isImageObjectKey}.
+ */
+const IMAGE_OBJECT_KEY = /^(?:thumbnails|headshots)\/\d+\/[A-Za-z0-9._-]+\.webp$/u;
+
+/**
+ * Whether `objectKey` is a well-formed member thumbnail/headshot key — the single
+ * allowlist the private-bucket `/img/*` route (D126) admits. Shared so the route,
+ * the URL builder, and the upload pipeline all agree on one path shape.
+ */
+export function isImageObjectKey(objectKey: string): boolean {
+  return IMAGE_OBJECT_KEY.test(objectKey);
+}
+
 /** The app-relative URL the `/img/*` route serves an object key from (D126). */
 export function imageUrl(objectKey: string): string {
   return `/img/${objectKey}`;

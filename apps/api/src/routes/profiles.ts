@@ -16,9 +16,11 @@ import { effectiveRole } from "../identity/types.js";
 import {
   type ProjectedProfile,
   type SelfProfile,
+  hiddenFromBrothers,
   projectRecord,
   projectSelf,
 } from "../projection/projection.js";
+import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { negotiateEncoding } from "./encoding.js";
 import { traceId } from "./trace.js";
 
@@ -72,27 +74,31 @@ export function registerProfileRoutes(app: FastifyInstance, deps: ProfileRouteDe
  * computed manager/admin projection otherwise.
  */
 function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDeps): void {
-  app.get("/api/profiles", { preHandler: gate }, async (request, reply) => {
-    // The **effective** role selects the projection, so a "View as" admin actually
-    // downloads the lower role's smaller payload — not the full set behind a flag (N31).
-    const session = request.session;
-    const role = session ? effectiveRole(session) : "brother";
-    const payload = await cache.payloadForRole(role);
-    const encoding = negotiateEncoding(request.headers["accept-encoding"]);
+  app.get(
+    "/api/profiles",
+    { preHandler: gate, config: readRateLimit() },
+    async (request, reply) => {
+      // The **effective** role selects the projection, so a "View as" admin actually
+      // downloads the lower role's smaller payload — not the full set behind a flag (N31).
+      const session = request.session;
+      const role = session ? effectiveRole(session) : "brother";
+      const payload = await cache.payloadForRole(role);
+      const encoding = negotiateEncoding(request.headers["accept-encoding"]);
 
-    reply
-      .header("Cache-Control", "no-store")
-      .header("Vary", "Accept-Encoding")
-      .header("Content-Type", "application/json; charset=utf-8");
+      reply
+        .header("Cache-Control", "no-store")
+        .header("Vary", "Accept-Encoding")
+        .header("Content-Type", "application/json; charset=utf-8");
 
-    if (encoding === "br") {
-      return reply.header("Content-Encoding", "br").send(payload.br);
-    }
-    if (encoding === "gzip") {
-      return reply.header("Content-Encoding", "gzip").send(payload.gzip);
-    }
-    return reply.send(payload.json);
-  });
+      if (encoding === "br") {
+        return reply.header("Content-Encoding", "br").send(payload.br);
+      }
+      if (encoding === "gzip") {
+        return reply.header("Content-Encoding", "gzip").send(payload.gzip);
+      }
+      return reply.send(payload.json);
+    },
+  );
 }
 
 /**
@@ -156,149 +162,151 @@ function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteD
 function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
   const { cache, gate, store, audit, clock } = deps;
 
-  app.patch("/api/profiles/:id", { preHandler: gate }, async (request, reply) => {
-    const session = request.session;
-    if (!session) {
-      return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-    }
-    // Identity (the actor's own id, ownership, the verification stamp) stays real;
-    // the **effective** role drives the two write gates and the response projection,
-    // so a "View as" admin genuinely holds the lower role's powers (N31).
-    const actor = session.identity;
-    const role = effectiveRole(session);
-    const id = parseId(request);
-    if (id === null) {
-      return reply.code(400).send({ error: "bad_request", message: "Invalid profile id." });
-    }
-    const now = clock();
-    const trace = traceId(request);
-
-    // 1. Object-level predicate — before touching the record (the IDOR guard).
-    if (!canActOnProfile(role, actor.profileId, id)) {
-      audit.record(
-        {
-          action: "profile.update",
-          actorId: actor.profileId,
-          targetId: id,
-          outcome: "denied",
-          trace,
-        },
-        now.toISOString(),
-      );
-      return reply.code(403).send({ error: "forbidden", message: "You may not edit this record." });
-    }
-
-    // 2. If-Match required.
-    const ifMatch = request.headers["if-match"];
-    if (typeof ifMatch !== "string" || ifMatch.length === 0) {
-      return reply
-        .code(428)
-        .send({ error: "precondition_required", message: "This edit requires an If-Match token." });
-    }
-
-    // 3. Record must exist.
-    const stored = cache.getById(id);
-    if (!stored) {
-      return reply.code(404).send({ error: "not_found", message: "No such brother." });
-    }
-
-    // 4. Body must be a patch object; field-level allowlist rejects out-of-powers fields.
-    const patch = request.body;
-    if (patch === null || typeof patch !== "object" || Array.isArray(patch)) {
-      return reply
-        .code(400)
-        .send({ error: "bad_request", message: "Body must be a profile patch object." });
-    }
-    const isOwner = actor.profileId === id;
-    const patchFields = Object.keys(patch) as (keyof Profile)[];
-    const { rejected } = partitionWritableFields(role, isOwner, patchFields);
-    if (rejected.length > 0) {
-      audit.record(
-        {
-          action: "profile.update",
-          actorId: actor.profileId,
-          targetId: id,
-          outcome: "denied",
-          fields: rejected,
-          trace,
-        },
-        now.toISOString(),
-      );
-      return reply.code(403).send({
-        error: "forbidden",
-        message: "Your role may not write one or more of these fields.",
-        fields: rejected,
-      });
-    }
-
-    // 5. Validation — shared rules over the merged record, plus structural checks.
-    const typedPatch = patch as Partial<Profile>;
-    // Canonicalize phone numbers to the one stored form before validation and
-    // write (N35): the primary phone and each emergency contact's phone. An
-    // unparseable value is left as-is so the shared validator reports it inline.
-    canonicalizePhones(typedPatch);
-    const merged = { ...stored, ...typedPatch } as Profile;
-    const issues = [
-      ...validateProfile(merged, { currentYear: now.getUTCFullYear() }).issues,
-      ...checkStructural(cache, typedPatch, merged, id),
-    ];
-    if (issues.length > 0) {
-      return reply.code(422).send({ error: "validation_failed", issues });
-    }
-
-    // Only fields whose value actually changes count as a content change (D28).
-    const changed = patchFields.filter((field) => !deepEqual(stored[field], typedPatch[field]));
-    if (changed.length === 0) {
-      // A no-op save: nothing changed, so no write, no verification touch, no audit.
-      return sendRecord(reply, stored, role, isOwner, cache.concurrencyToken(id) ?? ifMatch);
-    }
-
-    // 6. Verification side-effect (D28) + server-stamped housekeeping.
-    const { set, remove } = applyServerFields(
-      stored,
-      typedPatch,
-      changed,
-      isOwner,
-      actor.profileId,
-      now,
-    );
-    const next = mergeNext(stored, set, remove);
-
-    // 7. Conditional write → cache read-your-writes → audit.
-    let token: string;
-    try {
-      token = await store.update(id, { set, remove, precondition: ifMatch });
-    } catch (error) {
-      if (error instanceof StaleWriteError) {
-        return reply
-          .code(412)
-          .send({ error: "stale_write", message: "This record changed since you loaded it." });
+  app.patch(
+    "/api/profiles/:id",
+    { preHandler: gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const session = request.session;
+      if (!session) {
+        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
       }
-      if (error instanceof MissingProfileError) {
+      // Identity (the actor's own id, ownership, the verification stamp) stays real;
+      // the **effective** role drives the two write gates and the response projection,
+      // so a "View as" admin genuinely holds the lower role's powers (N31).
+      const actor = session.identity;
+      const role = effectiveRole(session);
+      const id = parseId(request);
+      if (id === null) {
+        return reply.code(400).send({ error: "bad_request", message: "Invalid profile id." });
+      }
+      const now = clock();
+      const trace = traceId(request);
+
+      // 1. Object-level predicate — before touching the record (the IDOR guard).
+      if (!canActOnProfile(role, actor.profileId, id)) {
+        audit.record(
+          {
+            action: "profile.update",
+            actorId: actor.profileId,
+            targetId: id,
+            outcome: "denied",
+            trace,
+          },
+          now.toISOString(),
+        );
+        return reply
+          .code(403)
+          .send({ error: "forbidden", message: "You may not edit this record." });
+      }
+
+      // 2. If-Match required.
+      const ifMatch = request.headers["if-match"];
+      if (typeof ifMatch !== "string" || ifMatch.length === 0) {
+        return reply.code(428).send({
+          error: "precondition_required",
+          message: "This edit requires an If-Match token.",
+        });
+      }
+
+      // 3. Record must exist.
+      const stored = cache.getById(id);
+      if (!stored) {
         return reply.code(404).send({ error: "not_found", message: "No such brother." });
       }
-      throw error;
-    }
-    await cache.applyUpdate(next, token);
-    audit.record(
-      {
-        action: "profile.update",
-        actorId: actor.profileId,
-        targetId: id,
-        outcome: "ok",
-        fields: changed,
-        trace,
-      },
-      now.toISOString(),
-    );
 
-    return sendRecord(reply, next, role, isOwner, token);
-  });
-}
+      // 4. Body must be a patch object; field-level allowlist rejects out-of-powers fields.
+      const patch = request.body;
+      if (patch === null || typeof patch !== "object" || Array.isArray(patch)) {
+        return reply
+          .code(400)
+          .send({ error: "bad_request", message: "Body must be a profile patch object." });
+      }
+      const isOwner = actor.profileId === id;
+      const patchFields = Object.keys(patch) as (keyof Profile)[];
+      const { rejected } = partitionWritableFields(role, isOwner, patchFields);
+      if (rejected.length > 0) {
+        audit.record(
+          {
+            action: "profile.update",
+            actorId: actor.profileId,
+            targetId: id,
+            outcome: "denied",
+            fields: rejected,
+            trace,
+          },
+          now.toISOString(),
+        );
+        return reply.code(403).send({
+          error: "forbidden",
+          message: "Your role may not write one or more of these fields.",
+          fields: rejected,
+        });
+      }
 
-/** Whether a record is hidden from brothers as a whole (D124 unlisted / D115 de-brothered). */
-function hiddenFromBrothers(profile: Profile): boolean {
-  return profile.unlisted || profile.debrothered.isDebrothered;
+      // 5. Validation — shared rules over the merged record, plus structural checks.
+      const typedPatch = patch as Partial<Profile>;
+      // Canonicalize phone numbers to the one stored form before validation and
+      // write (N35): the primary phone and each emergency contact's phone. An
+      // unparseable value is left as-is so the shared validator reports it inline.
+      canonicalizePhones(typedPatch);
+      const merged = { ...stored, ...typedPatch } as Profile;
+      const issues = [
+        ...validateProfile(merged, { currentYear: now.getUTCFullYear() }).issues,
+        ...checkStructural(cache, typedPatch, merged, id),
+      ];
+      if (issues.length > 0) {
+        return reply.code(422).send({ error: "validation_failed", issues });
+      }
+
+      // Only fields whose value actually changes count as a content change (D28).
+      const changed = patchFields.filter((field) => !deepEqual(stored[field], typedPatch[field]));
+      if (changed.length === 0) {
+        // A no-op save: nothing changed, so no write, no verification touch, no audit.
+        return sendRecord(reply, stored, role, isOwner, cache.concurrencyToken(id) ?? ifMatch);
+      }
+
+      // 6. Verification side-effect (D28) + server-stamped housekeeping.
+      const { set, remove } = applyServerFields(
+        stored,
+        typedPatch,
+        changed,
+        isOwner,
+        actor.profileId,
+        now,
+      );
+      const next = mergeNext(stored, set, remove);
+
+      // 7. Conditional write → cache read-your-writes → audit.
+      let token: string;
+      try {
+        token = await store.update(id, { set, remove, precondition: ifMatch });
+      } catch (error) {
+        if (error instanceof StaleWriteError) {
+          return reply
+            .code(412)
+            .send({ error: "stale_write", message: "This record changed since you loaded it." });
+        }
+        if (error instanceof MissingProfileError) {
+          return reply.code(404).send({ error: "not_found", message: "No such brother." });
+        }
+        throw error;
+      }
+      await cache.applyUpdate(next, token);
+      audit.record(
+        {
+          action: "profile.update",
+          actorId: actor.profileId,
+          targetId: id,
+          outcome: "ok",
+          fields: changed,
+          trace,
+        },
+        now.toISOString(),
+      );
+
+      return sendRecord(reply, next, role, isOwner, token);
+    },
+  );
 }
 
 /** Parse and validate the `:id` route param as a positive Constitution ID. */

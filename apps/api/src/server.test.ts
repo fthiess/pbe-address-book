@@ -17,7 +17,7 @@ const ghostLikeProvider: IdentityProvider = {
 
 describe("buildServer", () => {
   it("answers GET /api/health with the active provider name", async () => {
-    const app = buildServer({
+    const app = await buildServer({
       identityProvider: ghostLikeProvider,
       profileCache: new ProfileCache(),
       profileStore: new InMemoryProfileStore(),

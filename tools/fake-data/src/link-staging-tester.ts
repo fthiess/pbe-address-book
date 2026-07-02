@@ -18,6 +18,10 @@
  * Optional: STAGING_TESTER_PROFILE_ID (Constitution id of the fake profile to
  * link; defaults to 5001).
  *
+ * Flags: `--help` prints usage; `--dry-run` previews the exact writes (email,
+ * privacy/visibility fields, and the admin grant) without touching Firestore
+ * (CLAUDE.md CLI rule; OFC-79).
+ *
  * NOTE: the API builds its email index at cold-start hydration, so let the
  * staging instance cold-start (or redeploy) after running this, or it will not
  * yet resolve the new email.
@@ -25,6 +29,38 @@
 import type { Profile } from "@pbe/shared";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+
+function printHelp(): void {
+  console.log(
+    [
+      "link:staging-tester — point a real Ghost member email at a fake STAGING",
+      "                      profile and grant it admin, for real-bridge auth UAT (D72).",
+      "",
+      "Usage:",
+      "  GOOGLE_CLOUD_PROJECT=<project>-staging STAGING_TESTER_EMAIL=you@example.com \\",
+      "    npm run link:staging-tester --workspace tools/fake-data [-- --dry-run]",
+      "",
+      "Options:",
+      "  --dry-run   Report the exact writes (email, share/visibility fields, admin",
+      "              grant); make NO changes.",
+      "  --help,-h   Show this help and exit.",
+      "",
+      "Required env:",
+      "  GOOGLE_CLOUD_PROJECT (or GCLOUD_PROJECT)  Target project id; MUST end `-staging`.",
+      "  STAGING_TESTER_EMAIL                       Real Ghost member email to link.",
+      "Optional env:",
+      "  STAGING_TESTER_PROFILE_ID                  Fake profile id to link (default 5001).",
+      "Refuses to run if FIRESTORE_EMULATOR_HOST is set.",
+    ].join("\n"),
+  );
+}
+
+const args = process.argv.slice(2);
+const DRY_RUN = args.includes("--dry-run");
+if (args.includes("--help") || args.includes("-h")) {
+  printHelp();
+  process.exit(0);
+}
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCLOUD_PROJECT;
 const email = process.env.STAGING_TESTER_EMAIL;
@@ -68,6 +104,20 @@ if (!snapshot.exists) {
 }
 
 const profile = snapshot.data() as Profile;
+
+if (DRY_RUN) {
+  console.log(`[dry-run] Target project: ${projectId}`);
+  console.log(
+    `[dry-run] Would update profile #${profileId} ("${profile.firstName} ${profile.lastName}"): ` +
+      `email=${email}, privacy.shareEmail=true, unlisted=false, deceased.isDeceased=false.`,
+  );
+  console.log(
+    `[dry-run] Would grant admin: users/${profileId} merge { id: ${profileId}, role: "admin" }.`,
+  );
+  console.log("[dry-run] No changes were made.");
+  process.exit(0);
+}
+
 // Make the linked profile a clean, visible, contactable record for the tester:
 // a real email, the email share-toggle on, listed, and living (§3 field shape).
 await profileRef.update({

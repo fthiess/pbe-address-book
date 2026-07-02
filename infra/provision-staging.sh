@@ -30,6 +30,13 @@
 #
 set -euo pipefail
 
+# Load the shared environment values (single source of truth; OFC-84) so this
+# script, setup-wif.sh, and the deploy workflow agree. The ${VAR:-default}
+# fallbacks below still apply to anything the file omits (or if it is absent).
+ENV_FILE="$(dirname "$0")/environments/staging.env"
+# shellcheck disable=SC1090,SC1091
+if [ -f "${ENV_FILE}" ]; then set -a; . "${ENV_FILE}"; set +a; fi
+
 PROJECT_ID="${PROJECT_ID:-pbe-book-staging}"
 REGION="${REGION:-us-central1}"
 BILLING_ACCOUNT="${BILLING_ACCOUNT:-}"

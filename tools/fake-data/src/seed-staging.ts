@@ -22,10 +22,42 @@
  *
  * Usage (from the repo root, after `gcloud auth application-default login`):
  *   GOOGLE_CLOUD_PROJECT=pbe-book-staging npm run seed:staging --workspace tools/fake-data
+ *
+ * Flags: `--help` prints usage; `--dry-run` previews the wipe + write counts
+ * without touching Firestore (CLAUDE.md CLI rule; OFC-79).
  */
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { generateProfiles } from "./generate.js";
+
+function printHelp(): void {
+  console.log(
+    [
+      "seed:staging — wipe and re-seed the STAGING Firestore `profiles` collection",
+      "               with the deterministic fake dataset (D72).",
+      "",
+      "Usage:",
+      "  GOOGLE_CLOUD_PROJECT=<project>-staging \\",
+      "    npm run seed:staging --workspace tools/fake-data [-- --dry-run]",
+      "",
+      "Options:",
+      "  --dry-run   Report how many docs would be wiped/written; make NO changes.",
+      "  --help,-h   Show this help and exit.",
+      "",
+      "Required env:",
+      "  GOOGLE_CLOUD_PROJECT (or GCLOUD_PROJECT)  Target project id; MUST end in",
+      "                                            `-staging` (guards production).",
+      "Refuses to run if FIRESTORE_EMULATOR_HOST is set (use `npm run seed`).",
+    ].join("\n"),
+  );
+}
+
+const args = process.argv.slice(2);
+const DRY_RUN = args.includes("--dry-run");
+if (args.includes("--help") || args.includes("-h")) {
+  printHelp();
+  process.exit(0);
+}
 
 const projectId = process.env.GOOGLE_CLOUD_PROJECT ?? process.env.GCLOUD_PROJECT;
 
@@ -56,6 +88,20 @@ const BATCH_LIMIT = 450; // under Firestore's 500-writes-per-batch ceiling
 // left from an earlier seed (including one under a different id keyspace) is
 // removed, so a stale-schema record can never linger and crash hydration.
 const existing = await db.collection("profiles").get();
+const profiles = generateProfiles();
+
+if (DRY_RUN) {
+  const first = profiles[0]?.id;
+  const last = profiles[profiles.length - 1]?.id;
+  console.log(`[dry-run] Target project: ${projectId}`);
+  console.log(`[dry-run] Would delete ${existing.size} existing profile doc(s).`);
+  console.log(
+    `[dry-run] Would write ${profiles.length} generated profiles (ids ${first}–${last}).`,
+  );
+  console.log("[dry-run] No changes were made.");
+  process.exit(0);
+}
+
 if (!existing.empty) {
   let removed = 0;
   for (let start = 0; start < existing.size; start += BATCH_LIMIT) {
@@ -69,8 +115,6 @@ if (!existing.empty) {
   }
   console.log(`Cleared ${existing.size} existing profile docs before seeding.`);
 }
-
-const profiles = generateProfiles();
 
 let written = 0;
 for (let start = 0; start < profiles.length; start += BATCH_LIMIT) {

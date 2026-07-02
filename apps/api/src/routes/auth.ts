@@ -13,6 +13,7 @@ import {
 import type { SessionService } from "../identity/session-store.js";
 import { AuthError, type IdentityProvider, effectiveRole } from "../identity/types.js";
 import { projectSelf } from "../projection/projection.js";
+import { authRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import type { Clock } from "./profiles.js";
 import { traceId } from "./trace.js";
 
@@ -65,7 +66,7 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
    * URL the SPA redirects to. The nonce ties the eventual callback to this
    * Book-initiated flow (D104).
    */
-  app.post("/api/auth/start", async (_request, reply) => {
+  app.post("/api/auth/start", { config: authRateLimit() }, async (_request, reply) => {
     if (!config.ghostBridge) {
       return reply.code(404).send({ error: "ghost_bridge_unconfigured" });
     }
@@ -81,7 +82,7 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
    * Ghost JWT and the `state` nonce here. On success a Book session is persisted
    * and its opaque id set as the session cookie.
    */
-  app.post("/api/auth/session", async (request, reply) => {
+  app.post("/api/auth/session", { config: authRateLimit() }, async (request, reply) => {
     const body = (request.body ?? {}) as { token?: unknown; state?: unknown };
     const token = typeof body.token === "string" ? body.token : undefined;
     const state = typeof body.state === "string" ? body.state : undefined;
@@ -135,47 +136,51 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
    * a caller can only ever restrict their own view, never escalate. The SPA reloads
    * after this resolves so the bulk directory re-downloads at the new projection.
    */
-  app.post("/api/me/impersonate", { preHandler: gate }, async (request, reply) => {
-    const session = request.session;
-    const id = readSessionId(request);
-    if (!session || !id) {
-      return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-    }
-    const realRole = session.identity.role;
-    const body = (request.body ?? {}) as { role?: unknown };
-    if (!isRole(body.role)) {
-      return reply.code(400).send({ error: "bad_request", message: "Unknown role." });
-    }
-    const target = body.role;
-    if (!canImpersonate(realRole, target)) {
-      // Escalation or same-role — refused on the real role, audited as a denial.
+  app.post(
+    "/api/me/impersonate",
+    { preHandler: gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const session = request.session;
+      const id = readSessionId(request);
+      if (!session || !id) {
+        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+      }
+      const realRole = session.identity.role;
+      const body = (request.body ?? {}) as { role?: unknown };
+      if (!isRole(body.role)) {
+        return reply.code(400).send({ error: "bad_request", message: "Unknown role." });
+      }
+      const target = body.role;
+      if (!canImpersonate(realRole, target)) {
+        // Escalation or same-role — refused on the real role, audited as a denial.
+        config.audit.record(
+          {
+            action: "impersonate.start",
+            actorId: session.identity.profileId,
+            outcome: "denied",
+            targetRole: target,
+            trace: traceId(request),
+          },
+          config.clock().toISOString(),
+        );
+        return reply
+          .code(403)
+          .send({ error: "forbidden", message: "You may only view as a lower role." });
+      }
+      await config.sessionStore.setEffectiveRole(id, target);
       config.audit.record(
         {
           action: "impersonate.start",
           actorId: session.identity.profileId,
-          outcome: "denied",
+          outcome: "ok",
           targetRole: target,
           trace: traceId(request),
         },
         config.clock().toISOString(),
       );
-      return reply
-        .code(403)
-        .send({ error: "forbidden", message: "You may only view as a lower role." });
-    }
-    await config.sessionStore.setEffectiveRole(id, target);
-    config.audit.record(
-      {
-        action: "impersonate.start",
-        actorId: session.identity.profileId,
-        outcome: "ok",
-        targetRole: target,
-        trace: traceId(request),
-      },
-      config.clock().toISOString(),
-    );
-    return reply.code(204).send();
-  });
+      return reply.code(204).send();
+    },
+  );
 
   /**
    * Stop "View as" impersonation (N31): clear the effective role and return to the
@@ -183,34 +188,42 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
    * role, never the (possibly lowered) effective one, so a user can never lock
    * themselves out of their own powers. A no-op if not currently impersonating.
    */
-  app.delete("/api/me/impersonate", { preHandler: gate }, async (request, reply) => {
-    const session = request.session;
-    const id = readSessionId(request);
-    if (!session || !id) {
-      return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-    }
-    if (session.effectiveRole !== undefined) {
-      await config.sessionStore.setEffectiveRole(id, null);
-      config.audit.record(
-        {
-          action: "impersonate.stop",
-          actorId: session.identity.profileId,
-          outcome: "ok",
-          trace: traceId(request),
-        },
-        config.clock().toISOString(),
-      );
-    }
-    return reply.code(204).send();
-  });
+  app.delete(
+    "/api/me/impersonate",
+    { preHandler: gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const session = request.session;
+      const id = readSessionId(request);
+      if (!session || !id) {
+        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+      }
+      if (session.effectiveRole !== undefined) {
+        await config.sessionStore.setEffectiveRole(id, null);
+        config.audit.record(
+          {
+            action: "impersonate.stop",
+            actorId: session.identity.profileId,
+            outcome: "ok",
+            trace: traceId(request),
+          },
+          config.clock().toISOString(),
+        );
+      }
+      return reply.code(204).send();
+    },
+  );
 
   /** Clears the Book session and the cookie (API-SPEC §2 `/api/auth/signout`). */
-  app.post("/api/auth/signout", { preHandler: gate }, async (request, reply) => {
-    const id = readSessionId(request);
-    if (id) {
-      await config.sessionStore.destroy(id);
-    }
-    clearSessionCookie(reply, config.cookie);
-    return reply.code(204).send();
-  });
+  app.post(
+    "/api/auth/signout",
+    { preHandler: gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const id = readSessionId(request);
+      if (id) {
+        await config.sessionStore.destroy(id);
+      }
+      clearSessionCookie(reply, config.cookie);
+      return reply.code(204).send();
+    },
+  );
 }

@@ -90,13 +90,13 @@ export class GhostIdentityProvider implements IdentityProvider {
     // 1. Cryptographically verify the Ghost JWT (alg/iss/aud/exp pinned).
     const email = await this.verifyAndExtractEmail(token);
 
-    // 2. Bind the callback to a Book-initiated flow; consume the nonce once.
-    const nonceOk = await this.deps.nonceStore.consume(state);
-    if (!nonceOk) {
-      throw new AuthError(401, "invalid_state", "missing or replayed state nonce");
-    }
-
-    // 3. Resolve the verified email to a single profile, failing closed.
+    // 2. Resolve the verified email to a single profile, failing closed. This runs
+    //    BEFORE the nonce is consumed (OFC-81): a denied account (unlinked /
+    //    ambiguous / de-brothered) must not burn the one-time `state` token, so the
+    //    denial checks gate first and the nonce is spent only once the sign-in is
+    //    actually going to succeed. (No current client can retry a spent nonce —
+    //    AuthCallback guards that — but a check should never consume a one-time
+    //    token before it has decided to proceed.)
     const resolution = this.deps.cache.resolveByEmail(email);
     if (resolution.kind === "none") {
       throw new AuthError(403, "unlinked_member", "no profile matches this email");
@@ -112,6 +112,14 @@ export class GhostIdentityProvider implements IdentityProvider {
     // belt-and-suspenders half that blocks any lingering token.
     if (profile.debrothered.isDebrothered) {
       throw new AuthError(403, "debrothered", "this member has been de-brothered");
+    }
+
+    // 3. Bind the callback to a Book-initiated flow; consume the nonce once — only
+    //    now that every denial check has passed, so a rejected sign-in leaves the
+    //    nonce unspent (OFC-81).
+    const nonceOk = await this.deps.nonceStore.consume(state);
+    if (!nonceOk) {
+      throw new AuthError(401, "invalid_state", "missing or replayed state nonce");
     }
 
     // 4. Establish the Book role (create-if-absent as brother).
