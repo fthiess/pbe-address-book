@@ -32,6 +32,8 @@ export {
   subdivisionName,
 } from "./geo.js";
 export {
+  MAX_LINKS,
+  MAX_EMERGENCY_CONTACTS,
   normalizePhone,
   validateProfile,
   type ValidationContext,

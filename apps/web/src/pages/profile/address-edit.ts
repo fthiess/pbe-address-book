@@ -23,9 +23,15 @@ export function applyCountryChange(
   if (!value) {
     return { next, cleared: false };
   }
+  // Resolve the *effective* old country the way the editor displays it: a record
+  // with a controlled subdivision code but no stored `country` shows as US (the
+  // editor's default), so the keep-vs-clear decision must read it as US too.
+  // Otherwise `hasControlledSubdivisions(undefined)` is false and a stranded US/CA
+  // code (e.g. "MA") survives into a free-text country as bare text (OFC-113).
+  const oldCountry = address?.country ?? "US";
   const keep = hasControlledSubdivisions(code)
     ? isSubdivisionCode(code, value)
-    : !hasControlledSubdivisions(address?.country);
+    : !hasControlledSubdivisions(oldCountry);
   if (!keep) {
     next.stateProvince = undefined;
     return { next, cleared: true };

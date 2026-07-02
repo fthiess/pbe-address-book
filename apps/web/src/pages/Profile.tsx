@@ -124,7 +124,12 @@ export function ProfileContainer() {
         if (outcome.status === "stale") {
           const fresh = await fetchProfile(id);
           setEtag(fresh.etag);
-          const changed = Object.keys(fresh.profile)
+          // Diff over the UNION of both key sets, not just the fresh record's:
+          // a field the concurrent writer *removed* (cleared) is absent from
+          // `fresh.profile`, so iterating fresh's keys alone would silently miss
+          // it and tell the user it was unchanged when it was wiped (OFC-108).
+          const keys = new Set<string>([...Object.keys(record), ...Object.keys(fresh.profile)]);
+          const changed = [...keys]
             .filter((key) => !HOUSEKEEPING.has(key))
             .filter(
               (key) =>
@@ -138,6 +143,9 @@ export function ProfileContainer() {
         if (outcome.status === "invalid") {
           return { status: "invalid", issues: outcome.issues };
         }
+        if (outcome.status === "reload") {
+          return { status: "reload" };
+        }
         return { status: "forbidden" };
       } catch {
         return { status: "error" };
@@ -147,6 +155,11 @@ export function ProfileContainer() {
   );
 
   const showToast = useCallback((message: string) => setToast(message), []);
+  // Stable identity (a bare `() => setToast(null)` inline prop is recreated every
+  // render): the toast's auto-dismiss effect depends on it, so an unstable `onDone`
+  // would restart the 4s timer on any container re-render — e.g. the roster fetch
+  // resolving — and the "Saved" toast would linger past its intended lifetime (OFC-116).
+  const dismissToast = useCallback(() => setToast(null), []);
 
   // The no-anachronistic-history model (N33): Edit pushed one entry tagged
   // `fromProfile`, so leaving edit pops it (Back from the view then reaches the
@@ -197,7 +210,7 @@ export function ProfileContainer() {
   };
   return (
     <>
-      <ProfileToast message={toast} onDone={() => setToast(null)} />
+      <ProfileToast message={toast} onDone={dismissToast} />
       <Outlet context={context} />
     </>
   );

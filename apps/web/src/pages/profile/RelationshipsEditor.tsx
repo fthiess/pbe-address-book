@@ -1,5 +1,5 @@
 import type { NameRecord } from "@pbe/name-search";
-import { useCallback, useId, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Combobox, type ComboboxOption } from "../../components/Combobox.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { useNameSearch } from "../directory/search/useNameSearch.js";
@@ -127,31 +127,43 @@ function BigBrotherPicker({
 }) {
   const [query, setQuery] = useState("");
 
+  // Build the fuzzy/phonetic index only once the user actually engages the field
+  // (types into it), not on every profile-with-no-big-brother edit that never
+  // touches it (OFC-119). Once engaged, stay engaged so clearing the query doesn't
+  // tear the worker down.
+  const [engaged, setEngaged] = useState(false);
+  useEffect(() => {
+    if (query.trim() !== "") {
+      setEngaged(true);
+    }
+  }, [query]);
+
+  // One pass over the roster, reused for both the search records and the options,
+  // instead of filtering the full ~1,166-member list several times per build (OFC-119).
+  const candidates = useMemo(() => roster.filter((p) => p.id !== selfId), [roster, selfId]);
+
   const nameRecords = useMemo<NameRecord[]>(
     () =>
-      roster
-        .filter((p) => p.id !== selfId)
-        .map((p) => ({
-          id: p.id,
-          firstName: p.firstName,
-          middleName: p.middleName,
-          lastName: p.lastName,
-          fullLegalName: p.fullLegalName,
-          mugName: p.mugName,
-          canonicalName: names.get(p.id),
-        })),
-    [roster, selfId, names],
+      candidates.map((p) => ({
+        id: p.id,
+        firstName: p.firstName,
+        middleName: p.middleName,
+        lastName: p.lastName,
+        fullLegalName: p.fullLegalName,
+        mugName: p.mugName,
+        canonicalName: names.get(p.id),
+      })),
+    [candidates, names],
   );
 
-  const { matchedIds } = useNameSearch(nameRecords, query);
+  const { matchedIds } = useNameSearch(nameRecords, query, engaged);
 
   const options = useMemo(
     () =>
-      roster
-        .filter((p) => p.id !== selfId)
+      candidates
         .map((p) => ({ value: String(p.id), label: names.get(p.id) ?? `#${p.id}` }))
         .sort((a, b) => a.label.localeCompare(b.label)),
-    [roster, selfId, names],
+    [candidates, names],
   );
 
   // Filter through Name Search: `null` (empty query) shows everyone; otherwise keep

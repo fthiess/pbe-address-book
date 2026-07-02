@@ -80,7 +80,10 @@ export type PatchOutcome =
   | { status: "ok"; profile: ProfileRecord; etag: string }
   | { status: "stale" }
   | { status: "invalid"; issues: ValidationIssue[] }
-  | { status: "forbidden"; fields?: string[] };
+  | { status: "forbidden"; fields?: string[] }
+  /** `428` — the record loaded without a usable concurrency token; the page must
+   * be reloaded before a conditional write can be made (OFC-115). */
+  | { status: "reload" };
 
 /**
  * Save a set of changed fields to one profile (`PATCH /api/profiles/:id`). The
@@ -109,6 +112,12 @@ export async function patchProfile(
   }
   if (response.status === 412) {
     return { status: "stale" };
+  }
+  // 428 precondition_required: the load produced no `If-Match` token, so no
+  // conditional write is possible. Surface a reload prompt rather than the opaque
+  // generic error the fall-through would raise (OFC-115).
+  if (response.status === 428) {
+    return { status: "reload" };
   }
   if (response.status === 422) {
     const body = await response.json().catch(() => ({}));

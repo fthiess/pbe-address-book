@@ -1,4 +1,4 @@
-import type { Profile, ValidationIssue } from "@pbe/shared";
+import { type Profile, type ValidationIssue, canWriteField } from "@pbe/shared";
 import { useCallback, useRef, useState } from "react";
 import { useBlocker } from "react-router-dom";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
@@ -29,6 +29,7 @@ export type SubmitResult =
   | { status: "stale"; changedFields: string[] }
   | { status: "invalid"; issues: ValidationIssue[] }
   | { status: "forbidden" }
+  | { status: "reload" }
   | { status: "error" };
 
 /** Human-readable labels for the "changed underneath" reconcile notice (§5.7.9). */
@@ -101,8 +102,12 @@ export function ProfileEdit({
   const bypass = useRef(false);
   const blocker = useBlocker(useCallback(() => form.dirty && !bypass.current, [form.dirty]));
 
-  const consentLocked = !(viewer.isOwner || viewer.role === "admin");
-  const isStaff = viewer.role === "manager" || viewer.role === "admin";
+  // Derive the write gates from the shared capability matrix rather than
+  // re-encoding the role→rule mapping inline, so the UI can't silently drift from
+  // the server's authoritative rules (OFC-121): consent fields are owner|admin
+  // (`privacy` is representative), the staff note is manager|admin (`adminNote`).
+  const consentLocked = !canWriteField(viewer.role, viewer.isOwner, "privacy");
+  const isStaff = canWriteField(viewer.role, viewer.isOwner, "adminNote");
   const emailPresent = (form.draft.email ?? "").trim() !== "";
   const name = canonicalName(record);
 
@@ -135,6 +140,8 @@ export function ProfileEdit({
         focusFirstInvalid();
       } else if (result.status === "forbidden") {
         setBanner("Your role may not change one or more of these fields.");
+      } else if (result.status === "reload") {
+        setBanner("This page is out of date. Please reload it, then make your changes again.");
       } else {
         setBanner("We couldn't save your changes just now. Please try again.");
       }

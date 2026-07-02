@@ -73,10 +73,34 @@ describe("buildPatch", () => {
     expect(buildPatch(original, draft, "admin", false)).toEqual({});
   });
 
-  it("treats clearing a field (→ undefined) as a change", () => {
+  it("encodes clearing a field as an explicit null that survives JSON (OFC-107)", () => {
     const original = record({ email: "james@example.test" });
     const draft = record({ email: undefined });
-    expect(buildPatch(original, draft, "brother", true)).toHaveProperty("email", undefined);
+    const patch = buildPatch(original, draft, "brother", true);
+    // The clear is a null sentinel, not `undefined` — so it is NOT dropped when
+    // the request body is serialized (the gap the old `undefined` had).
+    expect(patch).toHaveProperty("email", null);
+    const roundTripped = JSON.parse(JSON.stringify(patch));
+    expect(roundTripped).toHaveProperty("email", null);
+    expect("email" in roundTripped).toBe(true);
+  });
+
+  it("clears an emptied address / majors / links via the null sentinel (OFC-107)", () => {
+    const original = record({
+      address: { city: "Cambridge", country: "US" },
+      majors: ["6-3"],
+    } as Partial<ProfileRecord>);
+    const draft = record({ address: undefined, majors: undefined } as Partial<ProfileRecord>);
+    const patch = buildPatch(original, draft, "brother", true);
+    expect(patch).toHaveProperty("address", null);
+    expect(patch).toHaveProperty("majors", null);
+  });
+
+  it("sends a genuine null value (bigBrotherId cleared to none) as null, not dropped", () => {
+    const original = record({ bigBrotherId: 5100 } as Partial<ProfileRecord>);
+    const draft = record({ bigBrotherId: null } as Partial<ProfileRecord>);
+    const patch = buildPatch(original, draft, "brother", true);
+    expect(patch).toHaveProperty("bigBrotherId", null);
   });
 });
 

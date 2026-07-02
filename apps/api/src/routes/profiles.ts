@@ -254,17 +254,52 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
       // write (N35): the primary phone and each emergency contact's phone. An
       // unparseable value is left as-is so the shared validator reports it inline.
       canonicalizePhones(typedPatch);
+
+      // Complete a well-formed `privacy` patch over the stored flags so a
+      // hand-crafted partial object can never drop a switch the projection then
+      // reads as undefined (OFC-111). A malformed `privacy` (non-object) is left
+      // for the shared validator to reject below.
+      if (
+        typedPatch.privacy !== null &&
+        typeof typedPatch.privacy === "object" &&
+        !Array.isArray(typedPatch.privacy)
+      ) {
+        typedPatch.privacy = { ...stored.privacy, ...typedPatch.privacy };
+      }
+
+      // A `null` on a *clearable* field is the explicit "clear this field"
+      // sentinel (OFC-107): the client cannot express a removal through JSON
+      // `undefined` (JSON.stringify drops it). Split those keys out so they funnel
+      // into the write path's remove set and never appear in the merged record we
+      // validate, compare, or store. A `null` on a null-typed field (`classYear`,
+      // `bigBrotherId`) is a genuine value, not a clear, so it stays in `merged`;
+      // a `null` on a required field is neither clearable nor valid and is left in
+      // `merged` for the validator to reject (preserving the OFC-89 no-500 path).
+      const cleared = patchFields.filter(
+        (field) => typedPatch[field] === null && CLEARABLE_ON_NULL.has(field),
+      );
       const merged = { ...stored, ...typedPatch } as Profile;
+      for (const field of cleared) {
+        delete merged[field];
+      }
+
       const issues = [
         ...validateProfile(merged, { currentYear: now.getUTCFullYear() }).issues,
         ...checkStructural(cache, typedPatch, merged, id),
-      ];
+      ].filter((issue) => surfaceIssue(issue, patchFields));
       if (issues.length > 0) {
         return reply.code(422).send({ error: "validation_failed", issues });
       }
 
       // Only fields whose value actually changes count as a content change (D28).
-      const changed = patchFields.filter((field) => !deepEqual(stored[field], typedPatch[field]));
+      // A clear counts only when the stored field was actually present; other
+      // fields compare in canonical form so re-formatting a legacy phone — or a
+      // no-op save over one — is not mistaken for an edit (OFC-112).
+      const changed = patchFields.filter((field) =>
+        cleared.includes(field)
+          ? stored[field] !== undefined
+          : !deepEqual(canonicalizeForCompare(field, stored[field]), typedPatch[field]),
+      );
       if (changed.length === 0) {
         // A no-op save: nothing changed, so no write, no verification touch, no audit.
         return sendRecord(reply, stored, role, isOwner, cache.concurrencyToken(id) ?? ifMatch);
@@ -275,6 +310,7 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
         stored,
         typedPatch,
         changed,
+        cleared,
         isOwner,
         actor.profileId,
         now,
@@ -357,6 +393,76 @@ function canonicalizePhones(patch: Partial<Profile>): void {
         : contact,
     );
   }
+}
+
+/**
+ * The optional fields a client may **clear** by sending `null` (OFC-107). These
+ * are exactly the fields whose type does not already include `null`: the optional
+ * text fields, the address block, the two repeatable lists, and the staff note.
+ * A `null` on any other field is *not* a clear — `classYear`/`bigBrotherId` accept
+ * `null` as a genuine value, and a `null` on a required field falls through to the
+ * validator as an invalid value.
+ */
+const CLEARABLE_ON_NULL: ReadonlySet<keyof Profile> = new Set<keyof Profile>([
+  "middleName",
+  "fullLegalName",
+  "mugName",
+  "email",
+  "alternateEmail",
+  "phone",
+  "address",
+  "emergencyContacts",
+  "employerName",
+  "jobTitle",
+  "spousePartnerName",
+  "majors",
+  "links",
+  "adminNote",
+]);
+
+/**
+ * Whether a validation issue from the merged-record check should surface on this
+ * PATCH. The merged record includes untouched stored fields, so a legacy
+ * non-canonical stored phone — valid before the N35 narrowing, with no migration
+ * behind it — would otherwise 422-block an edit to an unrelated field (OFC-110).
+ * Phone validation is purely single-field, so a phone issue is reported only when
+ * the patch actually writes the phone (or the emergency contacts that carry one);
+ * every other issue passes through unchanged.
+ */
+function surfaceIssue(issue: ValidationIssue, patchFields: (keyof Profile)[]): boolean {
+  if (issue.field === "phone") {
+    return patchFields.includes("phone");
+  }
+  if (issue.field.startsWith("emergencyContacts")) {
+    return patchFields.includes("emergencyContacts");
+  }
+  return true;
+}
+
+/**
+ * Canonicalize a stored value the same way the patch was canonicalized, for the
+ * no-op comparison only (OFC-112). The patch's phones were rewritten to the N35
+ * form before the diff; a *stored* legacy phone must be reduced the same way, or
+ * `deepEqual(legacyStored, canonicalPatch)` is always false and a save that only
+ * re-formats an unchanged number spuriously writes, re-verifies, and audits.
+ */
+function canonicalizeForCompare(field: keyof Profile, value: unknown): unknown {
+  const canon = (v: unknown): unknown =>
+    typeof v === "string" && v !== "" ? (normalizePhone(v) ?? v) : v;
+  if (field === "phone") {
+    return canon(value);
+  }
+  if (field === "emergencyContacts" && Array.isArray(value)) {
+    return value.map((contact) =>
+      contact !== null && typeof contact === "object" && !Array.isArray(contact)
+        ? {
+            ...(contact as Record<string, unknown>),
+            phone: canon((contact as { phone?: unknown }).phone),
+          }
+        : contact,
+    );
+  }
+  return value;
 }
 
 /**
@@ -452,12 +558,21 @@ function applyServerFields(
   stored: Profile,
   patch: Partial<Profile>,
   changed: (keyof Profile)[],
+  cleared: (keyof Profile)[],
   isOwner: boolean,
   actorId: number,
   now: Date,
 ): { set: Partial<Profile>; remove: (keyof Profile)[] } {
   const set: Partial<Profile> = { ...patch };
   const remove: (keyof Profile)[] = [];
+
+  // A cleared field (client sent `null`) is a removal, not a stored `null`
+  // (OFC-107): drop it from the write's `set` and route it to `remove`, so
+  // `mergeNext` and the Firestore write delete the stored key.
+  for (const field of cleared) {
+    delete set[field];
+    remove.push(field);
+  }
 
   set.lastModified = now.toISOString();
   if (changed.includes("allowNewsletterEmail")) {

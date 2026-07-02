@@ -77,6 +77,19 @@ export interface AuditEntry {
   targetRole?: string;
   /** The row count of an `export` (D92) — a count, never the exported data. */
   count?: number;
+  /**
+   * The caller's effective role on an `export` (OFC-117) — a role name, within the
+   * §1.4 boundary (like {@link targetRole}). Contextualizes the reported `count`.
+   */
+  role?: string;
+  /**
+   * The server-derived ceiling on exportable rows for an `export` (OFC-117): how
+   * many records the caller's role can access. Because the CSV is generated
+   * client-side (D41), the reported `count` is client-supplied; recording this
+   * ceiling (and clamping `count` to it) makes a tampered over-report bounded and
+   * a suspicious under-report visibly inconsistent against a known maximum.
+   */
+  available?: number;
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
   trace?: string;
 }
@@ -127,6 +140,8 @@ export class AuditLog {
       ...(entry.scope !== undefined ? { scope: entry.scope } : {}),
       ...(entry.targetRole !== undefined ? { targetRole: entry.targetRole } : {}),
       ...(entry.count !== undefined ? { count: entry.count } : {}),
+      ...(entry.role !== undefined ? { role: entry.role } : {}),
+      ...(entry.available !== undefined ? { available: entry.available } : {}),
       ...(entry.trace !== undefined ? { trace: entry.trace } : {}),
     });
   }

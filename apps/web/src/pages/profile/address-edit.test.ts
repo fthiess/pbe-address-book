@@ -40,6 +40,16 @@ describe("applyCountryChange", () => {
     expect(cleared).toBe(false);
     expect(next).toEqual({ country: "US" });
   });
+
+  it("clears a controlled code stranded under an undefined stored country (OFC-113)", () => {
+    // Legacy record: stateProvince "MA" (a US code) but no stored country. The
+    // editor displays it as US, so switching to a free-text country must clear it —
+    // the effective old country is resolved as US, not left as `undefined`.
+    const { next, cleared } = applyCountryChange({ stateProvince: "MA" }, "GB");
+    expect(cleared).toBe(true);
+    expect(next.stateProvince).toBeUndefined();
+    expect(next.country).toBe("GB");
+  });
 });
 
 describe("isBlankAddress", () => {

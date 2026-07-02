@@ -99,7 +99,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     addStar: options.addStar,
     removeStar: options.removeStar,
   });
-  registerExportRoutes(app, { gate, audit, clock });
+  registerExportRoutes(app, { gate, audit, clock, cache: options.profileCache });
   registerImageRoutes(app, gate);
 
   return app;

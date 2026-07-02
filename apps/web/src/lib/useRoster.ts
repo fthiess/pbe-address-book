@@ -65,7 +65,12 @@ function load(): void {
 }
 
 function ensureLoaded(): void {
-  if (state.profiles === null && !state.error && !loading) {
+  // Retry on any fresh mount when the roster isn't loaded — the earlier
+  // `!state.error` guard latched a single transient failure (a scale-to-zero cold
+  // 503, a network blip on the flaky slow links this audience skews toward) into a
+  // permanent error for the whole session, with no recovery short of a full page
+  // reload. Opening another profile now re-attempts the fetch (OFC-114).
+  if (state.profiles === null && !loading) {
     load();
   }
 }
@@ -107,6 +112,18 @@ export function applyProfileToRoster(record: ProfileRecord): void {
     ? state.profiles.map((p) => (p.id === record.id ? lean : p))
     : [...state.profiles, lean];
   setState({ profiles, error: state.error });
+}
+
+/**
+ * Drop the cached roster from the heap. The roster is the full brother-projected
+ * dataset (~1,166 records of real PII), held in a module-level singleton for the
+ * tab's lifetime; it must not survive a sign-out on a shared/family machine
+ * (real-PII discipline, D95). Called from the sign-out path (OFC-118). Emits so
+ * any mounted `useRoster` re-renders empty and, if still authenticated, re-fetches.
+ */
+export function clearRoster(): void {
+  loading = false;
+  setState({ profiles: null, error: false });
 }
 
 /** Reset the module store — for tests, which need a fresh fetch per case. */
