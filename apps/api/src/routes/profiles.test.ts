@@ -512,14 +512,17 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
     await app.close();
   });
 
-  it("returns 422 (not 500) when a string field arrives as JSON null (OFC-89)", async () => {
+  it("returns 422 (not 500) when a required field arrives as JSON null (OFC-89)", async () => {
     const { app, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5001 })]);
     const cookie = await cookieAs(5001, "brother");
     const etag = await etagOf(5001, cookie);
 
+    // A null on a *required* field is neither a clear nor a valid value: it must
+    // still be a clean 422, never a 500 (OFC-89). (A null on an optional field is
+    // now the OFC-107 clear sentinel — see the clear tests below.)
     for (const [field, payload] of [
-      ["email", { email: null }],
-      ["phone", { phone: null }],
+      ["firstName", { firstName: null }],
+      ["lastName", { lastName: null }],
     ] as const) {
       const response = await app.inject({
         method: "PATCH",
@@ -530,6 +533,139 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
       expect(response.statusCode, `${field}: null should be a clean 422, not a 500`).toBe(422);
       expect(response.json().issues).toContainEqual(expect.objectContaining({ field }));
     }
+    await app.close();
+  });
+
+  it("clears an optional field sent as null end-to-end (OFC-107)", async () => {
+    const { app, cache, audited, cookieAs, etagOf } = await buildWriteServer([
+      makeProfile({ id: 5001, jobTitle: "Engineer", employerName: "Akamai" }),
+    ]);
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { jobTitle: null },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const stored = cache.getById(5001);
+    // The field is genuinely removed, not left at its old value or stored as null.
+    expect(stored?.jobTitle).toBeUndefined();
+    expect("jobTitle" in (stored as object)).toBe(false);
+    expect(stored?.employerName).toBe("Akamai"); // untouched
+    // The clear is a real content change: audited, and the response omits the field.
+    expect(audited.at(-1)).toMatchObject({ action: "profile.update", fields: ["jobTitle"] });
+    expect(response.json()).not.toHaveProperty("jobTitle");
+    await app.close();
+  });
+
+  it("does not block an unrelated edit when the stored phone is legacy non-canonical (OFC-110)", async () => {
+    // "555-0002" is 7 digits — valid under the old permissive rule, rejected by the
+    // N35 narrowing, with no migration behind it. Editing an unrelated field must
+    // still succeed rather than 422 on the untouched legacy phone.
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer([
+      makeProfile({ id: 5001, phone: "555-0002" }),
+    ]);
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { jobTitle: "Engineer" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(cache.getById(5001)?.jobTitle).toBe("Engineer");
+    expect(cache.getById(5001)?.phone).toBe("555-0002"); // untouched, still stored
+
+    // But a genuinely invalid *edit* to the phone is still rejected.
+    const etag2 = await etagOf(5001, cookie);
+    const bad = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag2 },
+      payload: { phone: "12" },
+    });
+    expect(bad.statusCode).toBe(422);
+    expect(bad.json().issues).toContainEqual(expect.objectContaining({ field: "phone" }));
+    await app.close();
+  });
+
+  it("treats a re-formatted legacy phone as a no-op, sparing the write/re-verify/audit (OFC-112)", async () => {
+    const { app, cache, audited, cookieAs, etagOf } = await buildWriteServer([
+      makeProfile({
+        id: 5001,
+        phone: "617-555-0142", // canonicalizable, but stored in legacy (non-canonical) form
+        lastVerifiedDate: "2026-01-01",
+        verifiedBy: 5001,
+      }),
+    ]);
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    // Re-send the same number in a different format — the canonical forms match, so
+    // it is not a real change: no write, no verification re-stamp, no audit entry.
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { phone: "(617) 555-0142" },
+    });
+    expect(response.statusCode).toBe(200);
+    const stored = cache.getById(5001);
+    expect(stored?.lastVerifiedDate).toBe("2026-01-01"); // NOT re-stamped to today
+    expect(audited).toHaveLength(0);
+    await app.close();
+  });
+
+  it("rejects a malformed consent/privacy value feeding the projection (OFC-111)", async () => {
+    const { app, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(5001, "brother");
+
+    for (const [field, payload] of [
+      ["unlisted", { unlisted: "no" }],
+      ["allowNewsletterEmail", { allowNewsletterEmail: "yes" }],
+      ["privacy", { privacy: "nope" }],
+    ] as const) {
+      const etag = await etagOf(5001, cookie);
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/profiles/5001",
+        headers: { cookie, "if-match": etag },
+        payload,
+      });
+      expect(response.statusCode, `${field}: malformed consent value must 422`).toBe(422);
+      expect(response.json().issues).toContainEqual(expect.objectContaining({ field }));
+    }
+    await app.close();
+  });
+
+  it("completes a partial privacy patch over the stored flags so none go missing (OFC-111)", async () => {
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    // A hand-crafted patch flips one flag and omits the rest; the stored object
+    // must stay complete (every switch present), not collapse to the single key.
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { privacy: { shareEmail: false } },
+    });
+    expect(response.statusCode).toBe(200);
+    const stored = cache.getById(5001);
+    expect(stored?.privacy).toMatchObject({
+      shareEmail: false,
+      sharePhone: true,
+      shareAddress: true,
+      shareEmergency: false,
+      shareSpousePartner: false,
+    });
     await app.close();
   });
 

@@ -1,4 +1,4 @@
-import type { PrivacyFlags, Role } from "@pbe/shared";
+import { type PrivacyFlags, type Role, canWriteField } from "@pbe/shared";
 import type { ProfileRecord } from "../../lib/types.js";
 
 /**
@@ -12,9 +12,14 @@ export interface Viewer {
   isOwner: boolean;
 }
 
-/** May this viewer enter edit mode at all? Owner, managers, and admins (§5.7). */
+/**
+ * May this viewer enter edit mode at all? Owner, managers, and admins (§5.7).
+ * Derived from the shared capability matrix — "may write any ordinary directory
+ * field" (the `editable` rule, of which `firstName` is representative) — so it
+ * can't drift from the server's authoritative rules (OFC-121).
+ */
 export function canEdit(viewer: Viewer): boolean {
-  return viewer.isOwner || viewer.role === "manager" || viewer.role === "admin";
+  return canWriteField(viewer.role, viewer.isOwner, "firstName");
 }
 
 /**

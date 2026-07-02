@@ -56,6 +56,14 @@ export interface NameSearchResult {
 export function useNameSearch(
   records: NameRecord[],
   query: string,
+  /**
+   * Whether to build the Web Worker's fuzzy + Beider-Morse phonetic + nickname
+   * index. Default `true` for the Directory (search is the page's purpose). The
+   * Big-Brother picker passes `false` until the field is engaged, so opening a
+   * profile that never touches it doesn't pay for the index build (OFC-119); the
+   * main-thread substring fallback covers matching until the worker comes online.
+   */
+  enabled = true,
   config: SearchConfig = DEFAULT_SEARCH_CONFIG,
 ): NameSearchResult {
   const [ready, setReady] = useState(false);
@@ -67,8 +75,14 @@ export function useNameSearch(
   const workerRef = useRef<Worker | null>(null);
   const seqRef = useRef(0);
 
-  // Create the worker once for the lifetime of the page.
+  // Create the worker once enabled (immediately for the Directory; on first
+  // engagement for the picker — OFC-119). While disabled, `workerRef.current`
+  // stays null and the build/query effects below no-op, so matching falls back to
+  // the main-thread substring index.
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
     const worker = new Worker(new URL("./search.worker.ts", import.meta.url), { type: "module" });
     workerRef.current = worker;
     worker.onmessage = (event: MessageEvent<SearchResponse>) => {
@@ -87,7 +101,7 @@ export function useNameSearch(
       worker.terminate();
       workerRef.current = null;
     };
-  }, []);
+  }, [enabled]);
 
   // (Re)build the index whenever the dataset or config changes; the richer
   // matching is offline until the worker posts `ready` again.

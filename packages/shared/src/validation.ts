@@ -66,8 +66,11 @@ const E164_MAX_DIGITS = 15;
 const MIN_CLASS_YEAR = 1890;
 const CLASS_YEAR_FUTURE_MARGIN = 6;
 const MIN_BIRTH_YEAR = 1850;
-const MAX_LINKS = 5;
-const MAX_EMERGENCY_CONTACTS = 2;
+/** Row caps the validator enforces on both client and server. Exported so the web
+ * editors gate their "Add" affordance off the one authoritative source, not a
+ * re-declared local copy that can drift (OFC-120). */
+export const MAX_LINKS = 5;
+export const MAX_EMERGENCY_CONTACTS = 2;
 
 function currentYearOf(context: ValidationContext): number {
   return context.currentYear ?? new Date().getUTCFullYear();
@@ -338,7 +341,63 @@ export function validateProfile(
     add("lastVerifiedDate", "Verification date must be a valid YYYY-MM-DD date.");
   }
 
+  // --- consent flags & the privacy object (feed the projection — OFC-111) ---
+  validateConsentAndPrivacy(input, add);
+
   return { ok: issues.length === 0, issues };
+}
+
+/** The top-level boolean consent switches (§9). Each must be a boolean when written. */
+const CONSENT_BOOLEAN_FIELDS = [
+  "allowNewsletterEmail",
+  "allowCommentReplyEmail",
+  "allowShareWithMITAA",
+  "unlisted",
+] as const;
+
+/** The per-field share toggles inside the `privacy` object (§3.2). */
+const PRIVACY_FLAG_KEYS = [
+  "shareEmail",
+  "sharePhone",
+  "shareAddress",
+  "shareEmergency",
+  "shareSpousePartner",
+] as const;
+
+/**
+ * Type-validate the consent booleans and the `privacy` object (OFC-111). The
+ * projection — Book's single visibility-enforcement point — consumes these flags
+ * verbatim, but the write allowlist only gates the *key*, not the *value*. Without
+ * this, a hand-crafted PATCH could store a string/number/`null` where a boolean is
+ * expected (`{"unlisted":"no"}`, a partial `privacy`), and the projection would
+ * then evaluate visibility over a malformed value. Each `allow*`/`unlisted` must be
+ * a boolean; `privacy` must be an object whose present `share*` keys are booleans.
+ */
+function validateConsentAndPrivacy(
+  input: Partial<Profile>,
+  add: (field: string, message: string) => void,
+): void {
+  for (const field of CONSENT_BOOLEAN_FIELDS) {
+    const value = input[field];
+    if (value !== undefined && typeof value !== "boolean") {
+      add(field, "This setting must be on or off.");
+    }
+  }
+  const privacy = input.privacy;
+  if (privacy === undefined) {
+    return;
+  }
+  if (privacy === null || typeof privacy !== "object" || Array.isArray(privacy)) {
+    add("privacy", "Privacy settings must be a set of on/off switches.");
+    return;
+  }
+  const flags = privacy as unknown as Record<string, unknown>;
+  for (const key of PRIVACY_FLAG_KEYS) {
+    const flag = flags[key];
+    if (flag !== undefined && typeof flag !== "boolean") {
+      add(`privacy.${key}`, "This privacy switch must be on or off.");
+    }
+  }
 }
 
 /** Deceased lifespan/date rules (D122) — split out for readability. */

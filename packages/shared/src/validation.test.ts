@@ -225,3 +225,39 @@ describe("validateProfile — deceased lifespan (D122)", () => {
     ]);
   });
 });
+
+describe("validateProfile — consent & privacy (OFC-111)", () => {
+  it("accepts valid consent booleans and a well-formed privacy object", () => {
+    expect(
+      fields({
+        allowNewsletterEmail: true,
+        unlisted: false,
+        privacy: {
+          shareEmail: true,
+          sharePhone: false,
+          shareAddress: true,
+          shareEmergency: false,
+          shareSpousePartner: false,
+        },
+      }),
+    ).toEqual([]);
+  });
+
+  it("rejects a non-boolean consent flag", () => {
+    expect(fields({ unlisted: "no" as unknown as boolean })).toEqual(["unlisted"]);
+    expect(fields({ allowShareWithMITAA: 1 as unknown as boolean })).toEqual([
+      "allowShareWithMITAA",
+    ]);
+  });
+
+  it("rejects a privacy value that isn't an object", () => {
+    expect(fields({ privacy: "nope" as unknown as Profile["privacy"] })).toEqual(["privacy"]);
+    expect(fields({ privacy: null as unknown as Profile["privacy"] })).toEqual(["privacy"]);
+  });
+
+  it("rejects a non-boolean switch inside the privacy object", () => {
+    expect(fields({ privacy: { shareEmail: "yes" } as unknown as Profile["privacy"] })).toEqual([
+      "privacy.shareEmail",
+    ]);
+  });
+});

@@ -60,9 +60,15 @@ export function buildPatch(
       continue;
     }
     if (!valuesEqual(original[key], draft[key])) {
-      // The draft value is authoritative — including `undefined`, which the
-      // server treats as "clear this field" via the write path's remove set.
-      (patch[key] as Profile[typeof key] | undefined) = draft[key] as Profile[typeof key];
+      // Encode a cleared optional field (draft value `undefined`) as an explicit
+      // `null` sentinel. `JSON.stringify` drops `undefined`-valued keys, so a
+      // removal sent as `undefined` never reaches the wire (OFC-107); `null`
+      // survives, and the server funnels a null-valued clearable key into its
+      // remove set. A non-cleared value — including a genuine `null` on the
+      // null-typed fields (`classYear` unknown, `bigBrotherId` none) — is sent
+      // as-is, and the server stores those as values, not removals.
+      const value = draft[key];
+      (patch as Record<string, unknown>)[key] = value === undefined ? null : value;
     }
   }
   return patch;

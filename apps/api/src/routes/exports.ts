@@ -1,5 +1,6 @@
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
+import type { ProfileCache } from "../data/cache.js";
 import { effectiveRole } from "../identity/types.js";
 import { writeRateLimit } from "../security/rate-limit.js";
 import type { Clock } from "./profiles.js";
@@ -24,6 +25,8 @@ export interface ExportRoutesConfig {
   gate: preHandlerHookHandler;
   audit: AuditLog;
   clock: Clock;
+  /** The in-memory dataset — the server-side source of the accessible-row ceiling (OFC-117). */
+  cache: ProfileCache;
 }
 
 /** The egress scopes the client reports — the selected rows, or the whole current view. */
@@ -60,13 +63,25 @@ export function registerExportRoutes(app: FastifyInstance, config: ExportRoutesC
         });
       }
 
+      // The CSV is generated client-side (D41), so the reported `count` is
+      // attacker-/bug-influenced — the audit is the one server-side PII-egress
+      // signal, so it must not simply trust it (OFC-117). Bound the count by the
+      // server-side number of rows this role can actually export (staff project
+      // every record), and record that ceiling plus the caller's role: a tampered
+      // over-report is capped, and a suspicious under-report is now visibly
+      // inconsistent against a known maximum.
+      const available = config.cache.size;
+      const boundedCount = Math.min(count, available);
+
       config.audit.record(
         {
           action: "export",
           actorId: actor.profileId,
           outcome: "ok",
           scope,
-          count,
+          count: boundedCount,
+          role,
+          available,
           trace: traceId(request),
         },
         config.clock().toISOString(),

@@ -10,6 +10,7 @@ import {
   InMemoryProfileStore,
   InMemorySessionStore,
 } from "../test-support/fakes.js";
+import { makeProfile } from "../test-support/make-profile.js";
 
 /**
  * The export-audit ping (API-SPEC §4; D92). The client generates the CSV; this
@@ -40,7 +41,13 @@ function sessionFor(profileId: number, role: Role): Session {
 
 async function buildExportServer() {
   const cache = new ProfileCache();
-  await cache.load([]);
+  // Three records loaded, so the server-side accessible-row ceiling (OFC-117) is a
+  // meaningful non-zero number the export audit can bound the reported count by.
+  await cache.load([
+    makeProfile({ id: 5001 }),
+    makeProfile({ id: 5002 }),
+    makeProfile({ id: 5003 }),
+  ]);
   const sessionStore = new InMemorySessionStore();
   const audited: Record<string, unknown>[] = [];
   const app = await buildServer({
@@ -94,13 +101,13 @@ describe("POST /api/exports", () => {
     expect(ctx.audited).toHaveLength(0);
   });
 
-  it("records a manager export with scope, count, actor and timestamp — and no data", async () => {
+  it("records a manager export with scope, count, role, ceiling, actor and timestamp — and no data", async () => {
     const cookie = await ctx.cookieFor(5247, "manager");
     const response = await ctx.app.inject({
       method: "POST",
       url: "/api/exports",
       headers: { cookie },
-      payload: { scope: "selection", count: 42 },
+      payload: { scope: "selection", count: 2 },
     });
     expect(response.statusCode).toBe(204);
     expect(ctx.audited).toHaveLength(1);
@@ -110,11 +117,33 @@ describe("POST /api/exports", () => {
       actorId: 5247,
       outcome: "ok",
       scope: "selection",
-      count: 42,
+      count: 2,
+      // The caller's role and the server-derived accessible-row ceiling now ride
+      // the audit so an under-report is visibly inconsistent (OFC-117).
+      role: "manager",
+      available: 3,
       timestamp: FIXED_NOW.toISOString(),
     });
     // A whole-directory export has no single target.
     expect(ctx.audited[0]).not.toHaveProperty("targetId");
+  });
+
+  it("clamps a tampered over-reported count to the accessible ceiling (OFC-117)", async () => {
+    const cookie = await ctx.cookieFor(5247, "admin");
+    const response = await ctx.app.inject({
+      method: "POST",
+      url: "/api/exports",
+      headers: { cookie },
+      // A tampered client claims far more rows than exist; the server bounds it.
+      payload: { scope: "view", count: 999999 },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(ctx.audited[0]).toMatchObject({
+      action: "export",
+      role: "admin",
+      count: 3,
+      available: 3,
+    });
   });
 
   it("rejects a bad scope or count with 400 and writes nothing", async () => {

@@ -8,6 +8,7 @@ import {
   fetchMe,
 } from "../lib/api.js";
 import type { Me } from "../lib/types.js";
+import { clearRoster } from "../lib/useRoster.js";
 
 /**
  * The app-wide auth state. The SPA loads `GET /api/me` once on mount (the
@@ -79,6 +80,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     await apiSignOut();
+    // Drop the cached full-PII roster from the heap so it can't outlive the
+    // session on a shared/family machine (OFC-118, D95).
+    clearRoster();
     setState({ status: "unauthenticated" });
   }, []);
 
