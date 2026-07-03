@@ -192,6 +192,13 @@ Record that a CSV export occurred. Fire-and-forget — the client does not block
 
 ## 5. Roles
 
+### `GET /api/users/{id}/role`
+Read a brother's current role — backs the admin **Change role** control so its segmented control can highlight the active role (DECISIONS N50). A brother's role lives in the private `users` collection, not the `profiles` projection, so it is fetched here rather than carried on the profile read.
+- **Auth:** **admin only** (evaluated at the caller's effective role, N31 — the same role that may change it).
+- **Behavior:** returns the target's role, or `brother` when the brother has **no `users` document yet** (never signed in — the role a first sign-in would give, R20/N44). A read: **not audited**, served `no-store`.
+- **Response 200:** `{ "id": 5305, "role": "manager" }`.
+- **Errors:** `404` if no brother with this id exists in `profiles` (a missing `users` document alone is not an error); `403` for a non-admin caller.
+
 ### `PUT /api/users/{id}/role`
 The admin **Change role** function.
 - **Auth:** **admin only.**

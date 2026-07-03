@@ -148,6 +148,12 @@ export interface AdminUserStore {
    */
   setRole(id: number, role: Role): Promise<RoleChangeResult>;
   /**
+   * The target's current role — `brother` if they have no `users` document yet (a
+   * never-signed-in brother, R20/N44). Read by the admin Role control so it can
+   * show which role is active (the segmented control's highlighted segment).
+   */
+  getRole(id: number): Promise<Role>;
+  /**
    * Whether deleting `id` would remove the **last remaining admin** — the delete
    * path's dual of the {@link AdminUserStore.setRole} last-admin invariant (D106).
    * True iff `id` is currently an admin and the total admin count is 1. The delete
@@ -190,6 +196,11 @@ export class FirestoreAdminUserStore implements AdminUserStore {
       }
       return { before };
     });
+  }
+
+  async getRole(id: number): Promise<Role> {
+    const doc = await this.db.collection(COLLECTION).doc(String(id)).get();
+    return doc.exists ? (doc.data() as UserRecord).role : "brother";
   }
 
   async isLastAdmin(id: number): Promise<boolean> {

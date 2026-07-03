@@ -1,6 +1,6 @@
 import type { Role, ValidationIssue } from "@pbe/shared";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import type { DeceasedFacts, StatusWriteOutcome } from "../../lib/api.js";
+import { type DeceasedFacts, type StatusWriteOutcome, getUserRole } from "../../lib/api.js";
 import type { ProfileRecord } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
@@ -133,7 +133,7 @@ export function StaffControls({
         {isAdmin && (
           <>
             <DebrotherControl name={name} debrothered={debrothered} actions={actions} />
-            <RoleControl actions={actions} />
+            <RoleControl profileId={record.id} actions={actions} />
             <DeleteControl name={name} actions={actions} />
           </>
         )}
@@ -267,46 +267,95 @@ function DebrotherControl({
   );
 }
 
-/** Change role (admin only; D51/N44). A brother's current role is private and not shown. */
-function RoleControl({ actions }: { actions: ProfileActions }) {
-  const [role, setRole] = useState<"" | Role>("");
-  const [message, setMessage] = useState<string | null>(null);
-  const selectId = useId();
+/** The three assignable roles and their display labels (visual-design Profile.dc.html). */
+const ROLE_OPTIONS: { value: Role; label: string }[] = [
+  { value: "brother", label: "Brother" },
+  { value: "manager", label: "Manager" },
+  { value: "admin", label: "Administrator" },
+];
 
-  const apply = async () => {
-    if (role === "") {
+/**
+ * Change role (admin only; D51/N44). A **segmented control** (Brother / Manager /
+ * Administrator) with the brother's *current* role highlighted — the visual-design
+ * spec for this control (`Profile.dc.html` "Administrator controls"). Selecting a
+ * segment applies immediately (the design carries no separate Apply step; a role
+ * change is reversible). The current role is fetched on mount via `GET
+ * /api/users/:id/role`. A `409 last_admin` keeps the current role and explains.
+ * Modeled on the masthead {@link FontSizeToggle} pattern (fieldset + `aria-pressed`).
+ */
+function RoleControl({ profileId, actions }: { profileId: number; actions: ProfileActions }) {
+  const [role, setRole] = useState<Role | null>(null);
+  const [pending, setPending] = useState<Role | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getUserRole(profileId)
+      .then((current) => {
+        if (!cancelled) {
+          setRole(current);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setMessage("Couldn’t load this brother’s role.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
+  const select = async (next: Role) => {
+    if (next === role || pending) {
       return;
     }
+    setPending(next);
     setMessage(null);
-    const outcome = await actions.changeRole(role);
+    const outcome = await actions.changeRole(next);
+    setPending(null);
+    if (outcome.status === "last_admin") {
+      setMessage("This is the only administrator — their role can’t be changed.");
+      return;
+    }
+    setRole(outcome.role);
     setMessage(
-      outcome.status === "last_admin"
-        ? "This is the only administrator — their role can’t be changed."
-        : `Role set to ${role}.`,
+      `Role set to ${ROLE_OPTIONS.find((option) => option.value === outcome.role)?.label}.`,
     );
   };
 
   return (
-    <ControlRow label="Role" help="Set what this brother can do in Book. Takes effect immediately.">
-      <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor={selectId} className="sr-only">
-          Role
-        </label>
-        <select
-          id={selectId}
-          value={role}
-          onChange={(event) => setRole(event.target.value as Role)}
-          className="rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 text-[length:var(--text-body)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <option value="">Select a role…</option>
-          <option value="brother">Brother</option>
-          <option value="manager">Manager</option>
-          <option value="admin">Administrator</option>
-        </select>
-        <SecondaryButton onClick={apply} disabled={role === ""}>
-          Set role
-        </SecondaryButton>
-      </div>
+    <ControlRow
+      label="Role"
+      help="Controls what this brother can see and do. Takes effect immediately."
+    >
+      <fieldset
+        className="m-0 inline-flex items-center gap-0.5 rounded-[var(--radius-lg)] border border-input bg-[var(--muted)] p-1 disabled:opacity-60"
+        disabled={role === null}
+      >
+        <legend className="sr-only">Role</legend>
+        {ROLE_OPTIONS.map((option) => {
+          const active = role === option.value;
+          const busy = pending === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              aria-pressed={active}
+              onClick={() => select(option.value)}
+              className={cn(
+                "h-9 rounded-[var(--radius-md)] px-4 text-[length:var(--text-label)] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                active
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground",
+                busy && "opacity-70",
+              )}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </fieldset>
       {message && (
         <output className="mt-2 block text-[length:var(--text-body-sm)] text-muted-foreground">
           {message}

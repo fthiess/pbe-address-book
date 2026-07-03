@@ -274,11 +274,20 @@ export function ProfileContainer() {
   const removeProfile = useCallback(async () => {
     const outcome = await deleteProfile(id);
     if (outcome.status === "ok") {
-      // The record is gone server-side; return to the Directory (which re-downloads).
-      navigate("/");
+      // Return to the Directory ENTRY we arrived from as a POP (restoring its URL
+      // filters/search/sort and history-state scroll), not `navigate("/")` — which
+      // would open a fresh, unfiltered Directory at the top and lose the user's
+      // place. The Directory refetches on remount, so the just-deleted brother is
+      // gone. Same discipline as "← Directory" (backToDirectory); a cold deep-link
+      // with no Directory entry to pop falls back to the Directory home.
+      if ((location.state as { fromDirectory?: boolean } | null)?.fromDirectory) {
+        navigate(-1);
+      } else {
+        navigate("/");
+      }
     }
     return outcome;
-  }, [id, navigate]);
+  }, [id, navigate, location.state]);
 
   const actions: ProfileActions = useMemo(
     () => ({

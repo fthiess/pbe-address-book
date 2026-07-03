@@ -314,3 +314,52 @@ describe("PUT /api/users/:id/role", () => {
     expect(response.statusCode).toBe(422);
   });
 });
+
+describe("GET /api/users/:id/role", () => {
+  let ctx: Ctx;
+  beforeEach(async () => {
+    ctx = await buildAdminServer();
+  });
+  afterEach(async () => {
+    await ctx.app.close();
+  });
+
+  it("returns the target's current role to an admin", async () => {
+    // 5001 was seeded as a manager in the harness.
+    const response = await ctx.app.inject({
+      method: "GET",
+      url: "/api/users/5001/role",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: 5001, role: "manager" });
+  });
+
+  it("returns brother for a never-signed-in brother (no users doc)", async () => {
+    const response = await ctx.app.inject({
+      method: "GET",
+      url: "/api/users/5011/role",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({ id: 5011, role: "brother" });
+  });
+
+  it("403s a manager (admin-only)", async () => {
+    const response = await ctx.app.inject({
+      method: "GET",
+      url: "/api/users/5001/role",
+      headers: { cookie: await ctx.cookieFor(9001, "manager") },
+    });
+    expect(response.statusCode).toBe(403);
+  });
+
+  it("404s when no profile with that id exists", async () => {
+    const response = await ctx.app.inject({
+      method: "GET",
+      url: "/api/users/9999/role",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+    });
+    expect(response.statusCode).toBe(404);
+  });
+});

@@ -174,6 +174,10 @@ export class InMemoryAdminUserStore implements AdminUserStore {
     return { before };
   }
 
+  async getRole(id: number): Promise<Role> {
+    return this.roles.get(id) ?? "brother";
+  }
+
   async isLastAdmin(id: number): Promise<boolean> {
     if (this.roles.get(id) !== "admin") {
       return false;
