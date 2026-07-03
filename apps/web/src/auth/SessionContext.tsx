@@ -33,6 +33,13 @@ interface SessionContextValue {
   state: SessionState;
   /** Re-fetch `/api/me` (used after the callback completes a sign-in). */
   refresh: () => Promise<void>;
+  /**
+   * Patch the signed-in brother's own headshot pointer on `me.profile` in place —
+   * called after they change their own photo — so the masthead avatar updates
+   * immediately without a full `/api/me` refetch (which would flash the loading
+   * state). A no-op unless authenticated with a loaded profile.
+   */
+  applyOwnHeadshot: (hasHeadshot: boolean, headshotVersion?: string) => void;
   /** Clear the Book session and return to the signed-out state. */
   signOut: () => Promise<void>;
   /**
@@ -78,6 +85,21 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const applyOwnHeadshot = useCallback((hasHeadshot: boolean, headshotVersion?: string) => {
+    setState((prev) => {
+      if (prev.status !== "authenticated" || !prev.me.profile) {
+        return prev;
+      }
+      // Destructure-omit `headshotVersion` (not `delete`) so a removal clears it.
+      const { headshotVersion: _drop, ...rest } = prev.me.profile;
+      const profile =
+        headshotVersion === undefined
+          ? { ...rest, hasHeadshot }
+          : { ...rest, hasHeadshot, headshotVersion };
+      return { status: "authenticated", me: { ...prev.me, profile } };
+    });
+  }, []);
+
   const signOut = useCallback(async () => {
     await apiSignOut();
     // Drop the cached full-PII roster from the heap so it can't outlive the
@@ -101,7 +123,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   return (
-    <SessionContext.Provider value={{ state, refresh, signOut, viewAs, stopViewingAs }}>
+    <SessionContext.Provider
+      value={{ state, refresh, applyOwnHeadshot, signOut, viewAs, stopViewingAs }}
+    >
       {children}
     </SessionContext.Provider>
   );

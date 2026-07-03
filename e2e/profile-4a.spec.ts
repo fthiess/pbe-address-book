@@ -142,6 +142,22 @@ test.describe("profile — view mode", () => {
     await expect(page.getByRole("heading", { name: /Preferences/ })).toHaveCount(0);
   });
 
+  test("an admin can edit a deceased brother's profile (to manage the photo, etc.)", async ({
+    page,
+  }) => {
+    // The Edit button used to be hidden for deceased records, which blocked staff
+    // from managing a deceased brother's headshot; it now shows to anyone who can
+    // edit (staff — a peer brother still can't).
+    await mockProfile(page, {
+      meDoc: me("admin", 9001),
+      record: { ...ownerRecord(), deceased: { isDeceased: true, deathYear: 2021 } },
+    });
+    await page.goto("/brother/5247");
+    await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
+    await expect(page.getByText("In Memoriam", { exact: true })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Edit profile" })).toBeVisible();
+  });
+
   test("a manager sees the private marker for an off-toggle field", async ({ page }) => {
     // shareEmail off → the value is omitted, the privacy flags arrive; the manager
     // sees that the field exists and is private (§5.7.2).

@@ -70,7 +70,7 @@ export interface ProfileOutletContext {
 export function ProfileContainer() {
   const { id: idParam } = useParams();
   const id = Number(idParam);
-  const { state } = useSession();
+  const { state, applyOwnHeadshot } = useSession();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -185,12 +185,17 @@ export function ProfileContainer() {
             ? { ...rest, hasHeadshot: result.hasHeadshot }
             : { ...rest, hasHeadshot: result.hasHeadshot, headshotVersion: result.headshotVersion };
         });
+        // If this is the signed-in brother's OWN record, update `me` so the masthead
+        // avatar reflects the new (or removed) photo immediately.
+        if (me?.profileId === id) {
+          applyOwnHeadshot(result.hasHeadshot, result.headshotVersion);
+        }
         return true;
       } catch {
         return false;
       }
     },
-    [id],
+    [id, me?.profileId, applyOwnHeadshot],
   );
 
   const showToast = useCallback((message: string) => setToast(message), []);

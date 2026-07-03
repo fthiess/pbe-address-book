@@ -1,6 +1,7 @@
 import { imageUrl, thumbnailObjectKey } from "@pbe/shared";
 import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar.js";
+import { DebrotheredMark } from "../../components/DebrotheredMark.js";
 import { MourningBand } from "../../components/MourningBand.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 
@@ -64,21 +65,7 @@ export function Thumbnail({ profile, name }: { profile: DirectoryProfile; name: 
       )}
 
       {deceased && <MourningBand />}
-      {debrothered && (
-        // Translucent red ✕ across the whole circle (D115) — corner-to-corner
-        // strokes, clipped by the circle so they span its full diameter.
-        <svg
-          viewBox="0 0 40 40"
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 size-full"
-          stroke="rgba(150,30,24,0.6)"
-          strokeWidth="3.5"
-          strokeLinecap="round"
-        >
-          <line x1="3" y1="3" x2="37" y2="37" />
-          <line x1="37" y1="3" x2="3" y2="37" />
-        </svg>
-      )}
+      {debrothered && <DebrotheredMark />}
     </span>
   );
 }
