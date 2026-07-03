@@ -6,8 +6,9 @@ import type { ImageStore } from "../data/images.js";
 import type { ProfileStore } from "../data/profiles.js";
 import { type AdminUserStore, LastAdminError } from "../data/users.js";
 import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
-import { writeRateLimit } from "../security/rate-limit.js";
-import { authorizePrivileged, mergeProfile } from "./privileged-support.js";
+import { effectiveRole } from "../identity/types.js";
+import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
+import { authorizePrivileged, mergeProfile, parseProfileId } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
 
 /**
@@ -40,7 +41,45 @@ export interface AdminRouteDeps {
 
 export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps): void {
   registerDelete(app, deps);
+  registerRoleRead(app, deps);
   registerRole(app, deps);
+}
+
+/**
+ * `GET /api/users/{id}/role` — read a brother's current role (admin only; API-SPEC
+ * §5). Backs the admin Role control so its segmented control can highlight the
+ * active role. Returns `brother` when the brother has no `users` document yet (a
+ * never-signed-in brother — the role a first sign-in would give, R20/N44). A read,
+ * so it is not audited; `404` only when no **profile** with that id exists.
+ */
+function registerRoleRead(app: FastifyInstance, deps: AdminRouteDeps): void {
+  const { cache, gate, adminUsers } = deps;
+  app.get(
+    "/api/users/:id/role",
+    { preHandler: gate, config: readRateLimit() },
+    async (request, reply) => {
+      const session = request.session;
+      if (!session) {
+        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+      }
+      // Admin-only, at the caller's **effective** role (a "View as" step-down loses it, N31).
+      if (effectiveRole(session) !== "admin") {
+        return reply
+          .code(403)
+          .send({ error: "forbidden", message: "You may not perform this action." });
+      }
+      const id = parseProfileId(request);
+      if (id === null) {
+        return reply.code(400).send({ error: "bad_request", message: "Invalid profile id." });
+      }
+      if (!cache.getById(id)) {
+        return reply.code(404).send({ error: "not_found", message: "No such brother." });
+      }
+      return reply
+        .header("Cache-Control", "no-store")
+        .send({ id, role: await adminUsers.getRole(id) });
+    },
+  );
 }
 
 /**

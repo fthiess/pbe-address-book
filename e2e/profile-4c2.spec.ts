@@ -86,6 +86,10 @@ async function mockAdminViewing(page: Page, record = targetRecord()) {
     });
   });
   await page.route(/\/api\/users\/\d+\/role$/, (route) => {
+    // GET is the Role control reading the current role on mount; PUT applies a change.
+    if (route.request().method() === "GET") {
+      return route.fulfill({ json: { id: 5247, role: "brother" } });
+    }
     calls.role += 1;
     const body = JSON.parse(route.request().postData() ?? "{}");
     return route.fulfill({ json: { id: 5247, role: body.role } });
@@ -164,14 +168,24 @@ test.describe("profile 4c-2 — privileged actions", () => {
     expect(calls.debrother).toBe(1);
   });
 
-  test("an admin can change a brother's role", async ({ page }) => {
+  test("an admin can change a brother's role via the segmented control", async ({ page }) => {
     const calls = await mockAdminViewing(page);
     await gotoProfile(page);
 
-    await page.getByLabel("Role", { exact: true }).selectOption("manager");
-    await page.getByRole("button", { name: "Set role" }).click();
+    // The current role (brother) is fetched and highlighted; the control is a
+    // segmented Brother/Manager/Administrator toggle (visual-design Profile.dc.html).
+    const group = page.getByRole("group", { name: "Role" });
+    await expect(group.getByRole("button", { name: "Brother" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await group.getByRole("button", { name: "Manager" }).click();
 
-    await expect(page.getByText("Role set to manager.")).toBeVisible();
+    await expect(page.getByText("Role set to Manager.")).toBeVisible();
+    await expect(group.getByRole("button", { name: "Manager" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
     expect(calls.role).toBe(1);
   });
 

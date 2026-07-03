@@ -307,6 +307,19 @@ export async function deleteProfile(
 }
 
 /**
+ * Read a brother's current role (`GET /api/users/:id/role`, admin only; API-SPEC
+ * §5) — so the admin Role control can show which role is active. `brother` for a
+ * never-signed-in brother.
+ */
+export async function getUserRole(id: number): Promise<Role> {
+  const response = await fetch(`/api/users/${id}/role`, { credentials: "same-origin" });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  return (await response.json()).role;
+}
+
+/**
  * Change a brother's role (`PUT /api/users/:id/role`, admin only; API-SPEC §5;
  * D51/N44). A `409 last_admin` — the only remaining admin cannot be demoted — is
  * surfaced as data so the UI can explain it rather than throw.
