@@ -369,6 +369,53 @@ export class ProfileCache {
   }
 
   /**
+   * The records that name `id` as their Big Brother — the inbound references the
+   * admin delete must scrub before removing `id` (API-SPEC §4; D98). Returned as
+   * live records so the route can clear each in Firestore and hand the scrubbed
+   * copies (with their fresh tokens) to {@link applyDelete}.
+   */
+  referrersOf(id: number): Profile[] {
+    return [...this.byId.values()].filter((profile) => profile.bigBrotherId === id);
+  }
+
+  /**
+   * Apply a committed **delete** to the in-memory model (D83 read-your-writes),
+   * the counterpart to {@link applyUpdate}. Removes `deletedId` and, in the same
+   * atomic swap, replaces each reference-scrubbed referrer with the copy the route
+   * already wrote through the store (its `bigBrotherId` cleared) plus that write's
+   * fresh concurrency `token` — so a later PATCH to a scrubbed referrer does not
+   * carry a stale token and spuriously `412`. The brother payload and indexes are
+   * rebuilt once for the whole batch. Star references live in the `users`
+   * collection, not the profile cache, so they are scrubbed by the route directly
+   * and need no cache update here.
+   */
+  async applyDelete(
+    deletedId: number,
+    scrubbed: readonly { profile: Profile; token: string }[],
+  ): Promise<void> {
+    const nextById = new Map(this.byId);
+    nextById.delete(deletedId);
+    for (const { profile } of scrubbed) {
+      nextById.set(profile.id, profile);
+    }
+    const profiles = [...nextById.values()].sort((a, b) => a.id - b.id);
+    const payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
+    const { byId, byEmail } = buildIndexes(profiles);
+    const tokenById = new Map(this.tokenById);
+    tokenById.delete(deletedId);
+    for (const { profile, token } of scrubbed) {
+      tokenById.set(profile.id, token);
+    }
+    // Atomic swap, after the last await (OFC-82).
+    this.byId = byId;
+    this.byEmail = byEmail;
+    this.tokenById = tokenById;
+    this.payload = payload;
+    this.sourceCount = profiles.length;
+    this.staffPayloads.clear();
+  }
+
+  /**
    * Resolve a raw email (e.g. a JWT `sub`) to a profile. The address is
    * normalized here (D97) so callers pass the value as received. Fails closed:
    * an address claimed by multiple profiles resolves to `ambiguous`, never a

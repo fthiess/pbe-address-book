@@ -94,6 +94,14 @@ export interface AuditEntry {
    * a suspicious under-report visibly inconsistent against a known maximum.
    */
   available?: number;
+  /**
+   * The before and after roles of a `role.change` (D106; API-SPEC §5) — role
+   * names, not field values, so within the §1.4 boundary. `fromRole` is `brother`
+   * for a created-if-absent `users` doc (the role a first sign-in would have
+   * given, N44). These feed the D101 forensic privileged-roster log.
+   */
+  fromRole?: string;
+  toRole?: string;
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
   trace?: string;
 }
@@ -146,6 +154,8 @@ export class AuditLog {
       ...(entry.count !== undefined ? { count: entry.count } : {}),
       ...(entry.role !== undefined ? { role: entry.role } : {}),
       ...(entry.available !== undefined ? { available: entry.available } : {}),
+      ...(entry.fromRole !== undefined ? { fromRole: entry.fromRole } : {}),
+      ...(entry.toRole !== undefined ? { toRole: entry.toRole } : {}),
       ...(entry.trace !== undefined ? { trace: entry.trace } : {}),
     });
   }

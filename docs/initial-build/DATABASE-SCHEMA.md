@@ -95,6 +95,19 @@ interface Profile {
   adminNote?: string;                  // staff-internal free-text note; manager/admin read+write only; invisible to owner and peers; not pushed to Ghost; seeded from Ghost notes at launch
   ghostMemberId?: string;              // Ghost Admin-API member id; the handle used to address Book→Ghost member updates; backend-only system field; captured on create-push or migration; never sent to any client
   // ghostMemberUuid removed from the MVP schema (D81, supersedes D70): no MVP feature reads it; trivially re-capturable from Ghost if a concrete consumer is later decided.
+  deceasedConsentSnapshot?: ConsentSnapshot;   // system-internal (D80, §8): consent+verification captured when marked deceased; restored+cleared on un-mark; never sent to any client
+  debrotherConsentSnapshot?: ConsentSnapshot;  // system-internal (D80/D115, §8): consent+verification captured when de-brothered; restored+cleared on reinstate; never sent to any client
+}
+```
+
+`ConsentSnapshot` is the small system-internal shape both status actions capture (each into its **own** field, since mark-deceased and de-brother are orthogonal — a shared slot would let the second action snapshot the first's already-forced-off flags, exactly the loss D80 prevents; DECISIONS N49):
+
+```typescript
+interface ConsentSnapshot {
+  allowNewsletterEmail: boolean;
+  allowCommentReplyEmail: boolean;
+  lastVerifiedDate?: string;           // the verification stamp at mark-time, if verified then
+  verifiedBy?: number;
 }
 ```
 
@@ -197,6 +210,8 @@ Required / default / visibility / validation for each field. The **Visibility** 
 | `newsletterConsentChangedAt` | `string` | yes | server-set | restricted | ISO 8601 timestamp; (re)written on every `allowNewsletterEmail` change. Drives the bidirectional Ghost reconcile (D103). |
 | `adminNote` | `string?` | no | absent | staff-internal | Manager/admin read+write; not visible to owner or peers; not pushed to Ghost. |
 | `ghostMemberId` | `string?` | no | absent | system (internal) | Ghost Admin-API member id; the handle for Book→Ghost member updates; backend-only, never sent to any client. |
+| `deceasedConsentSnapshot` | `ConsentSnapshot?` | no | absent | system (internal) | Consent+verification captured when marked deceased; restored+cleared on un-mark (D80); backend-only, never sent to any client. |
+| `debrotherConsentSnapshot` | `ConsentSnapshot?` | no | absent | system (internal) | Consent+verification captured when de-brothered; restored+cleared on reinstate (D80/D115); backend-only, never sent to any client. |
 
 ## 4. Class year
 

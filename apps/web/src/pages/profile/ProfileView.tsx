@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
+import { type ProfileActions, StaffControls, VerifyControl } from "./ProfileControls.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
 import { RelationshipChip } from "./RelationshipChip.js";
 import { CONSENT_COPY, PRIVACY_COPY, activeConsequence } from "./consent.js";
@@ -29,11 +30,13 @@ export function ProfileView({
   record,
   viewer,
   roster,
+  actions,
   onBackToDirectory,
 }: {
   record: ProfileRecord;
   viewer: Viewer;
   roster: DirectoryProfile[] | null;
+  actions: ProfileActions;
   onBackToDirectory: () => void;
 }) {
   const name = canonicalName(record);
@@ -74,11 +77,13 @@ export function ProfileView({
           {restricted && (
             <Row>
               <PreferencesSection record={record} />
-              <RecordStatusSection record={record} viewer={viewer} />
+              <RecordStatusSection record={record} viewer={viewer} onVerify={actions.verify} />
             </Row>
           )}
         </div>
       </div>
+
+      <StaffControls record={record} viewer={viewer} actions={actions} />
     </article>
   );
 }
@@ -395,11 +400,19 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
 }
 
 /**
- * Record status (§5.7.6): the verification read-out, plus the staff-internal
- * Admin Note for managers/admins. The Verify button and the edit↔verification
- * coupling are the 4c verification pass; here the status is read-only.
+ * Record status (§5.7.6): the verification read-out and the Verify affordance
+ * (owner/staff — the 4c-2 verification pass, D28/D48), plus the staff-internal
+ * Admin Note for managers/admins.
  */
-function RecordStatusSection({ record, viewer }: { record: ProfileRecord; viewer: Viewer }) {
+function RecordStatusSection({
+  record,
+  viewer,
+  onVerify,
+}: {
+  record: ProfileRecord;
+  viewer: Viewer;
+  onVerify: () => Promise<void>;
+}) {
   const verified = record.lastVerifiedDate;
   const selfVerified = record.verifiedBy != null && record.verifiedBy === record.id;
   return (
@@ -417,6 +430,7 @@ function RecordStatusSection({ record, viewer }: { record: ProfileRecord; viewer
       ) : (
         <ReadField label="Verification">Not verified.</ReadField>
       )}
+      <VerifyControl record={record} viewer={viewer} onVerify={onVerify} />
       {record.lastModified && (
         <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
           Last updated {record.lastModified.slice(0, 10)}.

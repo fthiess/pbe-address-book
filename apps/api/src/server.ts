@@ -5,16 +5,20 @@ import { AuditLog } from "./audit/audit-log.js";
 import type { ProfileCache } from "./data/cache.js";
 import { GcsImageStore, type ImageStore } from "./data/images.js";
 import type { ProfileStore } from "./data/profiles.js";
+import type { AdminUserStore } from "./data/users.js";
+import { type GhostLifecycle, StubGhostLifecycle } from "./identity/ghost-lifecycle.js";
 import type { NonceService } from "./identity/nonce-store.js";
 import { type SessionCookieConfig, requireSession } from "./identity/session-cookie.js";
 import type { SessionService } from "./identity/session-store.js";
 import type { IdentityProvider } from "./identity/types.js";
+import { registerAdminRoutes } from "./routes/admin.js";
 import { type GhostBridgeConfig, registerAuthRoutes } from "./routes/auth.js";
 import { registerExportRoutes } from "./routes/exports.js";
 import { registerHeadshotRoutes } from "./routes/headshot.js";
 import { registerImageRoutes } from "./routes/images.js";
 import { type Clock, registerProfileRoutes } from "./routes/profiles.js";
 import { registerStarsRoutes } from "./routes/stars.js";
+import { registerStatusRoutes } from "./routes/status.js";
 import { registerRateLimit } from "./security/rate-limit.js";
 
 export interface BuildServerOptions {
@@ -34,6 +38,15 @@ export interface BuildServerOptions {
    * `crypto.randomUUID`; tests inject a deterministic generator.
    */
   mintVersion?: () => string;
+  /** The admin `users` operations (Change-role invariant + delete reference scrubs). */
+  adminUsers: AdminUserStore;
+  /**
+   * The Ghost member-lifecycle seam behind Delete and De-brother (N41). Defaults
+   * to {@link StubGhostLifecycle} (succeed-and-log) — the intended behavior until
+   * the Phase-5 Ghost write path swaps in the real client; tests inject a failing
+   * fake to prove the abort-clean contract.
+   */
+  ghostLifecycle?: GhostLifecycle;
   /** The audit stream sink (D61); defaults to structured JSON on stdout. */
   auditLog?: AuditLog;
   /** "Now" for write timestamps and audit entries; defaults to the wall clock. */
@@ -93,6 +106,8 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   // version minter defaults to a UUID (opaque, non-enumerable — R16/N42).
   const imageStore = options.imageStore ?? new GcsImageStore(process.env.IMAGE_BUCKET);
   const mintVersion = options.mintVersion ?? (() => randomUUID());
+  // The Ghost lifecycle is a succeed-and-log stub until the Phase-5 write path (N41).
+  const ghostLifecycle = options.ghostLifecycle ?? new StubGhostLifecycle();
 
   registerAuthRoutes(app, {
     provider: options.identityProvider,
@@ -120,6 +135,24 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     audit,
     clock,
     mintVersion,
+  });
+  registerStatusRoutes(app, {
+    cache: options.profileCache,
+    gate,
+    store: options.profileStore,
+    audit,
+    clock,
+    ghostLifecycle,
+  });
+  registerAdminRoutes(app, {
+    cache: options.profileCache,
+    gate,
+    store: options.profileStore,
+    imageStore,
+    adminUsers: options.adminUsers,
+    ghostLifecycle,
+    audit,
+    clock,
   });
   registerStarsRoutes(app, {
     gate,

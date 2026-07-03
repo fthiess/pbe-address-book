@@ -7,6 +7,7 @@ import { SESSION_COOKIE } from "../identity/session-cookie.js";
 import type { IdentityProvider, Session } from "../identity/types.js";
 import { buildServer } from "../server.js";
 import {
+  InMemoryAdminUserStore,
   InMemoryImageStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
@@ -77,6 +78,7 @@ async function buildHeadshotServer() {
     identityProvider: stubProvider,
     profileCache: cache,
     profileStore: store,
+    adminUsers: new InMemoryAdminUserStore(),
     imageStore,
     mintVersion: () => `v${++counter}`,
     sessionStore,

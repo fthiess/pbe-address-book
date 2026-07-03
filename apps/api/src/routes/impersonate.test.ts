@@ -6,6 +6,7 @@ import { SESSION_COOKIE } from "../identity/session-cookie.js";
 import type { IdentityProvider, Session } from "../identity/types.js";
 import { buildServer } from "../server.js";
 import {
+  InMemoryAdminUserStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -57,6 +58,7 @@ async function buildImpersonateServer() {
     identityProvider: stubProvider,
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),
+    adminUsers: new InMemoryAdminUserStore(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],

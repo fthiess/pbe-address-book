@@ -78,6 +78,12 @@ export interface ProfileStore {
    * precondition.
    */
   updateUnconditional(id: number, write: UnconditionalWrite): Promise<string>;
+  /**
+   * Delete profile `id`'s document — the last, Book-side step of the admin delete
+   * (API-SPEC §4; DECISIONS N41). **Idempotent**: deleting an absent document is a
+   * no-op, not an error, so a re-run completes a partially-applied delete (D98).
+   */
+  delete(id: number): Promise<void>;
 }
 
 const COLLECTION = "profiles";
@@ -178,5 +184,11 @@ export class FirestoreProfileStore implements ProfileStore {
       }
       throw error;
     }
+  }
+
+  async delete(id: number): Promise<void> {
+    // Firestore `delete()` is idempotent — deleting an absent document resolves
+    // without error — which is exactly the re-runnable-delete semantics D98 wants.
+    await this.db.collection(COLLECTION).doc(String(id)).delete();
   }
 }

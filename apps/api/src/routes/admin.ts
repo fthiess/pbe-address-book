@@ -1,0 +1,196 @@
+import { type Profile, type Role, headshotObjectKey, thumbnailObjectKey } from "@pbe/shared";
+import type { FastifyInstance, preHandlerHookHandler } from "fastify";
+import type { AuditLog } from "../audit/audit-log.js";
+import type { ProfileCache } from "../data/cache.js";
+import type { ImageStore } from "../data/images.js";
+import type { ProfileStore } from "../data/profiles.js";
+import { type AdminUserStore, LastAdminError } from "../data/users.js";
+import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
+import { writeRateLimit } from "../security/rate-limit.js";
+import { authorizePrivileged, mergeProfile } from "./privileged-support.js";
+import type { Clock } from "./profiles.js";
+
+/**
+ * The **admin-only** privileged controls of 4c-2 (DECISIONS N39/N41/N44):
+ *
+ *  - `DELETE /api/profiles/{id}` — remove a brother across Ghost, GCS, and Book,
+ *    **Ghost-first** (D96/D98), scrubbing inbound references (`bigBrotherId`,
+ *    `users.stars`) first so no dangling pointer survives, then the idempotent
+ *    Book-side deletes (GCS objects → `users` doc → `profiles` doc). API-SPEC §4.
+ *  - `PUT /api/users/{id}/role` — the Change-role function with the server-enforced
+ *    last-admin invariant and create-if-absent for a never-signed-in brother
+ *    (N44). API-SPEC §5.
+ *
+ * Both authorize at the caller's **effective** admin role (a "View as manager/
+ * brother" admin cannot delete or change roles — N31), via the shared
+ * {@link authorizePrivileged} guard.
+ */
+export interface AdminRouteDeps {
+  cache: ProfileCache;
+  gate: preHandlerHookHandler;
+  store: ProfileStore;
+  imageStore: ImageStore;
+  /** The admin `users` operations: role change (with the invariant) + delete scrubs. */
+  adminUsers: AdminUserStore;
+  /** Ghost-first member lifecycle (N41); a succeed-and-log stub until Phase 5. */
+  ghostLifecycle: GhostLifecycle;
+  audit: AuditLog;
+  clock: Clock;
+}
+
+export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps): void {
+  registerDelete(app, deps);
+  registerRole(app, deps);
+}
+
+/**
+ * `DELETE /api/profiles/{id}` — the admin delete (API-SPEC §4; D96/D98). The fixed
+ * order leaves a benign state on any partial failure: **Ghost member first**
+ * (abort clean on failure — `502`, Book untouched); then the reference scrub and
+ * the idempotent Book-side deletes. Reference scrubbing (clearing `bigBrotherId ==
+ * id` and pulling `id` from every `users.stars`) runs before the record is
+ * removed, so the delete leaves no dangling pointer. The in-memory cache is
+ * updated last, in one atomic swap ({@link ProfileCache.applyDelete}).
+ */
+function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
+  const { cache, gate, store, imageStore, adminUsers, ghostLifecycle, audit, clock } = deps;
+  app.delete(
+    "/api/profiles/:id",
+    { preHandler: gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const ctx = authorizePrivileged(
+        request,
+        reply,
+        cache,
+        audit,
+        clock,
+        "profile.delete",
+        "admin",
+      );
+      if (ctx === null) {
+        return reply;
+      }
+      const { actorId, id, stored, trace } = ctx;
+      const now = clock();
+
+      // Ghost-first (D96/D98): if the Ghost member delete fails, abort clean — no
+      // Book state has been touched, and the admin retries.
+      try {
+        await ghostLifecycle.deleteMember(stored);
+      } catch {
+        return reply.code(502).send({ error: "ghost_delete_failed" });
+      }
+
+      // Scrub inbound Big-Brother references first (D98): clear `bigBrotherId` on
+      // every record that named this brother, capturing each write's fresh token so
+      // the cache stays consistent (no spurious future 412 on a scrubbed referrer).
+      const scrubbed: { profile: Profile; token: string }[] = [];
+      for (const referrer of cache.referrersOf(id)) {
+        const token = await store.updateUnconditional(referrer.id, {
+          set: {},
+          remove: ["bigBrotherId"],
+        });
+        scrubbed.push({ profile: mergeProfile(referrer, {}, ["bigBrotherId"]), token });
+      }
+
+      // Scrub star references (private `users.stars`, outside the profile cache).
+      await adminUsers.removeStarFromAll(id);
+
+      // Purge the current-version image objects (best-effort; older versions and any
+      // straggler are covered by the D94 bucket lifecycle). Never fail the delete.
+      if (stored.hasHeadshot && stored.headshotVersion) {
+        await purge(imageStore, [
+          headshotObjectKey(id, stored.headshotVersion),
+          thumbnailObjectKey(id, stored.headshotVersion),
+        ]);
+      }
+
+      // The idempotent Book-side deletes: users doc, then the profile doc.
+      await adminUsers.deleteUser(id);
+      await store.delete(id);
+
+      // Cache last: remove the record and fold in the scrubbed referrers + tokens.
+      await cache.applyDelete(id, scrubbed);
+
+      audit.record(
+        { action: "profile.delete", actorId, targetId: id, outcome: "ok", trace },
+        now.toISOString(),
+      );
+      return reply.code(204).send();
+    },
+  );
+}
+
+/** The three assignable roles (API-SPEC §5). */
+const ROLES: ReadonlySet<string> = new Set<Role>(["brother", "manager", "admin"]);
+
+/**
+ * `PUT /api/users/{id}/role` — the admin Change-role function (API-SPEC §5; D51/
+ * N44). The target must be an existing **profile** (404 otherwise); a missing
+ * `users` doc is created with the given role (N44), so a never-signed-in brother
+ * is promotable. The last-admin invariant is enforced server-side inside the
+ * store's transaction (`409 last_admin`). Audited with the before/after role
+ * (D106).
+ */
+function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
+  const { cache, gate, adminUsers, audit, clock } = deps;
+  app.put(
+    "/api/users/:id/role",
+    { preHandler: gate, config: writeRateLimit() },
+    async (request, reply) => {
+      // The `:id` addresses a brother; existence is checked against `profiles`
+      // (N44), which is exactly what `authorizePrivileged` verifies against the cache.
+      const ctx = authorizePrivileged(request, reply, cache, audit, clock, "role.change", "admin");
+      if (ctx === null) {
+        return reply;
+      }
+      const { actorId, id, trace } = ctx;
+
+      const role = (request.body as { role?: unknown } | null)?.role;
+      if (typeof role !== "string" || !ROLES.has(role)) {
+        return reply.code(422).send({
+          error: "validation_failed",
+          message: "Role must be brother, manager, or admin.",
+        });
+      }
+
+      const now = clock();
+      let before: Role;
+      try {
+        ({ before } = await adminUsers.setRole(id, role as Role));
+      } catch (error) {
+        if (error instanceof LastAdminError) {
+          return reply.code(409).send({ error: "last_admin" });
+        }
+        throw error;
+      }
+
+      audit.record(
+        {
+          action: "role.change",
+          actorId,
+          targetId: id,
+          outcome: "ok",
+          fromRole: before,
+          toRole: role,
+          trace,
+        },
+        now.toISOString(),
+      );
+      return reply.header("Cache-Control", "no-store").send({ id, role });
+    },
+  );
+}
+
+/** Best-effort delete of object keys — swallows failures (D94 recovery covers them). */
+async function purge(imageStore: ImageStore, keys: string[]): Promise<void> {
+  await Promise.all(
+    keys.map(async (key) => {
+      try {
+        await imageStore.delete(key);
+      } catch {
+        // A failed purge leaves a recoverable orphan (versioning + lifecycle, D94).
+      }
+    }),
+  );
+}

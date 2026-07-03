@@ -33,12 +33,17 @@ export type ProjectedProfile = Partial<Profile> & Pick<Profile, "id">;
  * The caller's own record in full, the out-of-band half of the split read (D82,
  * `GET /api/me`). The owner sees their **entire** record — including their own
  * off-toggle contact values and their own restricted settings — **except**
- * `adminNote` (the staff-internal note the brother must not see, §9) and
- * `ghostMemberId` (system-internal, never sent to any client). The whole-record
- * hide never applies to one's own record: unlisting/de-brothering hides you from
- * *others*, not from yourself.
+ * `adminNote` (the staff-internal note the brother must not see, §9) and the
+ * `system-internal` fields (`ghostMemberId` and the two D80 consent snapshots),
+ * which are never sent to any client. The whole-record hide never applies to
+ * one's own record: unlisting/de-brothering hides you from *others*, not from
+ * yourself. The omit list mirrors `projectSelf`'s runtime strip (both driven by
+ * the exhaustive visibility table) so the type matches what actually ships.
  */
-export type SelfProfile = Omit<Profile, "adminNote" | "ghostMemberId">;
+export type SelfProfile = Omit<
+  Profile,
+  "adminNote" | "ghostMemberId" | "deceasedConsentSnapshot" | "debrotherConsentSnapshot"
+>;
 
 /** The `keyof Profile` list, derived once from the exhaustive visibility table. */
 const PROFILE_FIELDS = Object.keys(FIELD_VISIBILITY) as (keyof Profile)[];

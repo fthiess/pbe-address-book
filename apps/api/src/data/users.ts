@@ -111,3 +111,95 @@ async function mutateStars(
   const snapshot = await ref.get();
   return (snapshot.data() as UserRecord | undefined)?.stars ?? [];
 }
+
+/**
+ * Raised when a role change would demote the **only remaining admin** — the
+ * server-enforced last-admin invariant (API-SPEC §5; D51). Mapped to `409
+ * last_admin` by the role route.
+ */
+export class LastAdminError extends Error {
+  constructor() {
+    super("The only remaining admin cannot be demoted.");
+    this.name = "LastAdminError";
+  }
+}
+
+/** The result of a role change: the role the target held **before** it (for audit, D106). */
+export interface RoleChangeResult {
+  /** `brother` for a created-if-absent doc — the role a first sign-in would have given (N44). */
+  before: Role;
+}
+
+/**
+ * The admin-only `users`-collection operations behind 4c-2's privileged actions:
+ * the **Change role** function (`PUT /api/users/{id}/role`, with the last-admin
+ * invariant and create-if-absent, N44) and the two reference cleanups the admin
+ * **delete** needs (`DELETE /api/profiles/{id}`, D98). Grouped as one injected
+ * seam so tests drive them against an in-memory double, mirroring `ProfileStore`.
+ * The star toggle and first-sign-in create paths stay as the loose functions
+ * above — this seam is only the privileged surface.
+ */
+export interface AdminUserStore {
+  /**
+   * Set the target's role, enforcing the last-admin invariant **atomically** and
+   * creating the `users` doc if absent (N44). Returns the prior role (`brother`
+   * for a created doc). Throws {@link LastAdminError} if the change would demote
+   * the only admin.
+   */
+  setRole(id: number, role: Role): Promise<RoleChangeResult>;
+  /** Delete the target's `users` doc — idempotent, the Book-side delete step (D98). */
+  deleteUser(id: number): Promise<void>;
+  /** Remove `id` from every user's `stars` list — the delete's inbound-reference scrub (D98). */
+  removeStarFromAll(id: number): Promise<void>;
+}
+
+/** The real {@link AdminUserStore}: transactional role changes + reference scrubs over Firestore. */
+export class FirestoreAdminUserStore implements AdminUserStore {
+  constructor(private readonly db: Firestore) {}
+
+  async setRole(id: number, role: Role): Promise<RoleChangeResult> {
+    const ref = this.db.collection(COLLECTION).doc(String(id));
+    // One transaction so the admin-count read and the write are atomic: two
+    // concurrent demotions of the last two admins can't both observe count == 2
+    // and each proceed, leaving zero admins (the invariant D51 exists to hold).
+    return this.db.runTransaction(async (tx) => {
+      const snapshot = await tx.get(ref);
+      const before: Role = snapshot.exists ? (snapshot.data() as UserRecord).role : "brother";
+      // Demoting an admin: reject if this is the last admin. The count query runs
+      // inside the transaction so it's consistent with the write below.
+      if (before === "admin" && role !== "admin") {
+        const admins = await tx.get(this.db.collection(COLLECTION).where("role", "==", "admin"));
+        if (admins.size <= 1) {
+          throw new LastAdminError();
+        }
+      }
+      if (snapshot.exists) {
+        // Scope the write to `role` only — never touch the caller's stars/id (D106).
+        tx.update(ref, { role });
+      } else {
+        // Create-if-absent (N44): the never-signed-in brother is promotable.
+        tx.set(ref, { id, role, stars: [] } satisfies UserRecord);
+      }
+      return { before };
+    });
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    // Idempotent, like the profile delete — a re-run completes a partial delete (D98).
+    await this.db.collection(COLLECTION).doc(String(id)).delete();
+  }
+
+  async removeStarFromAll(id: number): Promise<void> {
+    // Only the users who actually starred `id` need touching; arrayRemove is a
+    // no-op on the rest, and a repeat run is idempotent (R17/D98).
+    const holders = await this.db.collection(COLLECTION).where("stars", "array-contains", id).get();
+    if (holders.empty) {
+      return;
+    }
+    const batch = this.db.batch();
+    for (const doc of holders.docs) {
+      batch.update(doc.ref, { stars: FieldValue.arrayRemove(id) });
+    }
+    await batch.commit();
+  }
+}

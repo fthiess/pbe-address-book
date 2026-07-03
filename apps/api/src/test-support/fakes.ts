@@ -1,4 +1,4 @@
-import type { Role } from "@pbe/shared";
+import type { Profile, Role } from "@pbe/shared";
 import type { ImageStore, StoredImage } from "../data/images.js";
 import {
   INITIAL_CONCURRENCY_TOKEN,
@@ -7,6 +7,8 @@ import {
   type ProfileWrite,
   StaleWriteError,
 } from "../data/profiles.js";
+import { type AdminUserStore, LastAdminError, type RoleChangeResult } from "../data/users.js";
+import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { NonceService } from "../identity/nonce-store.js";
 import type { SessionService } from "../identity/session-store.js";
 import type { Session } from "../identity/types.js";
@@ -129,6 +131,98 @@ export class InMemoryProfileStore implements ProfileStore {
     const next = `token-${++this.counter}`;
     this.tokens.set(id, next);
     return next;
+  }
+
+  async delete(id: number): Promise<void> {
+    // Idempotent, like Firestore's delete(): drop the token and mark the id gone so
+    // a subsequent write to it throws MissingProfileError, mirroring NOT_FOUND.
+    this.tokens.delete(id);
+    this.missing.add(id);
+  }
+}
+
+/**
+ * In-memory {@link AdminUserStore} double: models the `users` collection's roles
+ * and stars enough to drive the Change-role invariant and the delete's reference
+ * scrubs (N44/D98) without the emulator. Seed roles/stars, then assert against the
+ * exposed maps. The real transactional store is proven in the emulator suite.
+ */
+export class InMemoryAdminUserStore implements AdminUserStore {
+  readonly roles = new Map<number, Role>();
+  readonly stars = new Map<number, Set<number>>();
+  readonly deleted = new Set<number>();
+
+  /** Seed an existing `users` doc's role (absent → treated as `brother`, N44). */
+  seedRole(id: number, role: Role): void {
+    this.roles.set(id, role);
+  }
+
+  /** Seed a user's star list so a delete's `removeStarFromAll` scrub can be asserted. */
+  seedStars(id: number, ids: number[]): void {
+    this.stars.set(id, new Set(ids));
+  }
+
+  async setRole(id: number, role: Role): Promise<RoleChangeResult> {
+    const before: Role = this.roles.get(id) ?? "brother";
+    if (before === "admin" && role !== "admin") {
+      const admins = [...this.roles.values()].filter((r) => r === "admin").length;
+      if (admins <= 1) {
+        throw new LastAdminError();
+      }
+    }
+    this.roles.set(id, role);
+    return { before };
+  }
+
+  async deleteUser(id: number): Promise<void> {
+    this.roles.delete(id);
+    this.stars.delete(id);
+    this.deleted.add(id);
+  }
+
+  async removeStarFromAll(id: number): Promise<void> {
+    for (const set of this.stars.values()) {
+      set.delete(id);
+    }
+  }
+}
+
+/**
+ * A recording {@link GhostLifecycle} double: succeeds and remembers which profile
+ * ids it was asked to delete/create, so a test can assert the Ghost-first step
+ * ran (and ran before Book mutated its state).
+ */
+export class RecordingGhostLifecycle implements GhostLifecycle {
+  readonly deleted: number[] = [];
+  readonly created: number[] = [];
+
+  async deleteMember(profile: Profile): Promise<void> {
+    this.deleted.push(profile.id);
+  }
+
+  async createMember(profile: Profile): Promise<void> {
+    this.created.push(profile.id);
+  }
+}
+
+/**
+ * A failing {@link GhostLifecycle} double: throws on the selected operation(s) to
+ * prove the abort-clean contract (N41) — the endpoint must return `502` with
+ * Firestore, GCS, and the cache untouched.
+ */
+export class FailingGhostLifecycle implements GhostLifecycle {
+  constructor(private readonly mode: "delete" | "create" | "both" = "both") {}
+
+  async deleteMember(): Promise<void> {
+    if (this.mode !== "create") {
+      throw new Error("ghost delete failed");
+    }
+  }
+
+  async createMember(): Promise<void> {
+    if (this.mode !== "delete") {
+      throw new Error("ghost create failed");
+    }
   }
 }
 
