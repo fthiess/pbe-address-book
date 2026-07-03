@@ -2,7 +2,12 @@ import { getApps, initializeApp } from "firebase-admin/app";
 import { type Firestore, getFirestore } from "firebase-admin/firestore";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { makeProfile } from "../test-support/make-profile.js";
-import { FirestoreProfileStore, StaleWriteError, encodeToken } from "./profiles.js";
+import {
+  FirestoreProfileStore,
+  MissingProfileError,
+  StaleWriteError,
+  encodeToken,
+} from "./profiles.js";
 
 // This suite only runs under the Firestore emulator (set by emulators:exec). The
 // `412` precondition is the one thing a fake store cannot honestly prove — it is
@@ -92,6 +97,43 @@ describe.skipIf(!hasEmulator)("FirestoreProfileStore (emulator) — optimistic c
     await expect(
       store.update(5247, { set: { phone: "555" }, remove: [], precondition: "not-a-token" }),
     ).rejects.toBeInstanceOf(StaleWriteError);
+  });
+
+  it("applies an unconditional write (the headshot pointer, N42) and returns a fresh token", async () => {
+    const before = await currentToken();
+    const token = await store.updateUnconditional(5247, {
+      set: { hasHeadshot: true, headshotVersion: "abc123" },
+      remove: [],
+    });
+
+    expect(token).not.toBe(before);
+    const snap = await db.collection("profiles").doc("5247").get();
+    expect(snap.data()?.hasHeadshot).toBe(true);
+    expect(snap.data()?.headshotVersion).toBe("abc123");
+    expect(token).toBe(encodeToken(snap.updateTime as FirebaseFirestore.Timestamp));
+  });
+
+  it("removes a field on an unconditional write (the headshot DELETE pointer)", async () => {
+    await db
+      .collection("profiles")
+      .doc("5247")
+      .set(makeProfile({ id: 5247, hasHeadshot: true, headshotVersion: "abc123" }));
+
+    await store.updateUnconditional(5247, {
+      set: { hasHeadshot: false },
+      remove: ["headshotVersion"],
+    });
+
+    const snap = await db.collection("profiles").doc("5247").get();
+    expect(snap.data()?.hasHeadshot).toBe(false);
+    expect(snap.data()?.headshotVersion).toBeUndefined();
+  });
+
+  it("throws MissingProfileError on an unconditional write to a deleted document", async () => {
+    await db.collection("profiles").doc("5247").delete();
+    await expect(
+      store.updateUnconditional(5247, { set: { hasHeadshot: true }, remove: [] }),
+    ).rejects.toBeInstanceOf(MissingProfileError);
   });
 
   it("fails the precondition (StaleWriteError) when the document has been deleted", async () => {

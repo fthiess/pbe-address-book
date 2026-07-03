@@ -25,6 +25,10 @@
 /** The audited actions (ENGINEERING-DESIGN §6.1). Grown by later phases. */
 export type AuditAction =
   | "profile.update"
+  // Headshot sub-resource writes (4c-1; API-SPEC §6). Audited names-not-values as
+  // the field name `headshot`; no verification coupling (DECISIONS N42).
+  | "headshot.update"
+  | "headshot.remove"
   // "View as" impersonation start/stop — security-relevant because the actor's
   // effective powers change (DECISIONS N31).
   | "impersonate.start"

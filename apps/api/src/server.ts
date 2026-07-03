@@ -1,7 +1,9 @@
+import { randomUUID } from "node:crypto";
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyInstance } from "fastify";
 import { AuditLog } from "./audit/audit-log.js";
 import type { ProfileCache } from "./data/cache.js";
+import { GcsImageStore, type ImageStore } from "./data/images.js";
 import type { ProfileStore } from "./data/profiles.js";
 import type { NonceService } from "./identity/nonce-store.js";
 import { type SessionCookieConfig, requireSession } from "./identity/session-cookie.js";
@@ -9,6 +11,7 @@ import type { SessionService } from "./identity/session-store.js";
 import type { IdentityProvider } from "./identity/types.js";
 import { type GhostBridgeConfig, registerAuthRoutes } from "./routes/auth.js";
 import { registerExportRoutes } from "./routes/exports.js";
+import { registerHeadshotRoutes } from "./routes/headshot.js";
 import { registerImageRoutes } from "./routes/images.js";
 import { type Clock, registerProfileRoutes } from "./routes/profiles.js";
 import { registerStarsRoutes } from "./routes/stars.js";
@@ -20,6 +23,17 @@ export interface BuildServerOptions {
   profileCache: ProfileCache;
   /** The conditional Firestore write path for profile edits (D25). */
   profileStore: ProfileStore;
+  /**
+   * The private-bucket image store (D126) the `/img/*` read and the headshot
+   * pipeline go through. Defaults to a {@link GcsImageStore} over `IMAGE_BUCKET`;
+   * tests inject an in-memory double.
+   */
+  imageStore?: ImageStore;
+  /**
+   * Mints the opaque `headshotVersion` token (N42/R16). Defaults to
+   * `crypto.randomUUID`; tests inject a deterministic generator.
+   */
+  mintVersion?: () => string;
   /** The audit stream sink (D61); defaults to structured JSON on stdout. */
   auditLog?: AuditLog;
   /** "Now" for write timestamps and audit entries; defaults to the wall clock. */
@@ -75,6 +89,10 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   // entries interleave on one timeline and stay deterministic under test.
   const audit = options.auditLog ?? new AuditLog();
   const clock = options.clock ?? (() => new Date());
+  // One image store shared by the `/img/*` read and the headshot write path; the
+  // version minter defaults to a UUID (opaque, non-enumerable — R16/N42).
+  const imageStore = options.imageStore ?? new GcsImageStore(process.env.IMAGE_BUCKET);
+  const mintVersion = options.mintVersion ?? (() => randomUUID());
 
   registerAuthRoutes(app, {
     provider: options.identityProvider,
@@ -94,13 +112,22 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     audit,
     clock,
   });
+  registerHeadshotRoutes(app, {
+    cache: options.profileCache,
+    gate,
+    store: options.profileStore,
+    imageStore,
+    audit,
+    clock,
+    mintVersion,
+  });
   registerStarsRoutes(app, {
     gate,
     addStar: options.addStar,
     removeStar: options.removeStar,
   });
   registerExportRoutes(app, { gate, audit, clock, cache: options.profileCache });
-  registerImageRoutes(app, gate);
+  registerImageRoutes(app, { cache: options.profileCache, gate, imageStore });
 
   return app;
 }

@@ -130,6 +130,55 @@ export async function patchProfile(
   throw await asError(response);
 }
 
+/**
+ * The result of a headshot write (`PUT`/`DELETE …/headshot`, API-SPEC §6). The
+ * write advances the profile document, so it returns a **fresh `ETag`** the
+ * container must apply in place of its held token — otherwise the *next* text edit
+ * would echo a stale `If-Match` and spuriously `412` (N42).
+ */
+export interface HeadshotWriteResult {
+  hasHeadshot: boolean;
+  headshotVersion?: string;
+  etag: string;
+}
+
+async function headshotResult(response: Response): Promise<HeadshotWriteResult> {
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  const body = await response.json();
+  return {
+    hasHeadshot: body.hasHeadshot === true,
+    headshotVersion: body.headshotVersion,
+    etag: response.headers.get("ETag") ?? "",
+  };
+}
+
+/**
+ * Upload (create-or-replace) a brother's headshot (`PUT /api/profiles/:id/headshot`).
+ * The `blob` is the client-cropped, ≤1024² JPEG (EXIF stripped by the canvas
+ * re-encode — N42); the server re-encodes to the stored 512²/96² WEBP. The body
+ * is the raw image bytes, not multipart.
+ */
+export async function putHeadshot(id: number, blob: Blob): Promise<HeadshotWriteResult> {
+  const response = await fetch(`/api/profiles/${id}/headshot`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": blob.type || "image/jpeg" },
+    body: blob,
+  });
+  return headshotResult(response);
+}
+
+/** Remove a brother's headshot (`DELETE /api/profiles/:id/headshot`). */
+export async function deleteHeadshot(id: number): Promise<HeadshotWriteResult> {
+  const response = await fetch(`/api/profiles/${id}/headshot`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  return headshotResult(response);
+}
+
 /** Begin the Ghost handshake: mint a nonce and get the relay URL to redirect to. */
 export async function startSignIn(): Promise<SignInStart> {
   const response = await fetch("/api/auth/start", {

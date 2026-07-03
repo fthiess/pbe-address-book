@@ -12,7 +12,15 @@ export type {
 } from "./types.js";
 export { formatConstitutionId, formatClassYear } from "./format.js";
 export { FAKE_ID_FLOOR, DEV_PROFILE_IDS } from "./fake-ids.js";
-export { thumbnailObjectKey, headshotObjectKey, imageUrl, isImageObjectKey } from "./images.js";
+export {
+  thumbnailObjectKey,
+  headshotObjectKey,
+  imageUrl,
+  isImageObjectKey,
+  parseImageObjectKey,
+  type ImageKind,
+  type ParsedImageKey,
+} from "./images.js";
 export { normalizeEmail } from "./email.js";
 export {
   type CanonicalNameInput,

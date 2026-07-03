@@ -11,10 +11,11 @@ import {
 } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
-import { ApiError, fetchProfile, patchProfile } from "../lib/api.js";
+import { ApiError, deleteHeadshot, fetchProfile, patchProfile, putHeadshot } from "../lib/api.js";
 import type { DirectoryProfile, ProfileRecord } from "../lib/types.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
 import { applyProfileToRoster, useRoster } from "../lib/useRoster.js";
+import type { HeadshotChange } from "./profile/HeadshotEditor.js";
 import type { SubmitResult } from "./profile/ProfileEdit.js";
 import { ProfileEdit } from "./profile/ProfileEdit.js";
 import { ProfileView } from "./profile/ProfileView.js";
@@ -44,6 +45,11 @@ export interface ProfileOutletContext {
   rosterError: boolean;
   /** The PATCH-first save with the 412 reconcile (§5.7.9). */
   submit: (patch: Partial<ProfileType>) => Promise<SubmitResult>;
+  /**
+   * Apply a staged headshot change (`PUT`/`DELETE …/headshot`, N42) — run *after*
+   * the text PATCH (D50). Merges the fresh `hasHeadshot`/`headshotVersion`/`ETag`
+   * into the held record; returns whether it succeeded. */
+  saveHeadshot: (change: HeadshotChange) => Promise<boolean>;
   /** Show a transient confirmation toast (the non-URL channel, N33). */
   showToast: (message: string) => void;
   /** Leave edit mode back to the view: pop the edit entry, or replace it on a cold deep-link. */
@@ -154,6 +160,39 @@ export function ProfileContainer() {
     [id, etag, record],
   );
 
+  // Apply a staged headshot change to the record (§5.7; N42). The image write
+  // returns fresh `hasHeadshot`/`headshotVersion` and a new `ETag`; both are
+  // applied in place so the container stays warm (no refetch, N33). The record is
+  // updated **functionally** so a photo write that runs right after a text PATCH in
+  // one Save merges onto the PATCH's result rather than clobbering it with a stale
+  // snapshot. (The typeahead roster is not touched — it shows names, not photos,
+  // and the Directory re-fetches its own thumbnails.)
+  const saveHeadshot = useCallback(
+    async (change: HeadshotChange): Promise<boolean> => {
+      try {
+        const result =
+          change.kind === "remove" ? await deleteHeadshot(id) : await putHeadshot(id, change.blob);
+        setEtag(result.etag);
+        setRecord((prev) => {
+          if (!prev) {
+            return prev;
+          }
+          // Drop `headshotVersion` on a removal (destructure-omit, not `delete`) and
+          // set it on an upload — merged onto the latest `prev` so a photo write
+          // after a text PATCH keeps the PATCH's fields.
+          const { headshotVersion: _dropped, ...rest } = prev;
+          return result.headshotVersion === undefined
+            ? { ...rest, hasHeadshot: result.hasHeadshot }
+            : { ...rest, hasHeadshot: result.hasHeadshot, headshotVersion: result.headshotVersion };
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [id],
+  );
+
   const showToast = useCallback((message: string) => setToast(message), []);
   // Stable identity (a bare `() => setToast(null)` inline prop is recreated every
   // render): the toast's auto-dismiss effect depends on it, so an unstable `onDone`
@@ -204,6 +243,7 @@ export function ProfileContainer() {
     roster,
     rosterError,
     submit,
+    saveHeadshot,
     showToast,
     exitEdit,
     backToDirectory,
@@ -234,7 +274,7 @@ export function ProfileViewRoute() {
  * the view (replace, so Back still reaches the Directory).
  */
 export function ProfileEditRoute() {
-  const { record, viewer, roster, rosterError, submit, showToast, exitEdit } =
+  const { record, viewer, roster, rosterError, submit, saveHeadshot, showToast, exitEdit } =
     useOutletContext<ProfileOutletContext>();
   if (!canEdit(viewer)) {
     return <Navigate to={`/brother/${record.id}`} replace />;
@@ -246,6 +286,7 @@ export function ProfileEditRoute() {
       roster={roster}
       rosterError={rosterError}
       submit={submit}
+      saveHeadshot={saveHeadshot}
       showToast={showToast}
       exitEdit={exitEdit}
     />

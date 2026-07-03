@@ -98,6 +98,18 @@ reusing the Compute Engine default.
   instance, scale-to-zero cost floor (D83).
 - **No Cloud CDN and no external load balancer** — member images are app-served
   from the private bucket (D126).
+- Cloud Run: `--memory 1Gi` — the headshot pipeline decodes uploaded images with
+  sharp in-process (4c-1), and the single instance also holds the whole profile
+  cache, so a decode spike is a whole-app OOM risk at the default 512 MiB; the
+  upload route also serializes decodes through an in-process concurrency-1
+  semaphore (N42). **This applies to prod too.**
+- The private image bucket has **object versioning** on and a **90-day
+  noncurrent-age Delete lifecycle rule** (D94/N42): the headshot pipeline deletes
+  each superseded object on replace/remove, which — with versioning — only
+  archives it, so a mistake is recoverable for 90 days before the rule purges it.
+- The **runtime** service account (`book-api@…`) holds `storage.objectAdmin` on
+  the image bucket (not just `objectViewer`): the 4c-1 pipeline creates and deletes
+  headshot/thumbnail objects, not only reads them.
 - `--allow-unauthenticated` is intentional: the endpoint is reachable, but
   authentication is enforced by the app's session layer (D126); staging is fake
   data only (D72).

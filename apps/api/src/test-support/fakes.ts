@@ -1,4 +1,5 @@
 import type { Role } from "@pbe/shared";
+import type { ImageStore, StoredImage } from "../data/images.js";
 import {
   INITIAL_CONCURRENCY_TOKEN,
   type ProfileStore,
@@ -101,5 +102,53 @@ export class InMemoryProfileStore implements ProfileStore {
     const next = `token-${++this.counter}`;
     this.tokens.set(id, next);
     return next;
+  }
+
+  async updateUnconditional(id: number): Promise<string> {
+    // No precondition (the headshot pointer, N42): just advance and return the
+    // new token, so the route's `cache.applyUpdate` gets a fresh ETag exactly as
+    // it would from Firestore.
+    const next = `token-${++this.counter}`;
+    this.tokens.set(id, next);
+    return next;
+  }
+}
+
+/**
+ * In-memory {@link ImageStore} double: a `Map` of object key → bytes+contentType.
+ * Lets the headshot route and the `/img/*` route be driven end-to-end without a
+ * GCS emulator (there is no local GCS in the test rig). Exposes `has`/`keys` so a
+ * test can assert the D94 purge deleted the superseded objects and the D98
+ * objects-first ordering wrote the new ones.
+ */
+export class InMemoryImageStore implements ImageStore {
+  private readonly objects = new Map<string, { body: Buffer; contentType: string }>();
+
+  async put(key: string, body: Buffer, contentType: string): Promise<void> {
+    this.objects.set(key, { body, contentType });
+  }
+
+  async delete(key: string): Promise<void> {
+    this.objects.delete(key);
+  }
+
+  async read(key: string): Promise<StoredImage | null> {
+    const object = this.objects.get(key);
+    return object ? { contentType: object.contentType, body: object.body } : null;
+  }
+
+  /** Test helper: whether an object key currently exists in the store. */
+  has(key: string): boolean {
+    return this.objects.has(key);
+  }
+
+  /** Test helper: all currently-stored object keys. */
+  keys(): string[] {
+    return [...this.objects.keys()];
+  }
+
+  /** Test helper: seed an object directly (e.g. to stand in for a prior version). */
+  seed(key: string, body: Buffer, contentType = "image/webp"): void {
+    this.objects.set(key, { body, contentType });
   }
 }

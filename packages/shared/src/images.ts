@@ -46,6 +46,42 @@ export function isImageObjectKey(objectKey: string): boolean {
   return IMAGE_OBJECT_KEY.test(objectKey);
 }
 
+/** The kind of image an object key addresses. */
+export type ImageKind = "headshots" | "thumbnails";
+
+/** A parsed image object key: which image, whose, and which version. */
+export interface ParsedImageKey {
+  readonly kind: ImageKind;
+  /** The brother's Constitution id the object belongs to. */
+  readonly id: number;
+  /** The opaque version token. */
+  readonly version: string;
+}
+
+/** The same anchored shape as {@link IMAGE_OBJECT_KEY}, with capture groups. */
+const IMAGE_OBJECT_KEY_PARTS = /^(thumbnails|headshots)\/(\d+)\/([A-Za-z0-9._-]+)\.webp$/u;
+
+/**
+ * Parse a member image object key into its parts, or `null` if it is not a
+ * well-formed key. The `/img/*` route uses this to recover the `{id}` so it can
+ * enforce **per-record visibility** (an unlisted/de-brothered brother's image is
+ * withheld from a peer — DECISIONS N43), in the same single place the key shape is
+ * defined. A parse success implies {@link isImageObjectKey} would return `true`.
+ */
+export function parseImageObjectKey(objectKey: string): ParsedImageKey | null {
+  const match = IMAGE_OBJECT_KEY_PARTS.exec(objectKey);
+  if (match === null) {
+    return null;
+  }
+  const [, kind, id, version] = match;
+  // The regex matched, so all three groups are present; the guard also satisfies
+  // `noUncheckedIndexedAccess` without a non-null assertion.
+  if (kind === undefined || id === undefined || version === undefined) {
+    return null;
+  }
+  return { kind: kind as ImageKind, id: Number(id), version };
+}
+
 /** The app-relative URL the `/img/*` route serves an object key from (D126). */
 export function imageUrl(objectKey: string): string {
   return `/img/${objectKey}`;
