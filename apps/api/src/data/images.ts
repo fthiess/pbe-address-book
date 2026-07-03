@@ -10,8 +10,8 @@ import { getStorage } from "firebase-admin/storage";
  * double while a real `GcsImageStore` talks to the bucket in every deployed
  * environment.
  *
- * The object-key shape is owned by `@pbe/shared` (`isImageObjectKey`); this store
- * deals only in already-validated keys.
+ * The object-key shape is owned by `@pbe/shared` (`parseImageObjectKey`); this
+ * store deals only in already-validated keys.
  */
 
 /** An object read back from the store: its content type and a streamable body. */

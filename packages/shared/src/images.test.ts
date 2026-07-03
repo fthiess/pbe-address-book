@@ -1,11 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  headshotObjectKey,
-  imageUrl,
-  isImageObjectKey,
-  parseImageObjectKey,
-  thumbnailObjectKey,
-} from "./images.js";
+import { headshotObjectKey, imageUrl, parseImageObjectKey, thumbnailObjectKey } from "./images.js";
 
 describe("image object keys", () => {
   it("builds versioned thumbnail and headshot keys", () => {
@@ -26,7 +20,6 @@ describe("image object keys", () => {
 
   it("accepts only the two literal shapes and rejects everything else", () => {
     for (const good of ["headshots/1/v.webp", "thumbnails/9999/AbC-1._2.webp"]) {
-      expect(isImageObjectKey(good)).toBe(true);
       expect(parseImageObjectKey(good)).not.toBeNull();
     }
     for (const bad of [
@@ -39,7 +32,6 @@ describe("image object keys", () => {
       "headshots/5001/v/w.webp", // slash inside version
       "", // empty
     ]) {
-      expect(isImageObjectKey(bad)).toBe(false);
       expect(parseImageObjectKey(bad)).toBeNull();
     }
   });

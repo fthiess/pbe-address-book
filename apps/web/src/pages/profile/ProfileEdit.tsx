@@ -160,8 +160,11 @@ export function ProfileEdit({
       if (stagedHeadshot) {
         const ok = await saveHeadshot(stagedHeadshot);
         if (!ok) {
+          // KEEP the staged crop (OFC-124): pressing Save again must actually retry
+          // the upload. Clearing it here would discard the photo and disarm the
+          // unsaved guard, making "please try again" a lie (the next Save would be a
+          // no-op). It clears only on success or an explicit Undo.
           setBanner("We saved your details, but couldn't update your photo. Please try again.");
-          setStagedHeadshot(null);
           return;
         }
         setStagedHeadshot(null);

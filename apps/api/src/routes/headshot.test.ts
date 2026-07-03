@@ -70,12 +70,13 @@ async function buildHeadshotServer() {
   imageStore.seed(headshotObjectKey(5003, "old"), Buffer.from("old-h"));
   imageStore.seed(thumbnailObjectKey(5003, "old"), Buffer.from("old-t"));
 
+  const store = new InMemoryProfileStore();
   const audited: Record<string, unknown>[] = [];
   let counter = 0;
   const app = await buildServer({
     identityProvider: stubProvider,
     profileCache: cache,
-    profileStore: new InMemoryProfileStore(),
+    profileStore: store,
     imageStore,
     mintVersion: () => `v${++counter}`,
     sessionStore,
@@ -89,7 +90,7 @@ async function buildHeadshotServer() {
   });
   const cookieFor = async (profileId: number, role: Role) =>
     `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(profileId, role))}`;
-  return { app, cache, imageStore, audited, cookieFor };
+  return { app, cache, store, imageStore, audited, cookieFor };
 }
 
 type Ctx = Awaited<ReturnType<typeof buildHeadshotServer>>;
@@ -123,6 +124,13 @@ describe("PUT /api/profiles/:id/headshot", () => {
     expect(response.statusCode).toBe(403);
     // No object was written on the denied path.
     expect(ctx.imageStore.keys().some((k) => k.includes("/5003/v"))).toBe(false);
+    // The IDOR denial is audited (OFC-126), mirroring the PATCH route.
+    expect(ctx.audited.at(-1)).toMatchObject({
+      action: "headshot.update",
+      actorId: 5001,
+      targetId: 5003,
+      outcome: "denied",
+    });
   });
 
   it("rejects an unsupported declared content-type with 415 before reading the body", async () => {
@@ -219,6 +227,22 @@ describe("PUT /api/profiles/:id/headshot", () => {
     // …and the old version's objects deleted.
     expect(ctx.imageStore.has(headshotObjectKey(5003, "old"))).toBe(false);
     expect(ctx.imageStore.has(thumbnailObjectKey(5003, "old"))).toBe(false);
+  });
+
+  it("undoes the just-written objects and 404s when the record vanished mid-write (OFC-129)", async () => {
+    // The record exists in the cache (passes the authorize existence check) but is
+    // gone in the store, so the pointer write throws MissingProfileError after the
+    // objects were written — the route must purge them and 404, leaving no orphan.
+    ctx.store.markMissing(5001);
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5001/headshot",
+      headers: { "content-type": "image/png", cookie: await ctx.cookieFor(5001, "brother") },
+      payload: await png(),
+    });
+    expect(response.statusCode).toBe(404);
+    expect(ctx.imageStore.has(headshotObjectKey(5001, "v1"))).toBe(false);
+    expect(ctx.imageStore.has(thumbnailObjectKey(5001, "v1"))).toBe(false);
   });
 });
 

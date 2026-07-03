@@ -1,5 +1,5 @@
 import { headshotObjectKey, imageUrl } from "@pbe/shared";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar.js";
 import { MourningBand } from "../../components/MourningBand.js";
 import type { ProfileRecord } from "../../lib/types.js";
@@ -48,6 +48,10 @@ export function ProfileHeadshot({
   const [failed, setFailed] = useState(false);
   const deceased = record.deceased?.isDeceased === true;
   const url = headshotUrl(record);
+  // Re-arm the image load when the URL changes (OFC-128): a new `headshotVersion`
+  // (or a fresh record) must retry, not stick on the avatar after a transient error.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset keyed on `url` change is the intent; the body reads no deps.
+  useEffect(() => setFailed(false), [url]);
   const alt = deceased ? `${name} — In Memoriam` : name;
   const dim = responsive ? "var(--headshot-size)" : `${size}px`;
   const responsiveClass = responsive ? PROFILE_HEADSHOT_RESPONSIVE : undefined;

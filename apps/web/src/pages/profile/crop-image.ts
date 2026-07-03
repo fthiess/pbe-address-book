@@ -39,10 +39,18 @@ function loadImage(src: string): Promise<HTMLImageElement> {
  */
 export async function cropToJpegBlob(imageSrc: string, area: CropArea): Promise<Blob> {
   const image = await loadImage(imageSrc);
+  const srcW = image.naturalWidth;
+  const srcH = image.naturalHeight;
 
-  // The crop is framed 1:1 by the UI; clamp to a square defensively and cap the
-  // output edge at 1024 so we never upscale a small selection.
-  const sourceEdge = Math.min(area.width, area.height);
+  // Clamp the crop rect into the source bounds (OFC-127). react-easy-crop can report
+  // an x/y slightly negative or a square extending past the source (rounding /
+  // object-fit math at min-zoom or an edge drag). Sampling outside the bitmap draws
+  // transparent pixels, which — since the output is alpha-less JPEG — flatten to
+  // BLACK wedges on the saved photo. Snapping the rect to the actual image avoids
+  // that. The crop is framed 1:1, so start from the shorter reported edge.
+  const originX = Math.max(0, Math.min(area.x, srcW));
+  const originY = Math.max(0, Math.min(area.y, srcH));
+  const sourceEdge = Math.max(1, Math.min(area.width, area.height, srcW - originX, srcH - originY));
   const outputEdge = Math.min(Math.round(sourceEdge), MAX_UPLOAD_EDGE);
 
   const canvas = document.createElement("canvas");
@@ -53,7 +61,7 @@ export async function cropToJpegBlob(imageSrc: string, area: CropArea): Promise<
     throw new Error("Could not prepare the image for upload.");
   }
   context.imageSmoothingQuality = "high";
-  context.drawImage(image, area.x, area.y, sourceEdge, sourceEdge, 0, 0, outputEdge, outputEdge);
+  context.drawImage(image, originX, originY, sourceEdge, sourceEdge, 0, 0, outputEdge, outputEdge);
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(

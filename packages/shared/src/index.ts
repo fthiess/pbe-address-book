@@ -16,7 +16,6 @@ export {
   thumbnailObjectKey,
   headshotObjectKey,
   imageUrl,
-  isImageObjectKey,
   parseImageObjectKey,
   type ImageKind,
   type ParsedImageKey,

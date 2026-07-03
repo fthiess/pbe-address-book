@@ -13,8 +13,14 @@ import sharp from "sharp";
  * exhaust the single instance, and the transcode always runs regardless of what
  * the client claims to have sent.
  *
- * Both derivatives are produced from **one decode** ({@link sharp.clone}), and
- * `fit: "cover"` re-squares defensively even though the crop is already 1:1.
+ * The original is decoded **once** into the 512² headshot, and the 96² thumbnail
+ * is derived from *that* small WEBP — never a second full-resolution decode of the
+ * original. That keeps peak resident decoded pixels at one image's worth, which is
+ * what the ~40 MP cap + concurrency-1 upload semaphore + 1 GiB Cloud Run bound were
+ * sized to hold (OFC-123: sharp's `clone()` shares a decode only for *stream*
+ * input, so cloning a *Buffer* pipeline would re-decode the original per branch and
+ * a concurrent `Promise.all` would hold ~2× the pixels). `fit: "cover"` re-squares
+ * defensively even though the crop is already 1:1.
  */
 
 /** The size of the stored headshot object, in pixels (square). */
@@ -100,23 +106,19 @@ export async function encodeHeadshot(bytes: Buffer): Promise<EncodedHeadshot> {
     throw new UnprocessableImageError("Upload is not a JPEG or PNG image.");
   }
 
-  // One decode, cloned for each derivative so the bytes are parsed a single time
-  // under the shared pixel cap. `failOn: "error"` rejects truncated/corrupt data.
-  const decoder = sharp(bytes, { limitInputPixels: MAX_DECODED_PIXELS, failOn: "error" });
-
   try {
-    const [headshot, thumbnail] = await Promise.all([
-      decoder
-        .clone()
-        .resize(HEADSHOT_SIZE, HEADSHOT_SIZE, { fit: "cover", position: "centre" })
-        .webp({ quality: WEBP_QUALITY })
-        .toBuffer(),
-      decoder
-        .clone()
-        .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: "cover", position: "centre" })
-        .webp({ quality: WEBP_QUALITY })
-        .toBuffer(),
-    ]);
+    // Decode the ORIGINAL once (under the pixel cap; `failOn: "error"` rejects
+    // truncated/corrupt data) straight into the 512² headshot WEBP.
+    const headshot = await sharp(bytes, { limitInputPixels: MAX_DECODED_PIXELS, failOn: "error" })
+      .resize(HEADSHOT_SIZE, HEADSHOT_SIZE, { fit: "cover", position: "centre" })
+      .webp({ quality: WEBP_QUALITY })
+      .toBuffer();
+    // Derive the thumbnail from the 512² headshot, not a second decode of the
+    // original — a 0.26 MP re-decode, so peak memory stays at one full decode.
+    const thumbnail = await sharp(headshot)
+      .resize(THUMBNAIL_SIZE, THUMBNAIL_SIZE, { fit: "cover", position: "centre" })
+      .webp({ quality: WEBP_QUALITY })
+      .toBuffer();
     return { headshot, thumbnail };
   } catch (error) {
     // A pixel-limit trip or any decode failure is a bad upload, not a server

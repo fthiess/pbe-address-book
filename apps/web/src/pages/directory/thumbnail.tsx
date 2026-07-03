@@ -1,5 +1,5 @@
 import { imageUrl, thumbnailObjectKey } from "@pbe/shared";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar.js";
 import { MourningBand } from "../../components/MourningBand.js";
 import type { DirectoryProfile } from "../../lib/types.js";
@@ -34,6 +34,10 @@ export function thumbnailUrl(profile: DirectoryProfile): string | null {
 export function Thumbnail({ profile, name }: { profile: DirectoryProfile; name: string }) {
   const [failed, setFailed] = useState(false);
   const url = thumbnailUrl(profile);
+  // Re-arm on URL change (OFC-128) so a re-uploaded thumbnail loads after a
+  // transient error instead of sticking on the avatar fallback.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset keyed on `url` change is the intent; the body reads no deps.
+  useEffect(() => setFailed(false), [url]);
   const deceased = profile.deceased?.isDeceased === true;
   const debrothered = profile.debrothered?.isDebrothered === true;
   // The accessible name folds in the memorial status, matching §5.5's alt-text rule.

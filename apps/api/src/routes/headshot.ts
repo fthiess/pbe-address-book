@@ -16,6 +16,9 @@ const WEBP = "image/webp";
 /** The upload route's body ceiling (8 MB, N42): a downscaled client upload is well under 2 MB. */
 const UPLOAD_BODY_LIMIT = 8 * 1024 * 1024;
 
+/** The audited action for each endpoint (used for both the ok and denied entries). */
+type HeadshotAction = "headshot.update" | "headshot.remove";
+
 /** The collaborators the headshot sub-resource needs. */
 export interface HeadshotRouteDeps {
   cache: ProfileCache;
@@ -36,6 +39,11 @@ export interface HeadshotRouteDeps {
 /**
  * The headshot sub-resource: `PUT`/`DELETE /api/profiles/{id}/headshot` (API-SPEC
  * §6; DECISIONS D17/D47/D94/D98/N42). The **image slice** of the Profile page.
+ *
+ * Registered inside an **encapsulated Fastify plugin scope** (OFC-131) so the raw-
+ * image content-type parser applies only to these routes — a Fastify parser on the
+ * root instance is global, which would make `Content-Type: image/png` yield a raw
+ * Buffer body on unrelated routes (e.g. PATCH).
  *
  * Both endpoints authorize on the same object-level predicate as PATCH (owner,
  * manager, or admin at the caller's **effective** role — N31) but carry **no
@@ -58,177 +66,194 @@ export interface HeadshotRouteDeps {
 export function registerHeadshotRoutes(app: FastifyInstance, deps: HeadshotRouteDeps): void {
   const { cache, gate, store, imageStore, audit, clock, mintVersion } = deps;
 
-  // A raw-image body parser for the upload route. The default JSON parser cannot
-  // read image bytes, and the default 1 MB global body limit would 413 a real
-  // photo, so we collect the raw Buffer and cap it per-route at 8 MB below. An
-  // unsupported *declared* Content-Type never matches this parser, so Fastify
-  // returns a `415` before the body is read — the spec's "unsupported type" path.
-  app.addContentTypeParser(
-    ["image/jpeg", "image/png"],
-    { parseAs: "buffer" },
-    (_request, body, done) => done(null, body),
-  );
+  // An encapsulated child scope (OFC-131): the raw-image parser and the 8 MB
+  // per-route body limit live here and do not shadow body parsing for any route
+  // outside this plugin. The default JSON parser cannot read image bytes, and the
+  // default 1 MB limit would 413 a real photo; an unsupported *declared*
+  // Content-Type never matches this parser, so Fastify returns `415` before the
+  // body is read (the spec's "unsupported type" path).
+  app.register(async (scope) => {
+    scope.addContentTypeParser(
+      ["image/jpeg", "image/png"],
+      { parseAs: "buffer" },
+      (_request, body, done) => done(null, body),
+    );
 
-  // Uploads run one-at-a-time (N42): the instance holds the whole profile cache at
-  // --max-instances=1, so a burst of concurrent sharp decodes is a whole-app OOM
-  // risk. Uploads are rare; queueing them behind this mutex is invisible.
-  const uploads = new Mutex();
+    // Uploads run one-at-a-time (N42): the instance holds the whole profile cache at
+    // --max-instances=1, so a burst of concurrent sharp decodes is a whole-app OOM
+    // risk. Uploads are rare; queueing them behind this mutex is invisible.
+    const uploads = new Mutex();
 
-  app.put(
-    "/api/profiles/:id/headshot",
-    { preHandler: gate, bodyLimit: UPLOAD_BODY_LIMIT, config: writeRateLimit() },
-    async (request, reply) => {
-      const gateContext = authorize(request, reply, cache);
-      if (gateContext === null) {
-        return reply;
-      }
-      const { actorId, id, stored, trace } = gateContext;
-
-      const body = request.body;
-      if (!Buffer.isBuffer(body)) {
-        return reply.code(400).send({ error: "bad_request", message: "Expected raw image bytes." });
-      }
-
-      // Validate + transcode under the upload semaphore (magic-byte + ~40 MP cap).
-      let encoded: Awaited<ReturnType<typeof encodeHeadshot>>;
-      try {
-        encoded = await uploads.run(() => encodeHeadshot(body));
-      } catch (error) {
-        if (error instanceof UnprocessableImageError) {
-          return reply.code(422).send({ error: "unprocessable_image", message: error.message });
+    scope.put(
+      "/api/profiles/:id/headshot",
+      { preHandler: gate, bodyLimit: UPLOAD_BODY_LIMIT, config: writeRateLimit() },
+      async (request, reply) => {
+        const gateContext = authorize(request, reply, cache, audit, clock, "headshot.update");
+        if (gateContext === null) {
+          return reply;
         }
-        throw error;
-      }
+        const { actorId, id, stored, trace } = gateContext;
 
-      const version = mintVersion();
-      const headshotKey = headshotObjectKey(id, version);
-      const thumbnailKey = thumbnailObjectKey(id, version);
-
-      // Objects FIRST (D98): the pointer must never name objects that don't exist.
-      try {
-        await imageStore.put(headshotKey, encoded.headshot, WEBP);
-        await imageStore.put(thumbnailKey, encoded.thumbnail, WEBP);
-      } catch (error) {
-        if (error instanceof ImageBucketUnconfiguredError) {
-          return reply.code(503).send({ error: "image_bucket_unconfigured" });
+        const body = request.body;
+        if (!Buffer.isBuffer(body)) {
+          return reply
+            .code(400)
+            .send({ error: "bad_request", message: "Expected raw image bytes." });
         }
-        throw error;
-      }
 
-      // Pointer LAST — the unconditional advance (N42) that mints the fresh ETag.
-      const now = clock();
-      const set: Partial<Profile> = {
-        hasHeadshot: true,
-        headshotVersion: version,
-        lastModified: now.toISOString(),
-      };
-      let token: string;
-      try {
-        token = await store.updateUnconditional(id, { set, remove: [] });
-      } catch (error) {
-        if (error instanceof MissingProfileError) {
-          // The record vanished between the existence check and the write: undo the
-          // objects we just wrote so no orphan is left referencing a gone record.
-          await purge(imageStore, [headshotKey, thumbnailKey]);
-          return reply.code(404).send({ error: "not_found", message: "No such brother." });
+        // Validate + transcode under the upload semaphore (magic-byte + ~40 MP cap).
+        let encoded: Awaited<ReturnType<typeof encodeHeadshot>>;
+        try {
+          encoded = await uploads.run(() => encodeHeadshot(body));
+        } catch (error) {
+          if (error instanceof UnprocessableImageError) {
+            return reply.code(422).send({ error: "unprocessable_image", message: error.message });
+          }
+          throw error;
         }
-        throw error;
-      }
 
-      await cache.applyUpdate({ ...stored, ...set }, token);
+        const version = mintVersion();
+        const headshotKey = headshotObjectKey(id, version);
+        const thumbnailKey = thumbnailObjectKey(id, version);
 
-      // Purge the superseded prior version's objects (D94). Best-effort: a failed
-      // cleanup leaves an orphan the bucket's versioning + 90-day lifecycle still
-      // recovers, and must not fail an otherwise-successful upload.
-      if (stored.hasHeadshot && stored.headshotVersion && stored.headshotVersion !== version) {
-        await purge(imageStore, [
-          headshotObjectKey(id, stored.headshotVersion),
-          thumbnailObjectKey(id, stored.headshotVersion),
-        ]);
-      }
+        // Objects FIRST (D98): the pointer must never name objects that don't exist.
+        // The two writes are independent — D98 only requires both to exist before the
+        // pointer advance, not an order between them — so run them together (OFC-132).
+        try {
+          await Promise.all([
+            imageStore.put(headshotKey, encoded.headshot, WEBP),
+            imageStore.put(thumbnailKey, encoded.thumbnail, WEBP),
+          ]);
+        } catch (error) {
+          if (error instanceof ImageBucketUnconfiguredError) {
+            return reply.code(503).send({ error: "image_bucket_unconfigured" });
+          }
+          throw error;
+        }
 
-      audit.record(
-        {
-          action: "headshot.update",
-          actorId,
-          targetId: id,
-          outcome: "ok",
-          fields: ["headshot"],
-          trace,
-        },
-        now.toISOString(),
-      );
-      return reply
-        .header("Cache-Control", "no-store")
-        .header("ETag", `"${token}"`)
-        .send({ hasHeadshot: true, headshotVersion: version });
-    },
-  );
+        // Pointer LAST — the unconditional advance (N42) that mints the fresh ETag.
+        const now = clock();
+        const set: Partial<Profile> = {
+          hasHeadshot: true,
+          headshotVersion: version,
+          lastModified: now.toISOString(),
+        };
+        let token: string;
+        try {
+          token = await store.updateUnconditional(id, { set, remove: [] });
+        } catch (error) {
+          if (error instanceof MissingProfileError) {
+            // The record vanished between the existence check and the write: undo the
+            // objects we just wrote so no orphan is left referencing a gone record.
+            await purge(imageStore, [headshotKey, thumbnailKey]);
+            return reply.code(404).send({ error: "not_found", message: "No such brother." });
+          }
+          throw error;
+        }
 
-  app.delete(
-    "/api/profiles/:id/headshot",
-    { preHandler: gate, config: writeRateLimit() },
-    async (request, reply) => {
-      const gateContext = authorize(request, reply, cache);
-      if (gateContext === null) {
-        return reply;
-      }
-      const { actorId, id, stored, trace } = gateContext;
+        // Merge the pointer onto the CURRENT cached record, not the pre-encode
+        // `stored` snapshot (OFC-125): a `PATCH` on the same record can commit during
+        // the slow encode, so spreading `stored` would revert that text in the read
+        // model (Firestore keeps the PATCH — the pointer write only `update()`s its
+        // own fields). `headshotVersion` is `protected`, so a concurrent PATCH never
+        // touches it; `stored`'s prior version is still the right one to purge below.
+        const current = cache.getById(id) ?? stored;
+        await cache.applyUpdate({ ...current, ...set }, token);
 
-      // No headshot to remove → a no-op: no write, no audit, current token returned
-      // so the client's held ETag stays valid (mirrors the PATCH no-op short-circuit).
-      if (!stored.hasHeadshot) {
+        // Purge the superseded prior version's objects (D94). Best-effort: a failed
+        // cleanup leaves an orphan the bucket's versioning + 90-day lifecycle still
+        // recovers, and must not fail an otherwise-successful upload.
+        if (stored.hasHeadshot && stored.headshotVersion && stored.headshotVersion !== version) {
+          await purge(imageStore, [
+            headshotObjectKey(id, stored.headshotVersion),
+            thumbnailObjectKey(id, stored.headshotVersion),
+          ]);
+        }
+
+        audit.record(
+          {
+            action: "headshot.update",
+            actorId,
+            targetId: id,
+            outcome: "ok",
+            fields: ["headshot"],
+            trace,
+          },
+          now.toISOString(),
+        );
         return reply
           .header("Cache-Control", "no-store")
-          .header("ETag", `"${cache.concurrencyToken(id) ?? ""}"`)
-          .send({ hasHeadshot: false });
-      }
+          .header("ETag", `"${token}"`)
+          .send({ hasHeadshot: true, headshotVersion: version });
+      },
+    );
 
-      const priorVersion = stored.headshotVersion;
-      const now = clock();
-      const set: Partial<Profile> = { hasHeadshot: false, lastModified: now.toISOString() };
-
-      // Pointer FIRST for a removal: flip `hasHeadshot` off (and drop the version)
-      // before deleting the objects, so the pointer never references gone objects.
-      let token: string;
-      try {
-        token = await store.updateUnconditional(id, { set, remove: ["headshotVersion"] });
-      } catch (error) {
-        if (error instanceof MissingProfileError) {
-          return reply.code(404).send({ error: "not_found", message: "No such brother." });
+    scope.delete(
+      "/api/profiles/:id/headshot",
+      { preHandler: gate, config: writeRateLimit() },
+      async (request, reply) => {
+        const gateContext = authorize(request, reply, cache, audit, clock, "headshot.remove");
+        if (gateContext === null) {
+          return reply;
         }
-        throw error;
-      }
+        const { actorId, id, stored, trace } = gateContext;
 
-      // Drop `headshotVersion` from the cached record too (destructure-omit, not
-      // `delete`), matching the store's `remove`.
-      const { headshotVersion: _removed, ...withoutVersion } = stored;
-      await cache.applyUpdate({ ...withoutVersion, ...set }, token);
+        // No headshot to remove → a no-op: no write, no audit, current token returned
+        // so the client's held ETag stays valid (mirrors the PATCH no-op short-circuit).
+        if (!stored.hasHeadshot) {
+          return reply
+            .header("Cache-Control", "no-store")
+            .header("ETag", `"${cache.concurrencyToken(id) ?? ""}"`)
+            .send({ hasHeadshot: false });
+        }
 
-      if (priorVersion) {
-        await purge(imageStore, [
-          headshotObjectKey(id, priorVersion),
-          thumbnailObjectKey(id, priorVersion),
-        ]);
-      }
+        const priorVersion = stored.headshotVersion;
+        const now = clock();
+        const set: Partial<Profile> = { hasHeadshot: false, lastModified: now.toISOString() };
 
-      audit.record(
-        {
-          action: "headshot.remove",
-          actorId,
-          targetId: id,
-          outcome: "ok",
-          fields: ["headshot"],
-          trace,
-        },
-        now.toISOString(),
-      );
-      return reply
-        .header("Cache-Control", "no-store")
-        .header("ETag", `"${token}"`)
-        .send({ hasHeadshot: false });
-    },
-  );
+        // Pointer FIRST for a removal: flip `hasHeadshot` off (and drop the version)
+        // before deleting the objects, so the pointer never references gone objects.
+        let token: string;
+        try {
+          token = await store.updateUnconditional(id, { set, remove: ["headshotVersion"] });
+        } catch (error) {
+          if (error instanceof MissingProfileError) {
+            return reply.code(404).send({ error: "not_found", message: "No such brother." });
+          }
+          throw error;
+        }
+
+        // Merge onto the CURRENT cached record (OFC-125, same interleave concern as
+        // PUT), dropping `headshotVersion` (destructure-omit, not `delete`).
+        const current = cache.getById(id) ?? stored;
+        const { headshotVersion: _removed, ...withoutVersion } = current;
+        await cache.applyUpdate({ ...withoutVersion, ...set }, token);
+
+        if (priorVersion) {
+          await purge(imageStore, [
+            headshotObjectKey(id, priorVersion),
+            thumbnailObjectKey(id, priorVersion),
+          ]);
+        }
+
+        audit.record(
+          {
+            action: "headshot.remove",
+            actorId,
+            targetId: id,
+            outcome: "ok",
+            fields: ["headshot"],
+            trace,
+          },
+          now.toISOString(),
+        );
+        return reply
+          .header("Cache-Control", "no-store")
+          .header("ETag", `"${token}"`)
+          .send({ hasHeadshot: false });
+      },
+    );
+  });
 }
 
 /** The authorized context both endpoints share once the front-half guards pass. */
@@ -244,11 +269,20 @@ interface HeadshotContext {
  * valid id → object-level predicate (the IDOR guard, at the **effective** role) →
  * record exists. Returns the context on success, or `null` after having sent the
  * appropriate error response (the caller returns `reply` unchanged).
+ *
+ * The `canActOnProfile` **403 denial is audited** as `outcome: "denied"` (OFC-126),
+ * mirroring the PATCH route (`profiles.ts`) so an actor probing contiguous
+ * Constitution IDs to overwrite/delete other brothers' photos leaves a trail. The
+ * pre-auth 401 and the 400/404 shape errors are not security denials and — as on
+ * the PATCH path — are not audited.
  */
 function authorize(
   request: FastifyRequest,
   reply: FastifyReply,
   cache: ProfileCache,
+  audit: AuditLog,
+  clock: Clock,
+  action: HeadshotAction,
 ): HeadshotContext | null {
   const session = request.session;
   if (!session) {
@@ -266,6 +300,10 @@ function authorize(
   const trace = traceId(request);
 
   if (!canActOnProfile(role, actor.profileId, id)) {
+    audit.record(
+      { action, actorId: actor.profileId, targetId: id, outcome: "denied", trace },
+      clock().toISOString(),
+    );
     reply.code(403).send({ error: "forbidden", message: "You may not edit this record." });
     return null;
   }

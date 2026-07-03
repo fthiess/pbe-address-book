@@ -26,26 +26,6 @@ export function headshotObjectKey(id: number, version: string): string {
   return `headshots/${id}/${version}.webp`;
 }
 
-/**
- * The exact shape of a key {@link thumbnailObjectKey}/{@link headshotObjectKey}
- * can produce: a `thumbnails/` or `headshots/` prefix, a numeric Constitution id,
- * an opaque version token (`[A-Za-z0-9._-]+`, e.g. `v3`), and the `.webp`
- * extension. Anchored, with no `/` permitted inside the version, so nothing but a
- * member thumbnail/headshot can match — the `/img/*` route validates against this
- * before touching the bucket so a session holder cannot stream *any other* object
- * that happens to live there (e.g. an export CSV). See {@link isImageObjectKey}.
- */
-const IMAGE_OBJECT_KEY = /^(?:thumbnails|headshots)\/\d+\/[A-Za-z0-9._-]+\.webp$/u;
-
-/**
- * Whether `objectKey` is a well-formed member thumbnail/headshot key — the single
- * allowlist the private-bucket `/img/*` route (D126) admits. Shared so the route,
- * the URL builder, and the upload pipeline all agree on one path shape.
- */
-export function isImageObjectKey(objectKey: string): boolean {
-  return IMAGE_OBJECT_KEY.test(objectKey);
-}
-
 /** The kind of image an object key addresses. */
 export type ImageKind = "headshots" | "thumbnails";
 
@@ -58,15 +38,22 @@ export interface ParsedImageKey {
   readonly version: string;
 }
 
-/** The same anchored shape as {@link IMAGE_OBJECT_KEY}, with capture groups. */
+/**
+ * The exact shape a key {@link thumbnailObjectKey}/{@link headshotObjectKey} can
+ * produce: a `thumbnails/`|`headshots/` prefix, a numeric Constitution id, an
+ * opaque version token (`[A-Za-z0-9._-]+`, no `/`), and the `.webp` extension.
+ * Anchored, with capture groups. This is the **single** definition of the key
+ * shape (the boolean check is `parseImageObjectKey(k) !== null`).
+ */
 const IMAGE_OBJECT_KEY_PARTS = /^(thumbnails|headshots)\/(\d+)\/([A-Za-z0-9._-]+)\.webp$/u;
 
 /**
  * Parse a member image object key into its parts, or `null` if it is not a
  * well-formed key. The `/img/*` route uses this to recover the `{id}` so it can
  * enforce **per-record visibility** (an unlisted/de-brothered brother's image is
- * withheld from a peer — DECISIONS N43), in the same single place the key shape is
- * defined. A parse success implies {@link isImageObjectKey} would return `true`.
+ * withheld from a peer — DECISIONS N43), and to reject anything else before the
+ * bucket is touched (a session holder cannot stream an arbitrary object, e.g. an
+ * export CSV), all against one anchored shape.
  */
 export function parseImageObjectKey(objectKey: string): ParsedImageKey | null {
   const match = IMAGE_OBJECT_KEY_PARTS.exec(objectKey);
