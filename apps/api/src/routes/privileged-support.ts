@@ -2,7 +2,7 @@ import { type ConsentSnapshot, type Profile, type Role, canActOnProfile } from "
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AuditAction, AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
-import { MissingProfileError, type ProfileStore } from "../data/profiles.js";
+import { MissingProfileError, type ProfileStore, isTokenNewer } from "../data/profiles.js";
 import { effectiveRole } from "../identity/types.js";
 import type { Clock } from "./profiles.js";
 import { traceId } from "./trace.js";
@@ -121,6 +121,12 @@ export function mergeProfile(
  * *current* cached record (OFC-125: a concurrent PATCH may have committed during
  * the await) and return the new token plus the next record for the response.
  * Throws {@link MissingProfileError} (→ the route's 404) if the doc vanished.
+ *
+ * Token non-regression (OFC-136): if a concurrent write advanced the cache token
+ * to a **newer** value during our await, we keep it rather than overwriting it
+ * with this write's own (now older) token — Firestore `updateTime` is monotonic
+ * per document, so the cache token must never go backwards, or the client's next
+ * `If-Match` would carry a stale ETag and spuriously `412`.
  */
 export async function commitStatusWrite(
   store: ProfileStore,
@@ -130,9 +136,11 @@ export async function commitStatusWrite(
   set: Partial<Profile>,
   remove: readonly (keyof Profile)[],
 ): Promise<{ token: string; next: Profile }> {
-  const token = await store.updateUnconditional(id, { set, remove: [...remove] });
+  const written = await store.updateUnconditional(id, { set, remove: [...remove] });
   const current = cache.getById(id) ?? stored;
   const next = mergeProfile(current, set, remove);
+  const cached = cache.concurrencyToken(id);
+  const token = cached !== null && !isTokenNewer(written, cached) ? cached : written;
   await cache.applyUpdate(next, token);
   return { token, next };
 }

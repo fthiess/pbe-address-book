@@ -25,7 +25,9 @@ export interface ProfileActions {
   /** `PUT /api/users/:id/role` — change role (admin). */
   changeRole: (role: Role) => Promise<{ status: "ok"; role: Role } | { status: "last_admin" }>;
   /** `DELETE /api/profiles/:id` — remove the brother (admin). */
-  removeProfile: () => Promise<{ status: "ok" } | { status: "ghost_failed" }>;
+  removeProfile: () => Promise<
+    { status: "ok" } | { status: "ghost_failed" } | { status: "last_admin" }
+  >;
 }
 
 const TWO_YEARS_MS = 2 * 365 * 24 * 60 * 60 * 1000;
@@ -326,6 +328,10 @@ function DeleteControl({ name, actions }: { name: string; actions: ProfileAction
     if (outcome.status === "ghost_failed") {
       setError(
         "The newsletter system couldn’t be updated. Nothing was deleted — please try again.",
+      );
+    } else if (outcome.status === "last_admin") {
+      setError(
+        "This is the only administrator, so delete is blocked to keep an admin in the directory. Assign another admin first.",
       );
     }
     // On success the container navigates away, so there is nothing more to do here.

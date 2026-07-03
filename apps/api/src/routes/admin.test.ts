@@ -1,4 +1,4 @@
-import { type Role, headshotObjectKey, thumbnailObjectKey } from "@pbe/shared";
+import { type Profile, type Role, headshotObjectKey, thumbnailObjectKey } from "@pbe/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuditLog } from "../audit/audit-log.js";
 import { ProfileCache } from "../data/cache.js";
@@ -157,6 +157,91 @@ describe("DELETE /api/profiles/:id", () => {
       headers: { cookie: await ctx.cookieFor(5010, "admin") },
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("409s deleting the only remaining admin (last-admin invariant, no Ghost call) [OFC-134]", async () => {
+    // 5010 is the sole admin; deleting it (here, itself) would leave zero admins.
+    const response = await ctx.app.inject({
+      method: "DELETE",
+      url: "/api/profiles/5010",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "last_admin" });
+    // Nothing was touched: the Ghost-first step never ran and the record survives.
+    expect(ghost.deleted).toEqual([]);
+    expect(ctx.cache.getById(5010)).not.toBeNull();
+    expect(ctx.adminUsers.deleted.has(5010)).toBe(false);
+    expect(ctx.audited.at(-1)).toMatchObject({
+      action: "profile.delete",
+      targetId: 5010,
+      outcome: "denied",
+    });
+  });
+
+  it("deletes a non-last admin normally (204) [OFC-134]", async () => {
+    ctx.adminUsers.seedRole(5011, "admin"); // now two admins exist
+    const response = await ctx.app.inject({
+      method: "DELETE",
+      url: "/api/profiles/5011",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(ghost.deleted).toEqual([5011]);
+    expect(ctx.cache.getById(5011)).toBeNull();
+  });
+
+  it("preserves a concurrent PATCH to a referrer committed during the scrub [OFC-135]", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ id: 5001 }),
+      makeProfile({ id: 5002, bigBrotherId: 5001, lastModified: "2026-01-01T00:00:00.000Z" }),
+    ]);
+    // A store whose scrub write to 5002 simulates a PATCH landing in the cache
+    // mid-flight: right after the scrub's Firestore write it commits a cache update
+    // to 5002 (a field the scrub does not touch) — exactly the interleave the re-base
+    // fix must survive. With the pre-await snapshot this update was clobbered.
+    class ConcurrentPatchStore extends InMemoryProfileStore {
+      override async updateUnconditional(id: number): Promise<string> {
+        const token = await super.updateUnconditional(id);
+        if (id === 5002) {
+          const patched: Profile = {
+            ...(cache.getById(5002) as Profile),
+            lastModified: "2099-12-31T00:00:00.000Z",
+          };
+          await cache.applyUpdate(patched, "token-concurrent");
+        }
+        return token;
+      }
+    }
+    const sessionStore = new InMemorySessionStore();
+    const app = await buildServer({
+      identityProvider: stubProvider,
+      profileCache: cache,
+      profileStore: new ConcurrentPatchStore(),
+      adminUsers: new InMemoryAdminUserStore(),
+      imageStore: new InMemoryImageStore(),
+      ghostLifecycle: new RecordingGhostLifecycle(),
+      sessionStore,
+      nonceStore: new InMemoryNonceStore(),
+      getStars: async () => [],
+      addStar: async () => [],
+      removeStar: async () => [],
+      auditLog: new AuditLog({ write: () => {} }),
+      clock: () => FIXED_NOW,
+      cookie: { secure: true },
+    });
+    const cookie = `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(5010, "admin"))}`;
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/api/profiles/5001",
+      headers: { cookie },
+    });
+    expect(response.statusCode).toBe(204);
+    const scrubbed = cache.getById(5002);
+    expect(scrubbed?.bigBrotherId).toBeUndefined(); // the scrub applied
+    expect(scrubbed?.lastModified).toBe("2099-12-31T00:00:00.000Z"); // the concurrent PATCH survived
+    await app.close();
   });
 });
 

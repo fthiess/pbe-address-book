@@ -127,6 +127,35 @@ export function decodeToken(token: string): Timestamp | null {
   return new Timestamp(Number(seconds), Number(nanoseconds));
 }
 
+/**
+ * Whether `candidate` is a newer (or equal) concurrency token than `existing`.
+ * Firestore `updateTime` is **monotonic per document**, so the cache token must
+ * never regress; this lets a writer keep whichever token is authoritative when a
+ * concurrent write may have advanced the cache during its await (OFC-136). Tokens
+ * that are not the `<sec>.<nanos>` shape (the in-memory test double's opaque
+ * `token-N`) are **not comparable**, so the candidate is treated as newer — the
+ * prior unconditional behavior, leaving the fake-backed tests unaffected.
+ */
+export function isTokenNewer(candidate: string, existing: string): boolean {
+  const c = parseTokenParts(candidate);
+  const e = parseTokenParts(existing);
+  if (c === null || e === null) {
+    return true;
+  }
+  if (c.seconds !== e.seconds) {
+    return c.seconds > e.seconds;
+  }
+  return c.nanoseconds >= e.nanoseconds;
+}
+
+function parseTokenParts(token: string): { seconds: number; nanoseconds: number } | null {
+  if (!TOKEN_RE.test(token)) {
+    return null;
+  }
+  const [seconds, nanoseconds] = token.split(".");
+  return { seconds: Number(seconds), nanoseconds: Number(nanoseconds) };
+}
+
 /** Firestore/gRPC status codes the write path maps onto HTTP outcomes. */
 const GRPC_NOT_FOUND = 5;
 const GRPC_FAILED_PRECONDITION = 9;

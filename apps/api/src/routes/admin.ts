@@ -1,4 +1,4 @@
-import { type Profile, type Role, headshotObjectKey, thumbnailObjectKey } from "@pbe/shared";
+import { type Role, headshotObjectKey, thumbnailObjectKey } from "@pbe/shared";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
@@ -73,6 +73,19 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
       const { actorId, id, stored, trace } = ctx;
       const now = clock();
 
+      // Last-admin invariant (D106; OFC-134): deleting the only remaining admin would
+      // lock the org out of every admin function — the same lockout the role-change
+      // guard prevents — and the UI deliberately doesn't show roles, so an admin can't
+      // see they're removing the last one. Checked BEFORE the Ghost-first step so a
+      // rejection leaves Ghost, GCS, and Book untouched.
+      if (await adminUsers.isLastAdmin(id)) {
+        audit.record(
+          { action: "profile.delete", actorId, targetId: id, outcome: "denied", trace },
+          now.toISOString(),
+        );
+        return reply.code(409).send({ error: "last_admin" });
+      }
+
       // Ghost-first (D96/D98): if the Ghost member delete fails, abort clean — no
       // Book state has been touched, and the admin retries.
       try {
@@ -84,14 +97,22 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
       // Scrub inbound Big-Brother references first (D98): clear `bigBrotherId` on
       // every record that named this brother, capturing each write's fresh token so
       // the cache stays consistent (no spurious future 412 on a scrubbed referrer).
-      const scrubbed: { profile: Profile; token: string }[] = [];
-      for (const referrer of cache.referrersOf(id)) {
-        const token = await store.updateUnconditional(referrer.id, {
-          set: {},
-          remove: ["bigBrotherId"],
-        });
-        scrubbed.push({ profile: mergeProfile(referrer, {}, ["bigBrotherId"]), token });
-      }
+      // The writes run in parallel (OFC-138), and each scrubbed copy is re-read from
+      // the cache *after* its write (never the pre-await snapshot, OFC-135) so a PATCH
+      // that committed to a referrer during the write window is preserved rather than
+      // clobbered when applyDelete folds these back in — the same re-base discipline
+      // commitStatusWrite uses (OFC-125). A referrer *newly* created during the window
+      // is not caught here; the D98 graceful-straggler rendering is the backstop.
+      const scrubbed = await Promise.all(
+        cache.referrersOf(id).map(async (referrer) => {
+          const token = await store.updateUnconditional(referrer.id, {
+            set: {},
+            remove: ["bigBrotherId"],
+          });
+          const current = cache.getById(referrer.id) ?? referrer;
+          return { profile: mergeProfile(current, {}, ["bigBrotherId"]), token };
+        }),
+      );
 
       // Scrub star references (private `users.stars`, outside the profile cache).
       await adminUsers.removeStarFromAll(id);

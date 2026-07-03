@@ -282,10 +282,14 @@ export async function putDebrothered(
   throw await asError(response);
 }
 
-/** Delete a brother (`DELETE /api/profiles/:id`, admin only; API-SPEC §4). Ghost-first. */
+/**
+ * Delete a brother (`DELETE /api/profiles/:id`, admin only; API-SPEC §4). Ghost-first.
+ * A `409 last_admin` — deleting the only remaining admin is blocked (D106) — is
+ * surfaced as data so the UI can explain it rather than throw.
+ */
 export async function deleteProfile(
   id: number,
-): Promise<{ status: "ok" } | { status: "ghost_failed" }> {
+): Promise<{ status: "ok" } | { status: "ghost_failed" } | { status: "last_admin" }> {
   const response = await fetch(`/api/profiles/${id}`, {
     method: "DELETE",
     credentials: "same-origin",
@@ -295,6 +299,9 @@ export async function deleteProfile(
   }
   if (response.status === 502) {
     return { status: "ghost_failed" };
+  }
+  if (response.status === 409) {
+    return { status: "last_admin" };
   }
   throw await asError(response);
 }

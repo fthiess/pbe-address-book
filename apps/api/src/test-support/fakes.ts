@@ -174,6 +174,14 @@ export class InMemoryAdminUserStore implements AdminUserStore {
     return { before };
   }
 
+  async isLastAdmin(id: number): Promise<boolean> {
+    if (this.roles.get(id) !== "admin") {
+      return false;
+    }
+    const admins = [...this.roles.values()].filter((role) => role === "admin").length;
+    return admins <= 1;
+  }
+
   async deleteUser(id: number): Promise<void> {
     this.roles.delete(id);
     this.stars.delete(id);

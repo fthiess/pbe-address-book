@@ -147,6 +147,14 @@ export interface AdminUserStore {
    * the only admin.
    */
   setRole(id: number, role: Role): Promise<RoleChangeResult>;
+  /**
+   * Whether deleting `id` would remove the **last remaining admin** — the delete
+   * path's dual of the {@link AdminUserStore.setRole} last-admin invariant (D106).
+   * True iff `id` is currently an admin and the total admin count is 1. The delete
+   * route checks this **before** the Ghost-first step, so a rejection (`409
+   * last_admin`) leaves Ghost, GCS, and Book untouched.
+   */
+  isLastAdmin(id: number): Promise<boolean>;
   /** Delete the target's `users` doc — idempotent, the Book-side delete step (D98). */
   deleteUser(id: number): Promise<void>;
   /** Remove `id` from every user's `stars` list — the delete's inbound-reference scrub (D98). */
@@ -182,6 +190,21 @@ export class FirestoreAdminUserStore implements AdminUserStore {
       }
       return { before };
     });
+  }
+
+  async isLastAdmin(id: number): Promise<boolean> {
+    const doc = await this.db.collection(COLLECTION).doc(String(id)).get();
+    const role = doc.exists ? (doc.data() as UserRecord).role : undefined;
+    if (role !== "admin") {
+      return false;
+    }
+    // A `users where role == admin` count, like setRole's invariant check. Not inside
+    // a transaction — the delete spans Ghost/GCS/Firestore and is not one atomic
+    // write — but at `--max-instances=1` with delete a rare action, this pre-check is
+    // the pragmatic delete-path dual of D106; a concurrent demotion in the narrow
+    // window is negligible (and the role path's own transaction still holds).
+    const admins = await this.db.collection(COLLECTION).where("role", "==", "admin").get();
+    return admins.size <= 1;
   }
 
   async deleteUser(id: number): Promise<void> {

@@ -241,7 +241,11 @@ export function ProfileContainer() {
     async (deceased: boolean, facts?: DeceasedFacts) => {
       const outcome = await putDeceased(id, deceased, facts);
       if (outcome.status === "ok") {
-        setRecord((prev) => ({ ...prev, ...outcome.profile }) as ProfileRecord);
+        // Replace the held record from the server's authoritative projection rather
+        // than shallow-merging (OFC-137): a status write can *remove* a top-level
+        // field (e.g. a cleared verification stamp on reversal), which a `{...prev}`
+        // spread would leave stale. Mirrors the PATCH path.
+        setRecord(outcome.profile);
         setEtag(outcome.etag);
         applyProfileToRoster(outcome.profile);
         setToast(deceased ? "Marked as deceased." : "Deceased mark removed.");
@@ -255,7 +259,7 @@ export function ProfileContainer() {
     async (debrothered: boolean) => {
       const outcome = await putDebrothered(id, debrothered);
       if (outcome.status === "ok") {
-        setRecord((prev) => ({ ...prev, ...outcome.profile }) as ProfileRecord);
+        setRecord(outcome.profile); // authoritative replace, not a shallow merge (OFC-137)
         setEtag(outcome.etag);
         applyProfileToRoster(outcome.profile);
         setToast(debrothered ? "Brother de-brothered." : "Brother reinstated.");

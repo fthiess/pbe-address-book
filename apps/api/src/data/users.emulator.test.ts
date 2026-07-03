@@ -108,6 +108,17 @@ describe.skipIf(!hasEmulator)("FirestoreAdminUserStore (emulator)", () => {
     expect(ok.before).toBe("admin");
   });
 
+  it("isLastAdmin: true only when the target is the sole admin [OFC-134]", async () => {
+    // Deterministic baseline against the shared emulator DB: clear every admin first.
+    const existing = await db.collection("users").where("role", "==", "admin").get();
+    await Promise.all(existing.docs.map((doc) => doc.ref.delete()));
+    await store.setRole(5960, "admin");
+    expect(await store.isLastAdmin(5960)).toBe(true); // count 1
+    expect(await store.isLastAdmin(5999)).toBe(false); // not an admin
+    await store.setRole(5961, "admin");
+    expect(await store.isLastAdmin(5960)).toBe(false); // count 2
+  });
+
   it("removeStarFromAll pulls the id from every user's stars (idempotent)", async () => {
     await db
       .collection("users")
