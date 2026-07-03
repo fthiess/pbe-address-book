@@ -26,24 +26,47 @@ export function headshotObjectKey(id: number, version: string): string {
   return `headshots/${id}/${version}.webp`;
 }
 
-/**
- * The exact shape of a key {@link thumbnailObjectKey}/{@link headshotObjectKey}
- * can produce: a `thumbnails/` or `headshots/` prefix, a numeric Constitution id,
- * an opaque version token (`[A-Za-z0-9._-]+`, e.g. `v3`), and the `.webp`
- * extension. Anchored, with no `/` permitted inside the version, so nothing but a
- * member thumbnail/headshot can match — the `/img/*` route validates against this
- * before touching the bucket so a session holder cannot stream *any other* object
- * that happens to live there (e.g. an export CSV). See {@link isImageObjectKey}.
- */
-const IMAGE_OBJECT_KEY = /^(?:thumbnails|headshots)\/\d+\/[A-Za-z0-9._-]+\.webp$/u;
+/** The kind of image an object key addresses. */
+export type ImageKind = "headshots" | "thumbnails";
+
+/** A parsed image object key: which image, whose, and which version. */
+export interface ParsedImageKey {
+  readonly kind: ImageKind;
+  /** The brother's Constitution id the object belongs to. */
+  readonly id: number;
+  /** The opaque version token. */
+  readonly version: string;
+}
 
 /**
- * Whether `objectKey` is a well-formed member thumbnail/headshot key — the single
- * allowlist the private-bucket `/img/*` route (D126) admits. Shared so the route,
- * the URL builder, and the upload pipeline all agree on one path shape.
+ * The exact shape a key {@link thumbnailObjectKey}/{@link headshotObjectKey} can
+ * produce: a `thumbnails/`|`headshots/` prefix, a numeric Constitution id, an
+ * opaque version token (`[A-Za-z0-9._-]+`, no `/`), and the `.webp` extension.
+ * Anchored, with capture groups. This is the **single** definition of the key
+ * shape (the boolean check is `parseImageObjectKey(k) !== null`).
  */
-export function isImageObjectKey(objectKey: string): boolean {
-  return IMAGE_OBJECT_KEY.test(objectKey);
+const IMAGE_OBJECT_KEY_PARTS = /^(thumbnails|headshots)\/(\d+)\/([A-Za-z0-9._-]+)\.webp$/u;
+
+/**
+ * Parse a member image object key into its parts, or `null` if it is not a
+ * well-formed key. The `/img/*` route uses this to recover the `{id}` so it can
+ * enforce **per-record visibility** (an unlisted/de-brothered brother's image is
+ * withheld from a peer — DECISIONS N43), and to reject anything else before the
+ * bucket is touched (a session holder cannot stream an arbitrary object, e.g. an
+ * export CSV), all against one anchored shape.
+ */
+export function parseImageObjectKey(objectKey: string): ParsedImageKey | null {
+  const match = IMAGE_OBJECT_KEY_PARTS.exec(objectKey);
+  if (match === null) {
+    return null;
+  }
+  const [, kind, id, version] = match;
+  // The regex matched, so all three groups are present; the guard also satisfies
+  // `noUncheckedIndexedAccess` without a non-null assertion.
+  if (kind === undefined || id === undefined || version === undefined) {
+    return null;
+  }
+  return { kind: kind as ImageKind, id: Number(id), version };
 }
 
 /** The app-relative URL the `/img/*` route serves an object key from (D126). */

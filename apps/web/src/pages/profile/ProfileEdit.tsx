@@ -5,8 +5,8 @@ import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { AddressEditor } from "./AddressEditor.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { ConsentSwitch } from "./ConsentSwitch.js";
+import { type HeadshotChange, HeadshotEditor } from "./HeadshotEditor.js";
 import { MajorsEditor } from "./MajorsEditor.js";
-import { ProfileHeadshot } from "./ProfileHeadshot.js";
 import { RelationshipsEditor } from "./RelationshipsEditor.js";
 import { EmergencyContactsEditor, LinksEditor } from "./RepeatableEditors.js";
 import { CONSENT_COPY, PRIVACY_COPY } from "./consent.js";
@@ -78,6 +78,7 @@ export function ProfileEdit({
   roster,
   rosterError,
   submit,
+  saveHeadshot,
   showToast,
   exitEdit,
 }: {
@@ -86,21 +87,26 @@ export function ProfileEdit({
   roster: DirectoryProfile[] | null;
   rosterError: boolean;
   submit: (patch: Partial<Profile>) => Promise<SubmitResult>;
+  saveHeadshot: (change: HeadshotChange) => Promise<boolean>;
   showToast: (message: string) => void;
   exitEdit: () => void;
 }) {
   const form = useProfileDraft(record, viewer);
-  useUnsavedGuard(form.dirty);
 
   const formRef = useRef<HTMLFormElement>(null);
   const [saving, setSaving] = useState(false);
   const [reconcile, setReconcile] = useState<string[] | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  // A staged (not-yet-saved) headshot change; counts as a dirty edit so the guard
+  // fires and Save uploads it after the text PATCH (D50/N42).
+  const [stagedHeadshot, setStagedHeadshot] = useState<HeadshotChange | null>(null);
+  const dirty = form.dirty || stagedHeadshot !== null;
+  useUnsavedGuard(dirty);
 
   // Block in-app navigation away from a dirty form. A successful Save flips
   // `bypass` first so the blocker waves its own exit through without a prompt.
   const bypass = useRef(false);
-  const blocker = useBlocker(useCallback(() => form.dirty && !bypass.current, [form.dirty]));
+  const blocker = useBlocker(useCallback(() => dirty && !bypass.current, [dirty]));
 
   // Derive the write gates from the shared capability matrix rather than
   // re-encoding the role→rule mapping inline, so the UI can't silently drift from
@@ -126,25 +132,49 @@ export function ProfileEdit({
     }
     setSaving(true);
     try {
-      const result = await submit(form.patch());
-      if (result.status === "ok") {
-        showToast(viewer.isOwner ? "Saved — verified as of today." : "Saved.");
-        bypass.current = true;
-        exitEdit();
-        return;
+      // 1. Text PATCH first (D50) — skipped when only the photo changed, so a
+      //    photo-only Save never fires a no-op PATCH (and never re-verifies, N42).
+      const patch = form.patch();
+      const textChanged = Object.keys(patch).length > 0;
+      if (textChanged) {
+        const result = await submit(patch);
+        if (result.status !== "ok") {
+          if (result.status === "stale") {
+            setReconcile(result.changedFields);
+          } else if (result.status === "invalid") {
+            form.applyServerIssues(result.issues);
+            focusFirstInvalid();
+          } else if (result.status === "forbidden") {
+            setBanner("Your role may not change one or more of these fields.");
+          } else if (result.status === "reload") {
+            setBanner("This page is out of date. Please reload it, then make your changes again.");
+          } else {
+            setBanner("We couldn't save your changes just now. Please try again.");
+          }
+          return; // Keep the staged photo; the user fixes the text and re-saves.
+        }
       }
-      if (result.status === "stale") {
-        setReconcile(result.changedFields);
-      } else if (result.status === "invalid") {
-        form.applyServerIssues(result.issues);
-        focusFirstInvalid();
-      } else if (result.status === "forbidden") {
-        setBanner("Your role may not change one or more of these fields.");
-      } else if (result.status === "reload") {
-        setBanner("This page is out of date. Please reload it, then make your changes again.");
-      } else {
-        setBanner("We couldn't save your changes just now. Please try again.");
+
+      // 2. Then the staged headshot (§5.7; N42). Its own fresh ETag lands in the
+      //    container, so a following edit doesn't 412.
+      if (stagedHeadshot) {
+        const ok = await saveHeadshot(stagedHeadshot);
+        if (!ok) {
+          // KEEP the staged crop (OFC-124): pressing Save again must actually retry
+          // the upload. Clearing it here would discard the photo and disarm the
+          // unsaved guard, making "please try again" a lie (the next Save would be a
+          // no-op). It clears only on success or an explicit Undo.
+          setBanner("We saved your details, but couldn't update your photo. Please try again.");
+          return;
+        }
+        setStagedHeadshot(null);
       }
+
+      // A photo-only Save doesn't re-verify (N42), so only claim verification when
+      // the owner actually changed textual content.
+      showToast(textChanged && viewer.isOwner ? "Saved — verified as of today." : "Saved.");
+      bypass.current = true;
+      exitEdit();
     } finally {
       setSaving(false);
     }
@@ -213,12 +243,12 @@ export function ProfileEdit({
           <div className="py-6">
             <Section title="Identity">
               <div className="flex flex-wrap items-start gap-5">
-                <div className="flex flex-col items-center gap-2">
-                  <ProfileHeadshot record={record} name={name} responsive />
-                  <p className="max-w-[132px] text-center text-[length:var(--text-body-sm)] text-muted-foreground">
-                    Photo editing arrives soon.
-                  </p>
-                </div>
+                <HeadshotEditor
+                  record={record}
+                  name={name}
+                  staged={stagedHeadshot}
+                  onStage={setStagedHeadshot}
+                />
                 <div className="grid min-w-0 flex-1 gap-4 sm:grid-cols-2">
                   <TextField
                     id="profile-firstName"

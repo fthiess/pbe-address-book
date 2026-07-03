@@ -1,6 +1,7 @@
 import { imageUrl, thumbnailObjectKey } from "@pbe/shared";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar.js";
+import { MourningBand } from "../../components/MourningBand.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 
 /**
@@ -33,6 +34,10 @@ export function thumbnailUrl(profile: DirectoryProfile): string | null {
 export function Thumbnail({ profile, name }: { profile: DirectoryProfile; name: string }) {
   const [failed, setFailed] = useState(false);
   const url = thumbnailUrl(profile);
+  // Re-arm on URL change (OFC-128) so a re-uploaded thumbnail loads after a
+  // transient error instead of sticking on the avatar fallback.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset keyed on `url` change is the intent; the body reads no deps.
+  useEffect(() => setFailed(false), [url]);
   const deceased = profile.deceased?.isDeceased === true;
   const debrothered = profile.debrothered?.isDebrothered === true;
   // The accessible name folds in the memorial status, matching §5.5's alt-text rule.
@@ -75,32 +80,5 @@ export function Thumbnail({ profile, name }: { profile: DirectoryProfile; name: 
         </svg>
       )}
     </span>
-  );
-}
-
-/**
- * The diagonal mourning band — an ink stripe across the upper-right of the circle
- * along the "╲" diagonal (`rotate(45deg)`), spanning **edge to edge** of the
- * circle in its path (a full chord — the band is wider than the circle and the
- * round container clips it to the rim). Hairline white edges let it read on a
- * dark-mode avatar (D32). Purely decorative — the status is carried in words by
- * the badge and the alt text.
- */
-function MourningBand() {
-  return (
-    <span
-      aria-hidden="true"
-      className="pointer-events-none absolute"
-      style={{
-        top: "23%",
-        right: "-19%",
-        width: "100%",
-        height: "13%",
-        transform: "rotate(45deg)",
-        transformOrigin: "center",
-        background: "#14181b",
-        boxShadow: "0 0.5px 0 rgba(255,255,255,0.85), 0 -0.5px 0 rgba(255,255,255,0.85)",
-      }}
-    />
   );
 }

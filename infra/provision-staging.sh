@@ -102,6 +102,21 @@ if ! gcloud storage buckets describe "gs://${IMAGE_BUCKET}" >/dev/null 2>&1; the
     --project "${PROJECT_ID}"
 fi
 
+# 5a. Object versioning + a 90-day noncurrent-age lifecycle (D94/N42). The headshot
+#     pipeline deletes each superseded version's objects on replace/remove; with
+#     versioning on, that delete only *archives* the object as a noncurrent version,
+#     so a mistaken replace/remove is recoverable — until the lifecycle rule purges
+#     noncurrent versions 90 days later. Both updates are idempotent.
+echo "==> Enabling object versioning + 90-day noncurrent lifecycle on gs://${IMAGE_BUCKET}"
+gcloud storage buckets update "gs://${IMAGE_BUCKET}" --versioning --project "${PROJECT_ID}"
+LIFECYCLE_FILE="$(mktemp)"
+cat >"${LIFECYCLE_FILE}" <<'JSON'
+{ "rule": [ { "action": { "type": "Delete" }, "condition": { "daysSinceNoncurrentTime": 90 } } ] }
+JSON
+gcloud storage buckets update "gs://${IMAGE_BUCKET}" \
+  --lifecycle-file="${LIFECYCLE_FILE}" --project "${PROJECT_ID}"
+rm -f "${LIFECYCLE_FILE}"
+
 # 6. Runtime service account + least-privilege roles (idempotent bindings).
 if ! gcloud iam service-accounts describe "${SA_EMAIL}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
   echo "==> Creating service account ${SA_EMAIL}"
@@ -110,8 +125,11 @@ if ! gcloud iam service-accounts describe "${SA_EMAIL}" --project "${PROJECT_ID}
 fi
 gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${SA_EMAIL}" --role="roles/datastore.user" --condition=None >/dev/null
+# The runtime SA now WRITES and DELETES headshot/thumbnail objects (4c-1 pipeline),
+# not just reads them, so it needs objectAdmin (get/create/delete/list) on the
+# bucket rather than objectViewer.
 gcloud storage buckets add-iam-policy-binding "gs://${IMAGE_BUCKET}" \
-  --member="serviceAccount:${SA_EMAIL}" --role="roles/storage.objectViewer" >/dev/null
+  --member="serviceAccount:${SA_EMAIL}" --role="roles/storage.objectAdmin" >/dev/null
 
 # 7. Deploy the API to Cloud Run (built remotely by Cloud Build from ./Dockerfile).
 echo "==> Deploying ${SERVICE} to Cloud Run"
@@ -119,6 +137,7 @@ gcloud run deploy "${SERVICE}" \
   --source . --region "${REGION}" --project "${PROJECT_ID}" \
   --service-account "${SA_EMAIL}" \
   --max-instances 1 --min-instances 0 \
+  --memory 1Gi \
   --set-env-vars "IMAGE_BUCKET=${IMAGE_BUCKET},GHOST_JWKS_URL=${GHOST_JWKS_URL},GHOST_JWT_ISSUER=${GHOST_JWT_ISSUER},GHOST_JWT_AUDIENCE=${GHOST_JWT_AUDIENCE},GHOST_BRIDGE_URL=${GHOST_BRIDGE_URL},GHOST_BRIDGE_TARGET=${GHOST_BRIDGE_TARGET}" \
   --allow-unauthenticated --quiet
 

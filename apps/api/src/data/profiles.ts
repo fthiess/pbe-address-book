@@ -48,6 +48,20 @@ export interface ProfileWrite {
   readonly precondition: string;
 }
 
+/**
+ * An **unconditional** write: the same set/remove shape as {@link ProfileWrite}
+ * but with no concurrency precondition. Used only by the headshot sub-resource
+ * (N42), whose pointer advance (`hasHeadshot`/`headshotVersion`) is deliberately
+ * not `If-Match`-guarded — the single authoritative instance (D83) serializes
+ * uploads through an in-process semaphore, so there is no lost-update race to
+ * guard, and coupling a photo write to the text record's token would make a
+ * concurrent text edit spuriously 412 the photo (or vice versa).
+ */
+export interface UnconditionalWrite {
+  readonly set: Partial<Profile>;
+  readonly remove: readonly (keyof Profile)[];
+}
+
 /** The write seam injected into the server (real = Firestore; tests = in-memory). */
 export interface ProfileStore {
   /**
@@ -56,6 +70,14 @@ export interface ProfileStore {
    * {@link MissingProfileError} if the document is gone.
    */
   update(id: number, write: ProfileWrite): Promise<string>;
+  /**
+   * Apply an **unconditional** write to profile `id` (the headshot pointer, N42),
+   * returning the new concurrency token so the cache can advance in lock-step
+   * (read-your-writes, D83). Throws {@link MissingProfileError} if the document is
+   * gone. There is no {@link StaleWriteError} path — the write carries no
+   * precondition.
+   */
+  updateUnconditional(id: number, write: UnconditionalWrite): Promise<string>;
 }
 
 const COLLECTION = "profiles";
@@ -132,6 +154,26 @@ export class FirestoreProfileStore implements ProfileStore {
         throw new StaleWriteError();
       }
       if (code === GRPC_NOT_FOUND) {
+        throw new MissingProfileError();
+      }
+      throw error;
+    }
+  }
+
+  async updateUnconditional(id: number, write: UnconditionalWrite): Promise<string> {
+    const ref = this.db.collection(COLLECTION).doc(String(id));
+    const data: Record<string, unknown> = { ...write.set };
+    for (const field of write.remove) {
+      data[field] = FieldValue.delete();
+    }
+    try {
+      // No `lastUpdateTime` precondition — `update()` still requires the document
+      // to exist, so a deleted record surfaces as NOT_FOUND (→ 404), never a
+      // silent create.
+      const result = await ref.update(data);
+      return encodeToken(result.writeTime);
+    } catch (error) {
+      if ((error as { code?: number }).code === GRPC_NOT_FOUND) {
         throw new MissingProfileError();
       }
       throw error;
