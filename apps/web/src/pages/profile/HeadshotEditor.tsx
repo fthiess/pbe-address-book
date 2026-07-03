@@ -92,7 +92,10 @@ export function HeadshotEditor({
     : staged?.kind === "set" || (record.hasHeadshot ?? false);
 
   return (
-    <div className="flex flex-col items-center gap-2">
+    // Fixed-width column so a status line ("Photo will be removed on Save.") wraps
+    // WITHIN the column instead of widening it and shifting the Identity fields to
+    // its right; the photo and buttons stay put regardless of message state.
+    <div className="flex w-44 shrink-0 flex-col items-center gap-2 text-center">
       <Preview record={record} name={name} staged={staged} />
 
       <div className="flex flex-col items-center gap-1.5">
