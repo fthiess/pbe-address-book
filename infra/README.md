@@ -110,6 +110,11 @@ reusing the Compute Engine default.
 - The **runtime** service account (`book-api@…`) holds `storage.objectAdmin` on
   the image bucket (not just `objectViewer`): the 4c-1 pipeline creates and deletes
   headshot/thumbnail objects, not only reads them.
+- The **deploy workflow reconciles the image bucket** (that `objectAdmin` grant +
+  versioning + lifecycle) on every run, so these can't drift from this script on an
+  already-provisioned environment (DECISIONS N48) — the gap that once left staging's
+  runtime SA read-only and 500'd the first upload. Keep the same step in any prod
+  deploy workflow.
 - `--allow-unauthenticated` is intentional: the endpoint is reachable, but
   authentication is enforced by the app's session layer (D126); staging is fake
   data only (D72).
