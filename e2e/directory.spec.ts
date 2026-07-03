@@ -395,6 +395,32 @@ test.describe("signed-in directory", () => {
       .toBeGreaterThan(800);
   });
 
+  test("the filter panel returns collapsed after visiting a profile (N51)", async ({ page }) => {
+    // The panel's open/closed state is intentionally not persisted; on a Back from a
+    // profile the Directory remounts, and the panel must come back COLLAPSED
+    // regardless of whether it was open before — the "N active" badge still signals
+    // any live filters. (Prior behavior derived `open` from active-filter count,
+    // which returned inconsistently expanded/collapsed.)
+    await gotoDirectory(page);
+    const filters = page.getByRole("button", { name: /^Filters/ });
+    await filters.click();
+    await expect(filters).toHaveAttribute("aria-expanded", "true");
+
+    await page.getByTestId("directory-scroll").getByRole("link").nth(6).click();
+    await expect(page).toHaveURL(/\/brother\/\d+/);
+    // Wait for the Directory to actually unmount (the profile has rendered) before
+    // going Back — otherwise Back can interrupt the in-flight route transition and
+    // the Directory never unmounts, which is a test-only race, not real usage.
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeHidden();
+
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Filters/ })).toHaveAttribute(
+      "aria-expanded",
+      "false",
+    );
+  });
+
   test("retrieves and displays thumbnails for brothers with a headshot", async ({ page }) => {
     // The retrieval path must actually fire a request to the `/img` serving route.
     const thumbRequest = page.waitForRequest(/\/img\/thumbnails\/5001\/v1\.webp/);

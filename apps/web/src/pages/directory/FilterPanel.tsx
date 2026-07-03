@@ -47,7 +47,13 @@ export function FilterPanel({
   activeCount,
   onReset,
 }: FilterPanelProps) {
-  const [open, setOpen] = useState(activeCount > 0);
+  // Start collapsed on every mount, regardless of whether filters are active. The
+  // panel's open/closed state is deliberately NOT persisted (Forrest's call): the
+  // Directory remounts on a Back-navigation from a profile, so deriving `open` from
+  // `activeCount` made the returned panel inconsistently expanded-when-filtered /
+  // collapsed-when-not. Always-collapsed is consistent, and the header's "N active"
+  // badge still signals that filters are applied while the panel is closed.
+  const [open, setOpen] = useState(false);
   const regionId = useId();
   const staff = canUseStaffFilters(role);
 
