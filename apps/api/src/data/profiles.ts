@@ -78,6 +78,12 @@ export interface ProfileStore {
    * precondition.
    */
   updateUnconditional(id: number, write: UnconditionalWrite): Promise<string>;
+  /**
+   * Delete profile `id`'s document — the last, Book-side step of the admin delete
+   * (API-SPEC §4; DECISIONS N41). **Idempotent**: deleting an absent document is a
+   * no-op, not an error, so a re-run completes a partially-applied delete (D98).
+   */
+  delete(id: number): Promise<void>;
 }
 
 const COLLECTION = "profiles";
@@ -119,6 +125,35 @@ export function decodeToken(token: string): Timestamp | null {
   }
   const [seconds, nanoseconds] = token.split(".");
   return new Timestamp(Number(seconds), Number(nanoseconds));
+}
+
+/**
+ * Whether `candidate` is a newer (or equal) concurrency token than `existing`.
+ * Firestore `updateTime` is **monotonic per document**, so the cache token must
+ * never regress; this lets a writer keep whichever token is authoritative when a
+ * concurrent write may have advanced the cache during its await (OFC-136). Tokens
+ * that are not the `<sec>.<nanos>` shape (the in-memory test double's opaque
+ * `token-N`) are **not comparable**, so the candidate is treated as newer — the
+ * prior unconditional behavior, leaving the fake-backed tests unaffected.
+ */
+export function isTokenNewer(candidate: string, existing: string): boolean {
+  const c = parseTokenParts(candidate);
+  const e = parseTokenParts(existing);
+  if (c === null || e === null) {
+    return true;
+  }
+  if (c.seconds !== e.seconds) {
+    return c.seconds > e.seconds;
+  }
+  return c.nanoseconds >= e.nanoseconds;
+}
+
+function parseTokenParts(token: string): { seconds: number; nanoseconds: number } | null {
+  if (!TOKEN_RE.test(token)) {
+    return null;
+  }
+  const [seconds, nanoseconds] = token.split(".");
+  return { seconds: Number(seconds), nanoseconds: Number(nanoseconds) };
 }
 
 /** Firestore/gRPC status codes the write path maps onto HTTP outcomes. */
@@ -178,5 +213,11 @@ export class FirestoreProfileStore implements ProfileStore {
       }
       throw error;
     }
+  }
+
+  async delete(id: number): Promise<void> {
+    // Firestore `delete()` is idempotent — deleting an absent document resolves
+    // without error — which is exactly the re-runnable-delete semantics D98 wants.
+    await this.db.collection(COLLECTION).doc(String(id)).delete();
   }
 }

@@ -4,6 +4,7 @@ import { SESSION_COOKIE } from "../identity/session-cookie.js";
 import { AuthError, type IdentityProvider, type Session } from "../identity/types.js";
 import { buildServer } from "../server.js";
 import {
+  InMemoryAdminUserStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -61,6 +62,7 @@ async function buildAuthServer(withBridge = true) {
     identityProvider: provider,
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),
+    adminUsers: new InMemoryAdminUserStore(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [42],

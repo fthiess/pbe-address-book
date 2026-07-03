@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { ProfileCache } from "../data/cache.js";
 import { buildServer } from "../server.js";
 import {
+  InMemoryAdminUserStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -20,6 +21,7 @@ async function buildDevServer(getStars: (profileId: number) => Promise<number[]>
     identityProvider: provider,
     profileCache: new ProfileCache(),
     profileStore: new InMemoryProfileStore(),
+    adminUsers: new InMemoryAdminUserStore(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars,

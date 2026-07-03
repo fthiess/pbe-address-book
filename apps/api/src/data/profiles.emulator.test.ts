@@ -149,4 +149,12 @@ describe.skipIf(!hasEmulator)("FirestoreProfileStore (emulator) — optimistic c
       store.update(5247, { set: { phone: "555-0100" }, remove: [], precondition: token }),
     ).rejects.toBeInstanceOf(StaleWriteError);
   });
+
+  it("delete() removes the document and is idempotent (the admin delete, N41)", async () => {
+    await store.delete(5247);
+    expect((await db.collection("profiles").doc("5247").get()).exists).toBe(false);
+    // A re-run does not throw — the re-runnable delete D98 relies on.
+    await store.delete(5247);
+    expect((await db.collection("profiles").doc("5247").get()).exists).toBe(false);
+  });
 });

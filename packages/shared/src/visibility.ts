@@ -104,6 +104,10 @@ export const FIELD_VISIBILITY: Record<keyof Profile, FieldVisibility> = {
   // --- Staff & integration ---
   adminNote: { cls: "staff-internal" },
   ghostMemberId: { cls: "system-internal" },
+
+  // --- System-internal status snapshots (D80) — never sent to any client ---
+  deceasedConsentSnapshot: { cls: "system-internal" },
+  debrotherConsentSnapshot: { cls: "system-internal" },
 };
 
 /**

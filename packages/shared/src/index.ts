@@ -1,6 +1,7 @@
 export type {
   Address,
   BrotherId,
+  ConsentSnapshot,
   DeceasedInfo,
   DebrotherInfo,
   EmergencyContact,

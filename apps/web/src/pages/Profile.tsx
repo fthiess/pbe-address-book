@@ -1,5 +1,5 @@
-import type { Profile as ProfileType } from "@pbe/shared";
-import { useCallback, useEffect, useState } from "react";
+import type { Profile as ProfileType, Role } from "@pbe/shared";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Link,
   Navigate,
@@ -11,11 +11,24 @@ import {
 } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
-import { ApiError, deleteHeadshot, fetchProfile, patchProfile, putHeadshot } from "../lib/api.js";
+import {
+  ApiError,
+  type DeceasedFacts,
+  changeRole,
+  deleteHeadshot,
+  deleteProfile,
+  fetchProfile,
+  patchProfile,
+  putDebrothered,
+  putDeceased,
+  putHeadshot,
+  verifyProfile,
+} from "../lib/api.js";
 import type { DirectoryProfile, ProfileRecord } from "../lib/types.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
 import { applyProfileToRoster, useRoster } from "../lib/useRoster.js";
 import type { HeadshotChange } from "./profile/HeadshotEditor.js";
+import type { ProfileActions } from "./profile/ProfileControls.js";
 import type { SubmitResult } from "./profile/ProfileEdit.js";
 import { ProfileEdit } from "./profile/ProfileEdit.js";
 import { ProfileView } from "./profile/ProfileView.js";
@@ -52,6 +65,8 @@ export interface ProfileOutletContext {
   saveHeadshot: (change: HeadshotChange) => Promise<boolean>;
   /** Show a transient confirmation toast (the non-URL channel, N33). */
   showToast: (message: string) => void;
+  /** The privileged status/admin actions (verify, deceased, de-brother, role, delete — 4c-2). */
+  actions: ProfileActions;
   /** Leave edit mode back to the view: pop the edit entry, or replace it on a cold deep-link. */
   exitEdit: () => void;
   /** The "← Directory" action: return to the Directory entry, or `/` on a cold deep-link. */
@@ -205,6 +220,77 @@ export function ProfileContainer() {
   // resolving — and the "Saved" toast would linger past its intended lifetime (OFC-116).
   const dismissToast = useCallback(() => setToast(null), []);
 
+  // The 4c-2 privileged actions (API-SPEC §3–§5). Each dedicated server write
+  // returns the updated record (or the verify fields) + a fresh ETag, applied in
+  // place so the warm container's held token never goes stale (N42 pattern). The
+  // deceased/de-brother writes also refresh the cached roster (a re-pointed status
+  // affects the derived views), mirroring the PATCH path.
+  const isOwner = viewer?.isOwner ?? false;
+  const verify = useCallback(async () => {
+    const result = await verifyProfile(id);
+    setEtag(result.etag);
+    setRecord((prev) =>
+      prev
+        ? { ...prev, lastVerifiedDate: result.lastVerifiedDate, verifiedBy: result.verifiedBy }
+        : prev,
+    );
+    setToast(isOwner ? "Your details are confirmed current." : "Marked as verified.");
+  }, [id, isOwner]);
+
+  const setDeceased = useCallback(
+    async (deceased: boolean, facts?: DeceasedFacts) => {
+      const outcome = await putDeceased(id, deceased, facts);
+      if (outcome.status === "ok") {
+        // Replace the held record from the server's authoritative projection rather
+        // than shallow-merging (OFC-137): a status write can *remove* a top-level
+        // field (e.g. a cleared verification stamp on reversal), which a `{...prev}`
+        // spread would leave stale. Mirrors the PATCH path.
+        setRecord(outcome.profile);
+        setEtag(outcome.etag);
+        applyProfileToRoster(outcome.profile);
+        setToast(deceased ? "Marked as deceased." : "Deceased mark removed.");
+      }
+      return outcome;
+    },
+    [id],
+  );
+
+  const setDebrothered = useCallback(
+    async (debrothered: boolean) => {
+      const outcome = await putDebrothered(id, debrothered);
+      if (outcome.status === "ok") {
+        setRecord(outcome.profile); // authoritative replace, not a shallow merge (OFC-137)
+        setEtag(outcome.etag);
+        applyProfileToRoster(outcome.profile);
+        setToast(debrothered ? "Brother de-brothered." : "Brother reinstated.");
+      }
+      return outcome;
+    },
+    [id],
+  );
+
+  const changeRoleAction = useCallback((role: Role) => changeRole(id, role), [id]);
+
+  const removeProfile = useCallback(async () => {
+    const outcome = await deleteProfile(id);
+    if (outcome.status === "ok") {
+      // The record is gone server-side; return to the Directory (which re-downloads).
+      navigate("/");
+    }
+    return outcome;
+  }, [id, navigate]);
+
+  const actions: ProfileActions = useMemo(
+    () => ({
+      verify,
+      setDeceased,
+      setDebrothered,
+      changeRole: changeRoleAction,
+      removeProfile,
+    }),
+    [verify, setDeceased, setDebrothered, changeRoleAction, removeProfile],
+  );
+
   // The no-anachronistic-history model (N33): Edit pushed one entry tagged
   // `fromProfile`, so leaving edit pops it (Back from the view then reaches the
   // Directory). A cold deep-link straight to `/edit` has nothing to pop, so we
@@ -250,6 +336,7 @@ export function ProfileContainer() {
     submit,
     saveHeadshot,
     showToast,
+    actions,
     exitEdit,
     backToDirectory,
   };
@@ -263,12 +350,14 @@ export function ProfileContainer() {
 
 /** The view child route (`/brother/:id`) — pulls the record from the container. */
 export function ProfileViewRoute() {
-  const { record, viewer, roster, backToDirectory } = useOutletContext<ProfileOutletContext>();
+  const { record, viewer, roster, actions, backToDirectory } =
+    useOutletContext<ProfileOutletContext>();
   return (
     <ProfileView
       record={record}
       viewer={viewer}
       roster={roster}
+      actions={actions}
       onBackToDirectory={backToDirectory}
     />
   );

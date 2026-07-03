@@ -1,7 +1,14 @@
 import { getApps, initializeApp } from "firebase-admin/app";
 import { type Firestore, getFirestore } from "firebase-admin/firestore";
 import { beforeAll, describe, expect, it } from "vitest";
-import { addStar, ensureUser, getUser, removeStar } from "./users.js";
+import {
+  FirestoreAdminUserStore,
+  LastAdminError,
+  addStar,
+  ensureUser,
+  getUser,
+  removeStar,
+} from "./users.js";
 
 const hasEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 
@@ -53,5 +60,88 @@ describe.skipIf(!hasEmulator)("users collection (emulator)", () => {
   it("addStar creates a minimal brother record when the user doc is absent", async () => {
     expect(await addStar(db, 5904, 5012)).toEqual([5012]);
     expect(await getUser(db, 5904)).toEqual({ id: 5904, role: "brother", stars: [5012] });
+  });
+});
+
+describe.skipIf(!hasEmulator)("FirestoreAdminUserStore (emulator)", () => {
+  let db: Firestore;
+  let store: FirestoreAdminUserStore;
+
+  beforeAll(() => {
+    if (getApps().length === 0) {
+      initializeApp({ projectId: "demo-pbe-book" });
+    }
+    db = getFirestore();
+    store = new FirestoreAdminUserStore(db);
+  });
+
+  it("setRole creates the users doc if absent, reporting before = brother (N44)", async () => {
+    const result = await store.setRole(5920, "manager");
+    expect(result).toEqual({ before: "brother" });
+    expect(await getUser(db, 5920)).toEqual({ id: 5920, role: "manager", stars: [] });
+  });
+
+  it("setRole updates an existing role scoped to `role`, preserving stars", async () => {
+    await db
+      .collection("users")
+      .doc("5921")
+      .set({ id: 5921, role: "brother", stars: [5001] });
+    const result = await store.setRole(5921, "admin");
+    expect(result).toEqual({ before: "brother" });
+    expect(await getUser(db, 5921)).toEqual({ id: 5921, role: "admin", stars: [5001] });
+  });
+
+  it("setRole rejects demoting the only remaining admin (last-admin invariant)", async () => {
+    // Establish a deterministic baseline against the shared emulator DB: clear every
+    // existing admin, then seed exactly one.
+    const existing = await db.collection("users").where("role", "==", "admin").get();
+    await Promise.all(existing.docs.map((doc) => doc.ref.delete()));
+    await db.collection("users").doc("5950").set({ id: 5950, role: "admin", stars: [] });
+
+    // The only admin cannot be demoted.
+    await expect(store.setRole(5950, "manager")).rejects.toBeInstanceOf(LastAdminError);
+    expect((await getUser(db, 5950))?.role).toBe("admin");
+
+    // With a second admin present, demoting one is allowed.
+    await db.collection("users").doc("5951").set({ id: 5951, role: "admin", stars: [] });
+    const ok = await store.setRole(5950, "manager");
+    expect(ok.before).toBe("admin");
+  });
+
+  it("isLastAdmin: true only when the target is the sole admin [OFC-134]", async () => {
+    // Deterministic baseline against the shared emulator DB: clear every admin first.
+    const existing = await db.collection("users").where("role", "==", "admin").get();
+    await Promise.all(existing.docs.map((doc) => doc.ref.delete()));
+    await store.setRole(5960, "admin");
+    expect(await store.isLastAdmin(5960)).toBe(true); // count 1
+    expect(await store.isLastAdmin(5999)).toBe(false); // not an admin
+    await store.setRole(5961, "admin");
+    expect(await store.isLastAdmin(5960)).toBe(false); // count 2
+  });
+
+  it("removeStarFromAll pulls the id from every user's stars (idempotent)", async () => {
+    await db
+      .collection("users")
+      .doc("5930")
+      .set({ id: 5930, role: "brother", stars: [7000, 7001] });
+    await db
+      .collection("users")
+      .doc("5931")
+      .set({ id: 5931, role: "manager", stars: [7000] });
+    await store.removeStarFromAll(7000);
+    expect((await getUser(db, 5930))?.stars).toEqual([7001]);
+    expect((await getUser(db, 5931))?.stars).toEqual([]);
+    // A repeat is a no-op.
+    await store.removeStarFromAll(7000);
+    expect((await getUser(db, 5930))?.stars).toEqual([7001]);
+  });
+
+  it("deleteUser removes the doc and is idempotent", async () => {
+    await db.collection("users").doc("5940").set({ id: 5940, role: "brother", stars: [] });
+    await store.deleteUser(5940);
+    expect(await getUser(db, 5940)).toBeNull();
+    // Re-running does not throw.
+    await store.deleteUser(5940);
+    expect(await getUser(db, 5940)).toBeNull();
   });
 });

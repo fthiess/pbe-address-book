@@ -14,7 +14,7 @@
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
 import { FirestoreProfileStore } from "./data/profiles.js";
-import { addStar, getUser, removeStar } from "./data/users.js";
+import { FirestoreAdminUserStore, addStar, getUser, removeStar } from "./data/users.js";
 import { DevIdentityProvider } from "./identity/dev-provider.js";
 import { registerDevRoutes } from "./identity/dev-routes.js";
 import { NonceStore } from "./identity/nonce-store.js";
@@ -44,6 +44,7 @@ async function main(): Promise<void> {
     identityProvider: provider,
     profileCache,
     profileStore: new FirestoreProfileStore(db),
+    adminUsers: new FirestoreAdminUserStore(db),
     sessionStore,
     nonceStore,
     getStars,

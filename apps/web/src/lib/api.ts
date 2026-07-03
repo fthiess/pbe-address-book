@@ -179,6 +179,157 @@ export async function deleteHeadshot(id: number): Promise<HeadshotWriteResult> {
   return headshotResult(response);
 }
 
+/**
+ * The five D122 deceased facts a mark-deceased write carries (API-SPEC §3, N40).
+ * All optional; the shared validator enforces the `deathYear`⊕`dateOfDeath`
+ * exclusion and the year ranges.
+ */
+export interface DeceasedFacts {
+  dateOfDeath?: string;
+  deathYear?: number;
+  birthYear?: number;
+  obituaryUrl?: string;
+  inMemoriamUrl?: string;
+}
+
+/** A privileged status write that returns the updated record + fresh ETag (deceased/de-brother). */
+export type StatusWriteOutcome =
+  | { status: "ok"; profile: ProfileRecord; etag: string }
+  | { status: "invalid"; issues: ValidationIssue[] }
+  /** `502` — the Ghost-first lifecycle step failed; Book is unchanged (N41). */
+  | { status: "ghost_failed" };
+
+/**
+ * Confirm a record is freshly verified (`POST /api/profiles/:id/verify`, API-SPEC
+ * §3; D28/D48). Server-sets the date + verifier and returns a fresh `ETag` the
+ * container applies. A no-op on a deceased record (verification frozen).
+ */
+export async function verifyProfile(
+  id: number,
+): Promise<{ lastVerifiedDate?: string; verifiedBy?: number; etag: string }> {
+  const response = await fetch(`/api/profiles/${id}/verify`, {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  const body = await response.json();
+  return {
+    lastVerifiedDate: body.lastVerifiedDate,
+    verifiedBy: body.verifiedBy,
+    etag: response.headers.get("ETag") ?? "",
+  };
+}
+
+/**
+ * Raise, edit, or clear a brother's deceased state (`PUT /api/profiles/:id/deceased`,
+ * API-SPEC §3; N40). Pass `deceased: true` with the D122 facts to mark/edit, or
+ * `false` to reverse. Returns the updated record + fresh ETag, or the `422`
+ * validation issues.
+ */
+export async function putDeceased(
+  id: number,
+  deceased: boolean,
+  facts: DeceasedFacts = {},
+): Promise<StatusWriteOutcome> {
+  const response = await fetch(`/api/profiles/${id}/deceased`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deceased, ...facts }),
+  });
+  if (response.ok) {
+    return {
+      status: "ok",
+      profile: await response.json(),
+      etag: response.headers.get("ETag") ?? "",
+    };
+  }
+  if (response.status === 422) {
+    const body = await response.json().catch(() => ({}));
+    return { status: "invalid", issues: (body.issues as ValidationIssue[]) ?? [] };
+  }
+  throw await asError(response);
+}
+
+/**
+ * Raise or reverse de-brothering (`PUT /api/profiles/:id/debrothered`, API-SPEC §3;
+ * D115/N41). Ghost-first: a `502` means the Ghost step failed and Book is
+ * unchanged — surfaced as `ghost_failed` so the UI can say "try again" rather than
+ * throw.
+ */
+export async function putDebrothered(
+  id: number,
+  debrothered: boolean,
+): Promise<StatusWriteOutcome> {
+  const response = await fetch(`/api/profiles/${id}/debrothered`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ debrothered }),
+  });
+  if (response.ok) {
+    return {
+      status: "ok",
+      profile: await response.json(),
+      etag: response.headers.get("ETag") ?? "",
+    };
+  }
+  if (response.status === 502) {
+    return { status: "ghost_failed" };
+  }
+  throw await asError(response);
+}
+
+/**
+ * Delete a brother (`DELETE /api/profiles/:id`, admin only; API-SPEC §4). Ghost-first.
+ * A `409 last_admin` — deleting the only remaining admin is blocked (D106) — is
+ * surfaced as data so the UI can explain it rather than throw.
+ */
+export async function deleteProfile(
+  id: number,
+): Promise<{ status: "ok" } | { status: "ghost_failed" } | { status: "last_admin" }> {
+  const response = await fetch(`/api/profiles/${id}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (response.ok) {
+    return { status: "ok" };
+  }
+  if (response.status === 502) {
+    return { status: "ghost_failed" };
+  }
+  if (response.status === 409) {
+    return { status: "last_admin" };
+  }
+  throw await asError(response);
+}
+
+/**
+ * Change a brother's role (`PUT /api/users/:id/role`, admin only; API-SPEC §5;
+ * D51/N44). A `409 last_admin` — the only remaining admin cannot be demoted — is
+ * surfaced as data so the UI can explain it rather than throw.
+ */
+export async function changeRole(
+  id: number,
+  role: Role,
+): Promise<{ status: "ok"; role: Role } | { status: "last_admin" }> {
+  const response = await fetch(`/api/users/${id}/role`, {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role }),
+  });
+  if (response.ok) {
+    return { status: "ok", role: (await response.json()).role };
+  }
+  if (response.status === 409) {
+    return { status: "last_admin" };
+  }
+  throw await asError(response);
+}
+
 /** Begin the Ghost handshake: mint a nonce and get the relay URL to redirect to. */
 export async function startSignIn(): Promise<SignInStart> {
   const response = await fetch("/api/auth/start", {

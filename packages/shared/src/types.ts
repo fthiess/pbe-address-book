@@ -88,6 +88,28 @@ export interface DeceasedInfo {
 }
 
 /**
+ * The consent + verification state captured when a coordinated status action
+ * (mark-deceased or de-brother) forces the consent flags off, so an accidental
+ * mark can be reversed without silently losing a living brother's real
+ * subscription state (decision D80; DATABASE-SCHEMA §8). Captured at mark-time,
+ * restored on un-marking, then cleared. **System-internal — never sent to any
+ * client** (visibility class `system-internal`, like `ghostMemberId`).
+ *
+ * Mark-deceased and de-brother are orthogonal (both may be set), so each keeps
+ * its **own** snapshot ({@link Profile.deceasedConsentSnapshot} /
+ * {@link Profile.debrotherConsentSnapshot}); one shared slot would let the second
+ * action capture the first's already-forced-off flags and restore stale values.
+ */
+export interface ConsentSnapshot {
+  allowNewsletterEmail: boolean;
+  allowCommentReplyEmail: boolean;
+  /** The verification date at mark-time, if the record was verified then. */
+  lastVerifiedDate?: string;
+  /** The verifier at mark-time, if the record was verified then. */
+  verifiedBy?: BrotherId;
+}
+
+/**
  * De-brothering: a rare, admin-only state for a member removed from the
  * brotherhood (§3.2, D115). Raising it hides the record from brothers entirely
  * (managers/admins still see it, struck through), deletes the Ghost member,
@@ -218,4 +240,18 @@ export interface Profile {
   adminNote?: string;
   /** Ghost Admin-API member id; backend-only system field; never sent to any client. */
   ghostMemberId?: string;
+
+  // --- System-internal status snapshots (never sent to any client — §8, D80) ---
+  /**
+   * Consent/verification captured when this brother was marked **deceased**;
+   * restored (and cleared) when the deceased flag is reversed (D80). Present only
+   * while deceased. System-internal — see {@link ConsentSnapshot}.
+   */
+  deceasedConsentSnapshot?: ConsentSnapshot;
+  /**
+   * Consent/verification captured when this brother was **de-brothered**;
+   * restored (and cleared) on reinstatement (D80/D115). Present only while
+   * de-brothered. System-internal — see {@link ConsentSnapshot}.
+   */
+  debrotherConsentSnapshot?: ConsentSnapshot;
 }

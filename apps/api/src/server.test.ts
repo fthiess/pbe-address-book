@@ -3,6 +3,7 @@ import { ProfileCache } from "./data/cache.js";
 import type { IdentityProvider } from "./identity/types.js";
 import { buildServer } from "./server.js";
 import {
+  InMemoryAdminUserStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -21,6 +22,7 @@ describe("buildServer", () => {
       identityProvider: ghostLikeProvider,
       profileCache: new ProfileCache(),
       profileStore: new InMemoryProfileStore(),
+      adminUsers: new InMemoryAdminUserStore(),
       sessionStore: new InMemorySessionStore(),
       nonceStore: new InMemoryNonceStore(),
       getStars: async () => [],

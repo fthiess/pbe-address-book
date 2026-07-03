@@ -101,6 +101,11 @@ export const WRITE_RULE: Record<keyof Profile, WriteRule> = {
 
   // System-internal — Ghost handle, set only by the sync/migration path.
   ghostMemberId: "protected",
+
+  // System-internal consent/verification snapshots (D80) — set only by the
+  // mark-deceased (PUT …/deceased) and de-brother (PUT …/debrothered) actions.
+  deceasedConsentSnapshot: "protected",
+  debrotherConsentSnapshot: "protected",
 };
 
 /**
