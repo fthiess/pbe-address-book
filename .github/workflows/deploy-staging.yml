@@ -130,6 +130,22 @@ jobs:
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v2
 
+      # Reconcile the image bucket's IAM + versioning + lifecycle on every deploy so
+      # the live bucket can't drift from infra/provision-staging.sh. The deploy path
+      # only ran `gcloud run deploy`, so a provisioning change that lived solely in
+      # the script (the 4c-1 runtime-SA upgrade objectViewer→objectAdmin, and the D94
+      # versioning + 90-day noncurrent lifecycle) never reached staging — the runtime
+      # SA couldn't WRITE headshots and every upload 500'd. Idempotent; needs the
+      # deployer's storage.admin (already granted, infra/setup-wif.sh). A prod deploy
+      # workflow should carry the same step.
+      - name: Reconcile image bucket (IAM + versioning + lifecycle, D94/N42)
+        run: |
+          gcloud storage buckets add-iam-policy-binding "gs://$IMAGE_BUCKET" \
+            --member="serviceAccount:$RUNTIME_SA" --role="roles/storage.objectAdmin" --quiet
+          gcloud storage buckets update "gs://$IMAGE_BUCKET" --versioning
+          printf '%s' '{ "rule": [ { "action": { "type": "Delete" }, "condition": { "daysSinceNoncurrentTime": 90 } } ] }' > /tmp/img-lifecycle.json
+          gcloud storage buckets update "gs://$IMAGE_BUCKET" --lifecycle-file=/tmp/img-lifecycle.json
+
       # API last: gcloud only needs the token briefly to SUBMIT the Cloud Build
       # (the build then runs server-side as the build SA), so it tolerates the
       # slightly older token. Same flags as the provisioning playbook (D83
