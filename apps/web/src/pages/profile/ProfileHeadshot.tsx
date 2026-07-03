@@ -1,6 +1,7 @@
 import { headshotObjectKey, imageUrl } from "@pbe/shared";
 import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar.js";
+import { DebrotheredMark } from "../../components/DebrotheredMark.js";
 import { MourningBand } from "../../components/MourningBand.js";
 import type { ProfileRecord } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
@@ -47,6 +48,7 @@ export function ProfileHeadshot({
 }) {
   const [failed, setFailed] = useState(false);
   const deceased = record.deceased?.isDeceased === true;
+  const debrothered = record.debrothered?.isDebrothered === true;
   const url = headshotUrl(record);
   // Re-arm the image load when the URL changes (OFC-128): a new `headshotVersion`
   // (or a fresh record) must retry, not stick on the avatar after a transient error.
@@ -84,6 +86,7 @@ export function ProfileHeadshot({
         />
       )}
       {deceased && <MourningBand />}
+      {debrothered && <DebrotheredMark />}
     </span>
   );
 }

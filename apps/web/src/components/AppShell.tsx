@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import type { Me } from "../lib/types.js";
 import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
-import { Avatar } from "./Avatar.js";
+import { AvatarThumbnail } from "./AvatarThumbnail.js";
 import { FontSizeToggle } from "./FontSizeToggle.js";
 import { PrivacyFooter } from "./PrivacyFooter.js";
 import { RoleBadge } from "./RoleBadge.js";
@@ -88,7 +88,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
             )}
             <details ref={menuRef} className="relative">
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full px-1 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-                <Avatar name={name} seed={me.profile?.id} size={34} />
+                <AvatarThumbnail profile={me.profile} name={name} size={34} />
                 <span className="hidden text-sm font-medium sm:inline">{name}</span>
               </summary>
               {/* z-30 to clear the Directory's sticky header cells (z-21), matching

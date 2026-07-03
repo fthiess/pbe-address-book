@@ -138,4 +138,40 @@ test.describe("headshot 4c-1 — crop, stage, and save", () => {
     await expect(page.getByText(/Other formats \(including HEIC\) aren't supported/)).toBeVisible();
     await expect(page.getByRole("dialog", { name: "Adjust your photo" })).toBeHidden();
   });
+
+  test("the masthead avatar shows the signed-in brother's headshot thumbnail", async ({ page }) => {
+    // With a headshot on the signed-in brother's own record, the masthead avatar is
+    // the thumbnail image (same as his Directory row), not the initials fallback.
+    const rec = { ...ownerRecord(), hasHeadshot: true, headshotVersion: "v9" };
+    await page.route("**/api/me", (route) =>
+      route.fulfill({
+        json: {
+          profileId: 5247,
+          role: "admin",
+          realRole: "admin",
+          impersonating: false,
+          stars: [],
+          profile: rec,
+        },
+      }),
+    );
+    await page.route("**/api/profiles", (route) =>
+      route.fulfill({ json: { profiles: [rec], majors: [] } }),
+    );
+    await page.route(/\/api\/profiles\/\d+$/, (route) =>
+      route.fulfill({ headers: { ETag: 'W/"v1"' }, json: rec }),
+    );
+    // Serve a real WEBP so the masthead <img> loads rather than erroring to fallback.
+    const webp = await sharp({
+      create: { width: 96, height: 96, channels: 3, background: { r: 80, g: 100, b: 120 } },
+    })
+      .webp()
+      .toBuffer();
+    await page.route("**/img/thumbnails/**", (route) =>
+      route.fulfill({ contentType: "image/webp", body: webp }),
+    );
+
+    await page.goto("/brother/5247");
+    await expect(page.locator('header img[src*="/img/thumbnails/5247/v9"]')).toBeVisible();
+  });
 });

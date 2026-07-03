@@ -145,7 +145,7 @@ function IdentityHeader({
           </ul>
         )}
       </div>
-      {canEdit(viewer) && !deceased && (
+      {canEdit(viewer) && (
         <Link
           to={`/brother/${record.id}/edit`}
           state={{ fromProfile: true }}
