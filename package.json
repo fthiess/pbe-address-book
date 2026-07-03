@@ -36,7 +36,7 @@
     "@biomejs/biome": "^1.9.4",
     "@playwright/test": "^1.50.1",
     "esbuild": "^0.25.0",
-    "firebase-tools": "^14.0.0",
+    "firebase-tools": "^15.22.4",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^3.0.5"
