@@ -30,7 +30,7 @@ import { Link, useNavigate } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import type { DirectoryNavState } from "../profile/directory-nav.js";
-import { entryNavState } from "../profile/directory-stash.js";
+import { entryNavState, newStashId, putDirectoryStash } from "../profile/directory-stash.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { ColumnKey, GridColumn } from "./grid-model.js";
@@ -107,11 +107,24 @@ export function DirectoryGrid({
 }: DirectoryGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // The stash carried into a Profile page: the ordered id-list of the current
-  // displayed set (search ∩ filter ∩ sort) at delta 1, so the Profile page can
-  // step Prev/Next through it and "← Directory" can pop back (4d, N45). Computed
-  // once and shared by all rows/links (one object, same reference).
-  const linkState = useMemo(() => entryNavState(rows.map((r) => r.id)), [rows]);
+  // The stash carried into a Profile page so it can step Prev/Next through the
+  // current displayed set (search ∩ filter ∩ sort) and "← Directory" can pop back
+  // (4d, N45). The handle (`stashId` in `linkState`) is computed at render, but
+  // the id-list is written to the store ONLY when a row is actually navigated
+  // from (`commitStash`, OFC-141 follow-up) — so searching/filtering/sorting
+  // without opening a profile writes nothing. Shared by every row/link.
+  // A fresh handle per distinct displayed set (mint the id alongside the id-list
+  // so `rows` is a real dependency); the id-list is written to the store only on
+  // an actual navigation (`commitStash`).
+  const { orderedIds, stashId } = useMemo(
+    () => ({ orderedIds: rows.map((r) => r.id), stashId: newStashId() }),
+    [rows],
+  );
+  const linkState = useMemo(() => entryNavState(stashId), [stashId]);
+  const commitStash = useCallback(
+    () => putDirectoryStash(stashId, orderedIds),
+    [stashId, orderedIds],
+  );
 
   // Header select-all spans the whole filtered view (every row, not just the
   // virtualized window — §5.6.8). Derived from the full `rows` set.
@@ -280,6 +293,7 @@ export function DirectoryGrid({
                   stars={stars}
                   selection={selection}
                   linkState={linkState}
+                  commitStash={commitStash}
                 />
               );
             })}
@@ -543,8 +557,10 @@ interface RowProps {
   pinnedLeft: Map<ColumnKey, number>;
   stars: Stars;
   selection?: Selection;
-  /** The prev/next stash carried into the Profile page (4d, N45). */
+  /** The prev/next stash handle carried into the Profile page (4d, N45). */
   linkState: DirectoryNavState;
+  /** Write the id-list to the stash store — called only when this row is navigated from (OFC-141). */
+  commitStash: () => void;
 }
 
 function Row({
@@ -559,6 +575,7 @@ function Row({
   stars,
   selection,
   linkState,
+  commitStash,
 }: RowProps) {
   const navigate = useNavigate();
 
@@ -579,6 +596,7 @@ function Row({
     ) {
       return;
     }
+    commitStash();
     navigate(`/brother/${profile.id}`, { state: linkState });
   };
 
@@ -606,6 +624,7 @@ function Row({
           stars={stars}
           selection={selection}
           linkState={linkState}
+          commitStash={commitStash}
         />
       ))}
     </tr>
@@ -623,6 +642,7 @@ function Cell({
   stars,
   selection,
   linkState,
+  commitStash,
 }: {
   column: GridColumn;
   colIndex: number;
@@ -634,6 +654,7 @@ function Cell({
   stars: Stars;
   selection?: Selection;
   linkState: DirectoryNavState;
+  commitStash: () => void;
 }) {
   const common = cn(
     "overflow-hidden whitespace-nowrap border-b border-border px-3 align-middle bg-[var(--row-bg)]",
@@ -702,6 +723,14 @@ function Cell({
           <Link
             to={`/brother/${profile.id}`}
             state={linkState}
+            onClick={(event) => {
+              // Write the id-list only for a plain in-tab navigation (a modified
+              // click opens a new tab, which doesn't carry `location.state`, so
+              // there's nothing for a stash to feed — OFC-141 follow-up).
+              if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                commitStash();
+              }
+            }}
             className={cn(
               "min-w-0 max-w-full truncate font-medium underline-offset-2 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring",
               // De-brothered: struck through and muted (D115); managers/admins only.

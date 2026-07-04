@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { entryNavState, getDirectoryStash, putDirectoryStash } from "./directory-stash.js";
+import {
+  entryNavState,
+  getDirectoryStash,
+  newStashId,
+  putDirectoryStash,
+} from "./directory-stash.js";
 
 // The SPA unit tests run under the `node` environment (DOM-free by design — see
 // vitest.config.ts), so provide a faithful in-memory `sessionStorage` stub rather
@@ -29,11 +34,30 @@ afterEach(() => {
   (globalThis as { sessionStorage?: Storage }).sessionStorage = undefined;
 });
 
-describe("directory stash store (OFC-141)", () => {
-  it("round-trips an id-list through a stash id", () => {
-    const stashId = putDirectoryStash([5, 4, 3, 2, 1]);
-    expect(stashId).toBeTruthy();
-    expect(getDirectoryStash(stashId)).toEqual([5, 4, 3, 2, 1]);
+/** Count of stored id-lists (the index key aside). */
+function stashCount(): number {
+  let n = 0;
+  for (let i = 0; i < sessionStorage.length; i++) {
+    const k = sessionStorage.key(i);
+    if (k?.startsWith("pbe:dirnav:") && k !== "pbe:dirnav:index") {
+      n += 1;
+    }
+  }
+  return n;
+}
+
+describe("directory stash store (OFC-141 + lazy-write follow-up)", () => {
+  it("mints distinct ids and writes nothing on its own", () => {
+    const a = newStashId();
+    const b = newStashId();
+    expect(a).not.toBe(b);
+    expect(stashCount()).toBe(0); // newStashId does not touch storage
+  });
+
+  it("round-trips an id-list written under an explicit stash id", () => {
+    const id = newStashId();
+    putDirectoryStash(id, [5, 4, 3, 2, 1]);
+    expect(getDirectoryStash(id)).toEqual([5, 4, 3, 2, 1]);
   });
 
   it("returns [] for an undefined or unknown stash id", () => {
@@ -41,29 +65,31 @@ describe("directory stash store (OFC-141)", () => {
     expect(getDirectoryStash("never-written")).toEqual([]);
   });
 
-  it("mints a distinct id per stash so concurrent Directory views don't collide", () => {
-    const a = putDirectoryStash([1, 2]);
-    const b = putDirectoryStash([3, 4]);
-    expect(a).not.toBe(b);
-    expect(getDirectoryStash(a)).toEqual([1, 2]);
-    expect(getDirectoryStash(b)).toEqual([3, 4]);
+  it("re-writing the same id overwrites in place — no duplicate accumulates", () => {
+    const id = newStashId();
+    putDirectoryStash(id, [1, 2]);
+    putDirectoryStash(id, [1, 2, 3]);
+    expect(stashCount()).toBe(1);
+    expect(getDirectoryStash(id)).toEqual([1, 2, 3]);
   });
 
   it("bounds retained stashes, evicting the oldest so a long session can't accumulate them", () => {
-    // Write well past the cap; the earliest writes must have been evicted while
-    // the most recent survive.
-    const first = putDirectoryStash([0]);
-    const rest = Array.from({ length: 40 }, (_, i) => putDirectoryStash([i + 1]));
+    const first = newStashId();
+    putDirectoryStash(first, [0]);
+    let last = first;
+    for (let i = 1; i <= 40; i++) {
+      last = newStashId();
+      putDirectoryStash(last, [i]);
+    }
     expect(getDirectoryStash(first)).toEqual([]); // evicted
-    const last = rest[rest.length - 1];
     expect(getDirectoryStash(last)).toEqual([40]); // retained
+    expect(stashCount()).toBeLessThanOrEqual(12); // MAX_STASHES
   });
 
-  it("entryNavState stashes once and carries only the handle at delta 1", () => {
-    const state = entryNavState([7, 8, 9]);
-    expect(state.fromDirectory).toBe(true);
-    expect(state.directoryDelta).toBe(1);
-    expect(state).not.toHaveProperty("directoryIds");
-    expect(getDirectoryStash(state.stashId)).toEqual([7, 8, 9]);
+  it("entryNavState is pure — it carries the handle but writes nothing", () => {
+    const id = newStashId();
+    const state = entryNavState(id);
+    expect(state).toEqual({ fromDirectory: true, stashId: id, directoryDelta: 1 });
+    expect(stashCount()).toBe(0); // no write until putDirectoryStash is called on navigation
   });
 });

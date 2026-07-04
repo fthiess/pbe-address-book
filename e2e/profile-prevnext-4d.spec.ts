@@ -254,6 +254,37 @@ test.describe("prev/next through the directory (4d)", () => {
     expect(del()).toBe(1);
   });
 
+  test("searching/filtering writes no stash entries; navigating writes exactly one (OFC-141 follow-up)", async ({
+    page,
+  }) => {
+    await mock(page);
+    await gotoDirectory(page);
+
+    const stashCount = () =>
+      page.evaluate(
+        () =>
+          Object.keys(sessionStorage).filter(
+            (k) => k.startsWith("pbe:dirnav:") && k !== "pbe:dirnav:index",
+          ).length,
+      );
+
+    // Changing the displayed set (search) repeatedly, without opening a profile,
+    // must NOT accumulate stash entries — that was the reported leak.
+    await page.getByRole("searchbox").fill("young");
+    await page.getByRole("searchbox").fill("adams");
+    await page.getByRole("searchbox").fill("");
+    expect(await stashCount()).toBe(0);
+
+    // Opening a profile writes exactly one stash…
+    await openRow(page, "Adams");
+    expect(await stashCount()).toBe(1);
+
+    // …and stepping reuses it — a Prev/Next chain doesn't add keys.
+    await page.getByRole("button", { name: "Next brother" }).click();
+    await expect(page.getByText("2 of 3")).toBeVisible();
+    expect(await stashCount()).toBe(1);
+  });
+
   test("the profile view with the prev/next bar has no a11y violations (axe, WCAG 2.2 AA)", async ({
     page,
   }) => {

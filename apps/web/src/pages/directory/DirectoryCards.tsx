@@ -1,10 +1,10 @@
 import type { HighlightRange } from "@pbe/name-search";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
-import { entryNavState } from "../profile/directory-stash.js";
+import { entryNavState, newStashId, putDirectoryStash } from "../profile/directory-stash.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { GridColumn } from "./grid-model.js";
@@ -59,9 +59,19 @@ export function DirectoryCards({
 }: DirectoryCardsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // The prev/next stash carried into a Profile page (4d, N45): the ordered
-  // id-list of the current displayed set at delta 1, shared by every card link.
-  const linkState = useMemo(() => entryNavState(rows.map((r) => r.id)), [rows]);
+  // The prev/next stash carried into a Profile page (4d, N45). The handle is
+  // computed at render; the id-list is written to the store only when a card is
+  // actually navigated from (`commitStash`) — so searching/filtering/sorting
+  // without opening a profile writes nothing (OFC-141 follow-up).
+  const { orderedIds, stashId } = useMemo(
+    () => ({ orderedIds: rows.map((r) => r.id), stashId: newStashId() }),
+    [rows],
+  );
+  const linkState = useMemo(() => entryNavState(stashId), [stashId]);
+  const commitStash = useCallback(
+    () => putDirectoryStash(stashId, orderedIds),
+    [stashId, orderedIds],
+  );
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -124,6 +134,14 @@ export function DirectoryCards({
                 <Link
                   to={`/brother/${profile.id}`}
                   state={linkState}
+                  onClick={(event) => {
+                    // Write the id-list only for a plain in-tab navigation (a
+                    // modified click opens a new tab, which doesn't carry
+                    // `location.state` — OFC-141 follow-up).
+                    if (!event.metaKey && !event.ctrlKey && !event.shiftKey && !event.altKey) {
+                      commitStash();
+                    }
+                  }}
                   className="block rounded-xl border border-border bg-card p-3 pr-20 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="flex items-center gap-3">
