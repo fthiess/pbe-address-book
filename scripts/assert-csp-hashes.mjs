@@ -30,7 +30,7 @@ const firebase = readFileSync(FIREBASE_JSON, "utf8");
 // `<SCRIPT>` or `<script type="module">…</script>`) cannot slip past the guard and
 // leave the CSP silently missing a hash the browser then blocks (CodeQL
 // js/bad-tag-filter). The hash is over the element's text content (group 2).
-const inlineScripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
+const inlineScripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script[^>]*>/gi)]
   .filter(([, attrs]) => !/\bsrc\s*=/i.test(attrs))
   .map(([, , body]) => body);
 
