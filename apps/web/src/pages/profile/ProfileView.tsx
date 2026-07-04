@@ -3,10 +3,12 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
+import { DirectoryNav } from "./DirectoryNav.js";
 import { type ProfileActions, StaffControls, VerifyControl } from "./ProfileControls.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
 import { RelationshipChip } from "./RelationshipChip.js";
 import { CONSENT_COPY, PRIVACY_COPY, activeConsequence } from "./consent.js";
+import type { DirectoryNav as DirectoryNavModel } from "./directory-nav.js";
 import {
   addressLines,
   canonicalName,
@@ -32,12 +34,18 @@ export function ProfileView({
   roster,
   actions,
   onBackToDirectory,
+  directoryNav,
+  onPrev,
+  onNext,
 }: {
   record: ProfileRecord;
   viewer: Viewer;
   roster: DirectoryProfile[] | null;
   actions: ProfileActions;
   onBackToDirectory: () => void;
+  directoryNav: DirectoryNavModel;
+  onPrev: () => void;
+  onNext: () => void;
 }) {
   const name = canonicalName(record);
   const deceased = record.deceased?.isDeceased === true;
@@ -45,13 +53,7 @@ export function ProfileView({
 
   return (
     <article className="mx-auto max-w-5xl">
-      <button
-        type="button"
-        onClick={onBackToDirectory}
-        className="mb-3 inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-[length:var(--text-label)] font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span aria-hidden="true">←</span> Directory
-      </button>
+      <DirectoryNav nav={directoryNav} onBack={onBackToDirectory} onPrev={onPrev} onNext={onNext} />
       <div className="overflow-hidden rounded-[var(--radius-2xl)] border border-border bg-card shadow-[var(--shadow-card)]">
         {deceased && <MemorialBanner />}
 

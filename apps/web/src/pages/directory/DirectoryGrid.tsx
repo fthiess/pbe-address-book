@@ -29,6 +29,7 @@ import {
 import { Link, useNavigate } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
+import { type DirectoryNavState, entryNavState } from "../profile/directory-nav.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { ColumnKey, GridColumn } from "./grid-model.js";
@@ -104,6 +105,12 @@ export function DirectoryGrid({
   restoreReady,
 }: DirectoryGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // The stash carried into a Profile page: the ordered id-list of the current
+  // displayed set (search ∩ filter ∩ sort) at delta 1, so the Profile page can
+  // step Prev/Next through it and "← Directory" can pop back (4d, N45). Computed
+  // once and shared by all rows/links (one object, same reference).
+  const linkState = useMemo(() => entryNavState(rows.map((r) => r.id)), [rows]);
 
   // Header select-all spans the whole filtered view (every row, not just the
   // virtualized window — §5.6.8). Derived from the full `rows` set.
@@ -271,6 +278,7 @@ export function DirectoryGrid({
                   pinnedLeft={pinnedLeft}
                   stars={stars}
                   selection={selection}
+                  linkState={linkState}
                 />
               );
             })}
@@ -534,6 +542,8 @@ interface RowProps {
   pinnedLeft: Map<ColumnKey, number>;
   stars: Stars;
   selection?: Selection;
+  /** The prev/next stash carried into the Profile page (4d, N45). */
+  linkState: DirectoryNavState;
 }
 
 function Row({
@@ -547,6 +557,7 @@ function Row({
   pinnedLeft,
   stars,
   selection,
+  linkState,
 }: RowProps) {
   const navigate = useNavigate();
 
@@ -567,7 +578,7 @@ function Row({
     ) {
       return;
     }
-    navigate(`/brother/${profile.id}`, { state: { fromDirectory: true } });
+    navigate(`/brother/${profile.id}`, { state: linkState });
   };
 
   return (
@@ -593,6 +604,7 @@ function Row({
           left={pinnedLeft.get(column.key)}
           stars={stars}
           selection={selection}
+          linkState={linkState}
         />
       ))}
     </tr>
@@ -609,6 +621,7 @@ function Cell({
   left,
   stars,
   selection,
+  linkState,
 }: {
   column: GridColumn;
   colIndex: number;
@@ -619,6 +632,7 @@ function Cell({
   left: number | undefined;
   stars: Stars;
   selection?: Selection;
+  linkState: DirectoryNavState;
 }) {
   const common = cn(
     "overflow-hidden whitespace-nowrap border-b border-border px-3 align-middle bg-[var(--row-bg)]",
@@ -686,7 +700,7 @@ function Cell({
               interactive Star/Select cells land with their behaviour in 3c. */}
           <Link
             to={`/brother/${profile.id}`}
-            state={{ fromDirectory: true }}
+            state={linkState}
             className={cn(
               "min-w-0 max-w-full truncate font-medium underline-offset-2 outline-none hover:underline focus-visible:rounded focus-visible:ring-2 focus-visible:ring-ring",
               // De-brothered: struck through and muted (D115); managers/admins only.

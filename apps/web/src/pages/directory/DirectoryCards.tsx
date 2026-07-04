@@ -1,9 +1,10 @@
 import type { HighlightRange } from "@pbe/name-search";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
+import { entryNavState } from "../profile/directory-nav.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { GridColumn } from "./grid-model.js";
@@ -57,6 +58,10 @@ export function DirectoryCards({
   restoreReady,
 }: DirectoryCardsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // The prev/next stash carried into a Profile page (4d, N45): the ordered
+  // id-list of the current displayed set at delta 1, shared by every card link.
+  const linkState = useMemo(() => entryNavState(rows.map((r) => r.id)), [rows]);
 
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -118,7 +123,7 @@ export function DirectoryCards({
                 </span>
                 <Link
                   to={`/brother/${profile.id}`}
-                  state={{ fromDirectory: true }}
+                  state={linkState}
                   className="block rounded-xl border border-border bg-card p-3 pr-20 outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="flex items-center gap-3">
