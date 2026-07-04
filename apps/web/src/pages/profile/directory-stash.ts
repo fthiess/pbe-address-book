@@ -1,31 +1,40 @@
 import type { DirectoryNavState } from "./directory-nav.js";
 
 /**
- * The directory prev/next id-list store (Phase 4d follow-up, OFC-141).
+ * The directory prev/next id-list store (Phase 4d, OFC-141 + its live-test
+ * follow-up).
  *
  * The Prev/Next feature needs the ordered id-list of the Directory view the user
- * clicked in from. The first cut stashed that whole array *inside* React Router's
- * `location.state`, which the browser structure-clones into `history.state` on
- * **every** push — so a long Prev/Next walk held N separate copies of the full
- * ~1,200-id array in the history stack. Instead we stash the array **once** here,
- * keyed by a short id, and carry only that `stashId` (+ the delta) in history
- * state — a few bytes per entry, and one shared copy of the list.
+ * clicked in from. OFC-141 moved that list out of `location.state` (which the
+ * browser structure-clones into `history.state` on every push) into this store,
+ * keyed by a short `stashId` carried in history state instead.
  *
- * Backed by `sessionStorage` so the list survives a same-tab reload (matching the
- * old `history.state` persistence). A small bounded index evicts the oldest
- * stashes so a long session can't accumulate them without limit; the index lives
- * in `sessionStorage` too, so the bound holds across reloads. All access is
- * wrapped defensively: if `sessionStorage` is unavailable or full, a write is a
- * no-op and a read returns `[]`, so Prev/Next degrade to hidden (the same
- * graceful path as a cold deep-link) rather than throwing.
+ * **Lazy write (live-test follow-up):** the list is written **only when the user
+ * actually navigates into a profile**, not on every Directory render. An earlier
+ * cut stashed inside the grid/cards `useMemo`, so every search / filter / sort
+ * keystroke wrote a fresh entry even when no profile was ever opened, churning
+ * the whole ring with never-used sets. Now the entry points precompute a
+ * `stashId` (via {@link newStashId}) for the current view and only call
+ * {@link putDirectoryStash} on the click that leaves for a profile; a Prev/Next
+ * step reuses the same `stashId` (no re-write). So searching/filtering/sorting
+ * writes nothing, and the store only ever holds sets the user actually navigated
+ * from — capped at {@link MAX_STASHES}.
+ *
+ * Backed by `sessionStorage` so a set survives a same-tab reload (matching the
+ * old `history.state` persistence). A bounded, reload-persistent index evicts the
+ * oldest so a long session can't accumulate them without limit. All access is
+ * `try/catch`-guarded: if `sessionStorage` is unavailable or full, a write is a
+ * no-op and a read returns `[]`, so Prev/Next degrade to hidden (the cold
+ * deep-link path) rather than throwing.
  */
 
 const KEY_PREFIX = "pbe:dirnav:";
 const INDEX_KEY = "pbe:dirnav:index";
-/** Retain at most this many recent stashes (one per distinct Directory view visited). */
-const MAX_STASHES = 24;
+/** Retain at most this many recent stashes (one per distinct Directory view actually navigated from). */
+const MAX_STASHES = 12;
 
-function newStashId(): string {
+/** Generate a fresh, unguessable stash id (no storage write — {@link putDirectoryStash} does that). */
+export function newStashId(): string {
   // `crypto.randomUUID` is available in every target browser and in jsdom; the
   // fallback keeps a non-crypto environment from throwing.
   try {
@@ -45,12 +54,16 @@ function readIndex(): string[] {
   }
 }
 
-/** Store an ordered id-list and return its stash id (or `undefined` if storage is unavailable). */
-export function putDirectoryStash(ids: number[]): string | undefined {
-  const stashId = newStashId();
+/**
+ * Store an ordered id-list under a (caller-owned) stash id. Idempotent for a given
+ * id — re-writing the same `stashId` overwrites its list and moves it to
+ * most-recent in the eviction order without adding a duplicate index entry.
+ */
+export function putDirectoryStash(stashId: string, ids: number[]): void {
   try {
     sessionStorage.setItem(KEY_PREFIX + stashId, JSON.stringify(ids));
-    const index = readIndex();
+    // Dedupe (move-to-most-recent) then bound, evicting the oldest.
+    const index = readIndex().filter((existing) => existing !== stashId);
     index.push(stashId);
     while (index.length > MAX_STASHES) {
       const evicted = index.shift();
@@ -59,9 +72,8 @@ export function putDirectoryStash(ids: number[]): string | undefined {
       }
     }
     sessionStorage.setItem(INDEX_KEY, JSON.stringify(index));
-    return stashId;
   } catch {
-    return undefined;
+    // sessionStorage unavailable/full — prev/next silently degrade to hidden.
   }
 }
 
@@ -81,8 +93,9 @@ export function getDirectoryStash(stashId: string | undefined): number[] {
 
 /**
  * The initial `location.state` for a navigation out of the Directory (first hop):
- * stash the ordered id-list once and carry only its handle at `directoryDelta: 1`.
+ * carry only the stash handle at `directoryDelta: 1`. Pure — the id-list itself is
+ * written lazily by the entry point's click handler (see {@link putDirectoryStash}).
  */
-export function entryNavState(ids: number[]): DirectoryNavState {
-  return { fromDirectory: true, stashId: putDirectoryStash(ids), directoryDelta: 1 };
+export function entryNavState(stashId: string): DirectoryNavState {
+  return { fromDirectory: true, stashId, directoryDelta: 1 };
 }
