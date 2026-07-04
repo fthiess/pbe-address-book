@@ -8,7 +8,7 @@ import { type ProfileActions, StaffControls, VerifyControl } from "./ProfileCont
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
 import { RelationshipChip } from "./RelationshipChip.js";
 import { CONSENT_COPY, PRIVACY_COPY, activeConsequence } from "./consent.js";
-import type { DirectoryNav as DirectoryNavModel } from "./directory-nav.js";
+import type { DirectoryNav as DirectoryNavModel, StepDirection } from "./directory-nav.js";
 import {
   addressLines,
   canonicalName,
@@ -37,6 +37,8 @@ export function ProfileView({
   directoryNav,
   onPrev,
   onNext,
+  autoFocusStep,
+  onStepFocused,
 }: {
   record: ProfileRecord;
   viewer: Viewer;
@@ -46,6 +48,8 @@ export function ProfileView({
   directoryNav: DirectoryNavModel;
   onPrev: () => void;
   onNext: () => void;
+  autoFocusStep: StepDirection | null;
+  onStepFocused: () => void;
 }) {
   const name = canonicalName(record);
   const deceased = record.deceased?.isDeceased === true;
@@ -53,7 +57,14 @@ export function ProfileView({
 
   return (
     <article className="mx-auto max-w-5xl">
-      <DirectoryNav nav={directoryNav} onBack={onBackToDirectory} onPrev={onPrev} onNext={onNext} />
+      <DirectoryNav
+        nav={directoryNav}
+        onBack={onBackToDirectory}
+        onPrev={onPrev}
+        onNext={onNext}
+        autoFocusStep={autoFocusStep}
+        onStepFocused={onStepFocused}
+      />
       <div className="overflow-hidden rounded-[var(--radius-2xl)] border border-border bg-card shadow-[var(--shadow-card)]">
         {deceased && <MemorialBanner />}
 

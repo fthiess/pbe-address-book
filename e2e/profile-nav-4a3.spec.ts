@@ -227,7 +227,9 @@ test.describe("profile navigation (4a-3)", () => {
     await page.goto("/brother/5247");
     await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
 
-    await page.getByRole("button", { name: /Directory/ }).click();
+    // On a cold deep-link (nothing to pop) ← Directory is a real <a href="/">
+    // anchor rather than a JS-only button (OFC-145).
+    await page.getByRole("link", { name: /Directory/ }).click();
     await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
   });
 

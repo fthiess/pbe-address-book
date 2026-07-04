@@ -1,5 +1,5 @@
 import type { Profile as ProfileType, Role } from "@pbe/shared";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Navigate,
   Outlet,
@@ -34,9 +34,12 @@ import { ProfileEdit } from "./profile/ProfileEdit.js";
 import { ProfileView } from "./profile/ProfileView.js";
 import {
   type DirectoryNav as DirectoryNavModel,
+  type DirectoryNavState,
+  type StepDirection,
   deriveDirectoryNav,
   stepNavState,
 } from "./profile/directory-nav.js";
+import { getDirectoryStash } from "./profile/directory-stash.js";
 import { valuesEqual } from "./profile/patch.js";
 import { type Viewer, canEdit } from "./profile/viewer.js";
 
@@ -82,6 +85,10 @@ export interface ProfileOutletContext {
   goPrev: () => void;
   /** Push to the next brother in the stashed set (no-op at the end / with no stash). */
   goNext: () => void;
+  /** The pending Prev/Next direction to re-focus after the step remounts the bar (OFC-144), else null. */
+  autoFocusStep: StepDirection | null;
+  /** Called by the bar once it has consumed {@link autoFocusStep} (clears the one-shot intent). */
+  onStepFocused: () => void;
 }
 
 /**
@@ -104,11 +111,15 @@ export function ProfileContainer() {
   const viewer: Viewer | null = me ? { role: me.role, isOwner: me.profileId === id } : null;
   const { profiles: roster, error: rosterError } = useRoster();
 
-  // Prev/next-through-the-Directory (4d, N45). Derived purely from the stashed
-  // `location.state` + this id, so it is correct even on the not-found path
+  // Prev/next-through-the-Directory (4d, N45). The `location.state` carries only a
+  // `stashId` handle; the ordered id-list is resolved from the stash store
+  // (OFC-141). The derivation stays pure and is correct even on the not-found path
   // (a stale stashed id still has neighbours to step to). It also carries the
   // `directoryDelta` that "← Directory" and the post-delete return pop back on.
-  const directoryNav = useMemo(() => deriveDirectoryNav(location.state, id), [location.state, id]);
+  const directoryNav = useMemo(() => {
+    const navState = location.state as DirectoryNavState | null;
+    return deriveDirectoryNav(navState, id, getDirectoryStash(navState?.stashId));
+  }, [location.state, id]);
 
   const [record, setRecord] = useState<ProfileRecord | null>(null);
   const [etag, setEtag] = useState("");
@@ -288,24 +299,29 @@ export function ProfileContainer() {
 
   const changeRoleAction = useCallback((role: Role) => changeRole(id, role), [id]);
 
+  // Return to the Directory ENTRY we arrived from as a POP — popping the whole
+  // Prev/Next chain via `directoryDelta` (each entry carries its own, N45) so the
+  // Directory's URL filters/search/sort and `location.key`-keyed scroll are
+  // restored, not `navigate("/")` (which would open a fresh, unfiltered Directory
+  // at the top and lose the user's place). A cold deep-link (delta 0) has no
+  // Directory entry to pop, so it falls back to the Directory home. Shared by
+  // "← Directory" and the post-delete return (OFC-143).
+  const popToDirectory = useCallback(() => {
+    if (directoryNav.delta > 0) {
+      navigate(-directoryNav.delta);
+    } else {
+      navigate("/");
+    }
+  }, [directoryNav.delta, navigate]);
+
   const removeProfile = useCallback(async () => {
     const outcome = await deleteProfile(id);
     if (outcome.status === "ok") {
-      // Return to the Directory ENTRY we arrived from as a POP (restoring its URL
-      // filters/search/sort and history-state scroll), not `navigate("/")` — which
-      // would open a fresh, unfiltered Directory at the top and lose the user's
-      // place. The Directory refetches on remount, so the just-deleted brother is
-      // gone. Same discipline as "← Directory" (backToDirectory): pop the whole
-      // prev/next chain via `directoryDelta`; a cold deep-link (delta 0) falls back
-      // to the Directory home.
-      if (directoryNav.delta > 0) {
-        navigate(-directoryNav.delta);
-      } else {
-        navigate("/");
-      }
+      // The Directory refetches on remount, so the just-deleted brother is gone.
+      popToDirectory();
     }
     return outcome;
-  }, [id, navigate, directoryNav.delta]);
+  }, [id, popToDirectory]);
 
   const actions: ProfileActions = useMemo(
     () => ({
@@ -330,28 +346,34 @@ export function ProfileContainer() {
     }
   }, [location.state, navigate, id]);
 
-  // "← Directory": pop `directoryDelta` entries back to the *true* Directory entry
-  // — which stays correct after any Prev/Next chain (each entry carries its own
-  // delta, N45), restoring the Directory's URL filters and `location.key`-keyed
-  // scroll — or fall back to the Directory home on a cold deep-link (delta 0).
-  const backToDirectory = useCallback(() => {
-    if (directoryNav.delta > 0) {
-      navigate(-directoryNav.delta);
-    } else {
-      navigate("/");
-    }
-  }, [directoryNav.delta, navigate]);
+  // "← Directory" is the same pop as the post-delete return.
+  const backToDirectory = popToDirectory;
+
+  // Prev/Next changes the route, which unmounts the whole DirectoryNav bar during
+  // the fetch (`status = "loading"`) and remounts a fresh one on `ready` — so the
+  // button the keyboard user just pressed no longer exists and focus falls to
+  // <body>, breaking Enter-repeat stepping (OFC-144). We record the step direction
+  // here (a ref survives the remount; the container itself does not unmount) and
+  // the freshly-mounted bar re-focuses the matching button, so the user can keep
+  // stepping. Consumed once per step so a later non-step remount (Back/Forward)
+  // doesn't steal focus.
+  const stepIntentRef = useRef<StepDirection | null>(null);
+  const consumeStepIntent = useCallback(() => {
+    stepIntentRef.current = null;
+  }, []);
 
   // Prev/Next: an ordinary push to the neighbour's display page, re-carrying the
   // stashed id-list with `directoryDelta + 1` so "← Directory" keeps popping to
   // the real Directory entry (N45). Guarded so an end-of-set call is a no-op.
   const goPrev = useCallback(() => {
     if (directoryNav.prevId !== null) {
+      stepIntentRef.current = "prev";
       navigate(`/brother/${directoryNav.prevId}`, { state: stepNavState(directoryNav) });
     }
   }, [directoryNav, navigate]);
   const goNext = useCallback(() => {
     if (directoryNav.nextId !== null) {
+      stepIntentRef.current = "next";
       navigate(`/brother/${directoryNav.nextId}`, { state: stepNavState(directoryNav) });
     }
   }, [directoryNav, navigate]);
@@ -366,7 +388,14 @@ export function ProfileContainer() {
     // the stashed set) so the user steps past it — no auto-skip (N45).
     return (
       <section className="mx-auto max-w-5xl">
-        <DirectoryNav nav={directoryNav} onBack={backToDirectory} onPrev={goPrev} onNext={goNext} />
+        <DirectoryNav
+          nav={directoryNav}
+          onBack={backToDirectory}
+          onPrev={goPrev}
+          onNext={goNext}
+          autoFocusStep={stepIntentRef.current}
+          onStepFocused={consumeStepIntent}
+        />
         <NotFound canStep={directoryNav.hasStash} />
       </section>
     );
@@ -393,6 +422,8 @@ export function ProfileContainer() {
     directoryNav,
     goPrev,
     goNext,
+    autoFocusStep: stepIntentRef.current,
+    onStepFocused: consumeStepIntent,
   };
   return (
     <>
@@ -404,8 +435,18 @@ export function ProfileContainer() {
 
 /** The view child route (`/brother/:id`) — pulls the record from the container. */
 export function ProfileViewRoute() {
-  const { record, viewer, roster, actions, backToDirectory, directoryNav, goPrev, goNext } =
-    useOutletContext<ProfileOutletContext>();
+  const {
+    record,
+    viewer,
+    roster,
+    actions,
+    backToDirectory,
+    directoryNav,
+    goPrev,
+    goNext,
+    autoFocusStep,
+    onStepFocused,
+  } = useOutletContext<ProfileOutletContext>();
   return (
     <ProfileView
       record={record}
@@ -416,6 +457,8 @@ export function ProfileViewRoute() {
       directoryNav={directoryNav}
       onPrev={goPrev}
       onNext={goNext}
+      autoFocusStep={autoFocusStep}
+      onStepFocused={onStepFocused}
     />
   );
 }

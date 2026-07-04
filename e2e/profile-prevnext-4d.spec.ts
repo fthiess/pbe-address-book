@@ -94,6 +94,46 @@ async function mock(page: Page, stale: Set<number> = new Set()) {
   });
 }
 
+/**
+ * An admin variant: the caller is an admin viewing the directory, so the Profile
+ * page shows the Staff controls (incl. Delete). Adds the DELETE route and the
+ * Role control's GET so the delete-after-a-chain return path can be exercised.
+ * Returns a `del` counter.
+ */
+async function mockAdmin(page: Page): Promise<{ del: () => number }> {
+  let del = 0;
+  const admin = {
+    profileId: 5001,
+    role: "admin" as const,
+    realRole: "admin" as const,
+    impersonating: false,
+    stars: [],
+    profile: { ...baseRecord(5001, "Ada", "Admin", 1979) },
+  };
+  await page.route("**/api/me", (route) => route.fulfill({ json: admin }));
+  await page.route("**/api/profiles", (route) => route.fulfill({ json: LIST }));
+  await page.route(/\/api\/users\/\d+\/role$/, (route) =>
+    route.fulfill({ json: { id: 5301, role: "brother" } }),
+  );
+  await page.route(/\/api\/profiles\/\d+$/, (route) => {
+    if (route.request().method() === "DELETE") {
+      del += 1;
+      return route.fulfill({ status: 204, body: "" });
+    }
+    const id = Number(
+      route
+        .request()
+        .url()
+        .match(/\/(\d+)$/)?.[1],
+    );
+    if (!RECORDS[id]) {
+      return route.fulfill({ status: 404, json: { error: "not_found" } });
+    }
+    return route.fulfill({ headers: { ETag: 'W/"v1"' }, json: RECORDS[id] });
+  });
+  return { del: () => del };
+}
+
 async function gotoDirectory(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
@@ -121,12 +161,17 @@ test.describe("prev/next through the directory (4d)", () => {
     await page.getByRole("button", { name: "Next brother" }).click();
     await expect(page.getByRole("heading", { level: 1, name: /Smyth/ })).toBeVisible();
     await expect(page.getByText("2 of 3")).toBeVisible();
+    // Focus follows the step to the (still-enabled) Next button, so a keyboard
+    // user can hold Enter to keep stepping (OFC-144) — the bar remounts each step.
+    await expect(page.getByRole("button", { name: "Next brother" })).toBeFocused();
 
     await page.getByRole("button", { name: "Next brother" }).click();
     await expect(page.getByRole("heading", { level: 1, name: /Young/ })).toBeVisible();
     await expect(page.getByText("3 of 3")).toBeVisible();
-    // Last in the set: Next disabled.
+    // Last in the set: Next disabled — focus falls back to the opposite control
+    // rather than dropping to <body> (OFC-144).
     await expect(page.getByRole("button", { name: "Next brother" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Previous brother" })).toBeFocused();
 
     // Prev walks back.
     await page.getByRole("button", { name: "Previous brother" }).click();
@@ -177,9 +222,36 @@ test.describe("prev/next through the directory (4d)", () => {
 
     await expect(page.getByRole("button", { name: "Next brother" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Previous brother" })).toHaveCount(0);
-    // ← Directory still works (falls back to the Directory home).
-    await page.getByRole("button", { name: /Directory/ }).click();
+    // With nothing to pop (delta 0), ← Directory is a real <a href="/"> anchor,
+    // not a JS-only button — a genuine escape hatch (OFC-145). It still works.
+    const back = page.getByRole("link", { name: /Directory/ });
+    await expect(back).toHaveAttribute("href", "/");
+    await back.click();
     await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+  });
+
+  test("deleting a brother after a prev/next chain returns to the Directory", async ({ page }) => {
+    // The post-delete return uses the same directoryDelta pop as ← Directory
+    // (OFC-143); this guards that a chain-walk before a destructive delete still
+    // lands on the Directory, not one step into the chain (OFC-142).
+    const { del } = await mockAdmin(page);
+    await gotoDirectory(page);
+    await openRow(page, "Adams"); // delta 1
+
+    await page.getByRole("button", { name: "Next brother" }).click(); // → Smyth, delta 2
+    await expect(page.getByText("2 of 3")).toBeVisible();
+    await page.getByRole("button", { name: "Next brother" }).click(); // → Young, delta 3
+    await expect(page.getByRole("heading", { level: 1, name: /Young/ })).toBeVisible();
+
+    await page.getByRole("button", { name: "Delete brother…" }).click();
+    const dialog = page.getByRole("dialog", { name: "Delete this brother?" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Delete permanently" }).click();
+
+    // navigate(-3) lands on the Directory, not an intermediate profile.
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    await expect(page).toHaveURL(/\/$/);
+    expect(del()).toBe(1);
   });
 
   test("the profile view with the prev/next bar has no a11y violations (axe, WCAG 2.2 AA)", async ({

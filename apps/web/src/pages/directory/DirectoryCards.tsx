@@ -4,7 +4,7 @@ import { useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
-import { entryNavState } from "../profile/directory-nav.js";
+import { entryNavState } from "../profile/directory-stash.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { GridColumn } from "./grid-model.js";
