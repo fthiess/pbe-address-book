@@ -126,18 +126,21 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     });
   });
 
-  // Security headers on every API + `/img` response (OFC-148, D107). Firebase
-  // Hosting's header rules cover only the statically-served SPA; the `/api/**`
-  // and `/img/**` responses are Cloud-Run rewrites Hosting does not header, so the
-  // backend sets its own. A response is never a document that loads sub-resources,
-  // so the CSP floors to `default-src 'none'` with framing denied; `nosniff`
-  // matters for the `/img` bytes, and HSTS/Referrer-Policy mirror the SPA's.
+  // Security headers on every API + `/img` response (OFC-148, D107).
   //
-  // The four non-CSP values below are intentionally identical to the SPA copies in
-  // `firebase.json` (the two paths are headered by different layers, so the values
-  // must be duplicated). KEEP THEM IN SYNC: a change to HSTS max-age or
-  // Referrer-Policy must be made in both places (OFC-146 review — no shared source
-  // is practical across JSON config and TS).
+  // NOTE (corrected against the live staging deploy — OFC-146 follow-up): Firebase
+  // Hosting DOES apply its `**` header rules (firebase.json) to the `/api/**` and
+  // `/img/**` rewrite responses, and those TAKE PRECEDENCE over what Cloud Run
+  // sets — so in production the API/img responses actually carry the SPA's CSP and
+  // Hosting's own HSTS, not the values below. This hook is therefore **defense in
+  // depth**: it guarantees the headers on any path that reaches Cloud Run WITHOUT
+  // going through Hosting (a direct run.app URL), and is harmlessly overridden on
+  // the Hosting-fronted path. A CSP on a JSON/image response is inert regardless
+  // (it governs document contexts, not the response's own bytes), so the floor
+  // `default-src 'none'` here is a safe default for the direct-access case.
+  //
+  // The four non-CSP values mirror the SPA copies in `firebase.json`; keep them in
+  // sync (no shared source is practical across JSON config and TS).
   app.addHook("onSend", async (_request, reply, payload) => {
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("X-Frame-Options", "DENY");
