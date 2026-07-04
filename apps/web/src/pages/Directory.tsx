@@ -2,7 +2,7 @@ import { getHelpEntry } from "@pbe/help-content";
 import type { NameRecord } from "@pbe/name-search";
 import { resolveCanonicalNames } from "@pbe/shared";
 import { parseAsBoolean, useQueryState } from "nuqs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { ClearButton } from "../components/ClearButton.js";
@@ -38,6 +38,7 @@ import { useDirectoryFilters } from "./directory/useDirectoryFilters.js";
 import { useDirectorySort } from "./directory/useDirectorySort.js";
 import { useSelection } from "./directory/useSelection.js";
 import { useStars } from "./directory/useStars.js";
+import { clearDirectoryStashes } from "./profile/directory-stash.js";
 
 const NO_STARS: readonly number[] = [];
 
@@ -66,6 +67,17 @@ export function Directory() {
     "deceased",
     parseAsBoolean.withDefault(false),
   );
+
+  // Once we're back on the Directory, any prev/next stash is for a profile we've
+  // left; drop them all (the next click-through regenerates one). Keeps
+  // sessionStorage from filling with abandoned, identical stashes (OFC-141
+  // follow-up). A *layout* effect so the clear runs synchronously on the
+  // Directory's mount — before paint and before a row can be clicked — so a fast
+  // click-through can't be written and then immediately wiped. Mount-only: the
+  // Directory route remounts on every return.
+  useLayoutEffect(() => {
+    clearDirectoryStashes();
+  }, []);
 
   const lens = useColumnLens(role);
   const sort = useDirectorySort();
