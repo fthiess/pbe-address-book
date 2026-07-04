@@ -168,4 +168,31 @@ describe("auth routes", () => {
     expect(after.statusCode).toBe(401);
     await app.close();
   });
+
+  it("POST /api/auth/signout clears the cookie even for an already-expired session (OFC-150)", async () => {
+    const { app, sessionStore } = await buildAuthServer();
+    // A session already past its cap — the gate would 401 it, so a gated sign-out
+    // could never clear the cookie. The ungated endpoint must still 204 + clear it.
+    const expired = await sessionStore.create({
+      identity: {
+        subject: "5001",
+        profileId: 5001,
+        email: "x@example.test",
+        role: "brother",
+        displayName: "T",
+      },
+      expiresAt: Date.now() - 1000,
+    });
+    const out = await app.inject({
+      method: "POST",
+      url: "/api/auth/signout",
+      headers: { cookie: `${SESSION_COOKIE}=${expired}` },
+    });
+    expect(out.statusCode).toBe(204);
+    // The Set-Cookie clears the session cookie (empty value / expiry in the past).
+    const setCookie = out.headers["set-cookie"];
+    const header = Array.isArray(setCookie) ? setCookie.join(";") : (setCookie ?? "");
+    expect(header).toContain(SESSION_COOKIE);
+    await app.close();
+  });
 });

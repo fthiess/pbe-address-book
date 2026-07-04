@@ -59,6 +59,39 @@ describe.skipIf(!hasEmulator)("SessionStore (emulator)", () => {
     expect(await new SessionStore(db).get(id)).toBeNull();
   });
 
+  it("destroyAllForProfile revokes every session of one brother, across a cold instance (OFC-147)", async () => {
+    const writer = new SessionStore(db);
+    // Two live sessions for the target brother (e.g. two devices), plus one for a
+    // bystander that must be left untouched.
+    const a = await writer.create(makeSession(5010, Date.now() + 60_000));
+    const b = await writer.create(makeSession(5010, Date.now() + 60_000));
+    const other = await writer.create(makeSession(5011, Date.now() + 60_000));
+
+    // Revoke from a *fresh* store (empty cache) so the delete is proven against
+    // Firestore, not just the writer's warm cache — the scale-to-zero path.
+    const revoker = new SessionStore(db);
+    const removed = await revoker.destroyAllForProfile(5010);
+    expect(removed).toBe(2);
+
+    // Both target sessions are gone everywhere; the bystander survives.
+    expect(await new SessionStore(db).get(a)).toBeNull();
+    expect(await new SessionStore(db).get(b)).toBeNull();
+    expect((await new SessionStore(db).get(other))?.identity.profileId).toBe(5011);
+
+    // Idempotent: a second sweep removes nothing.
+    expect(await revoker.destroyAllForProfile(5010)).toBe(0);
+  });
+
+  it("destroyAllForProfile also prunes a warm cache entry (OFC-147)", async () => {
+    const store = new SessionStore(db);
+    const id = await store.create(makeSession(5012, Date.now() + 60_000));
+    // Warm the cache with a hit.
+    expect((await store.get(id))?.identity.profileId).toBe(5012);
+    await store.destroyAllForProfile(5012);
+    // The same instance must not keep serving the revoked session from memory.
+    expect(await store.get(id)).toBeNull();
+  });
+
   it("persists and clears the effective ('View as') role across a cold start (N31)", async () => {
     const writer = new SessionStore(db);
     const id = await writer.create(makeSession(5004, Date.now() + 60_000));

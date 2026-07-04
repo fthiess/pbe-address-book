@@ -86,7 +86,7 @@ async function buildStatusServer(ghostLifecycle = new StubGhostLifecycle()) {
   });
   const cookieFor = async (profileId: number, role: Role) =>
     `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(profileId, role))}`;
-  return { app, cache, audited, cookieFor };
+  return { app, cache, audited, sessionStore, cookieFor };
 }
 
 type Ctx = Awaited<ReturnType<typeof buildStatusServer>>;
@@ -333,6 +333,45 @@ describe("PUT /api/profiles/:id/debrothered", () => {
     expect(response.statusCode).toBe(502);
     expect(response.json()).toEqual({ error: "ghost_create_failed" });
     expect(ctx.cache.getById(5004)?.debrothered.isDebrothered).toBe(true);
+    await ctx.app.close();
+  });
+
+  it("revokes the de-brothered brother's live sessions on raise, auditing the count (OFC-147)", async () => {
+    const ctx = await buildStatusServer(new RecordingGhostLifecycle());
+    // Two live sessions for the target (e.g. two devices) plus a bystander's.
+    const targetId = await ctx.sessionStore.create(sessionFor(5002, "brother"));
+    await ctx.sessionStore.create(sessionFor(5002, "brother"));
+    const bystanderId = await ctx.sessionStore.create(sessionFor(5001, "brother"));
+
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5002/debrothered",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { debrothered: true },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(ctx.audited.at(-1)).toMatchObject({
+      action: "profile.debrother",
+      targetId: 5002,
+      sessionsRevoked: 2,
+    });
+    // The target's sessions are gone; the bystander's survives.
+    expect(await ctx.sessionStore.get(targetId)).toBeNull();
+    expect((await ctx.sessionStore.get(bystanderId))?.identity.profileId).toBe(5001);
+    await ctx.app.close();
+  });
+
+  it("does not revoke sessions on a de-brother reverse (access is being restored) (OFC-147)", async () => {
+    const ctx = await buildStatusServer(new RecordingGhostLifecycle());
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5004/debrothered",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { debrothered: false },
+    });
+    expect(response.statusCode).toBe(200);
+    // No `sessionsRevoked` key on a reverse — it is omitted, not zero.
+    expect(ctx.audited.at(-1)).not.toHaveProperty("sessionsRevoked");
     await ctx.app.close();
   });
 });

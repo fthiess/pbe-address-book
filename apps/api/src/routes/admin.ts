@@ -6,9 +6,15 @@ import type { ImageStore } from "../data/images.js";
 import type { ProfileStore } from "../data/profiles.js";
 import { type AdminUserStore, LastAdminError } from "../data/users.js";
 import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
+import type { SessionService } from "../identity/session-store.js";
 import { effectiveRole } from "../identity/types.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
-import { authorizePrivileged, mergeProfile, parseProfileId } from "./privileged-support.js";
+import {
+  authorizePrivileged,
+  mergeProfile,
+  parseProfileId,
+  revokeSessionsBestEffort,
+} from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
 
 /**
@@ -30,6 +36,8 @@ export interface AdminRouteDeps {
   cache: ProfileCache;
   gate: preHandlerHookHandler;
   store: ProfileStore;
+  /** Session revocation on delete + role change (OFC-147). */
+  sessionStore: SessionService;
   imageStore: ImageStore;
   /** The admin `users` operations: role change (with the invariant) + delete scrubs. */
   adminUsers: AdminUserStore;
@@ -92,7 +100,8 @@ function registerRoleRead(app: FastifyInstance, deps: AdminRouteDeps): void {
  * updated last, in one atomic swap ({@link ProfileCache.applyDelete}).
  */
 function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
-  const { cache, gate, store, imageStore, adminUsers, ghostLifecycle, audit, clock } = deps;
+  const { cache, gate, store, sessionStore, imageStore, adminUsers, ghostLifecycle, audit, clock } =
+    deps;
   app.delete(
     "/api/profiles/:id",
     { preHandler: gate, config: writeRateLimit() },
@@ -172,8 +181,18 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
       // Cache last: remove the record and fold in the scrubbed referrers + tokens.
       await cache.applyDelete(id, scrubbed);
 
+      // Revoke the deleted brother's own live sessions (OFC-147). The gate does
+      // NOT self-heal this (it passes on record *absence*), so revocation is the
+      // control — but best-effort: a transient failure here must not fail an
+      // otherwise-complete delete or drop its audit entry; it degrades to the
+      // D22 cap and logs (OFC-146 review).
+      const sessionsRevoked = await revokeSessionsBestEffort(sessionStore, id, {
+        action: "profile.delete",
+        actorId,
+      });
+
       audit.record(
-        { action: "profile.delete", actorId, targetId: id, outcome: "ok", trace },
+        { action: "profile.delete", actorId, targetId: id, outcome: "ok", sessionsRevoked, trace },
         now.toISOString(),
       );
       return reply.code(204).send();
@@ -193,7 +212,7 @@ const ROLES: ReadonlySet<string> = new Set<Role>(["brother", "manager", "admin"]
  * (D106).
  */
 function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
-  const { cache, gate, adminUsers, audit, clock } = deps;
+  const { cache, gate, sessionStore, adminUsers, audit, clock } = deps;
   app.put(
     "/api/users/:id/role",
     { preHandler: gate, config: writeRateLimit() },
@@ -225,6 +244,20 @@ function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
         throw error;
       }
 
+      // Revoke the target's live sessions when the role actually changed (OFC-147):
+      // the role is snapshotted on the session, so without this a demoted admin
+      // keeps admin powers — and could re-promote themselves — until the 4-hour cap
+      // (D22). The next request re-auths through the bridge and picks up the new
+      // role. A no-op reassignment (same role) touches nothing. This includes the
+      // admin demoting themselves (legal when other admins remain): their own
+      // session is torn down, this response still completes, and their next action
+      // re-auths silently. Best-effort (OFC-146 review): a transient revocation
+      // failure logs and degrades to the D22 cap rather than dropping the audit.
+      const sessionsRevoked =
+        before === role
+          ? 0
+          : await revokeSessionsBestEffort(sessionStore, id, { action: "role.change", actorId });
+
       audit.record(
         {
           action: "role.change",
@@ -233,6 +266,7 @@ function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
           outcome: "ok",
           fromRole: before,
           toRole: role,
+          sessionsRevoked,
           trace,
         },
         now.toISOString(),

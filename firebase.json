@@ -23,7 +23,20 @@
     "headers": [
       {
         "source": "**",
-        "headers": [{ "key": "Cache-Control", "value": "no-cache, must-revalidate" }]
+        "headers": [
+          { "key": "Cache-Control", "value": "no-cache, must-revalidate" },
+          {
+            "key": "Content-Security-Policy",
+            "value": "default-src 'self'; script-src 'self' 'sha256-5bZZ19BcdcNTPgTqMD8yhc3UbQ+/lS5SHEJT792HBj8=' 'sha256-iPg+1Vc0qu0QzIEOkpvDvnAjnv5AL6C6L/SwAU4J4Zs='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+          },
+          { "key": "X-Content-Type-Options", "value": "nosniff" },
+          { "key": "X-Frame-Options", "value": "DENY" },
+          { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+          {
+            "key": "Strict-Transport-Security",
+            "value": "max-age=31536000; includeSubDomains; preload"
+          }
+        ]
       },
       {
         "source": "**/*.@(js|css|woff2|svg|png|webp|ico)",

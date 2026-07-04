@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { STATUS_CODES } from "node:http";
 import cookie from "@fastify/cookie";
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { AuditLog } from "./audit/audit-log.js";
 import type { ProfileCache } from "./data/cache.js";
 import { GcsImageStore, type ImageStore } from "./data/images.js";
@@ -19,6 +20,7 @@ import { registerImageRoutes } from "./routes/images.js";
 import { type Clock, registerProfileRoutes } from "./routes/profiles.js";
 import { registerStarsRoutes } from "./routes/stars.js";
 import { registerStatusRoutes } from "./routes/status.js";
+import { traceId } from "./routes/trace.js";
 import { registerRateLimit } from "./security/rate-limit.js";
 
 export interface BuildServerOptions {
@@ -86,6 +88,64 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   // not the shared proxy; nothing else in the server reads `request.ip`.
   const app = Fastify({ logger: false, trustProxy: true });
   app.register(cookie);
+
+  // Error handler (OFC-149): the Fastify default echoes the thrown error's raw
+  // `message` into the 500 body, which for a Firestore/GCS/`firebase-admin`
+  // failure can leak project ids, database paths, and internal state to the
+  // client. This replaces that for **server** errors only: the real error is
+  // logged server-side (to stderr, per the project convention, carrying the trace
+  // id so it ties to the request's audit lines) and the client gets a generic
+  // body. Client errors (4xx — schema validation, an unsupported upload type, a
+  // rate-limit trip) keep their standard Fastify shape and message, which are
+  // caller-controlled inputs and safe to return.
+  // NOTE: any *intentional* 5xx that must carry a body or header (e.g. a future
+  // D118 maintenance `503` with `Retry-After`) must be sent via
+  // `reply.code(...).send(...)`, NOT thrown — a thrown 5xx is genericized below
+  // (that is the point: it masks unexpected exceptions). The existing `/img` 503
+  // already uses `reply.code`, so it is unaffected.
+  app.setErrorHandler((error: FastifyError, request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+    if (statusCode >= 500) {
+      const trace = traceId(request);
+      process.stderr.write(
+        `${JSON.stringify({
+          logType: "error",
+          severity: "ERROR",
+          message: error.message,
+          stack: error.stack,
+          ...(trace !== undefined ? { trace } : {}),
+        })}\n`,
+      );
+      return reply.code(500).send({ error: "internal", message: "Something went wrong." });
+    }
+    // Preserve the standard 4xx representation (statusCode / error / message).
+    return reply.code(statusCode).send({
+      statusCode,
+      error: STATUS_CODES[statusCode] ?? "Error",
+      message: error.message,
+    });
+  });
+
+  // Security headers on every API + `/img` response (OFC-148, D107). Firebase
+  // Hosting's header rules cover only the statically-served SPA; the `/api/**`
+  // and `/img/**` responses are Cloud-Run rewrites Hosting does not header, so the
+  // backend sets its own. A response is never a document that loads sub-resources,
+  // so the CSP floors to `default-src 'none'` with framing denied; `nosniff`
+  // matters for the `/img` bytes, and HSTS/Referrer-Policy mirror the SPA's.
+  //
+  // The four non-CSP values below are intentionally identical to the SPA copies in
+  // `firebase.json` (the two paths are headered by different layers, so the values
+  // must be duplicated). KEEP THEM IN SYNC: a change to HSTS max-age or
+  // Referrer-Policy must be made in both places (OFC-146 review — no shared source
+  // is practical across JSON config and TS).
+  app.addHook("onSend", async (_request, reply, payload) => {
+    reply.header("X-Content-Type-Options", "nosniff");
+    reply.header("X-Frame-Options", "DENY");
+    reply.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
+    reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+    reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    return payload;
+  });
   // Awaited before the routes register so the plugin's onRoute hook is in place to
   // see each route's `config.rateLimit`; `global: false`, so only routes that opt
   // in are limited. (A non-awaited register loads too late — the limits silently
@@ -97,7 +157,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     provider: options.identityProvider.name,
   }));
 
-  const gate = requireSession(options.sessionStore);
+  const gate = requireSession(options.sessionStore, options.profileCache);
   // One audit stream and one clock shared by every mutating route, so their
   // entries interleave on one timeline and stay deterministic under test.
   const audit = options.auditLog ?? new AuditLog();
@@ -140,6 +200,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     cache: options.profileCache,
     gate,
     store: options.profileStore,
+    sessionStore: options.sessionStore,
     audit,
     clock,
     ghostLifecycle,
@@ -148,6 +209,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     cache: options.profileCache,
     gate,
     store: options.profileStore,
+    sessionStore: options.sessionStore,
     imageStore,
     adminUsers: options.adminUsers,
     ghostLifecycle,

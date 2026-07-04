@@ -54,6 +54,17 @@ export class InMemorySessionStore implements SessionService {
   async destroy(id: string): Promise<void> {
     this.sessions.delete(id);
   }
+
+  async destroyAllForProfile(profileId: number): Promise<number> {
+    let removed = 0;
+    for (const [id, session] of this.sessions) {
+      if (session.identity.profileId === profileId) {
+        this.sessions.delete(id);
+        removed++;
+      }
+    }
+    return removed;
+  }
 }
 
 export class InMemoryNonceStore implements NonceService {

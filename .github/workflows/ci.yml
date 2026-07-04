@@ -53,6 +53,11 @@ jobs:
       - name: Build (libs, SPA, API)
         run: npm run build
 
+      # After the build, so it hashes the SHIPPED apps/web/dist/index.html (what
+      # the browser enforces the CSP against), not just the source (OFC-146 review).
+      - name: CSP inline-script hashes in sync (D107/OFC-148)
+        run: npm run assert:csp-hashes
+
       - name: DevIdentityProvider absent from prod bundle (D108)
         run: npm run assert:no-dev-provider
 
