@@ -283,6 +283,19 @@ test.describe("prev/next through the directory (4d)", () => {
     await page.getByRole("button", { name: "Next brother" }).click();
     await expect(page.getByText("2 of 3")).toBeVisible();
     expect(await stashCount()).toBe(1);
+
+    // Returning to the Directory clears the stash — it's dead weight there, and
+    // the next click-through regenerates one. So repeated Directory→profile→
+    // Directory→profile does NOT accumulate identical stashes (OFC-141 follow-up).
+    await page.getByRole("button", { name: /Directory/ }).click();
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    expect(await stashCount()).toBe(0);
+
+    await openRow(page, "Adams");
+    expect(await stashCount()).toBe(1); // one, not two
+    await page.getByRole("button", { name: /Directory/ }).click();
+    await openRow(page, "Adams");
+    expect(await stashCount()).toBe(1); // still one, not three
   });
 
   test("the profile view with the prev/next bar has no a11y violations (axe, WCAG 2.2 AA)", async ({

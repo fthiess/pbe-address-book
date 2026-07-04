@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  clearDirectoryStashes,
   entryNavState,
   getDirectoryStash,
   newStashId,
@@ -84,6 +85,15 @@ describe("directory stash store (OFC-141 + lazy-write follow-up)", () => {
     expect(getDirectoryStash(first)).toEqual([]); // evicted
     expect(getDirectoryStash(last)).toEqual([40]); // retained
     expect(stashCount()).toBeLessThanOrEqual(12); // MAX_STASHES
+  });
+
+  it("clearDirectoryStashes empties the store (all stashes + the index)", () => {
+    putDirectoryStash(newStashId(), [1]);
+    putDirectoryStash(newStashId(), [2]);
+    expect(stashCount()).toBe(2);
+    clearDirectoryStashes();
+    expect(stashCount()).toBe(0);
+    expect(sessionStorage.getItem("pbe:dirnav:index")).toBeNull();
   });
 
   it("entryNavState is pure — it carries the handle but writes nothing", () => {

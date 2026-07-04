@@ -77,6 +77,34 @@ export function putDirectoryStash(stashId: string, ids: number[]): void {
   }
 }
 
+/**
+ * Drop every stored stash (and the index). Called when the Directory is shown
+ * (see `Directory.tsx`): once the user is back on the Directory, any prev/next
+ * stash is for a profile they've left, and the next click-through regenerates one
+ * — so keeping them is pure waste. Reaching a profile some other way (a
+ * little-brother link, a typed URL) carries no stash handle and shows no
+ * prev/next anyway, so nothing of value is lost. The only forgone nicety is
+ * Forward-restoring prev/next onto a profile you'd Back'd out of — an acceptable
+ * trade for a store that self-empties.
+ */
+export function clearDirectoryStashes(): void {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const key = sessionStorage.key(i);
+      // KEY_PREFIX also prefixes INDEX_KEY, so this removes the index too.
+      if (key?.startsWith(KEY_PREFIX)) {
+        keys.push(key);
+      }
+    }
+    for (const key of keys) {
+      sessionStorage.removeItem(key);
+    }
+  } catch {
+    // sessionStorage unavailable — nothing to clear.
+  }
+}
+
 /** Resolve a stash id back to its ordered id-list, or `[]` if absent/evicted/unavailable. */
 export function getDirectoryStash(stashId: string | undefined): number[] {
   if (!stashId) {
