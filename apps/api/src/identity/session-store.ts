@@ -38,6 +38,17 @@ export interface SessionService {
    */
   setEffectiveRole(id: string, role: Role | null): Promise<void>;
   destroy(id: string): Promise<void>;
+  /**
+   * Destroy **every** live session belonging to one brother, returning how many
+   * were removed. The active half of session revocation (OFC-147): when staff
+   * de-brother, delete, or change the role of a brother, that brother's own live
+   * sessions must not keep their now-stale powers (notably an admin's — the role
+   * is snapshotted on the session, so a demoted admin could otherwise re-promote
+   * themselves before the 4-hour cap, D22) until the cap lapses. Because the
+   * session record is the server-side source of truth (D125), this is a cheap
+   * targeted query rather than a global flush.
+   */
+  destroyAllForProfile(profileId: number): Promise<number>;
 }
 
 /** 256 bits of entropy — an unguessable, opaque session identifier. */
@@ -153,5 +164,37 @@ export class SessionStore implements SessionService {
   async destroy(id: string): Promise<void> {
     this.cache.delete(id);
     await this.db.collection(COLLECTION).doc(id).delete();
+  }
+
+  /**
+   * Revoke every session held by `profileId` (OFC-147). Deletes the matching
+   * `sessions` documents in one batch and prunes the in-memory read-through
+   * cache in lock-step (the single instance — D83 — owns both, so no
+   * cross-instance invalidation is needed). Returns the count removed for the
+   * caller's audit entry. Queries the nested `session.identity.profileId`, which
+   * Firestore single-field-indexes automatically, so no composite index is
+   * required. Idempotent: a second call for the same brother removes nothing and
+   * returns 0.
+   */
+  async destroyAllForProfile(profileId: number): Promise<number> {
+    const matches = await this.db
+      .collection(COLLECTION)
+      .where("session.identity.profileId", "==", profileId)
+      .get();
+    if (!matches.empty) {
+      const batch = this.db.batch();
+      for (const doc of matches.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+    }
+    // Prune the cache too: a warm session for this brother must not survive the
+    // Firestore delete and keep being served from memory on the next request.
+    for (const [id, session] of this.cache) {
+      if (session.identity.profileId === profileId) {
+        this.cache.delete(id);
+      }
+    }
+    return matches.size;
   }
 }

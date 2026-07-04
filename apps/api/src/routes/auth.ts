@@ -59,7 +59,7 @@ function isRole(value: unknown): value is Role {
 }
 
 export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfig): void {
-  const gate = requireSession(config.sessionStore);
+  const gate = requireSession(config.sessionStore, config.cache);
 
   /**
    * Flow initiation: mint the single-use `state` nonce and hand back the relay
@@ -213,17 +213,23 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
     },
   );
 
-  /** Clears the Book session and the cookie (API-SPEC §2 `/api/auth/signout`). */
-  app.post(
-    "/api/auth/signout",
-    { preHandler: gate, config: writeRateLimit() },
-    async (request, reply) => {
-      const id = readSessionId(request);
-      if (id) {
-        await config.sessionStore.destroy(id);
-      }
-      clearSessionCookie(reply, config.cookie);
-      return reply.code(204).send();
-    },
-  );
+  /**
+   * Clears the Book session and the cookie (API-SPEC §2 `/api/auth/signout`).
+   *
+   * Deliberately **ungated** (OFC-150): signing out must work even when the
+   * session has already lapsed past the 4-hour cap (D22). Behind the gate, an
+   * expired session would 401 *before* the cookie could be cleared, leaving a dead
+   * cookie in the browser. So this destroys the session if the cookie still
+   * resolves to one, clears the cookie unconditionally, and returns `204` either
+   * way. It stays rate-limited (session-keyed, IP fallback) so it is not an
+   * unbounded endpoint.
+   */
+  app.post("/api/auth/signout", { config: writeRateLimit() }, async (request, reply) => {
+    const id = readSessionId(request);
+    if (id) {
+      await config.sessionStore.destroy(id);
+    }
+    clearSessionCookie(reply, config.cookie);
+    return reply.code(204).send();
+  });
 }

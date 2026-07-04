@@ -102,6 +102,13 @@ export interface AuditEntry {
    */
   fromRole?: string;
   toRole?: string;
+  /**
+   * How many of the target's live sessions were revoked as a side effect of this
+   * action (OFC-147) — a count, never session contents, so within the §1.4
+   * boundary. Present on `profile.debrother` (raise), `profile.delete`, and
+   * `role.change`, which actively tear down the target's now-stale sessions.
+   */
+  sessionsRevoked?: number;
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
   trace?: string;
 }
@@ -156,6 +163,7 @@ export class AuditLog {
       ...(entry.available !== undefined ? { available: entry.available } : {}),
       ...(entry.fromRole !== undefined ? { fromRole: entry.fromRole } : {}),
       ...(entry.toRole !== undefined ? { toRole: entry.toRole } : {}),
+      ...(entry.sessionsRevoked !== undefined ? { sessionsRevoked: entry.sessionsRevoked } : {}),
       ...(entry.trace !== undefined ? { trace: entry.trace } : {}),
     });
   }

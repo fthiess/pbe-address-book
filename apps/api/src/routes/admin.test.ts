@@ -83,7 +83,7 @@ async function buildAdminServer(ghostLifecycle = new StubGhostLifecycle()) {
   });
   const cookieFor = async (profileId: number, role: Role) =>
     `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(profileId, role))}`;
-  return { app, cache, store, imageStore, adminUsers, audited, cookieFor };
+  return { app, cache, store, imageStore, adminUsers, audited, sessionStore, cookieFor };
 }
 
 type Ctx = Awaited<ReturnType<typeof buildAdminServer>>;
@@ -189,6 +189,25 @@ describe("DELETE /api/profiles/:id", () => {
     expect(response.statusCode).toBe(204);
     expect(ghost.deleted).toEqual([5011]);
     expect(ctx.cache.getById(5011)).toBeNull();
+  });
+
+  it("revokes the deleted brother's live sessions, auditing the count (OFC-147)", async () => {
+    const victimId = await ctx.sessionStore.create(sessionFor(5001, "brother"));
+    const adminId = await ctx.sessionStore.create(sessionFor(5010, "admin"));
+    const response = await ctx.app.inject({
+      method: "DELETE",
+      url: "/api/profiles/5001",
+      headers: { cookie: `${SESSION_COOKIE}=${adminId}` },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(ctx.audited.at(-1)).toMatchObject({
+      action: "profile.delete",
+      targetId: 5001,
+      sessionsRevoked: 1,
+    });
+    // The deleted brother's session is gone; the acting admin's survives.
+    expect(await ctx.sessionStore.get(victimId)).toBeNull();
+    expect((await ctx.sessionStore.get(adminId))?.identity.profileId).toBe(5010);
   });
 
   it("preserves a concurrent PATCH to a referrer committed during the scrub [OFC-135]", async () => {
@@ -312,6 +331,45 @@ describe("PUT /api/users/:id/role", () => {
       payload: { role: "superuser" },
     });
     expect(response.statusCode).toBe(422);
+  });
+
+  it("revokes the target's live sessions when the role changes, so a demoted admin loses power (OFC-147)", async () => {
+    // 5011 is a manager with two live sessions; demote them to brother.
+    ctx.adminUsers.seedRole(5011, "manager");
+    const s1 = await ctx.sessionStore.create(sessionFor(5011, "manager"));
+    const s2 = await ctx.sessionStore.create(sessionFor(5011, "manager"));
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/users/5011/role",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+      payload: { role: "brother" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(ctx.audited.at(-1)).toMatchObject({
+      action: "role.change",
+      targetId: 5011,
+      fromRole: "manager",
+      toRole: "brother",
+      sessionsRevoked: 2,
+    });
+    // The stale-role sessions are gone — the next request re-auths at the new role.
+    expect(await ctx.sessionStore.get(s1)).toBeNull();
+    expect(await ctx.sessionStore.get(s2)).toBeNull();
+  });
+
+  it("revokes no sessions on a no-op role reassignment (same role) (OFC-147)", async () => {
+    ctx.adminUsers.seedRole(5011, "manager");
+    const s1 = await ctx.sessionStore.create(sessionFor(5011, "manager"));
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/users/5011/role",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+      payload: { role: "manager" }, // unchanged
+    });
+    expect(response.statusCode).toBe(200);
+    expect(ctx.audited.at(-1)).toMatchObject({ action: "role.change", sessionsRevoked: 0 });
+    // An unchanged role withdrew no trust, so the session stands.
+    expect((await ctx.sessionStore.get(s1))?.identity.profileId).toBe(5011);
   });
 });
 

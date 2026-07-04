@@ -47,6 +47,9 @@ jobs:
       - name: Token layer in sync (D29)
         run: npm run assert:tokens
 
+      - name: CSP inline-script hashes in sync (D107/OFC-148)
+        run: npm run assert:csp-hashes
+
       - name: Type-check
         run: npm run typecheck
 

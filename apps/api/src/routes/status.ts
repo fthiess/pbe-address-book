@@ -4,6 +4,7 @@ import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { ProfileStore } from "../data/profiles.js";
 import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
+import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
 import { writeRateLimit } from "../security/rate-limit.js";
 import {
@@ -37,6 +38,8 @@ export interface StatusRouteDeps {
   cache: ProfileCache;
   gate: preHandlerHookHandler;
   store: ProfileStore;
+  /** Session revocation on de-brother raise (OFC-147). */
+  sessionStore: SessionService;
   audit: AuditLog;
   clock: Clock;
   /** Ghost-first member lifecycle (N41); a succeed-and-log stub until Phase 5. */
@@ -201,7 +204,7 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
  * (raise) or restores (reverse) consent/verification (D80).
  */
 function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
-  const { cache, gate, store, audit, clock, ghostLifecycle } = deps;
+  const { cache, gate, store, sessionStore, audit, clock, ghostLifecycle } = deps;
   app.put(
     "/api/profiles/:id/debrothered",
     { preHandler: gate, config: writeRateLimit() },
@@ -258,6 +261,13 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
       } catch (error) {
         return handleMissing(error, reply);
       }
+
+      // Revoke the de-brothered member's live sessions on a raise (OFC-147): the
+      // sign-in denial (D115) blocks only *new* sessions, so without this a member
+      // de-brothered mid-session keeps directory access until the 4-hour cap (D22).
+      // Only on raise — reinstating restores access, it does not withdraw it.
+      const sessionsRevoked = raising ? await sessionStore.destroyAllForProfile(id) : undefined;
+
       audit.record(
         {
           action: "profile.debrother",
@@ -265,6 +275,7 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
           targetId: id,
           outcome: "ok",
           fields: auditFields(set, remove),
+          sessionsRevoked,
           trace,
         },
         now.toISOString(),
