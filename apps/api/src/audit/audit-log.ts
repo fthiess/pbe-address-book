@@ -107,8 +107,11 @@ export interface AuditEntry {
    * action (OFC-147) — a count, never session contents, so within the §1.4
    * boundary. Present on `profile.debrother` (raise), `profile.delete`, and
    * `role.change`, which actively tear down the target's now-stale sessions.
+   * `null` records that revocation was attempted but **failed** (a transient
+   * error), so the action fell back to the D22 session cap — a forensic signal,
+   * not a count.
    */
-  sessionsRevoked?: number;
+  sessionsRevoked?: number | null;
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
   trace?: string;
 }

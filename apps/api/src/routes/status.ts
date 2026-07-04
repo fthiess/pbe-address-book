@@ -12,6 +12,7 @@ import {
   authorizePrivileged,
   captureConsentSnapshot,
   commitStatusWrite,
+  revokeSessionsBestEffort,
 } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
 
@@ -266,7 +267,11 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
       // sign-in denial (D115) blocks only *new* sessions, so without this a member
       // de-brothered mid-session keeps directory access until the 4-hour cap (D22).
       // Only on raise — reinstating restores access, it does not withdraw it.
-      const sessionsRevoked = raising ? await sessionStore.destroyAllForProfile(id) : undefined;
+      // Best-effort (OFC-146 review): the gate's de-brothered liveness check is the
+      // structural backstop here, so a transient failure degrades safely and logs.
+      const sessionsRevoked = raising
+        ? await revokeSessionsBestEffort(sessionStore, id, { action: "profile.debrother", actorId })
+        : undefined;
 
       audit.record(
         {

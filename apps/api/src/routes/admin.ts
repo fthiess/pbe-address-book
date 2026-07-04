@@ -9,7 +9,12 @@ import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { SessionService } from "../identity/session-store.js";
 import { effectiveRole } from "../identity/types.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
-import { authorizePrivileged, mergeProfile, parseProfileId } from "./privileged-support.js";
+import {
+  authorizePrivileged,
+  mergeProfile,
+  parseProfileId,
+  revokeSessionsBestEffort,
+} from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
 
 /**
@@ -176,11 +181,15 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
       // Cache last: remove the record and fold in the scrubbed referrers + tokens.
       await cache.applyDelete(id, scrubbed);
 
-      // Revoke the deleted brother's own live sessions (OFC-147): the gate's
-      // liveness check would 401 them on their next request anyway (their record
-      // is now gone from the cache), but tearing them down here makes revocation
-      // immediate and records the count.
-      const sessionsRevoked = await sessionStore.destroyAllForProfile(id);
+      // Revoke the deleted brother's own live sessions (OFC-147). The gate does
+      // NOT self-heal this (it passes on record *absence*), so revocation is the
+      // control — but best-effort: a transient failure here must not fail an
+      // otherwise-complete delete or drop its audit entry; it degrades to the
+      // D22 cap and logs (OFC-146 review).
+      const sessionsRevoked = await revokeSessionsBestEffort(sessionStore, id, {
+        action: "profile.delete",
+        actorId,
+      });
 
       audit.record(
         { action: "profile.delete", actorId, targetId: id, outcome: "ok", sessionsRevoked, trace },
@@ -242,8 +251,12 @@ function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
       // role. A no-op reassignment (same role) touches nothing. This includes the
       // admin demoting themselves (legal when other admins remain): their own
       // session is torn down, this response still completes, and their next action
-      // re-auths silently.
-      const sessionsRevoked = before === role ? 0 : await sessionStore.destroyAllForProfile(id);
+      // re-auths silently. Best-effort (OFC-146 review): a transient revocation
+      // failure logs and degrades to the D22 cap rather than dropping the audit.
+      const sessionsRevoked =
+        before === role
+          ? 0
+          : await revokeSessionsBestEffort(sessionStore, id, { action: "role.change", actorId });
 
       audit.record(
         {

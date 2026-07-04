@@ -371,6 +371,57 @@ describe("PUT /api/users/:id/role", () => {
     // An unchanged role withdrew no trust, so the session stands.
     expect((await ctx.sessionStore.get(s1))?.identity.profileId).toBe(5011);
   });
+
+  it("a transient revocation failure still completes the role change and audits it (sessionsRevoked: null) (OFC-146 review)", async () => {
+    // A session store whose revocation throws — the role change has already
+    // committed, so the request must NOT 500 or lose its audit entry; it degrades
+    // to the D22 cap and records the failure as `sessionsRevoked: null`.
+    class ThrowingRevokeStore extends InMemorySessionStore {
+      override destroyAllForProfile(): Promise<number> {
+        return Promise.reject(new Error("firestore unavailable"));
+      }
+    }
+    const cache = new ProfileCache();
+    await cache.load([makeProfile({ id: 5010 }), makeProfile({ id: 5011 })]);
+    const sessionStore = new ThrowingRevokeStore();
+    const adminUsers = new InMemoryAdminUserStore();
+    adminUsers.seedRole(5010, "admin");
+    adminUsers.seedRole(5011, "manager");
+    const audited: Record<string, unknown>[] = [];
+    const app = await buildServer({
+      identityProvider: stubProvider,
+      profileCache: cache,
+      profileStore: new InMemoryProfileStore(),
+      adminUsers,
+      imageStore: new InMemoryImageStore(),
+      ghostLifecycle: new StubGhostLifecycle(),
+      sessionStore,
+      nonceStore: new InMemoryNonceStore(),
+      getStars: async () => [],
+      addStar: async () => [],
+      removeStar: async () => [],
+      auditLog: new AuditLog({ write: (record) => audited.push(record) }),
+      clock: () => FIXED_NOW,
+      cookie: { secure: true },
+    });
+    const cookie = `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(5010, "admin"))}`;
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/users/5011/role",
+      headers: { cookie },
+      payload: { role: "brother" },
+    });
+    // The change succeeded despite revocation failing; the audit is preserved.
+    expect(response.statusCode).toBe(200);
+    expect(adminUsers.roles.get(5011)).toBe("brother");
+    expect(audited.at(-1)).toMatchObject({
+      action: "role.change",
+      targetId: 5011,
+      toRole: "brother",
+      sessionsRevoked: null,
+    });
+    await app.close();
+  });
 });
 
 describe("GET /api/users/:id/role", () => {

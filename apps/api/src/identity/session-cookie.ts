@@ -97,6 +97,12 @@ export function readSessionId(request: FastifyRequest): string | undefined {
  * route's active revocation handles that. Unlisting is not a withdrawal of the
  * owner's own access, so it is not checked here.
  */
+/** The single 401 body the gate answers with, whichever check fails. */
+function sendUnauthenticated(reply: FastifyReply): FastifyReply {
+  reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+  return reply;
+}
+
 export function requireSession(
   store: SessionService,
   cache: SessionLivenessCache,
@@ -105,8 +111,7 @@ export function requireSession(
     const id = readSessionId(request);
     const session = id ? await store.get(id) : null;
     if (!session) {
-      reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-      return reply;
+      return sendUnauthenticated(reply);
     }
     // Liveness: a caller whose own record is present-and-de-brothered has had
     // trust withdrawn; tear the session down so the stale cookie stops resolving.
@@ -115,8 +120,7 @@ export function requireSession(
       if (id) {
         await store.destroy(id);
       }
-      reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-      return reply;
+      return sendUnauthenticated(reply);
     }
     request.session = session;
   };

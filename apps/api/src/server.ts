@@ -98,6 +98,11 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   // body. Client errors (4xx — schema validation, an unsupported upload type, a
   // rate-limit trip) keep their standard Fastify shape and message, which are
   // caller-controlled inputs and safe to return.
+  // NOTE: any *intentional* 5xx that must carry a body or header (e.g. a future
+  // D118 maintenance `503` with `Retry-After`) must be sent via
+  // `reply.code(...).send(...)`, NOT thrown — a thrown 5xx is genericized below
+  // (that is the point: it masks unexpected exceptions). The existing `/img` 503
+  // already uses `reply.code`, so it is unaffected.
   app.setErrorHandler((error: FastifyError, request, reply) => {
     const statusCode = error.statusCode ?? 500;
     if (statusCode >= 500) {
@@ -127,6 +132,12 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   // backend sets its own. A response is never a document that loads sub-resources,
   // so the CSP floors to `default-src 'none'` with framing denied; `nosniff`
   // matters for the `/img` bytes, and HSTS/Referrer-Policy mirror the SPA's.
+  //
+  // The four non-CSP values below are intentionally identical to the SPA copies in
+  // `firebase.json` (the two paths are headered by different layers, so the values
+  // must be duplicated). KEEP THEM IN SYNC: a change to HSTS max-age or
+  // Referrer-Policy must be made in both places (OFC-146 review — no shared source
+  // is practical across JSON config and TS).
   app.addHook("onSend", async (_request, reply, payload) => {
     reply.header("X-Content-Type-Options", "nosniff");
     reply.header("X-Frame-Options", "DENY");

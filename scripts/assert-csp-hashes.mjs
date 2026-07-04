@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * The Content-Security-Policy in `firebase.json` pins `script-src` to `'self'`
- * plus a **SHA-256 hash of each inline `<script>`** in `apps/web/index.html` —
+ * plus a **SHA-256 hash of each inline `<script>`** in the SPA's `index.html` —
  * the two no-FOUC setters (theme + font size) that must run before React paints
  * (D30/§5.3). That is what lets the CSP forbid inline scripts wholesale (no
  * `'unsafe-inline'`) while still allowing those two (D107/OFC-148).
@@ -13,12 +13,27 @@
  * if `firebase.json` does not carry every one, turning a silent production CSP
  * break into a loud CI failure. To fix a drift, copy the printed hashes into the
  * `Content-Security-Policy` `script-src` in `firebase.json`.
+ *
+ * It validates the **built** `apps/web/dist/index.html` when present — that is the
+ * file Firebase actually serves and the browser enforces the CSP against — and
+ * falls back to the source `apps/web/index.html` only when there is no build yet
+ * (a pre-build local run). Checking the source alone would be validating the wrong
+ * file: if a Vite transform ever rewrote the inline scripts at build time, a
+ * source-only check would stay green while the deployed CSP omitted the real hash
+ * (OFC-146 review). CI runs this **after** `npm run build` so it always sees dist.
  */
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
-const INDEX_HTML = "apps/web/index.html";
+const BUILT_INDEX_HTML = "apps/web/dist/index.html";
+const SOURCE_INDEX_HTML = "apps/web/index.html";
 const FIREBASE_JSON = "firebase.json";
+
+// Prefer the built artifact (what actually ships); fall back to source pre-build.
+const INDEX_HTML = existsSync(BUILT_INDEX_HTML) ? BUILT_INDEX_HTML : SOURCE_INDEX_HTML;
+if (INDEX_HTML === SOURCE_INDEX_HTML) {
+  console.log(`[csp] note: ${BUILT_INDEX_HTML} not built; validating source ${SOURCE_INDEX_HTML}.`);
+}
 
 const html = readFileSync(INDEX_HTML, "utf8");
 const firebase = readFileSync(FIREBASE_JSON, "utf8");

@@ -3,9 +3,47 @@ import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AuditAction, AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import { MissingProfileError, type ProfileStore, isTokenNewer } from "../data/profiles.js";
+import type { SessionService } from "../identity/session-store.js";
 import { effectiveRole } from "../identity/types.js";
 import type { Clock } from "./profiles.js";
 import { traceId } from "./trace.js";
+
+/**
+ * Best-effort session revocation for a privileged action (OFC-147; OFC-146
+ * review). The de-brother/delete/role-change routes call this **after** their
+ * state change has already committed, so a transient failure in
+ * {@link SessionService.destroyAllForProfile} must not throw out of the
+ * handler: that would drop the action's audit entry and — for role-change and
+ * delete, which the gate cannot self-heal (it keys on de-brothered, not on role
+ * or absence) — leave the change committed with no audit trail and a masked 500
+ * whose retry does not re-revoke. So on failure we log loudly to stderr and
+ * return `null`, degrading to the D22 4-hour session cap (the accepted baseline
+ * this proactive revocation only *improves* on, never replaces). The return
+ * value feeds the audit `sessionsRevoked` field: a count on success, `null` when
+ * revocation failed so the forensic record shows the cap is the backstop.
+ */
+export async function revokeSessionsBestEffort(
+  sessionStore: SessionService,
+  profileId: number,
+  context: { action: AuditAction; actorId: number },
+): Promise<number | null> {
+  try {
+    return await sessionStore.destroyAllForProfile(profileId);
+  } catch (error) {
+    process.stderr.write(
+      `${JSON.stringify({
+        logType: "error",
+        severity: "ERROR",
+        message: "session revocation failed; falling back to the 4-hour session cap",
+        action: context.action,
+        actorId: context.actorId,
+        targetId: profileId,
+        detail: error instanceof Error ? error.message : "unknown",
+      })}\n`,
+    );
+    return null;
+  }
+}
 
 /**
  * Shared front-half for 4c-2's privileged, dedicated server actions (verify,
