@@ -32,7 +32,7 @@ The **Directory** is Book's home page: a searchable, sortable list of every brot
 
 **Brothers who have passed.** Out of respect, the Directory shows living brothers by default. Turn on **Include deceased** to see brothers who have passed; they are marked clearly, with an "In Memoriam" note, and their pages show only the information appropriate to share in memory. Where the dates are known, a brother's page shows the years he lived — for example, "1940–2024."
 
-**Opening a brother's page.** Click a brother's name to open his full profile. As with any link, you can open it in a new browser tab if you like (the usual Ctrl-click or middle-click), and the Back button returns you to exactly where you were in the list.
+**Opening a brother's page.** Click a brother's name to open his full profile. As with any link, you can open it in a new browser tab if you like (the usual Ctrl-click or middle-click), and the Back button returns you to exactly where you were in the list. Once you're on a brother's page, **Prev** and **Next** at the top step you through the brothers just as they were listed — in the same order, and narrowed by whatever search, filters, and sorting you had applied — with a "12 of 431" marker so you know where you are; **← Directory** takes you back to the list, right where you left it, however far you've stepped.
 
 ## 4. Your own profile
 
