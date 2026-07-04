@@ -23,9 +23,16 @@ const FIREBASE_JSON = "firebase.json";
 const html = readFileSync(INDEX_HTML, "utf8");
 const firebase = readFileSync(FIREBASE_JSON, "utf8");
 
-// The inline scripts are exactly those <script>…</script> with no attributes
-// (the bundle entry is <script type="module" src=…>, which this does not match).
-const inlineScripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+// Every <script …>…</script> whose opening tag has NO `src` is an inline script
+// the browser executes inline, so the CSP must carry its hash; a `src` script is
+// external and covered by `script-src 'self'` instead. Matched **case-insensitively**
+// and allowing attributes/whitespace so a later-added inline script (e.g.
+// `<SCRIPT>` or `<script type="module">…</script>`) cannot slip past the guard and
+// leave the CSP silently missing a hash the browser then blocks (CodeQL
+// js/bad-tag-filter). The hash is over the element's text content (group 2).
+const inlineScripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)]
+  .filter(([, attrs]) => !/\bsrc\s*=/i.test(attrs))
+  .map(([, , body]) => body);
 
 if (inlineScripts.length === 0) {
   console.error(
