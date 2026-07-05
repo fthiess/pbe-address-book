@@ -104,8 +104,10 @@ test.describe("Admin page (5a-1)", () => {
     // The placeholders are marked not-yet-available (there are exactly two).
     await expect(page.getByText("Not yet available")).toHaveCount(2);
 
-    // The "← Directory" affordance returns to the Directory.
-    await page.getByRole("link", { name: "Directory" }).click();
+    // Reached from the Directory, "← Directory" pops the history (a button, not a
+    // fresh-navigation link) so the Directory's place is restored, like the Profile
+    // page's ← Directory.
+    await page.getByRole("button", { name: "Directory" }).click();
     await expect(page).toHaveURL(/\/(?:$|\?)/);
     await expect(page.getByRole("heading", { name: "Administrative Tools", level: 1 })).toHaveCount(
       0,

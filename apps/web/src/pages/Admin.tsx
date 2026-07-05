@@ -1,8 +1,12 @@
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { AdminCard, BugIcon, ComingLaterBadge, SyncIcon } from "./admin/AdminCard.js";
 import { BackupCard } from "./admin/BackupCard.js";
 import { BannerCard } from "./admin/BannerCard.js";
+
+/** Shared styling for the "← Directory" affordance, whether button or link. */
+const BACK_CLASS =
+  "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] text-[length:var(--text-label)] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * The Admin control panel (`/admin`; PRD §5.8) — the whole-database operations
@@ -18,18 +22,29 @@ import { BannerCard } from "./admin/BannerCard.js";
  */
 export function Admin() {
   const { state } = useSession();
+  const location = useLocation();
+  const navigate = useNavigate();
   if (state.status !== "authenticated" || state.me.role !== "admin") {
     return <Navigate to="/" replace />;
   }
 
+  // If the admin opened this page from the Directory, "← Directory" pops the history
+  // entry (like browser Back), so the Directory's search/sort/filter/scroll are
+  // restored — matching the Profile page's ← Directory (N45). On a cold deep-link
+  // (no such state) it is a real `<Link to="/">` escape hatch to a fresh Directory.
+  const fromDirectory = (location.state as { fromDirectory?: boolean } | null)?.fromDirectory;
+
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <Link
-        to="/"
-        className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] text-[length:var(--text-label)] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span aria-hidden="true">←</span> Directory
-      </Link>
+      {fromDirectory ? (
+        <button type="button" onClick={() => navigate(-1)} className={BACK_CLASS}>
+          <span aria-hidden="true">←</span> Directory
+        </button>
+      ) : (
+        <Link to="/" className={BACK_CLASS}>
+          <span aria-hidden="true">←</span> Directory
+        </Link>
+      )}
       <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">
           Administrative Tools
