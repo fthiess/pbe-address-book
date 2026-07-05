@@ -3,6 +3,8 @@ import { ProfileCache } from "../data/cache.js";
 import { buildServer } from "../server.js";
 import {
   InMemoryAdminUserStore,
+  InMemoryBackupSource,
+  InMemoryBannerStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -22,6 +24,8 @@ async function buildDevServer(getStars: (profileId: number) => Promise<number[]>
     profileCache: new ProfileCache(),
     profileStore: new InMemoryProfileStore(),
     adminUsers: new InMemoryAdminUserStore(),
+    bannerStore: new InMemoryBannerStore(),
+    backupSource: new InMemoryBackupSource(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars,

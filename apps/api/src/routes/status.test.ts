@@ -9,6 +9,8 @@ import { buildServer } from "../server.js";
 import {
   FailingGhostLifecycle,
   InMemoryAdminUserStore,
+  InMemoryBackupSource,
+  InMemoryBannerStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -74,6 +76,8 @@ async function buildStatusServer(ghostLifecycle = new StubGhostLifecycle()) {
     profileCache: cache,
     profileStore: store,
     adminUsers: new InMemoryAdminUserStore(),
+    bannerStore: new InMemoryBannerStore(),
+    backupSource: new InMemoryBackupSource(),
     ghostLifecycle,
     sessionStore,
     nonceStore: new InMemoryNonceStore(),

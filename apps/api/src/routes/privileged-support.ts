@@ -132,6 +132,57 @@ export function authorizePrivileged(
   return { actorId: actor.profileId, role, id, stored, trace };
 }
 
+/**
+ * The optional denial-audit context for {@link requireEffectiveAdmin}: pass it to
+ * record an `outcome:"denied"` entry when a valid non-admin session is refused
+ * (OFC-190), mirroring {@link authorizePrivileged}'s per-record IDOR trail. Omit it
+ * for read endpoints whose denials are not audited (e.g. `GET /api/users/:id/role`).
+ */
+export interface AdminDenialAudit {
+  action: AuditAction;
+  audit: AuditLog;
+  clock: Clock;
+}
+
+/**
+ * Guard for a whole-database admin action that has **no `:id` subject** (the banner
+ * set and the backup download). Session present (belt-and-suspenders behind the
+ * `gate` preHandler) + effective-role admin (N31, so a "View as" step-down
+ * genuinely loses the power). Returns the actor's Constitution id, or `null` after
+ * sending the matching 401/403 (the caller returns `reply` unchanged). Unlike
+ * {@link authorizePrivileged} it parses no id; pass `denial` to audit the 403 for
+ * the whole-database surfaces (banner set, backup download), where a probe by a
+ * stepped-down admin is worth the forensic trail (OFC-190). The success path is
+ * audited by the caller.
+ */
+export function requireEffectiveAdmin(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  denial?: AdminDenialAudit,
+): number | null {
+  const session = request.session;
+  if (!session) {
+    reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+    return null;
+  }
+  if (effectiveRole(session) !== "admin") {
+    if (denial) {
+      denial.audit.record(
+        {
+          action: denial.action,
+          actorId: session.identity.profileId,
+          outcome: "denied",
+          trace: traceId(request),
+        },
+        denial.clock().toISOString(),
+      );
+    }
+    reply.code(403).send({ error: "forbidden", message: "You may not perform this action." });
+    return null;
+  }
+  return session.identity.profileId;
+}
+
 /** Parse and validate the `:id` route param as a positive Constitution ID. */
 export function parseProfileId(request: FastifyRequest): number | null {
   const raw = (request.params as { id?: string }).id;

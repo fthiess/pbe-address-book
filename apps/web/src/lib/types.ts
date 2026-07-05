@@ -1,4 +1,4 @@
-import type { Profile, Role } from "@pbe/shared";
+import type { BannerSeverity, Profile, Role } from "@pbe/shared";
 
 /**
  * The directory-row shape the SPA consumes from `GET /api/profiles` — one
@@ -54,4 +54,15 @@ export interface Me {
 export interface SignInStart {
   state: string;
   signInUrl: string;
+}
+
+/**
+ * `GET /api/banner` — the site-wide system banner (D117; API-SPEC §10). `message`
+ * and `severity` are present only when `active`; a cleared banner is `{ active:
+ * false }`.
+ */
+export interface BannerState {
+  active: boolean;
+  message?: string;
+  severity?: BannerSeverity;
 }

@@ -22,6 +22,7 @@ export {
   type ParsedImageKey,
 } from "./images.js";
 export { normalizeEmail } from "./email.js";
+export { BANNER_SEVERITIES, type BannerSeverity } from "./banner.js";
 export {
   type CanonicalNameInput,
   buildAmbiguityIndex,

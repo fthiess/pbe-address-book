@@ -6,6 +6,8 @@ import type { IdentityProvider, Session } from "../identity/types.js";
 import { buildServer } from "../server.js";
 import {
   InMemoryAdminUserStore,
+  InMemoryBackupSource,
+  InMemoryBannerStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -49,6 +51,8 @@ async function buildStarsServer() {
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),
     adminUsers: new InMemoryAdminUserStore(),
+    bannerStore: new InMemoryBannerStore(),
+    backupSource: new InMemoryBackupSource(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async (profileId) => lists.get(profileId) ?? [],

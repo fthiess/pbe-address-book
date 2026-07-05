@@ -1,5 +1,6 @@
 import type { Profile, Role, ValidationIssue } from "@pbe/shared";
-import type { Me, ProfileRecord, ProfilesResponse, SignInStart } from "./types.js";
+import type { BannerState, Me, ProfileRecord, ProfilesResponse, SignInStart } from "./types.js";
+import { saveBlob } from "./utils.js";
 
 /**
  * Typed wrappers over Book's REST surface (API-SPEC). Every call is same-origin
@@ -341,6 +342,67 @@ export async function changeRole(
     return { status: "last_admin" };
   }
   throw await asError(response);
+}
+
+/**
+ * The current site-wide system banner (`GET /api/banner`, any authenticated user;
+ * D117). Fetched on load and rendered across the top of every page.
+ */
+export async function fetchBanner(signal?: AbortSignal): Promise<BannerState> {
+  const response = await fetch("/api/banner", { credentials: "same-origin", signal });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  return response.json();
+}
+
+/**
+ * Set or clear the system banner (`PUT /api/admin/banner`, admin only; D117).
+ * `active: false` clears it. Returns the stored banner. Throws {@link ApiError} on
+ * a non-OK response (the caller pre-validates a non-empty message, so a `422` is a
+ * guard against client/server drift).
+ */
+export async function saveBanner(input: {
+  active: boolean;
+  message?: string;
+  severity?: "info" | "warning";
+}): Promise<BannerState> {
+  const response = await fetch("/api/admin/banner", {
+    method: "PUT",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  return response.json();
+}
+
+/** Pull the download filename out of a `Content-Disposition` header, if present. */
+function filenameFromDisposition(header: string | null): string | null {
+  if (!header) {
+    return null;
+  }
+  const match = /filename="?([^"]+)"?/.exec(header);
+  return match?.[1] ?? null;
+}
+
+/**
+ * Download a full database backup (`GET /api/admin/backup`, admin only; D63). The
+ * JSON is fetched credentialed, then saved to the user's disk via a transient
+ * object-URL anchor (so errors surface as an {@link ApiError} the caller can report,
+ * rather than a broken navigation). The admin is the custodian of the archive (D101).
+ */
+export async function downloadBackup(): Promise<void> {
+  const response = await fetch("/api/admin/backup", { credentials: "same-origin" });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  const blob = await response.blob();
+  const filename =
+    filenameFromDisposition(response.headers.get("Content-Disposition")) ?? "book-backup.json";
+  saveBlob(blob, filename);
 }
 
 /** Begin the Ghost handshake: mint a nonce and get the relay URL to redirect to. */

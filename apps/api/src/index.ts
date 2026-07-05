@@ -12,6 +12,8 @@
  * Sessions and login nonces persist in Firestore, so the same cold start does
  * not invalidate live sessions (D125).
  */
+import { FirestoreBackupSource } from "./data/backup.js";
+import { FirestoreBannerStore } from "./data/banner.js";
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
 import { FirestoreProfileStore } from "./data/profiles.js";
@@ -62,6 +64,8 @@ async function main(): Promise<void> {
     profileCache,
     profileStore: new FirestoreProfileStore(db),
     adminUsers: new FirestoreAdminUserStore(db),
+    bannerStore: new FirestoreBannerStore(db),
+    backupSource: new FirestoreBackupSource(db),
     sessionStore,
     nonceStore,
     getStars: async (profileId) => (await getUser(db, profileId))?.stars ?? [],

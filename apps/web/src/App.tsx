@@ -1,5 +1,6 @@
 import { NuqsAdapter } from "nuqs/adapters/react-router/v7";
 import { Outlet, RouterProvider, createBrowserRouter } from "react-router-dom";
+import { BannerProvider } from "./auth/BannerContext.js";
 import { SessionProvider, useSession } from "./auth/SessionContext.js";
 import { AppShell } from "./components/AppShell.js";
 import { FontSizeProvider } from "./components/FontSizeProvider.js";
@@ -7,6 +8,7 @@ import { LoadingOverlay } from "./components/LoadingOverlay.js";
 import { SessionError } from "./components/SessionError.js";
 import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
+import { Admin } from "./pages/Admin.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
 import { Directory } from "./pages/Directory.js";
 import { ProfileContainer, ProfileEditRoute, ProfileViewRoute } from "./pages/Profile.js";
@@ -54,9 +56,11 @@ function GateLayout() {
     return <SessionError onRetry={() => void refresh()} />;
   }
   return (
-    <AppShell me={state.me}>
-      <Outlet />
-    </AppShell>
+    <BannerProvider>
+      <AppShell me={state.me}>
+        <Outlet />
+      </AppShell>
+    </BannerProvider>
   );
 }
 
@@ -86,6 +90,7 @@ const router = createBrowserRouter([
               { path: "edit", element: <ProfileEditRoute /> },
             ],
           },
+          { path: "admin", element: <Admin /> },
           { path: "*", element: <Directory /> },
         ],
       },

@@ -38,6 +38,26 @@ export const helpContent: HelpContent = {
     label: "Columns",
     helperText: "Choose which columns appear; drag a column header's grip to reorder.",
   },
+
+  // Phase 5a-1 — the Admin page's baseline controls (D111; PRD §5.8).
+  "admin.backup": {
+    key: "admin.backup",
+    label: "Download backup",
+    helperText:
+      "Save a complete snapshot of the directory as a JSON file you keep off-site. Automatic nightly backups arrive in a later update.",
+  },
+  "admin.banner.message": {
+    key: "admin.banner.message",
+    label: "Message",
+    helperText:
+      "Shown across the top of every page for everyone, until you clear it. Use for maintenance notices and announcements.",
+    placeholder: "Scheduled maintenance Sunday 2–4am ET…",
+  },
+  "admin.banner.severity": {
+    key: "admin.banner.severity",
+    label: "Severity",
+    helperText: "Info for announcements; Warning for maintenance or disruptions.",
+  },
 };
 
 /** Look up a help entry by its control id, or `undefined` if none is defined. */

@@ -11,6 +11,8 @@
  * side by side. The session cookie is issued without `Secure` so it is sent over
  * the local plain-http dev server (never the case in any deployed environment).
  */
+import { FirestoreBackupSource } from "./data/backup.js";
+import { FirestoreBannerStore } from "./data/banner.js";
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
 import { FirestoreProfileStore } from "./data/profiles.js";
@@ -45,6 +47,8 @@ async function main(): Promise<void> {
     profileCache,
     profileStore: new FirestoreProfileStore(db),
     adminUsers: new FirestoreAdminUserStore(db),
+    bannerStore: new FirestoreBannerStore(db),
+    backupSource: new FirestoreBackupSource(db),
     sessionStore,
     nonceStore,
     getStars,

@@ -1,6 +1,7 @@
 import { type Role, formatCanonicalName, impersonatableRoles } from "@pbe/shared";
 import { type ReactNode, useRef } from "react";
 import { Link } from "react-router-dom";
+import { useBanner } from "../auth/BannerContext.js";
 import { useSession } from "../auth/SessionContext.js";
 import type { Me } from "../lib/types.js";
 import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
@@ -8,7 +9,7 @@ import { AvatarThumbnail } from "./AvatarThumbnail.js";
 import { FontSizeToggle } from "./FontSizeToggle.js";
 import { PrivacyFooter } from "./PrivacyFooter.js";
 import { RoleBadge } from "./RoleBadge.js";
-import { type Banner, SystemBanner } from "./SystemBanner.js";
+import { SystemBanner } from "./SystemBanner.js";
 import { ThemeToggle } from "./ThemeToggle.js";
 
 const ROLE_LABEL: Record<Role, string> = {
@@ -39,15 +40,17 @@ const MENU_ITEM =
  */
 export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   const { signOut, viewAs, stopViewingAs } = useSession();
+  const { banner } = useBanner();
   // The shell shows the signed-in brother's own name; a single record carries no
   // ambiguity context, so render the plain (non-disambiguated) Canonical Name.
   const name = me.profile ? formatCanonicalName(me.profile, false) : "Brother";
   // The step-down targets are a function of the *real* role only, so the menu is
   // identical whether or not a view-as is currently active.
   const viewAsTargets = impersonatableRoles(me.realRole);
-
-  // The /api/banner source lands in Phase 5 (D117); the slot is wired with null.
-  const banner: Banner | null = null;
+  // The Admin link gates on the **effective** role (N31): an admin "viewing as" a
+  // lower role has genuinely lost admin powers (the server would 403 the admin
+  // endpoints), so the link hides — matching the rest of the projection-gated UI.
+  const isAdmin = me.role === "admin";
 
   const menuRef = useRef<HTMLDetailsElement>(null);
   useDetailsAutoClose(menuRef);
@@ -100,6 +103,11 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                 <Link to={`/brother/${me.profileId}`} onClick={closeMenu} className={MENU_ITEM}>
                   My profile
                 </Link>
+                {isAdmin && (
+                  <Link to="/admin" onClick={closeMenu} className={MENU_ITEM}>
+                    Administration
+                  </Link>
+                )}
 
                 {viewAsTargets.length > 0 && (
                   <div className="mt-1 border-border border-t pt-1">
