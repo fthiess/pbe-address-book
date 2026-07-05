@@ -132,6 +132,28 @@ export function authorizePrivileged(
   return { actorId: actor.profileId, role, id, stored, trace };
 }
 
+/**
+ * Guard for a whole-database admin action that has **no `:id` subject** (the banner
+ * set and the backup download). Session present (belt-and-suspenders behind the
+ * `gate` preHandler) + effective-role admin (N31, so a "View as" step-down
+ * genuinely loses the power). Returns the actor's Constitution id, or `null` after
+ * sending the matching 401/403 (the caller returns `reply` unchanged). Unlike
+ * {@link authorizePrivileged} it neither parses an id nor audits the denial — these
+ * endpoints have no per-record IDOR surface to trail; the success path audits.
+ */
+export function requireEffectiveAdmin(request: FastifyRequest, reply: FastifyReply): number | null {
+  const session = request.session;
+  if (!session) {
+    reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+    return null;
+  }
+  if (effectiveRole(session) !== "admin") {
+    reply.code(403).send({ error: "forbidden", message: "You may not perform this action." });
+    return null;
+  }
+  return session.identity.profileId;
+}
+
 /** Parse and validate the `:id` route param as a positive Constitution ID. */
 export function parseProfileId(request: FastifyRequest): number | null {
   const raw = (request.params as { id?: string }).id;

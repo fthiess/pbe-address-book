@@ -3,6 +3,8 @@ import { STATUS_CODES } from "node:http";
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { AuditLog } from "./audit/audit-log.js";
+import type { BackupSource } from "./data/backup.js";
+import type { BannerStore } from "./data/banner.js";
 import type { ProfileCache } from "./data/cache.js";
 import { GcsImageStore, type ImageStore } from "./data/images.js";
 import type { ProfileStore } from "./data/profiles.js";
@@ -14,6 +16,8 @@ import type { SessionService } from "./identity/session-store.js";
 import type { IdentityProvider } from "./identity/types.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { type GhostBridgeConfig, registerAuthRoutes } from "./routes/auth.js";
+import { registerBackupRoutes } from "./routes/backup.js";
+import { registerBannerRoutes } from "./routes/banner.js";
 import { registerExportRoutes } from "./routes/exports.js";
 import { registerHeadshotRoutes } from "./routes/headshot.js";
 import { registerImageRoutes } from "./routes/images.js";
@@ -42,6 +46,10 @@ export interface BuildServerOptions {
   mintVersion?: () => string;
   /** The admin `users` operations (Change-role invariant + delete reference scrubs). */
   adminUsers: AdminUserStore;
+  /** The system-banner singleton store (D117) behind `GET /api/banner` + the admin set/clear. */
+  bannerStore: BannerStore;
+  /** The whole-database backup read seam (D63) behind `GET /api/admin/backup`. */
+  backupSource: BackupSource;
   /**
    * The Ghost member-lifecycle seam behind Delete and De-brother (N41). Defaults
    * to {@link StubGhostLifecycle} (succeed-and-log) — the intended behavior until
@@ -226,6 +234,8 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   });
   registerExportRoutes(app, { gate, audit, clock, cache: options.profileCache });
   registerImageRoutes(app, { cache: options.profileCache, gate, imageStore });
+  registerBannerRoutes(app, { gate, bannerStore: options.bannerStore, audit, clock });
+  registerBackupRoutes(app, { gate, backupSource: options.backupSource, audit, clock });
 
   return app;
 }

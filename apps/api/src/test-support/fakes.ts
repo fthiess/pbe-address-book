@@ -1,5 +1,10 @@
 import type { Profile, Role } from "@pbe/shared";
 import type { ImageStore, StoredImage } from "../data/images.js";
+
+// The banner/backup in-memory doubles live beside their real stores; re-exported
+// here so route tests import all their server doubles from one place.
+export { InMemoryBannerStore } from "../data/banner.js";
+export { InMemoryBackupSource } from "../data/backup.js";
 import {
   INITIAL_CONCURRENCY_TOKEN,
   MissingProfileError,

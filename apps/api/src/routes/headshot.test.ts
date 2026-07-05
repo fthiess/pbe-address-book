@@ -8,6 +8,8 @@ import type { IdentityProvider, Session } from "../identity/types.js";
 import { buildServer } from "../server.js";
 import {
   InMemoryAdminUserStore,
+  InMemoryBackupSource,
+  InMemoryBannerStore,
   InMemoryImageStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
@@ -79,6 +81,8 @@ async function buildHeadshotServer() {
     profileCache: cache,
     profileStore: store,
     adminUsers: new InMemoryAdminUserStore(),
+    bannerStore: new InMemoryBannerStore(),
+    backupSource: new InMemoryBackupSource(),
     imageStore,
     mintVersion: () => `v${++counter}`,
     sessionStore,

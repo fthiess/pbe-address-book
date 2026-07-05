@@ -5,6 +5,8 @@ import { AuthError, type IdentityProvider, type Session } from "../identity/type
 import { buildServer } from "../server.js";
 import {
   InMemoryAdminUserStore,
+  InMemoryBackupSource,
+  InMemoryBannerStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -63,6 +65,8 @@ async function buildAuthServer(withBridge = true) {
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),
     adminUsers: new InMemoryAdminUserStore(),
+    bannerStore: new InMemoryBannerStore(),
+    backupSource: new InMemoryBackupSource(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [42],

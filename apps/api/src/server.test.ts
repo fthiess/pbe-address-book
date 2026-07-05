@@ -4,6 +4,8 @@ import type { IdentityProvider } from "./identity/types.js";
 import { buildServer } from "./server.js";
 import {
   InMemoryAdminUserStore,
+  InMemoryBackupSource,
+  InMemoryBannerStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -22,6 +24,8 @@ describe("buildServer", () => {
     profileCache: new ProfileCache(),
     profileStore: new InMemoryProfileStore(),
     adminUsers: new InMemoryAdminUserStore(),
+    bannerStore: new InMemoryBannerStore(),
+    backupSource: new InMemoryBackupSource(),
     sessionStore: new InMemorySessionStore(),
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],

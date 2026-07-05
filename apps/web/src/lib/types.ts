@@ -55,3 +55,14 @@ export interface SignInStart {
   state: string;
   signInUrl: string;
 }
+
+/**
+ * `GET /api/banner` — the site-wide system banner (D117; API-SPEC §10). `message`
+ * and `severity` are present only when `active`; a cleared banner is `{ active:
+ * false }`.
+ */
+export interface BannerState {
+  active: boolean;
+  message?: string;
+  severity?: "info" | "warning";
+}
