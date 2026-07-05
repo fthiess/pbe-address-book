@@ -32,7 +32,7 @@ export function Admin() {
       </Link>
       <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">
-          Administration
+          Administrative Tools
         </h1>
         <p className="mt-2 max-w-prose text-[length:var(--text-body)] text-muted-foreground">
           Whole-database operations and site-wide controls. These stay available while the rest of

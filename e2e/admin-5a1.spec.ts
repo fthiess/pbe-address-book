@@ -93,7 +93,9 @@ test.describe("Admin page (5a-1)", () => {
     await page.getByRole("link", { name: "Admin Tools" }).click();
 
     await expect(page).toHaveURL(/\/admin$/);
-    await expect(page.getByRole("heading", { name: "Administration", level: 1 })).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Administrative Tools", level: 1 }),
+    ).toBeVisible();
     // The two live surfaces and the two placeholders all render.
     await expect(page.getByRole("heading", { name: "Download backup" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "System message banner" })).toBeVisible();
@@ -105,7 +107,9 @@ test.describe("Admin page (5a-1)", () => {
     // The "← Directory" affordance returns to the Directory.
     await page.getByRole("link", { name: "Directory" }).click();
     await expect(page).toHaveURL(/\/(?:$|\?)/);
-    await expect(page.getByRole("heading", { name: "Administration", level: 1 })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Administrative Tools", level: 1 })).toHaveCount(
+      0,
+    );
   });
 
   test("a brother has no Administration link and is redirected away from /admin", async ({
@@ -118,7 +122,9 @@ test.describe("Admin page (5a-1)", () => {
     // Direct navigation to the admin route bounces back to the Directory.
     await page.goto("/admin");
     await expect(page).toHaveURL(/\/(?:$|\?)/);
-    await expect(page.getByRole("heading", { name: "Administration", level: 1 })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Administrative Tools", level: 1 })).toHaveCount(
+      0,
+    );
   });
 
   test("setting a banner shows it in the masthead; clearing removes it", async ({ page }) => {
