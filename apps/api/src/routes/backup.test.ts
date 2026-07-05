@@ -107,6 +107,15 @@ describe("GET /api/admin/backup", () => {
     expect((await get(await ctx.viewingAsCookie("admin", "brother"))).statusCode).toBe(403);
   });
 
+  it("audits a 403 denial with no target (the backup is every brother's data, OFC-190)", async () => {
+    expect((await get(await ctx.cookieFor(5002, "manager"))).statusCode).toBe(403);
+    const denied = ctx.audited.find(
+      (e) => e.action === "backup.download" && e.outcome === "denied",
+    );
+    expect(denied).toMatchObject({ action: "backup.download", actorId: 5002, outcome: "denied" });
+    expect(denied).not.toHaveProperty("targetId");
+  });
+
   it("returns the versioned envelope of the live collections for an admin", async () => {
     const response = await get(await ctx.cookieFor(5001, "admin"));
     expect(response.statusCode).toBe(200);

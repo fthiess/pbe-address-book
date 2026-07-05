@@ -1,7 +1,9 @@
+import type { BannerSeverity } from "@pbe/shared";
+
 /** The site-wide admin-set banner (D117; DATABASE-SCHEMA §6.3 `SystemBanner`). */
 export interface Banner {
   message: string;
-  severity: "info" | "warning";
+  severity: BannerSeverity;
 }
 
 /**

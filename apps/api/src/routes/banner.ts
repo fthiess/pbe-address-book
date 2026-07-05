@@ -1,3 +1,4 @@
+import { BANNER_SEVERITIES } from "@pbe/shared";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { BannerStore, StoredBanner } from "../data/banner.js";
@@ -8,7 +9,8 @@ import { traceId } from "./trace.js";
 
 /** A generous cap on the banner message (DATABASE-SCHEMA §6.3 "generous length cap"). */
 const MAX_BANNER_MESSAGE = 500;
-const SEVERITIES: ReadonlySet<string> = new Set<StoredBanner["severity"]>(["info", "warning"]);
+/** The allowed severities — derived from the shared vocabulary (one source, OFC-186). */
+const SEVERITIES: ReadonlySet<string> = new Set(BANNER_SEVERITIES);
 
 export interface BannerRoutesConfig {
   gate: preHandlerHookHandler;
@@ -47,7 +49,10 @@ export function registerBannerRoutes(app: FastifyInstance, config: BannerRoutesC
     "/api/admin/banner",
     { preHandler: gate, config: writeRateLimit() },
     async (request, reply) => {
-      const actorId = requireEffectiveAdmin(request, reply);
+      // Audit a 403 denial (OFC-190): setting the site-wide banner is a whole-database
+      // admin surface, so a non-admin (or a stepped-down admin) probing it leaves a
+      // forensic trail, mirroring authorizePrivileged's per-record denial audit.
+      const actorId = requireEffectiveAdmin(request, reply, { action: "banner.set", audit, clock });
       if (actorId === null) {
         return reply;
       }
@@ -116,7 +121,11 @@ export function registerBannerRoutes(app: FastifyInstance, config: BannerRoutesC
         },
         now.toISOString(),
       );
-      return reply.header("Cache-Control", "no-store").send(banner);
+      // Respond with the public projection only — symmetric with GET /api/banner —
+      // so the internal `updatedBy`/`updatedAt` never reach the client (OFC-189).
+      return reply
+        .header("Cache-Control", "no-store")
+        .send({ active: banner.active, message: banner.message, severity: banner.severity });
     },
   );
 }

@@ -1,3 +1,4 @@
+import type { BannerSeverity } from "@pbe/shared";
 import type { Firestore } from "firebase-admin/firestore";
 
 /**
@@ -13,7 +14,7 @@ export interface StoredBanner {
   active: boolean;
   /** The banner text (plain text; trimmed; length-capped by the write route). */
   message: string;
-  severity: "info" | "warning";
+  severity: BannerSeverity;
   /** The admin who last set it (Constitution ID). */
   updatedBy: number;
   /** ISO 8601 timestamp; server-set on each change. */

@@ -172,6 +172,14 @@ describe("PUT /api/admin/banner", () => {
     expect(response.statusCode).toBe(403);
   });
 
+  it("audits a 403 denial with no target (whole-database admin surface, OFC-190)", async () => {
+    const response = await put(await ctx.cookieFor(5002, "manager"), { active: false });
+    expect(response.statusCode).toBe(403);
+    const denied = ctx.audited.find((e) => e.action === "banner.set" && e.outcome === "denied");
+    expect(denied).toMatchObject({ action: "banner.set", actorId: 5002, outcome: "denied" });
+    expect(denied).not.toHaveProperty("targetId");
+  });
+
   it("sets a banner for an admin and the read reflects it", async () => {
     const cookie = await ctx.cookieFor(5001, "admin");
     const response = await put(cookie, {
@@ -180,14 +188,15 @@ describe("PUT /api/admin/banner", () => {
       severity: "info",
     });
     expect(response.statusCode).toBe(200);
-    // The stored banner is returned, message trimmed + stamped with the actor/time.
-    expect(response.json()).toMatchObject({
+    // The response is the PUBLIC projection only — trimmed message + severity, and
+    // NO internal `updatedBy`/`updatedAt` (OFC-189), symmetric with GET /api/banner.
+    expect(response.json()).toEqual({
       active: true,
       message: "Welcome to the new directory.",
       severity: "info",
-      updatedBy: 5001,
-      updatedAt: FIXED_NOW.toISOString(),
     });
+    expect(response.json()).not.toHaveProperty("updatedBy");
+    expect(response.json()).not.toHaveProperty("updatedAt");
     const read = await ctx.app.inject({ method: "GET", url: "/api/banner", headers: { cookie } });
     expect(read.json()).toEqual({
       active: true,

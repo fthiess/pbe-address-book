@@ -2,6 +2,7 @@ import { type Role, profilesToCsv } from "@pbe/shared";
 import { Link } from "react-router-dom";
 import { notifyExport } from "../../lib/api.js";
 import type { DirectoryProfile } from "../../lib/types.js";
+import { saveBlob } from "../../lib/utils.js";
 
 /**
  * The manager/administrator action bar above the grid (§5.6.8, D41). Gated by the
@@ -61,12 +62,5 @@ export function ActionBar({ role, rows, selectedIds }: ActionBarProps) {
 function downloadCsv(content: string): void {
   const date = new Date().toISOString().slice(0, 10);
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = `pbe-directory-${date}.csv`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+  saveBlob(blob, `pbe-directory-${date}.csv`);
 }

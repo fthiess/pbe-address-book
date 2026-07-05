@@ -1,4 +1,4 @@
-import type { Profile, Role } from "@pbe/shared";
+import type { BannerSeverity, Profile, Role } from "@pbe/shared";
 
 /**
  * The directory-row shape the SPA consumes from `GET /api/profiles` — one
@@ -64,5 +64,5 @@ export interface SignInStart {
 export interface BannerState {
   active: boolean;
   message?: string;
-  severity?: "info" | "warning";
+  severity?: BannerSeverity;
 }

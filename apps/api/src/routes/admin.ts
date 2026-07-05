@@ -7,12 +7,12 @@ import type { ProfileStore } from "../data/profiles.js";
 import { type AdminUserStore, LastAdminError } from "../data/users.js";
 import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { SessionService } from "../identity/session-store.js";
-import { effectiveRole } from "../identity/types.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import {
   authorizePrivileged,
   mergeProfile,
   parseProfileId,
+  requireEffectiveAdmin,
   revokeSessionsBestEffort,
 } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
@@ -66,15 +66,11 @@ function registerRoleRead(app: FastifyInstance, deps: AdminRouteDeps): void {
     "/api/users/:id/role",
     { preHandler: gate, config: readRateLimit() },
     async (request, reply) => {
-      const session = request.session;
-      if (!session) {
-        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
-      }
-      // Admin-only, at the caller's **effective** role (a "View as" step-down loses it, N31).
-      if (effectiveRole(session) !== "admin") {
-        return reply
-          .code(403)
-          .send({ error: "forbidden", message: "You may not perform this action." });
+      // Admin-only at the caller's **effective** role (a "View as" step-down loses it,
+      // N31), via the shared guard (OFC-185). No denial audit passed — a role *read*'s
+      // denial is not audited, consistent with the pre-existing behavior here.
+      if (requireEffectiveAdmin(request, reply) === null) {
+        return reply;
       }
       const id = parseProfileId(request);
       if (id === null) {

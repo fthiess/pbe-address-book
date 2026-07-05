@@ -1,5 +1,6 @@
 import type { Profile, Role, ValidationIssue } from "@pbe/shared";
 import type { BannerState, Me, ProfileRecord, ProfilesResponse, SignInStart } from "./types.js";
+import { saveBlob } from "./utils.js";
 
 /**
  * Typed wrappers over Book's REST surface (API-SPEC). Every call is same-origin
@@ -399,18 +400,9 @@ export async function downloadBackup(): Promise<void> {
     throw await asError(response);
   }
   const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  try {
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download =
-      filenameFromDisposition(response.headers.get("Content-Disposition")) ?? "book-backup.json";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  const filename =
+    filenameFromDisposition(response.headers.get("Content-Disposition")) ?? "book-backup.json";
+  saveBlob(blob, filename);
 }
 
 /** Begin the Ghost handshake: mint a nonce and get the relay URL to redirect to. */

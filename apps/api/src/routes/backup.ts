@@ -31,7 +31,13 @@ export function registerBackupRoutes(app: FastifyInstance, config: BackupRoutesC
     "/api/admin/backup",
     { preHandler: gate, config: readRateLimit() },
     async (request, reply) => {
-      const actorId = requireEffectiveAdmin(request, reply);
+      // Audit a 403 denial (OFC-190): the backup is every brother's data, so a probe
+      // by a non-admin / stepped-down admin belongs in the forensic stream.
+      const actorId = requireEffectiveAdmin(request, reply, {
+        action: "backup.download",
+        audit,
+        clock,
+      });
       if (actorId === null) {
         return reply;
       }

@@ -136,9 +136,41 @@ test.describe("Admin page (5a-1)", () => {
     await expect(page.getByText("Banner set. It's now live for everyone.")).toBeVisible();
 
     await page.getByRole("button", { name: "Clear current banner" }).click();
-    // Cleared: the masthead banner is gone, leaving only the preview.
-    await expect(liveRegions).toHaveCount(1);
+    // Cleared: the masthead banner is gone, and the reset preview is muted (an empty
+    // preview renders a neutral box, not a live-region SystemBanner) — so zero remain.
+    await expect(liveRegions).toHaveCount(0);
     await expect(page.getByText("A banner is currently live")).toHaveCount(0);
+  });
+
+  test("a transient banner-read failure still lets the admin clear it (OFC-183)", async ({
+    page,
+  }) => {
+    // The on-load GET /api/banner fails; a successful clear also heals the read.
+    let readFails = true;
+    await page.route("**/api/me", (route) => route.fulfill({ json: meDoc("admin") }));
+    await page.route("**/api/profiles", (route) =>
+      route.fulfill({ json: { profiles: [], majors: [] } }),
+    );
+    await page.route("**/api/banner", (route) =>
+      readFails
+        ? route.fulfill({ status: 503, body: "{}" })
+        : route.fulfill({ json: { active: false } }),
+    );
+    await page.route("**/api/admin/banner", (route) => {
+      readFails = false;
+      return route.fulfill({ json: { active: false } });
+    });
+    await page.goto("/admin");
+    await expect(page.locator("summary").filter({ hasText: "Dev" })).toBeVisible();
+
+    // The read failed — the admin sees a retryable error, and (the bug fix) the Clear
+    // control stays enabled rather than being disabled by a swallowed-to-null banner.
+    await expect(page.getByText("We couldn't check the current banner just now.")).toBeVisible();
+    const clearButton = page.getByRole("button", { name: "Clear current banner" });
+    await expect(clearButton).toBeEnabled();
+
+    await clearButton.click();
+    await expect(page.getByText("Banner cleared.")).toBeVisible();
   });
 
   test("Download now triggers a file download", async ({ page }) => {
