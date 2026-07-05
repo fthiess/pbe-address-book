@@ -105,7 +105,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                 </Link>
                 {isAdmin && (
                   <Link to="/admin" onClick={closeMenu} className={MENU_ITEM}>
-                    Administration
+                    Admin Tools
                   </Link>
                 )}
 

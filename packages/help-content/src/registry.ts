@@ -44,7 +44,7 @@ export const helpContent: HelpContent = {
     key: "admin.backup",
     label: "Download backup",
     helperText:
-      "Save a complete snapshot of the directory as a JSON file you keep off-site. Automatic nightly backups arrive in a later update.",
+      "Save a complete snapshot of the PBE Address Book as a JSON file you keep off-site. Automatic nightly backups arrive in a later update.",
   },
   "admin.banner.message": {
     key: "admin.banner.message",

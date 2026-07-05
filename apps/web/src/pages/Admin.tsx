@@ -1,4 +1,4 @@
-import { Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { AdminCard, BugIcon, ComingLaterBadge, SyncIcon } from "./admin/AdminCard.js";
 import { BackupCard } from "./admin/BackupCard.js";
@@ -24,9 +24,15 @@ export function Admin() {
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <header className="mb-6">
+      <Link
+        to="/"
+        className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] text-[length:var(--text-label)] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span aria-hidden="true">←</span> Directory
+      </Link>
+      <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">
-          Administration
+          Administrative Tools
         </h1>
         <p className="mt-2 max-w-prose text-[length:var(--text-body)] text-muted-foreground">
           Whole-database operations and site-wide controls. These stay available while the rest of
