@@ -14,9 +14,11 @@ export interface Banner {
  *
  * The message is deliberately set at 16px (`text-base`) semibold and centered so a
  * short notice reads clearly across the full width. **Warning** takes the
- * destructive red; **info** takes the brand **amber** (`--gold-bg-2`, the design's
- * announcement tint) with a hairline gold rule, so an info notice stands out from
- * the page rather than blending into a neutral bar.
+ * destructive red (a clean block); **info** takes the brand **amber** (`--gold-bg-2`,
+ * the design's announcement tint) bounded by **symmetric** hairline gold rules top
+ * and bottom (`border-y`), so an info notice stands out from the page rather than
+ * blending into a neutral bar. The masthead drops its own bottom border when a
+ * banner shows (AppShell), so the banner's rules are the only lines at that seam.
  */
 export function SystemBanner({ banner }: { banner: Banner | null }) {
   if (!banner) {
@@ -30,7 +32,7 @@ export function SystemBanner({ banner }: { banner: Banner | null }) {
       className={
         warning
           ? "bg-destructive px-4 py-2.5 text-center text-base font-semibold text-destructive-foreground"
-          : "border-b border-[var(--gold-border-2)] bg-[var(--gold-bg-2)] px-4 py-2.5 text-center text-base font-semibold text-[var(--gold-text-strong)]"
+          : "border-y border-[var(--gold-border-2)] bg-[var(--gold-bg-2)] px-4 py-2.5 text-center text-base font-semibold text-[var(--gold-text-strong)]"
       }
     >
       {banner.message}

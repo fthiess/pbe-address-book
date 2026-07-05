@@ -1,6 +1,6 @@
 import { type Role, formatCanonicalName, impersonatableRoles } from "@pbe/shared";
 import { type ReactNode, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useBanner } from "../auth/BannerContext.js";
 import { useSession } from "../auth/SessionContext.js";
 import type { Me } from "../lib/types.js";
@@ -41,6 +41,11 @@ const MENU_ITEM =
 export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   const { signOut, viewAs, stopViewingAs } = useSession();
   const { banner } = useBanner();
+  // The Directory is the index route ("/"), regardless of its search/sort/filter
+  // query string. When the admin opens Admin Tools *from* the Directory, mark the
+  // navigation so the Admin page's "← Directory" can pop back to it (preserving
+  // scroll + filters) rather than push a fresh one — mirroring the Profile page.
+  const fromDirectory = useLocation().pathname === "/";
   // The shell shows the signed-in brother's own name; a single record carries no
   // ambiguity context, so render the plain (non-disambiguated) Canonical Name.
   const name = me.profile ? formatCanonicalName(me.profile, false) : "Brother";
@@ -64,7 +69,10 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
 
   return (
     <div className="flex min-h-dvh flex-col bg-background text-foreground">
-      <header className="border-b border-border bg-card">
+      {/* When a banner shows, it provides the separation from the masthead, so the
+          header drops its own bottom rule — otherwise the info banner would carry a
+          neutral header line above and its gold rule below (asymmetric). */}
+      <header className={banner ? "bg-card" : "border-b border-border bg-card"}>
         <div className="flex w-full items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           {/* The masthead crest + wordmark is the conventional "home" affordance:
               it always returns to the Directory landing view (a fresh navigation,
@@ -104,7 +112,12 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                   My profile
                 </Link>
                 {isAdmin && (
-                  <Link to="/admin" onClick={closeMenu} className={MENU_ITEM}>
+                  <Link
+                    to="/admin"
+                    state={{ fromDirectory }}
+                    onClick={closeMenu}
+                    className={MENU_ITEM}
+                  >
                     Admin Tools
                   </Link>
                 )}
