@@ -12,50 +12,51 @@ design, API spec) and the decision log
 ([`docs/initial-build/DECISIONS.md`](docs/initial-build/DECISIONS.md)) is
 authoritative for *why* anything is the way it is.
 
-> **Status: Phase 1 — the walking skeleton (complete).** Phase 0 (the monorepo,
-> the toolchain, the CI gate, the deterministic fake-data generator, and the
-> role-switchable `DevIdentityProvider`) and Phase 1a (the backend read path and
-> the staging infrastructure bring-up) are done. **Phase 1b** is now in: the
-> **Ghost auth bridge** (real JWKS verification with the RS-family alg pin, the
-> single-use login nonce, NFC email→profile resolution, create-if-absent users),
-> Firestore-persisted **sessions and nonces** (cold-start-safe, D125), the
-> **session gate** that closes the 1a interim un-gated read path, the
-> `/api/auth/*` + `/api/me` endpoints, and the persistent **SPA shell** (identity,
-> role badge, sign-out, privacy footer, system-banner slot, cold-start overlay)
-> with the rendered directory list. The Ghost-side relay lives in the theme repo
-> (`pbe-news-ghost-theme/book.hbs`).
+> **Status (2026-07-06): Phases 0–4 complete; Phase 5 in progress.** The app is
+> feature-complete through the **Directory** (virtualized grid, name search with
+> phonetic + nickname matching, typed filters, stars, CSV export) and the
+> **Profile page** (view/edit in all four role projections, the headshot
+> pipeline, verification, the privileged admin actions, prev/next through the
+> directory set), riding the Phase-1/2 substrate: the Ghost auth bridge and
+> session gate, the full `Profile` schema with shared validation, the
+> server-side per-role projection (the single visibility-enforcement point),
+> optimistic concurrency, and the names-not-values audit stream. A cross-cutting
+> trust-boundary security pass (session revocation, CSP/security headers,
+> generic error bodies) landed after Phase 4. Of Phase 5, **5a-1** (the Admin
+> page: scaffolding, system banner, backup download) is done and live; **5a-2**
+> (the bug-report loop) and **5b** (the Book→Ghost write path, the
+> reconciliation audit, the Linter roster stub) remain, followed by the interim
+> **Phase 5.5** ticket-batch sessions (Linear tags `5.5a`–`5.5g`; DECISIONS
+> N59). Then: Phase 6 (help + manual), 7 (hardening/operations), 8
+> (migration & cutover). **Staging is live** at `pbe-book-staging.web.app`
+> (fake data only), auto-deployed from `main`.
 >
-> **Phase 2a — schema, validation, and Canonical Name (complete).** The shared
-> `Profile` type is now the full `DATABASE-SCHEMA §3` shape (sub-types, the
-> consent/housekeeping fields, the numeric Constitution `id` as the single key)
-> with the **shared validation module** implementing the §8 rules (email/URL/date
-> formats, the strict http(s) URL-scheme allowlist, class-year and deceased
-> lifespan ranges, bundled ISO-3166 country + US/CA subdivision vocabularies) and
-> the **Canonical Name** derivation with load-time ambiguity detection (§5.1).
-> The fake-data generator now spans the full schema and every record it emits is
-> validated. The server-side projection re-expresses the brother view over the
-> new shape and gains the `debrothered` whole-record hide alongside `unlisted`;
-> the de-brother sign-in denial (§2.1) is wired now that the field exists. Next:
-> **Phase 2b** — the full per-role projection and capability matrix, then 2c (OCC
-> + audit). The manager/admin projection arms still fail loud until 2b.
+> The per-phase narrative this blockquote used to carry lives where it belongs:
+> the plan's phase sections record scope, and `DECISIONS.md`'s N-notes record
+> how each phase actually landed.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `apps/web/` | The React + Vite SPA (shadcn/ui on Tailwind v4). |
-| `apps/api/` | The Node + TypeScript backend (Fastify) destined for Cloud Run. |
-| `packages/shared/` | Types and the shared client/server validation module (the one `Profile` type). |
+| `apps/api/` | The Node + TypeScript backend (Fastify, esbuild-bundled) on Cloud Run. |
+| `packages/shared/` | Types and the shared client/server validation module (the one `Profile` type), capabilities, canonical names, vocabularies. |
 | `packages/help-content/` | The single-source in-page help / manual entries. |
-| `tools/fake-data/` | The deterministic seeded fake-data generator (D65). |
-| `tools/migration/` | One-time pre-launch migration utilities (never deployed). |
+| `tools/fake-data/` | The deterministic seeded fake-data generator (D65) + the staging seed/link scripts. |
+| `tools/migration/` | One-time pre-launch migration utilities (never deployed; built in Phase 8). |
+| `e2e/` | The Playwright end-to-end suite (including the axe WCAG 2.2 AA scans). |
+| `scripts/` | The CI gate guards: no-dev-provider, tokens-in-sync, bundle-size, CSP hashes, CI timing. |
+| `infra/` | Staging provisioning + Workload Identity Federation setup scripts, and the environment notes. |
+| `ghost-bridge/` | Reference mirror of the Ghost-side relay (`book.hbs` + routes snippet); the deployment home is the `pbe-news-ghost-theme` repo — keep the two in sync. |
 | `docs/` | Design and build documentation, by build. The initial release lives in `docs/initial-build/`. |
-| `.github/workflows/` | The CI pipeline (the tests-green gate). |
+| `.github/workflows/` | `ci.yml` (the tests-green gate) and `deploy-staging.yml` (deploy on merge). |
 
 ## Prerequisites
 
 - **Node.js 24+** and npm (see `.nvmrc`).
-- **A JVM** (JDK 17+) — the Firestore emulator runs on the JVM. On Windows:
+- **A JVM (JDK 21+)** — the Firestore emulator runs on the JVM, and
+  `firebase-tools` v15 requires Java 21. On Windows:
   `winget install --id Microsoft.OpenJDK.21 -e`.
 - Everything else (Vite, Vitest, Playwright, the Firebase CLI) is installed
   locally via `npm install`; nothing needs to be global.
@@ -99,13 +100,36 @@ npm run dev --workspace apps/web
 
 Open the SPA, and on the sign-in screen use the **Local development** role
 switcher (brother / manager / admin) to sign in. In production that block is
-absent — only the real Ghost **Sign in** button ships (`import.meta.env.DEV`).
+absent — only the real Ghost **Sign in** button ships (`import.meta.env.DEV`),
+and the dev session route exists only in the dev API entry point (D108).
 
 ## Environments
 
-Three environments, by design (`CODING-PROJECT-PLAN.md` §4): **local** (this
-machine — Vite, the API, the Firestore emulator, fake data, the
-`DevIdentityProvider`), **staging** (an ephemeral, script-provisioned cloud Book
-holding fake data only), and **production** (`book.pbe400.org`, real data, the
-real Ghost integration). The `DevIdentityProvider` is locked out of production
-by four independent layers (D108) and must never run anywhere near it.
+Three environments, by design (`CODING-PROJECT-PLAN.md` §4):
+
+- **Local** — this machine: Vite, the API, the Firestore emulator, fake data,
+  the `DevIdentityProvider`.
+- **Staging** — a persistent cloud Book, live at
+  `https://pbe-book-staging.web.app` (GCP project `pbe-book-staging`: Firebase
+  Hosting → Cloud Run + Firestore + a private image bucket, provisioned by
+  `infra/provision-staging.sh`). **Fake data only.** Sign-in goes through the
+  real Ghost bridge against the self-hosted ghost-staging instance
+  (`staging.pbe400.org`) — never production Ghost (D72).
+- **Production** — `book.pbe400.org`, real data, the real Ghost integration.
+  Not yet stood up; it comes up in Phase 8 (migration & cutover).
+
+The `DevIdentityProvider` is locked out of production by four independent
+layers (D108) and must never run anywhere near it.
+
+## CI/CD
+
+Every push runs `ci.yml` — the same `verify:gate` you run locally (format,
+lint, typecheck, build, unit + emulator tests, Playwright + axe, the bundle
+budget, and the guard scripts). A green CI on a push to `main` triggers
+`deploy-staging.yml`, which authenticates to GCP **keylessly via Workload
+Identity Federation** (no service-account key exists) and deploys Hosting,
+Firestore rules, and Cloud Run. Each deploy wipe-reseeds the staging profiles,
+images, and tester link (the `STAGING_AUTOSEED` repo variable), so staging
+never drifts from the generator. One landmine documented in
+[`infra/README.md`](infra/README.md): the Firebase CLI deploy step is pinned to
+**Node 20** to dodge a Node-24 undici/STS bug — don't "fix" it.
