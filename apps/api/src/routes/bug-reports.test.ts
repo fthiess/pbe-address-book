@@ -14,14 +14,13 @@ import {
   InMemoryProfileStore,
   InMemorySessionStore,
 } from "../test-support/fakes.js";
-import { makeProfile } from "../test-support/make-profile.js";
 
 /**
  * The bug-report endpoints (D121; API-SPEC §10). Driven end-to-end against the
  * in-memory doubles: the file POST (any authenticated user, validation, the
- * names-not-values audit), and the admin review queue (list with server-resolved
- * submitter names, the new→reviewed unread marker, and delete — each admin-only at
- * the effective role, with a denial audit on a probe).
+ * name snapshotted from the session, the names-not-values audit), and the admin
+ * review queue (list, the new→reviewed unread marker, and delete — each admin-only
+ * at the effective role, with a denial audit on a probe).
  */
 
 const stubProvider: IdentityProvider = {
@@ -31,26 +30,24 @@ const stubProvider: IdentityProvider = {
 
 const FIXED_NOW = new Date("2026-07-07T09:30:00.000Z");
 
-function sessionFor(profileId: number, role: Role): Session {
+function sessionFor(profileId: number, role: Role, displayName = `Test ${role}`): Session {
   return {
     identity: {
       subject: String(profileId),
       profileId,
       email: "a@example.test",
       role,
-      displayName: `Test ${role}`,
+      displayName,
     },
     expiresAt: Date.now() + 60 * 60 * 1000,
   };
 }
 
 async function buildBugReportServer() {
+  // The bug-report routes no longer read the roster (the submitter name is
+  // snapshotted onto the record at filing, N61), so an empty cache suffices.
   const cache = new ProfileCache();
-  // Two roster records so the admin queue can resolve a submitter's canonical name.
-  await cache.load([
-    makeProfile({ id: 5247, firstName: "James", lastName: "Smyth", classYear: 1984 }),
-    makeProfile({ id: 5002, firstName: "Karen", lastName: "Nelson", classYear: 2005 }),
-  ]);
+  await cache.load([]);
   const bugReportStore = new InMemoryBugReportStore();
   const sessionStore = new InMemorySessionStore();
   const audited: Record<string, unknown>[] = [];
@@ -71,8 +68,8 @@ async function buildBugReportServer() {
     clock: () => FIXED_NOW,
     cookie: { secure: true },
   });
-  const cookieFor = async (profileId: number, role: Role) =>
-    `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(profileId, role))}`;
+  const cookieFor = async (profileId: number, role: Role, displayName?: string) =>
+    `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(profileId, role, displayName))}`;
   const viewingAsCookie = async (from: Role, as: Role) => {
     const id = await sessionStore.create(sessionFor(5001, from));
     await sessionStore.setEffectiveRole(id, as);
@@ -101,8 +98,8 @@ describe("POST /api/bug-report", () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it("files a report for any authenticated brother, at status new", async () => {
-    const cookie = await ctx.cookieFor(5247, "brother");
+  it("files a report for any authenticated brother, snapshotting the session name", async () => {
+    const cookie = await ctx.cookieFor(5247, "brother", "James Smyth '84");
     const response = await file(cookie, {
       page: "/",
       url: "https://book.example.test/",
@@ -116,6 +113,8 @@ describe("POST /api/bug-report", () => {
     expect(stored).toHaveLength(1);
     expect(stored[0]).toMatchObject({
       submittedBy: 5247,
+      // The submitter name is snapshotted from the session identity at filing (N61).
+      submitterName: "James Smyth '84",
       submittedAt: FIXED_NOW.toISOString(),
       page: "/",
       url: "https://book.example.test/",
@@ -161,6 +160,7 @@ describe("GET /api/admin/bug-reports", () => {
   async function seedTwo() {
     await ctx.bugReportStore.create({
       submittedBy: 5247,
+      submitterName: "James Smyth '84",
       submittedAt: "2026-06-12T14:02:00.000Z",
       page: "/",
       description: "First",
@@ -168,6 +168,7 @@ describe("GET /api/admin/bug-reports", () => {
     });
     await ctx.bugReportStore.create({
       submittedBy: 5002,
+      submitterName: "Karen Nelson '05",
       submittedAt: "2026-06-13T10:00:00.000Z",
       page: "/brother/5002",
       description: "Second",
@@ -198,7 +199,7 @@ describe("GET /api/admin/bug-reports", () => {
     expect(response.statusCode).toBe(403);
   });
 
-  it("returns reports newest-first, enriched with the submitter's canonical name, no-store", async () => {
+  it("returns reports newest-first with the snapshotted submitter name, no-store", async () => {
     await seedTwo();
     const response = await ctx.app.inject({
       method: "GET",
@@ -219,9 +220,12 @@ describe("GET /api/admin/bug-reports", () => {
     expect(reports[1]).not.toHaveProperty("submittedBy");
   });
 
-  it("labels a submitter whose profile no longer exists, keeping the id", async () => {
+  it("keeps naming a submitter whose profile no longer exists (name survives deletion)", async () => {
+    // The stored snapshot is returned as-is even though #9999 is absent from the
+    // roster — the whole point of snapshotting the name at filing (N61).
     await ctx.bugReportStore.create({
       submittedBy: 9999,
+      submitterName: "Gone Brother '70",
       submittedAt: "2026-06-12T14:02:00.000Z",
       page: "/",
       description: "Ghost submitter",
@@ -234,7 +238,7 @@ describe("GET /api/admin/bug-reports", () => {
     });
     expect(response.json().reports[0]).toMatchObject({
       submitterId: 9999,
-      submitterName: "(former member)",
+      submitterName: "Gone Brother '70",
     });
   });
 });
@@ -248,6 +252,7 @@ describe("POST /api/admin/bug-reports/mark-reviewed", () => {
   it("flips only the named new reports to reviewed and returns the count", async () => {
     const a = await ctx.bugReportStore.create({
       submittedBy: 5247,
+      submitterName: "James Smyth '84",
       submittedAt: "2026-06-12T14:02:00.000Z",
       page: "/",
       description: "A",
@@ -255,6 +260,7 @@ describe("POST /api/admin/bug-reports/mark-reviewed", () => {
     });
     await ctx.bugReportStore.create({
       submittedBy: 5247,
+      submitterName: "James Smyth '84",
       submittedAt: "2026-06-12T14:03:00.000Z",
       page: "/",
       description: "B",
@@ -306,6 +312,7 @@ describe("DELETE /api/admin/bug-reports/:id", () => {
   it("deletes a report for an admin and audits it (scope delete, no PII)", async () => {
     const created = await ctx.bugReportStore.create({
       submittedBy: 5247,
+      submitterName: "James Smyth '84",
       submittedAt: "2026-06-12T14:02:00.000Z",
       page: "/",
       description: "SECRET note",

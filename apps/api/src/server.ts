@@ -243,7 +243,6 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   registerBugReportRoutes(app, {
     gate,
     bugReportStore: options.bugReportStore,
-    cache: options.profileCache,
     audit,
     clock,
   });

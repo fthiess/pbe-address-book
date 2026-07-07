@@ -9,6 +9,7 @@ const hasEmulator = Boolean(process.env.FIRESTORE_EMULATOR_HOST);
 function base(overrides: Partial<Omit<BugReport, "id">> = {}): Omit<BugReport, "id"> {
   return {
     submittedBy: 5247,
+    submitterName: "James Smyth '84",
     submittedAt: "2026-06-12T14:02:00.000Z",
     page: "/",
     description: "Something went wrong.",

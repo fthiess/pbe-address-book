@@ -300,6 +300,7 @@ User-submitted bug reports (decision D121), one document per report, created by 
 interface BugReport {
   id: string;                          // server-assigned document ID
   submittedBy: BrotherId;              // the authenticated submitter (Book is members-only)
+  submitterName: string;               // canonical name snapshotted at filing (survives deletion)
   submittedAt: string;                 // ISO 8601 timestamp; server-set
   page: string;                        // the SPA route the report was filed from (path + query)
   url?: string;                        // the absolute location, so an admin sees exactly where
@@ -315,7 +316,7 @@ interface BugReport {
 
 **Book is a triage-and-clear surface, not a bug tracker.** Real bug management happens in the team's external tracker; Book only *receives* reports and gives an admin a way to view, copy, and delete them (it exists as a viewer only because Book has no email and reading raw Firestore by hand would be cumbersome). The `status` is therefore a minimal **unread marker**, not a lifecycle: `new` = the admin has not yet seen it; `reviewed` = it has been displayed (the SPA marks reports reviewed after rendering the queue, one-way, via `POST /api/admin/bug-reports/mark-reviewed`) but not yet deleted. **Deletion is the terminal act** (`DELETE /api/admin/bug-reports/{id}`) — it removes the document entirely, so there is no stored "resolved"/"closed" state.
 
-There is **no outbound email**: a report is persisted and an audit entry written (decision D61), keeping the admin's inbox out of the attack surface; the endpoint is **rate-limited** (decision D86, 5/min per session) and size-capped, and `description` is never interpolated into a dangerous sink. Reports are **admin-read only** and are not part of any profile projection.
+`submitterName` is **snapshotted from the session identity at filing** rather than resolved on read, so the admin queue needs no roster lookup and a report still names its submitter after that brother's profile is deleted (the `submittedBy` id stays authoritative; a later rename is not reflected — an accepted trade for a short-lived triage record). There is **no outbound email**: a report is persisted and an audit entry written (decision D61), keeping the admin's inbox out of the attack surface; the endpoint is **rate-limited** (decision D86, 5/min per session) and size-capped, and `description` is never interpolated into a dangerous sink. Reports are **admin-read only** and are not part of any profile projection.
 
 ## 7. Image assets (Google Cloud Storage)
 

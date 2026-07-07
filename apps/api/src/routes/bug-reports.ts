@@ -3,12 +3,10 @@ import {
   type BugReport,
   type BugReportClientContext,
   MAX_BUG_REPORT_DESCRIPTION,
-  formatCanonicalName,
 } from "@pbe/shared";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { BugReportStore } from "../data/bug-reports.js";
-import type { ProfileCache } from "../data/cache.js";
 import { bugReportRateLimit, readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { requireEffectiveAdmin } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
@@ -57,8 +55,6 @@ function readClientContext(raw: unknown): BugReportClientContext | undefined {
 export interface BugReportRoutesConfig {
   gate: preHandlerHookHandler;
   bugReportStore: BugReportStore;
-  /** The in-memory roster — resolves each submitter's canonical name for the admin queue. */
-  cache: ProfileCache;
   audit: AuditLog;
   clock: Clock;
 }
@@ -82,7 +78,7 @@ export interface BugReportRoutesConfig {
  *    terminal act; audited (D61).
  */
 export function registerBugReportRoutes(app: FastifyInstance, config: BugReportRoutesConfig): void {
-  const { gate, bugReportStore, cache, audit, clock } = config;
+  const { gate, bugReportStore, audit, clock } = config;
 
   app.post(
     "/api/bug-report",
@@ -118,6 +114,11 @@ export function registerBugReportRoutes(app: FastifyInstance, config: BugReportR
       // explicit `undefined` value).
       const report: Omit<BugReport, "id"> = {
         submittedBy: session.identity.profileId,
+        // Snapshot the submitter's canonical name from the session identity (set at
+        // sign-in to formatCanonicalName(profile, false)) — so the report names its
+        // submitter with no roster lookup here or on the admin read, and survives a
+        // later deletion of the submitter's profile (D121, N61).
+        submitterName: session.identity.displayName,
         submittedAt: now.toISOString(),
         page: trimmedField(body.page, MAX_PAGE) ?? "",
         description,
@@ -163,19 +164,13 @@ export function registerBugReportRoutes(app: FastifyInstance, config: BugReportR
         return reply;
       }
 
+      // The submitter name was snapshotted onto the record at filing (N61), so the
+      // read is a straight projection: surface `submittedBy` as `submitterId`.
       const reports = await bugReportStore.list();
-      const enriched: AdminBugReport[] = reports.map(({ submittedBy, ...rest }) => {
-        const profile = cache.getById(submittedBy);
-        return {
-          ...rest,
-          submitterId: submittedBy,
-          // The **plain** canonical name (no `(#id)` disambiguator): the queue shows
-          // the Constitution id alongside it, so ambiguity is already resolved and a
-          // doubled id is avoided. A submitter whose profile is gone shows as a
-          // former member (the id still identifies them).
-          submitterName: profile ? formatCanonicalName(profile, false) : "(former member)",
-        };
-      });
+      const enriched: AdminBugReport[] = reports.map(({ submittedBy, ...rest }) => ({
+        ...rest,
+        submitterId: submittedBy,
+      }));
 
       return reply.header("Cache-Control", "no-store").send({ reports: enriched });
     },

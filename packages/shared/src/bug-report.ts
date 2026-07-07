@@ -43,6 +43,14 @@ export interface BugReport {
   id: string;
   /** The authenticated submitter (Book is members-only, so always a known brother). */
   submittedBy: BrotherId;
+  /**
+   * The submitter's canonical name, **snapshotted at filing time** from the
+   * session identity (D121). Stored rather than resolved on read so a report still
+   * names its submitter even after their profile is deleted, and so the admin queue
+   * needs no roster lookup. Frozen at filing: a later rename is not reflected (the
+   * `submittedBy` id stays authoritative).
+   */
+  submitterName: string;
   /** ISO 8601 timestamp; server-set. */
   submittedAt: string;
   /** The SPA route the report was filed from (path + query). */
@@ -56,14 +64,12 @@ export interface BugReport {
 }
 
 /**
- * A bug report as the admin queue reads it (`GET /api/admin/bug-reports`):
- * the stored record, enriched server-side with the submitter's canonical name
- * (resolved from the in-memory profile cache) so the admin sees a name without
- * the client loading the roster. `submittedBy` is surfaced as `submitterId`.
+ * A bug report as the admin queue reads it (`GET /api/admin/bug-reports`): the
+ * stored record with `submittedBy` surfaced as `submitterId`. The submitter's
+ * name is already on the stored record (`submitterName`, snapshotted at filing),
+ * so the admin read needs no roster lookup.
  */
 export interface AdminBugReport extends Omit<BugReport, "submittedBy"> {
   /** The submitter's Constitution ID (the stored `submittedBy`). */
   submitterId: BrotherId;
-  /** The submitter's resolved canonical name, e.g. "James Smyth '84". */
-  submitterName: string;
 }
