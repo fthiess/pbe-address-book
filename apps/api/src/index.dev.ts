@@ -13,6 +13,7 @@
  */
 import { FirestoreBackupSource } from "./data/backup.js";
 import { FirestoreBannerStore } from "./data/banner.js";
+import { FirestoreBugReportStore } from "./data/bug-reports.js";
 import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
 import { FirestoreProfileStore } from "./data/profiles.js";
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
     adminUsers: new FirestoreAdminUserStore(db),
     bannerStore: new FirestoreBannerStore(db),
     backupSource: new FirestoreBackupSource(db),
+    bugReportStore: new FirestoreBugReportStore(db),
     sessionStore,
     nonceStore,
     getStars,

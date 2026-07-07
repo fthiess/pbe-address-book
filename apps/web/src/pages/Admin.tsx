@@ -1,8 +1,9 @@
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
-import { AdminCard, BugIcon, ComingLaterBadge, SyncIcon } from "./admin/AdminCard.js";
+import { AdminCard, ComingLaterBadge, SyncIcon } from "./admin/AdminCard.js";
 import { BackupCard } from "./admin/BackupCard.js";
 import { BannerCard } from "./admin/BannerCard.js";
+import { BugReportsCard } from "./admin/BugReportsCard.js";
 
 /** Shared styling for the "← Directory" affordance, whether button or link. */
 const BACK_CLASS =
@@ -10,10 +11,9 @@ const BACK_CLASS =
 
 /**
  * The Admin control panel (`/admin`; PRD §5.8) — the whole-database operations
- * that stay online. Phase 5a-1 ships the live surfaces (Download backup and the
- * system-message banner) plus calm placeholders for the two whose backends land
- * later: Sync with Ghost (the reconciliation audit, Phase 5b) and Bug reports (the
- * review queue, Phase 5a-2).
+ * that stay online. Live surfaces: Download backup, the system-message banner, and
+ * (Phase 5a-2) the Bug-reports review queue. Sync with Ghost stays a calm
+ * placeholder until its backend lands (the reconciliation audit, Phase 5b).
  *
  * Admin-only. The server enforces admin on every admin endpoint, so this route
  * guard is UX: a non-admin — or an admin "viewing as" a lower role (effective
@@ -65,12 +65,7 @@ export function Admin() {
           description="Reconciles Book against the membership list on PBE News and reports any differences for review. This arrives with the Ghost integration in a later update."
         />
 
-        <AdminCard
-          icon={<BugIcon />}
-          title="Bug reports"
-          badge={<ComingLaterBadge />}
-          description="Reports members file with the “Report a bug” control will appear here for you to review. This arrives in a later update."
-        />
+        <BugReportsCard />
 
         <BannerCard />
       </div>

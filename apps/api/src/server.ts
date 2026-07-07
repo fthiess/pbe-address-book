@@ -5,6 +5,7 @@ import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { AuditLog } from "./audit/audit-log.js";
 import type { BackupSource } from "./data/backup.js";
 import type { BannerStore } from "./data/banner.js";
+import type { BugReportStore } from "./data/bug-reports.js";
 import type { ProfileCache } from "./data/cache.js";
 import { GcsImageStore, type ImageStore } from "./data/images.js";
 import type { ProfileStore } from "./data/profiles.js";
@@ -18,6 +19,7 @@ import { registerAdminRoutes } from "./routes/admin.js";
 import { type GhostBridgeConfig, registerAuthRoutes } from "./routes/auth.js";
 import { registerBackupRoutes } from "./routes/backup.js";
 import { registerBannerRoutes } from "./routes/banner.js";
+import { registerBugReportRoutes } from "./routes/bug-reports.js";
 import { registerExportRoutes } from "./routes/exports.js";
 import { registerHeadshotRoutes } from "./routes/headshot.js";
 import { registerImageRoutes } from "./routes/images.js";
@@ -50,6 +52,8 @@ export interface BuildServerOptions {
   bannerStore: BannerStore;
   /** The whole-database backup read seam (D63) behind `GET /api/admin/backup`. */
   backupSource: BackupSource;
+  /** The bug-report store (D121) behind the file POST and the admin review queue. */
+  bugReportStore: BugReportStore;
   /**
    * The Ghost member-lifecycle seam behind Delete and De-brother (N41). Defaults
    * to {@link StubGhostLifecycle} (succeed-and-log) — the intended behavior until
@@ -236,6 +240,12 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   registerImageRoutes(app, { cache: options.profileCache, gate, imageStore });
   registerBannerRoutes(app, { gate, bannerStore: options.bannerStore, audit, clock });
   registerBackupRoutes(app, { gate, backupSource: options.backupSource, audit, clock });
+  registerBugReportRoutes(app, {
+    gate,
+    bugReportStore: options.bugReportStore,
+    audit,
+    clock,
+  });
 
   return app;
 }

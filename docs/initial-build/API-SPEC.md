@@ -241,7 +241,7 @@ These are admin-only. The bulk-operations surface was reshaped in the resolution
 | `/api/admin/import` | — | **deferred (post-MVP)** | Online bulk-CSV upsert is **removed from MVP** (no online bulk-write path, decision D100, amending D52/D68); a MITAA-specific import is backlogged. Any rare bulk reconciliation is an **offline** operator task, not an online endpoint. |
 | `/api/admin/restore` | — | **offline (no API endpoint)** | Restore is an **offline maintenance event** (decisions D100/D101): Book goes hard-down, the three collections are replaced from a **structurally-validated** backup (cycle/ID-uniqueness/email-uniqueness/reference-integrity), and the single instance cold-hydrates on restart. Operator tooling, not an online endpoint. |
 
-**Backup envelope (`GET /api/admin/backup` response).** As shipped in Phase 5a-1 the download is **JSON-only** — the collections snapshot — served as a dated download attachment (`Content-Disposition: attachment; filename="book-backup-YYYY-MM-DD.json"`, `no-store`) and audited as `backup.download` (decisions D63/N58). The body is `{ "version": 1, "generatedAt": "<ISO>", "collections": { "profiles": [{ "id": "<docId>", "data": { … } }], "users": [ … ], "config": [ … ] } }` — each collection is an array of `{ id, data }` documents so a restore is a faithful, key-preserving replay. The **image-object bundle** (the zipped headshots/thumbnails, decision D63) and the **nightly automated backup** are Phase 7 (ENGINEERING-DESIGN §6.3), not this endpoint.
+**Backup envelope (`GET /api/admin/backup` response).** As shipped in Phase 5a-1 the download is **JSON-only** — the collections snapshot — served as a dated download attachment (`Content-Disposition: attachment; filename="book-backup-YYYY-MM-DD.json"`, `no-store`) and audited as `backup.download` (decisions D63/N58). The body is `{ "version": 1, "generatedAt": "<ISO>", "collections": { "profiles": [{ "id": "<docId>", "data": { … } }], "users": [ … ], "config": [ … ] } }` — each collection is an array of `{ id, data }` documents so a restore is a faithful, key-preserving replay. The `bugReports` collection (decision D121) is **not** in the backup: it is transient triage data an admin clears (like `sessions`/`authNonces`), not part of the durable directory a restore reconstructs. The **image-object bundle** (the zipped headshots/thumbnails, decision D63) and the **nightly automated backup** are Phase 7 (ENGINEERING-DESIGN §6.3), not this endpoint.
 
 **Reconciliation audit — discrepancy-report shape (`POST /api/admin/sync-ghost` response).** The audit (decisions D55/D99) is read-only into Book for **every field except** the scoped newsletter-flag most-recent-change-wins reconcile (decision D103, which it applies and logs). It returns a list of discrepancies, each tagged by category:
 
@@ -285,7 +285,7 @@ There is no programmatic API surface for arbitrary external applications in MVP 
 
 ## 10. System banner, bug reports, and maintenance
 
-Three small surfaces added in the post-resolution amendments pass (decisions D117, D121, D118). The banner read and the bug-report POST are available to any authenticated user; setting the banner is admin-only.
+Three small surfaces added in the post-resolution amendments pass (decisions D117, D121, D118). The banner read and the bug-report POST are available to any authenticated user; setting the banner and reading/clearing the bug-report queue are admin-only.
 
 ### `GET /api/banner`
 The current site-wide system banner, fetched by the SPA on load and rendered across the top of every page (decision D117).
@@ -303,10 +303,26 @@ Set or clear the system banner (decision D117).
 ### `POST /api/bug-report`
 File a bug report (decision D121). Stores the report and writes an audit entry (decision D61); **no email is sent**, which keeps the admin's inbox out of the attack surface.
 - **Auth:** any authenticated user (Book is members-only, so the submitter is always a known brother).
-- **Request:** `{ "page": "/brother/5247/edit", "description": "Save did nothing", "clientContext": { "userAgent": "…", "viewport": "1280x720", "appVersion": "a1b2c3" } }`. `description` is required, trimmed, and length-capped; it is treated as untrusted and never emailed or interpolated into a dangerous sink.
-- **Behavior:** persists a `bugReports` document (DATABASE-SCHEMA §6.4) with the authenticated submitter and a server-set timestamp; an admin reviews the queue. **Rate-limited and size-capped** (decision D86), so even an authenticated brother cannot flood it.
+- **Request:** `{ "page": "/brother/5247/edit", "url": "https://book.pbe400.org/brother/5247/edit", "description": "Save did nothing", "clientContext": { "userAgent": "…", "viewport": "1280x720", "appVersion": "a1b2c3" } }`. `description` is required, trimmed, and **capped at 2000 characters**; it is treated as untrusted and never emailed or interpolated into a dangerous sink. `page` (the SPA route, path + query) and `url` (the absolute location) are captured by the client so an admin can see exactly where the report was filed from.
+- **Behavior:** persists a `bugReports` document (DATABASE-SCHEMA §6.4) with the authenticated submitter, their canonical name **snapshotted from the session identity**, and a server-set timestamp, at status `new`; an admin reviews the queue. **Rate-limited (5 per minute per session) and size-capped** (decision D86), so even an authenticated brother cannot flood it.
 - **Response 201:** `{ "id": "…", "status": "new" }`.
 - **Errors:** `422` on a missing/oversized `description`; `429` if the rate limit is exceeded.
+
+### `GET /api/admin/bug-reports`
+The bug-report review queue (decision D121). Book is a **triage-and-clear** surface, not a bug tracker: an admin reads reports here, copies any worth keeping into the real bug tracker, and deletes them. There is no lifecycle beyond that — Book exists as a viewer only because it has no email and reading raw Firestore by hand would be cumbersome.
+- **Auth:** **admin only** (at the caller's effective role, N31). A non-admin probe is audited as a denial (OFC-190).
+- **Response 200:** `{ "reports": [ { "id": "…", "submitterId": 5247, "submitterName": "James Smyth '84", "submittedAt": "2026-06-12T14:02:00Z", "page": "/", "url": "https://…/", "description": "…", "clientContext": { … }, "status": "new" } ] }`, **newest first**. The volume is small (a members-only directory), so the response is unpaginated. `submitterName` is read straight from the stored record (snapshotted at filing, so the admin read does no roster lookup and a report still names its submitter even after their profile is deleted); the raw `submittedBy` is surfaced as `submitterId`. `no-store` (it names a submitter).
+
+### `POST /api/admin/bug-reports/mark-reviewed`
+Mark reports as seen — the one-way `new → reviewed` transition (decision D121). `new` means the admin has not yet seen the report; `reviewed` means it has been displayed but not yet deleted. This is an **unread marker** (like unread email): the SPA calls it after rendering the queue so newly arrived reports show their **NEW** badge on the current visit and are quiet on the next.
+- **Auth:** **admin only** (effective role). Non-admin probe audited as a denial.
+- **Request:** `{ "ids": ["…", "…"] }` — the ids to mark reviewed. Unknown ids are ignored (idempotent); already-`reviewed` ids are a no-op.
+- **Response 200:** `{ "reviewed": 2 }` (the count actually transitioned).
+
+### `DELETE /api/admin/bug-reports/{id}`
+Delete a bug report from Book — the terminal act, once it has been copied into the real tracker or rejected (decision D121). Deletion removes the document entirely; there is no stored terminal status.
+- **Auth:** **admin only** (effective role). Non-admin probe audited as a denial.
+- **Response 204:** on success (idempotent — deleting an already-absent report also returns `204`).
 
 ### Maintenance / outage signalling (decision D118)
 When Book is in **planned maintenance**, the backend (if reached) responds **`503`** with `Retry-After` and a maintenance-flavored body, so an already-loaded SPA shows its "down for maintenance, check back" page rather than a generic outage message. An **unplanned** outage (no reachable backend) is detected by the SPA's failed/timed-out API calls and shows the generic outage page. A **fresh** load during planned downtime is served a **static maintenance page at the Hosting / edge layer**, independent of the backend (so it works even when Cloud Run is stopped) — swapped in by an operator script. See the `503` row in §1.5 and ENGINEERING-DESIGN §6.3.

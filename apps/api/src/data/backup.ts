@@ -13,11 +13,13 @@ export interface CollectionSnapshot {
 }
 
 /**
- * A complete snapshot of Book's live Firestore collections (D63). The MVP export
- * (Phase 5a-1) is JSON-only; the image-object bundle and the nightly automated job
- * are Phase 7 (ENGINEERING-DESIGN §6.3). `majors` is a bundled vocabulary (N29),
- * not yet a live collection, and `bugReports` lands in 5a-2 — each is added here
- * when it becomes live data the backup must carry.
+ * A complete snapshot of Book's **durable** Firestore collections (D63). The MVP
+ * export (Phase 5a-1) is JSON-only; the image-object bundle and the nightly
+ * automated job are Phase 7 (ENGINEERING-DESIGN §6.3). `majors` is a bundled
+ * vocabulary (N29), not yet a live collection — added here when it becomes live
+ * data the backup must carry. `bugReports` (D121) is deliberately **excluded**:
+ * it is transient triage data an admin clears (like `sessions`/`authNonces`), not
+ * part of the directory a restore reconstructs (DECISIONS N61).
  */
 export interface BackupData {
   profiles: CollectionSnapshot[];
@@ -34,7 +36,7 @@ export interface BackupSource {
   export(): Promise<BackupData>;
 }
 
-/** The real {@link BackupSource}: reads the three live collections from Firestore. */
+/** The real {@link BackupSource}: reads the durable collections from Firestore. */
 export class FirestoreBackupSource implements BackupSource {
   constructor(private readonly db: Firestore) {}
 

@@ -5,6 +5,7 @@ import type { ImageStore, StoredImage } from "../data/images.js";
 // here so route tests import all their server doubles from one place.
 export { InMemoryBannerStore } from "../data/banner.js";
 export { InMemoryBackupSource } from "../data/backup.js";
+export { InMemoryBugReportStore } from "../data/bug-reports.js";
 import {
   INITIAL_CONCURRENCY_TOKEN,
   MissingProfileError,

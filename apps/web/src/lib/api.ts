@@ -1,4 +1,10 @@
-import type { Profile, Role, ValidationIssue } from "@pbe/shared";
+import type {
+  AdminBugReport,
+  BugReportClientContext,
+  Profile,
+  Role,
+  ValidationIssue,
+} from "@pbe/shared";
 import type { BannerState, Me, ProfileRecord, ProfilesResponse, SignInStart } from "./types.js";
 import { saveBlob } from "./utils.js";
 
@@ -403,6 +409,84 @@ export async function downloadBackup(): Promise<void> {
   const filename =
     filenameFromDisposition(response.headers.get("Content-Disposition")) ?? "book-backup.json";
   saveBlob(blob, filename);
+}
+
+/** The fields the SPA sends when filing a bug report (`POST /api/bug-report`, D121). */
+export interface BugReportInput {
+  page: string;
+  url: string;
+  description: string;
+  clientContext?: BugReportClientContext;
+}
+
+/**
+ * File a bug report (`POST /api/bug-report`, any authenticated user; D121). Book
+ * only *receives* the report (no email, no tracker integration — a triage-and-clear
+ * surface); an admin later views and clears it. A `429` (the tight anti-flood rate
+ * limit) is surfaced as data so the dialog can ask the user to wait rather than
+ * throw; other non-OK statuses throw {@link ApiError}.
+ */
+export async function fileBugReport(
+  input: BugReportInput,
+): Promise<{ status: "ok" } | { status: "rate_limited" }> {
+  const response = await fetch("/api/bug-report", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  if (response.ok) {
+    return { status: "ok" };
+  }
+  if (response.status === 429) {
+    return { status: "rate_limited" };
+  }
+  throw await asError(response);
+}
+
+/**
+ * The bug-report review queue (`GET /api/admin/bug-reports`, admin only; D121),
+ * newest first, each enriched server-side with the submitter's canonical name.
+ */
+export async function fetchBugReports(signal?: AbortSignal): Promise<AdminBugReport[]> {
+  const response = await fetch("/api/admin/bug-reports", { credentials: "same-origin", signal });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  return (await response.json()).reports;
+}
+
+/**
+ * Mark reports as seen — the one-way `new → reviewed` unread marker
+ * (`POST /api/admin/bug-reports/mark-reviewed`, admin only; D121). Fired after the
+ * queue renders, so it is best-effort: a failure just leaves the NEW badges for
+ * next time and must never disrupt the view, so it is swallowed.
+ */
+export async function markBugReportsReviewed(ids: string[]): Promise<void> {
+  if (ids.length === 0) {
+    return;
+  }
+  try {
+    await fetch("/api/admin/bug-reports/mark-reviewed", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+  } catch {
+    // Best-effort unread marker; the queue already rendered correctly.
+  }
+}
+
+/** Delete a bug report (`DELETE /api/admin/bug-reports/:id`, admin only; D121) — the terminal act. */
+export async function deleteBugReport(id: string): Promise<void> {
+  const response = await fetch(`/api/admin/bug-reports/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!response.ok) {
+    throw await asError(response);
+  }
 }
 
 /** Begin the Ghost handshake: mint a nonce and get the relay URL to redirect to. */

@@ -1,13 +1,13 @@
-import { type ReactNode, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
+import { ModalDialog } from "../../components/ModalDialog.js";
 import { cn } from "../../lib/utils.js";
 
 /**
  * A small accessible confirmation modal (COMPONENTS.md "Confirmation dialogs").
- * Built on the native `<dialog>` element via `showModal()`, so the focus trap,
- * Escape-to-cancel, and focus-return-to-opener are the platform's — backdrop
- * click cancels too. 4a uses the neutral/destructive tones for the discard
- * prompt; the soft / deliberate tones (mark-deceased, de-brother) build on this
- * in 4c.
+ * Built on the shared {@link ModalDialog} native-`<dialog>` shell, so the focus
+ * trap, Escape-to-cancel, focus-return-to-opener, and backdrop-click-cancel are
+ * the platform's. 4a uses the neutral/destructive tones for the discard prompt;
+ * the soft / deliberate tones (mark-deceased, de-brother) build on this in 4c.
  */
 export function ConfirmDialog({
   title,
@@ -26,35 +26,15 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const confirmRef = useRef<HTMLButtonElement>(null);
   const titleId = "confirm-dialog-title";
   const bodyId = "confirm-dialog-body";
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (dialog && !dialog.open) {
-      dialog.showModal();
-      confirmRef.current?.focus();
-    }
-  }, []);
-
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: the click handler only implements backdrop-click dismissal (a pointer convenience); the keyboard path is the native <dialog> Escape → onCancel, so all functionality stays keyboard-reachable.
-    <dialog
-      ref={dialogRef}
-      aria-labelledby={titleId}
-      aria-describedby={bodyId}
-      onCancel={(event) => {
-        event.preventDefault();
-        onCancel();
-      }}
-      onClick={(event) => {
-        if (event.target === dialogRef.current) {
-          onCancel();
-        }
-      }}
-      className="m-auto w-full max-w-md rounded-[var(--radius-xl)] border border-border bg-card p-6 text-card-foreground shadow-[var(--shadow-modal)] backdrop:bg-black/40"
+    <ModalDialog
+      labelledBy={titleId}
+      describedBy={bodyId}
+      onClose={onCancel}
+      className="max-w-md p-6"
     >
       <h2 id={titleId} className="text-[length:var(--text-h4)] font-bold">
         {title}
@@ -71,7 +51,8 @@ export function ConfirmDialog({
           {cancelLabel}
         </button>
         <button
-          ref={confirmRef}
+          // biome-ignore lint/a11y/noAutofocus: the platform modal focuses its primary action on open; the confirm button is the deliberate initial target (WCAG 2.2 AA).
+          autoFocus
           type="button"
           onClick={onConfirm}
           className={cn(
@@ -82,6 +63,6 @@ export function ConfirmDialog({
           {confirmLabel}
         </button>
       </div>
-    </dialog>
+    </ModalDialog>
   );
 }

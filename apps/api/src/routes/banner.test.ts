@@ -9,6 +9,7 @@ import { buildServer } from "../server.js";
 import {
   InMemoryAdminUserStore,
   InMemoryBackupSource,
+  InMemoryBugReportStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -55,6 +56,7 @@ async function buildBannerServer() {
     adminUsers: new InMemoryAdminUserStore(),
     bannerStore,
     backupSource: new InMemoryBackupSource(),
+    bugReportStore: new InMemoryBugReportStore(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],
