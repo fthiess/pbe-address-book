@@ -3,6 +3,20 @@ import type { Firestore } from "firebase-admin/firestore";
 
 const COLLECTION = "bugReports";
 
+/** Firestore's per-commit write ceiling; a mark-reviewed set larger than this is chunked. */
+const MAX_BATCH_WRITES = 500;
+
+/**
+ * Whether a string is a usable Firestore document id. `collection.doc(id)` throws
+ * synchronously for an id that is empty, `.`/`..`, or contains a `/` (it would
+ * build an even-segment resource path), so a caller passing raw client input must
+ * be screened first — otherwise the throw escapes as a generic 500 instead of the
+ * clean idempotent no-op the routes intend.
+ */
+function isSafeDocId(id: string): boolean {
+  return id !== "" && id !== "." && id !== ".." && !id.includes("/");
+}
+
 /**
  * The bug-report persistence seam (D121; DATABASE-SCHEMA §6.4). Injected (not a
  * direct Firestore dependency) so the bug-report routes are unit-testable against
@@ -47,30 +61,41 @@ export class FirestoreBugReportStore implements BugReportStore {
   }
 
   async markReviewed(ids: readonly string[]): Promise<number> {
-    if (ids.length === 0) {
-      return 0;
-    }
     const collection = this.db.collection(COLLECTION);
-    const refs = ids.map((id) => collection.doc(id));
-    const docs = await this.db.getAll(...refs);
-    const batch = this.db.batch();
+    // De-duplicate (a batch may write a given document at most once — a repeated
+    // id would make `commit()` reject the whole batch) and drop ids that aren't
+    // valid document paths (a `/` would throw in `.doc()`).
+    const unique = [...new Set(ids)].filter(isSafeDocId);
     let transitioned = 0;
-    for (const doc of docs) {
-      // Only count-and-write the ones genuinely making the new→reviewed move, so
-      // the returned count is truthful and unknown/already-reviewed ids are no-ops.
-      if (doc.exists && (doc.data() as BugReport).status === "new") {
-        batch.update(doc.ref, { status: "reviewed" });
-        transitioned += 1;
+    // Chunk the work so a commit never exceeds Firestore's per-batch write ceiling,
+    // however large the unread set has grown.
+    for (let i = 0; i < unique.length; i += MAX_BATCH_WRITES) {
+      const chunk = unique.slice(i, i + MAX_BATCH_WRITES);
+      const docs = await this.db.getAll(...chunk.map((id) => collection.doc(id)));
+      const batch = this.db.batch();
+      let inChunk = 0;
+      for (const doc of docs) {
+        // Only count-and-write the ones genuinely making the new→reviewed move, so
+        // the returned count is truthful and unknown/already-reviewed ids are no-ops.
+        if (doc.exists && (doc.data() as BugReport).status === "new") {
+          batch.update(doc.ref, { status: "reviewed" });
+          inChunk += 1;
+        }
       }
-    }
-    if (transitioned > 0) {
-      await batch.commit();
+      if (inChunk > 0) {
+        await batch.commit();
+        transitioned += inChunk;
+      }
     }
     return transitioned;
   }
 
   async delete(id: string): Promise<void> {
-    // Firestore's delete is idempotent — deleting an absent doc succeeds.
+    // An unsafe id can't name a real document, so deletion is a no-op (idempotent,
+    // like Firestore's own delete of an absent doc) rather than a thrown 500.
+    if (!isSafeDocId(id)) {
+      return;
+    }
     await this.db.collection(COLLECTION).doc(id).delete();
   }
 }
@@ -93,8 +118,10 @@ export class InMemoryBugReportStore implements BugReportStore {
   }
 
   async list(): Promise<BugReport[]> {
-    // Newest first: by submittedAt desc, then insertion order desc as the stable
-    // tiebreak (mirrors the Firestore store's timestamp-then-id ordering).
+    // Newest first: by submittedAt desc, with a deterministic insertion-order-desc
+    // tiebreak for equal timestamps (Firestore breaks the same tie by its random
+    // document id, i.e. arbitrarily — neither order is meaningful, so this double
+    // just picks a stable one for test determinism).
     return [...this.reports]
       .reverse()
       .sort((a, b) => (a.submittedAt < b.submittedAt ? 1 : a.submittedAt > b.submittedAt ? -1 : 0))

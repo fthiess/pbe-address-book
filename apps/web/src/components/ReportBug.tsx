@@ -1,7 +1,8 @@
 import { MAX_BUG_REPORT_DESCRIPTION } from "@pbe/shared";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ApiError, fileBugReport } from "../lib/api.js";
+import { ModalDialog } from "./ModalDialog.js";
 
 /** The SPA build id (injected by Vite `define`); "dev" when unset or under a bare test runner. */
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
@@ -18,12 +19,10 @@ type SubmitState =
  * is stored for an admin to review, copy, and clear — there is no outbound mail
  * and no bug-tracker integration.
  *
- * Opens the native `<dialog>` element in modal mode, which gives the accessibility
- * for free — focus moves inside, Tab is trapped, Escape closes, and the rest of the
- * page is inert (WCAG 2.2 AA) — with no hand-rolled focus machinery. Focus returns
- * to the trigger on close. The route, absolute URL, and non-PII client context
- * (user agent, viewport, build) are captured automatically so the reporter only
- * writes a description.
+ * The dialog is the shared {@link ModalDialog} (native `<dialog>`), so focus-trap,
+ * Escape, and page-inerting come from the platform. The route, absolute URL, and
+ * non-PII client context (user agent, viewport, build) are captured automatically
+ * so the reporter only writes a description.
  */
 export function ReportBug() {
   const [open, setOpen] = useState(false);
@@ -53,54 +52,24 @@ export function ReportBug() {
 
 function ReportBugDialog({ onClose }: { onClose: () => void }) {
   const location = useLocation();
-  const dialogRef = useRef<HTMLDialogElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [description, setDescription] = useState("");
   const [state, setState] = useState<SubmitState>({ phase: "idle" });
+  // A synchronous in-flight latch: `canSubmit` is read from the render closure, so
+  // a rapid double-activation of Send could fire twice before the button re-renders
+  // disabled — this ref blocks the second call and files exactly one report.
+  const submittingRef = useRef(false);
   const titleId = useId();
   const descId = useId();
-
-  // Open the dialog in modal mode on mount; close on Escape (the native `cancel`
-  // event) or a click on the backdrop. jsdom lacks `showModal`, so fall back to the
-  // `open` attribute there — the same markup renders for unit tests.
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) {
-      return;
-    }
-    try {
-      dialog.showModal();
-    } catch {
-      dialog.open = true;
-    }
-    textareaRef.current?.focus();
-    const onCancel = (event: Event) => {
-      event.preventDefault();
-      onClose();
-    };
-    const onClick = (event: MouseEvent) => {
-      // A click whose target is the dialog element itself landed on the backdrop
-      // (the content is a child), so treat it as a request to dismiss.
-      if (event.target === dialog) {
-        onClose();
-      }
-    };
-    dialog.addEventListener("cancel", onCancel);
-    dialog.addEventListener("click", onClick);
-    return () => {
-      dialog.removeEventListener("cancel", onCancel);
-      dialog.removeEventListener("click", onClick);
-    };
-  }, [onClose]);
 
   const trimmed = description.trim();
   const tooLong = description.length > MAX_BUG_REPORT_DESCRIPTION;
   const canSubmit = trimmed !== "" && !tooLong && state.phase !== "submitting";
 
   async function submit() {
-    if (!canSubmit) {
+    if (!canSubmit || submittingRef.current) {
       return;
     }
+    submittingRef.current = true;
     setState({ phase: "submitting" });
     try {
       const result = await fileBugReport({
@@ -129,18 +98,24 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
           ? "Your session has expired. Please sign in again to send this report."
           : "Something went wrong sending your report. Please try again.";
       setState({ phase: "error", message });
+    } finally {
+      // Released so the user can retry after an error; on success the form unmounts.
+      submittingRef.current = false;
     }
   }
 
   return (
-    <dialog
-      ref={dialogRef}
-      aria-labelledby={titleId}
-      aria-describedby={descId}
-      className="m-auto w-full max-w-md rounded-xl border border-border bg-card p-5 text-card-foreground shadow-lg backdrop:bg-black/40"
+    <ModalDialog
+      labelledBy={titleId}
+      describedBy={descId}
+      onClose={onClose}
+      className="max-w-md p-6"
     >
       {state.phase === "done" ? (
-        <div>
+        // `<output>` is a live region (role="status"), so assistive tech announces
+        // the confirmation; the Close button auto-focuses so keyboard focus lands
+        // somewhere sensible after the form (which held focus) unmounts.
+        <output className="block">
           <h2 id={titleId} className="text-lg font-bold tracking-tight">
             Thanks — report sent
           </h2>
@@ -149,6 +124,8 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
           </p>
           <div className="mt-5 flex justify-end">
             <button
+              // biome-ignore lint/a11y/noAutofocus: focus must move off the now-unmounted form to the dialog's remaining control (WCAG 2.2 AA focus management).
+              autoFocus
               type="button"
               onClick={onClose}
               className="inline-flex min-h-11 items-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground outline-none hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring"
@@ -156,7 +133,7 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
               Close
             </button>
           </div>
-        </div>
+        </output>
       ) : (
         <div>
           <h2 id={titleId} className="text-lg font-bold tracking-tight">
@@ -171,8 +148,9 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
             What happened?
           </label>
           <textarea
+            // biome-ignore lint/a11y/noAutofocus: the platform focuses this field when the modal opens (expected for a single-purpose dialog); WCAG 2.2 AA is satisfied.
+            autoFocus
             id={`${titleId}-text`}
-            ref={textareaRef}
             value={description}
             onChange={(event) => setDescription(event.target.value)}
             rows={5}
@@ -212,7 +190,7 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       )}
-    </dialog>
+    </ModalDialog>
   );
 }
 

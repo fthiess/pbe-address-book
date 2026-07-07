@@ -45,7 +45,7 @@ describe("formatForCopy", () => {
     const minimal: AdminBugReport = {
       id: "bug-2",
       submitterId: 5002,
-      submitterName: "#5002",
+      submitterName: "(former member)",
       submittedAt: "2026-06-13T10:00:00.000Z",
       page: "",
       description: "Just the text.",
@@ -53,7 +53,7 @@ describe("formatForCopy", () => {
     };
     expect(formatForCopy(minimal)).toBe(
       [
-        "Bug report from #5002 (#5002)",
+        "Bug report from (former member) (#5002)",
         "Submitted: 2026-06-13 · 10:00 UTC",
         "Page: (unknown)",
         "",

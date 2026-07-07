@@ -3,7 +3,7 @@ import {
   type BugReport,
   type BugReportClientContext,
   MAX_BUG_REPORT_DESCRIPTION,
-  formatConstitutionId,
+  formatCanonicalName,
 } from "@pbe/shared";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
@@ -164,13 +164,18 @@ export function registerBugReportRoutes(app: FastifyInstance, config: BugReportR
       }
 
       const reports = await bugReportStore.list();
-      const names = cache.canonicalNames();
-      const enriched: AdminBugReport[] = reports.map(({ submittedBy, ...rest }) => ({
-        ...rest,
-        submitterId: submittedBy,
-        // A submitter whose profile no longer exists falls back to the raw id.
-        submitterName: names.get(submittedBy) ?? formatConstitutionId(submittedBy),
-      }));
+      const enriched: AdminBugReport[] = reports.map(({ submittedBy, ...rest }) => {
+        const profile = cache.getById(submittedBy);
+        return {
+          ...rest,
+          submitterId: submittedBy,
+          // The **plain** canonical name (no `(#id)` disambiguator): the queue shows
+          // the Constitution id alongside it, so ambiguity is already resolved and a
+          // doubled id is avoided. A submitter whose profile is gone shows as a
+          // former member (the id still identifies them).
+          submitterName: profile ? formatCanonicalName(profile, false) : "(former member)",
+        };
+      });
 
       return reply.header("Cache-Control", "no-store").send({ reports: enriched });
     },

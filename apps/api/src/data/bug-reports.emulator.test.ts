@@ -65,11 +65,27 @@ describe.skipIf(!hasEmulator)("FirestoreBugReportStore (emulator)", () => {
     expect(list.find((r) => r.id === b.id)?.status).toBe("new");
   });
 
-  it("delete removes a report and is idempotent for an absent id", async () => {
+  it("markReviewed de-duplicates ids so a repeated id can't reject the batch", async () => {
+    const store = new FirestoreBugReportStore(db);
+    const a = await store.create(base({ description: "A" }));
+    // A duplicate id in one commit would make Firestore reject the whole batch;
+    // the store must dedupe and count the transition once.
+    expect(await store.markReviewed([a.id, a.id, a.id])).toBe(1);
+    expect((await store.list())[0]?.status).toBe("reviewed");
+  });
+
+  it("markReviewed ignores an unsafe id rather than throwing", async () => {
+    const store = new FirestoreBugReportStore(db);
+    // `a/b` is not a valid document path; it must be screened, not passed to .doc().
+    await expect(store.markReviewed(["a/b"])).resolves.toBe(0);
+  });
+
+  it("delete removes a report, is idempotent for an absent id, and no-ops an unsafe id", async () => {
     const store = new FirestoreBugReportStore(db);
     const created = await store.create(base());
     await store.delete(created.id);
     expect(await store.list()).toHaveLength(0);
     await expect(store.delete("already-gone")).resolves.toBeUndefined();
+    await expect(store.delete("a/b")).resolves.toBeUndefined();
   });
 });

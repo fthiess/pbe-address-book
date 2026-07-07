@@ -219,7 +219,7 @@ describe("GET /api/admin/bug-reports", () => {
     expect(reports[1]).not.toHaveProperty("submittedBy");
   });
 
-  it("falls back to the raw id for a submitter whose profile no longer exists", async () => {
+  it("labels a submitter whose profile no longer exists, keeping the id", async () => {
     await ctx.bugReportStore.create({
       submittedBy: 9999,
       submittedAt: "2026-06-12T14:02:00.000Z",
@@ -232,7 +232,10 @@ describe("GET /api/admin/bug-reports", () => {
       url: "/api/admin/bug-reports",
       headers: { cookie: await ctx.cookieFor(5001, "admin") },
     });
-    expect(response.json().reports[0].submitterName).toBe("#9999");
+    expect(response.json().reports[0]).toMatchObject({
+      submitterId: 9999,
+      submitterName: "(former member)",
+    });
   });
 });
 

@@ -1,6 +1,6 @@
 import { promisify } from "node:util";
 import zlib from "node:zlib";
-import { type Profile, type Role, normalizeEmail, resolveCanonicalNames } from "@pbe/shared";
+import { type Profile, type Role, normalizeEmail } from "@pbe/shared";
 import type { Firestore } from "firebase-admin/firestore";
 import { type ProjectedProfile, projectForRole } from "../projection/projection.js";
 import { INITIAL_CONCURRENCY_TOKEN, encodeToken } from "./profiles.js";
@@ -326,17 +326,6 @@ export class ProfileCache {
   /** The caller's own full record by Constitution ID, or null if unknown. */
   getById(id: number): Profile | null {
     return this.byId.get(id) ?? null;
-  }
-
-  /**
-   * Canonical display names for the whole roster, keyed by Constitution ID, in a
-   * single O(n) ambiguity pass (D122). Used server-side by the admin bug-report
-   * queue to name each submitter without the client loading the roster. A
-   * submitter whose profile no longer exists simply won't appear in the map; the
-   * caller falls back to the raw id.
-   */
-  canonicalNames(): Map<number, string> {
-    return resolveCanonicalNames(this.orderedProfiles());
   }
 
   /** The record's current concurrency token (the `ETag`/`If-Match` value), or null. */

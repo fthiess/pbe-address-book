@@ -70,14 +70,22 @@ export function BugReportsCard() {
   );
 
   const onDelete = async (id: string) => {
-    // Optimistic: drop it immediately; on failure, reload to resync rather than
-    // guess the prior order.
-    const previous = reports;
+    const removed = reports.find((r) => r.id === id);
+    // Optimistic: drop it immediately via a functional update (so a concurrent
+    // delete of another row isn't clobbered).
     setReports((rs) => rs.filter((r) => r.id !== id));
     try {
       await deleteBugReport(id);
     } catch {
-      setReports(previous);
+      // Re-insert only THIS report (not a stale whole-list snapshot, which could
+      // resurrect a row a concurrent delete already removed), keeping newest-first.
+      if (removed) {
+        setReports((rs) =>
+          [...rs, removed].sort((a, b) =>
+            a.submittedAt < b.submittedAt ? 1 : a.submittedAt > b.submittedAt ? -1 : 0,
+          ),
+        );
+      }
     }
   };
 
