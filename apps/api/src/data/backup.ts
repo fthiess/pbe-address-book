@@ -15,14 +15,16 @@ export interface CollectionSnapshot {
 /**
  * A complete snapshot of Book's live Firestore collections (D63). The MVP export
  * (Phase 5a-1) is JSON-only; the image-object bundle and the nightly automated job
- * are Phase 7 (ENGINEERING-DESIGN §6.3). `majors` is a bundled vocabulary (N29),
- * not yet a live collection, and `bugReports` lands in 5a-2 — each is added here
- * when it becomes live data the backup must carry.
+ * are Phase 7 (ENGINEERING-DESIGN §6.3). `bugReports` (D121) is included as of
+ * 5a-2 so an unexpected data-loss window before an admin has transferred pending
+ * reports out is covered. `majors` is a bundled vocabulary (N29), not yet a live
+ * collection — it is added here when it becomes live data the backup must carry.
  */
 export interface BackupData {
   profiles: CollectionSnapshot[];
   users: CollectionSnapshot[];
   config: CollectionSnapshot[];
+  bugReports: CollectionSnapshot[];
 }
 
 /**
@@ -34,17 +36,18 @@ export interface BackupSource {
   export(): Promise<BackupData>;
 }
 
-/** The real {@link BackupSource}: reads the three live collections from Firestore. */
+/** The real {@link BackupSource}: reads the live collections from Firestore. */
 export class FirestoreBackupSource implements BackupSource {
   constructor(private readonly db: Firestore) {}
 
   async export(): Promise<BackupData> {
-    const [profiles, users, config] = await Promise.all([
+    const [profiles, users, config, bugReports] = await Promise.all([
       this.snapshot("profiles"),
       this.snapshot("users"),
       this.snapshot("config"),
+      this.snapshot("bugReports"),
     ]);
-    return { profiles, users, config };
+    return { profiles, users, config, bugReports };
   }
 
   private async snapshot(name: string): Promise<CollectionSnapshot[]> {
@@ -55,7 +58,14 @@ export class FirestoreBackupSource implements BackupSource {
 
 /** An in-memory {@link BackupSource} double for tests; defaults to empty collections. */
 export class InMemoryBackupSource implements BackupSource {
-  constructor(private readonly data: BackupData = { profiles: [], users: [], config: [] }) {}
+  constructor(
+    private readonly data: BackupData = {
+      profiles: [],
+      users: [],
+      config: [],
+      bugReports: [],
+    },
+  ) {}
 
   async export(): Promise<BackupData> {
     return this.data;

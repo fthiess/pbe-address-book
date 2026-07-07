@@ -65,6 +65,10 @@ async function gotoApp(page: Page, role: "admin" | "brother", path = "/") {
       : { active: false };
     return route.fulfill({ json: { ...banner, updatedBy: OWN_ID, updatedAt: "2026-07-05" } });
   });
+  // The Bug-reports card loads its (empty) queue on mount; mock it so it renders
+  // the empty state rather than an error. The real queue interactions are covered
+  // in bug-reports-5a-2.spec.ts.
+  await page.route("**/api/admin/bug-reports", (route) => route.fulfill({ json: { reports: [] } }));
   await page.route("**/api/admin/backup", (route) =>
     route.fulfill({
       headers: {
@@ -101,8 +105,8 @@ test.describe("Admin page (5a-1)", () => {
     await expect(page.getByRole("heading", { name: "System message banner" })).toBeVisible();
     await expect(page.getByRole("heading", { name: /Sync with Ghost/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Bug reports" })).toBeVisible();
-    // The placeholders are marked not-yet-available (there are exactly two).
-    await expect(page.getByText("Not yet available")).toHaveCount(2);
+    // Sync with Ghost is the only remaining placeholder (Bug reports went live in 5a-2).
+    await expect(page.getByText("Not yet available")).toHaveCount(1);
 
     // Reached from the Directory, "← Directory" pops the history (a button, not a
     // fresh-navigation link) so the Directory's place is restored, like the Profile

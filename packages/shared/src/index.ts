@@ -24,6 +24,14 @@ export {
 export { normalizeEmail } from "./email.js";
 export { BANNER_SEVERITIES, type BannerSeverity } from "./banner.js";
 export {
+  BUG_REPORT_STATUSES,
+  MAX_BUG_REPORT_DESCRIPTION,
+  type BugReport,
+  type BugReportStatus,
+  type BugReportClientContext,
+  type AdminBugReport,
+} from "./bug-report.js";
+export {
   type CanonicalNameInput,
   buildAmbiguityIndex,
   canonicalNameKey,

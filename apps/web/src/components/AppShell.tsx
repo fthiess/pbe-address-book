@@ -8,6 +8,7 @@ import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
 import { AvatarThumbnail } from "./AvatarThumbnail.js";
 import { FontSizeToggle } from "./FontSizeToggle.js";
 import { PrivacyFooter } from "./PrivacyFooter.js";
+import { ReportBug } from "./ReportBug.js";
 import { RoleBadge } from "./RoleBadge.js";
 import { SystemBanner } from "./SystemBanner.js";
 import { ThemeToggle } from "./ThemeToggle.js";
@@ -88,6 +89,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
           <div className="flex items-center gap-3">
             <FontSizeToggle />
             <ThemeToggle />
+            <ReportBug />
             {me.impersonating ? (
               // A distinct outline pill (vs. the solid RoleBadge) so an admin can
               // never forget they are looking at a lower projection (N31).

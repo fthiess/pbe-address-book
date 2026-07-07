@@ -10,6 +10,7 @@ import {
   InMemoryAdminUserStore,
   InMemoryBackupSource,
   InMemoryBannerStore,
+  InMemoryBugReportStore,
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
@@ -34,6 +35,9 @@ const SAMPLE: BackupData = {
   profiles: [{ id: "5247", data: { id: 5247, lastName: "Smyth", classYear: 1984 } }],
   users: [{ id: "5001", data: { id: 5001, role: "admin", stars: [5247] } }],
   config: [{ id: "systemBanner", data: { active: false, message: "", severity: "info" } }],
+  bugReports: [
+    { id: "bug-1", data: { submittedBy: 5247, page: "/", description: "x", status: "new" } },
+  ],
 };
 
 function sessionFor(profileId: number, role: Role): Session {
@@ -61,6 +65,7 @@ async function buildBackupServer(data: BackupData = SAMPLE) {
     adminUsers: new InMemoryAdminUserStore(),
     bannerStore: new InMemoryBannerStore(),
     backupSource: new InMemoryBackupSource(data),
+    bugReportStore: new InMemoryBugReportStore(),
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],

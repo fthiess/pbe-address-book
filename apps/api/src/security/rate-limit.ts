@@ -48,6 +48,13 @@ export const RATE_LIMITS = {
   read: 60,
   /** Authenticated mutations: profile edits, stars, exports, "View as" (per session). */
   write: 120,
+  /**
+   * `POST /api/bug-report` — filing a bug report (per session). Tighter than the
+   * general write bucket (D86/D121): no genuine reporter files five bugs a minute,
+   * but the low ceiling stops even an authenticated brother from flooding the
+   * admin queue.
+   */
+  bugReport: 5,
 } as const;
 
 /**
@@ -92,4 +99,11 @@ export function readRateLimit(): RouteShorthandOptions["config"] {
 /** Route `config` fragment for authenticated mutations (session-keyed). */
 export function writeRateLimit(): RouteShorthandOptions["config"] {
   return { rateLimit: { max: RATE_LIMITS.write, timeWindow: WINDOW, keyGenerator: sessionKey } };
+}
+
+/** Route `config` fragment for filing a bug report (session-keyed, tight ceiling). */
+export function bugReportRateLimit(): RouteShorthandOptions["config"] {
+  return {
+    rateLimit: { max: RATE_LIMITS.bugReport, timeWindow: WINDOW, keyGenerator: sessionKey },
+  };
 }
