@@ -14,9 +14,16 @@ export function resolveApiVersion(): string {
     return fromEnv.trim();
   }
   try {
-    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] })
+    const sha = execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] })
       .toString()
       .trim();
+    // Match the SPA's dev fallback (vite.config.ts) exactly — including the
+    // `-dirty` suffix — so a local dev build doesn't show a false web/API skew.
+    const dirty =
+      execSync("git status --porcelain", { stdio: ["ignore", "pipe", "ignore"] })
+        .toString()
+        .trim().length > 0;
+    return dirty ? `${sha}-dirty` : sha;
   } catch {
     return "dev";
   }

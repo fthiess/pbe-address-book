@@ -75,18 +75,31 @@ export function parseOsFromUa(ua: string): string | undefined {
   if (m) return `iPadOS ${m[1]}.${m[2]}`;
   m = /Android (\d+(?:\.\d+)?)/.exec(ua);
   if (m) return `Android ${m[1]}`;
-  m = /Mac OS X (\d+)[._](\d+)/.exec(ua);
-  if (m) return `macOS ${m[1]}.${m[2]}`;
+  // Safari and Firefox freeze the Mac token at "10_15_7" for every macOS 11+, so
+  // the version is unreliable — report the OS without a (wrong) version. Chrome/Edge
+  // on Mac get the real version via Client Hints (formatOsFromHints), not this path.
+  if (/Mac OS X /.test(ua)) return "macOS";
   if (/Windows NT 10\.0/.test(ua)) return "Windows 10 or 11";
   if (/Windows NT/.test(ua)) return "Windows";
   if (/Linux/.test(ua)) return "Linux";
   return undefined;
 }
 
-/** Parse the browser + major version from the UA (order matters: Edge→Chrome→Safari). */
+/**
+ * Parse the browser + major version from the UA. Order matters: the Chromium
+ * skins (Edge, Opera, Samsung Internet, Vivaldi) all also carry a `Chrome/` token,
+ * so they must be checked *before* the generic Chrome branch or they'd be
+ * mislabeled "Chrome" — Samsung Internet in particular is common on Android.
+ */
 export function parseBrowserFromUa(ua: string): string | undefined {
   let m = /Edg(?:iOS|A)?\/(\d+)/.exec(ua);
   if (m) return `Edge ${m[1]}`;
+  m = /OPR\/(\d+)/.exec(ua);
+  if (m) return `Opera ${m[1]}`;
+  m = /SamsungBrowser\/(\d+)/.exec(ua);
+  if (m) return `Samsung Internet ${m[1]}`;
+  m = /Vivaldi\/(\d+)/.exec(ua);
+  if (m) return `Vivaldi ${m[1]}`;
   m = /(?:CriOS|Chrome)\/(\d+)/.exec(ua);
   if (m) return `Chrome ${m[1]}`;
   m = /Firefox\/(\d+)/.exec(ua);
@@ -159,7 +172,14 @@ export async function collectClientContext(webVersion: string): Promise<BugRepor
       // Fall through to the UA parse.
     }
   }
-  assign(ctx, "os", os ?? parseOsFromUa(ua));
+  os ??= parseOsFromUa(ua);
+  // An iPad in desktop-UA mode reports a "Macintosh" UA (so it parses as macOS);
+  // when we've already classed it a tablet by its touch points, it's an iPad —
+  // label the OS accordingly rather than the contradictory "macOS".
+  if (ctx.device === "Tablet" && !uaData && /Macintosh/.test(ua)) {
+    os = "iPadOS";
+  }
+  assign(ctx, "os", os);
   assign(ctx, "browser", parseBrowserFromUa(ua));
   assign(ctx, "network", describeNetwork(connection));
   return ctx;

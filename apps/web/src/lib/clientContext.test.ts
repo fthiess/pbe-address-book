@@ -22,6 +22,10 @@ const UA = {
   winFirefox: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:130.0) Gecko/20100101 Firefox/130.0",
   macSafari:
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Safari/605.1.15",
+  samsung:
+    "Mozilla/5.0 (Linux; Android 13; SAMSUNG SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) SamsungBrowser/23.0 Chrome/115.0.0.0 Mobile Safari/537.36",
+  opera:
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36 OPR/102.0.0.0",
 };
 
 describe("detectDevice", () => {
@@ -62,7 +66,8 @@ describe("parseOsFromUa", () => {
     expect(parseOsFromUa(UA.iphone)).toBe("iOS 18.2");
     expect(parseOsFromUa(UA.ipad)).toBe("iPadOS 17.5");
     expect(parseOsFromUa(UA.androidPhone)).toBe("Android 14");
-    expect(parseOsFromUa(UA.macSafari)).toBe("macOS 10.15");
+    // Safari/Firefox freeze the Mac token, so the version is dropped (not "10.15").
+    expect(parseOsFromUa(UA.macSafari)).toBe("macOS");
     expect(parseOsFromUa(UA.winChrome)).toBe("Windows 10 or 11");
   });
   it("returns undefined for an unrecognized UA", () => {
@@ -71,12 +76,15 @@ describe("parseOsFromUa", () => {
 });
 
 describe("parseBrowserFromUa", () => {
-  it("identifies the browser + major version (Edge before Chrome before Safari)", () => {
+  it("identifies the browser + major version, including Chromium skins before Chrome", () => {
     expect(parseBrowserFromUa(UA.winChrome)).toBe("Chrome 130");
     expect(parseBrowserFromUa(UA.winEdge)).toBe("Edge 130");
     expect(parseBrowserFromUa(UA.winFirefox)).toBe("Firefox 130");
     expect(parseBrowserFromUa(UA.iphone)).toBe("Safari 18.2");
     expect(parseBrowserFromUa(UA.macSafari)).toBe("Safari 17.4");
+    // Chromium skins carry a Chrome/ token too, so they must win over the Chrome branch.
+    expect(parseBrowserFromUa(UA.samsung)).toBe("Samsung Internet 23");
+    expect(parseBrowserFromUa(UA.opera)).toBe("Opera 102");
   });
 });
 
