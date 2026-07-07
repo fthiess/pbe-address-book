@@ -312,7 +312,7 @@ interface BugReport {
     device?: string;                   // "Mobile" | "Tablet" | "Desktop" (model is never exposed)
     os?: string;                       // e.g. "iOS 18.2", "Windows 11", "Android 14"
     browser?: string;                  // e.g. "Safari 18.2", "Chrome 130"
-    network?: string;                  // best-effort, Chromium-only, e.g. "Wi-Fi · 4g · ~10 Mbps"
+    network?: string;                  // best-effort, Chromium-only, e.g. "Wi-Fi · ~10 Mbps"
   };
   apiVersion?: string;                 // the API build id (commit SHA), STAMPED SERVER-SIDE
   status: 'new' | 'reviewed';          // default 'new'

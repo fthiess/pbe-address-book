@@ -138,8 +138,8 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
             Report a bug
           </h2>
           <p id={descId} className="mt-2 text-sm text-muted-foreground">
-            This goes straight to the site administrators — we don't send email, so it's the way to
-            reach them. The more you can tell us, the easier it is to fix.
+            This goes straight to the site administrators. The more you can tell us, the easier it
+            is to fix.
           </p>
 
           <label htmlFor={`${titleId}-text`} className="mt-4 block text-sm font-medium">

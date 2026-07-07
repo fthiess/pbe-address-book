@@ -157,7 +157,7 @@ const REPORTS: QueuedReport[] = [
       device: "Tablet",
       os: "iPadOS 17.5",
       browser: "Safari 17.5",
-      network: "Wi-Fi · 4g",
+      network: "Wi-Fi · ~10 Mbps",
     },
     apiVersion: "api-def",
     status: "new",
