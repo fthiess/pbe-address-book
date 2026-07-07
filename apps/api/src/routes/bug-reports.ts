@@ -19,7 +19,8 @@ const MAX_PAGE = 512;
 const MAX_URL = 1024;
 const MAX_USER_AGENT = 600;
 const MAX_VIEWPORT = 32;
-const MAX_APP_VERSION = 100;
+/** A shared cap for the short parsed context fields (version/device/os/browser/network). */
+const MAX_CONTEXT_FIELD = 100;
 /** Upper bound on the mark-reviewed batch — far above any real queue depth. */
 const MAX_MARK_IDS = 1000;
 
@@ -36,25 +37,38 @@ function trimmedField(value: unknown, max: number): string | undefined {
   return trimmed === "" ? undefined : trimmed.slice(0, max);
 }
 
-/** Build the optional, non-PII client context from the request body, dropping empties. */
+/**
+ * Build the optional, non-PII client context from the request body, dropping
+ * empties and capping every field. `apiVersion` is NOT read from the client — the
+ * server stamps its own build id (authoritative).
+ */
 function readClientContext(raw: unknown): BugReportClientContext | undefined {
   if (raw === null || typeof raw !== "object") {
     return undefined;
   }
   const source = raw as Record<string, unknown>;
   const context: BugReportClientContext = {};
-  const userAgent = trimmedField(source.userAgent, MAX_USER_AGENT);
-  const viewport = trimmedField(source.viewport, MAX_VIEWPORT);
-  const appVersion = trimmedField(source.appVersion, MAX_APP_VERSION);
-  if (userAgent !== undefined) context.userAgent = userAgent;
-  if (viewport !== undefined) context.viewport = viewport;
-  if (appVersion !== undefined) context.appVersion = appVersion;
+  const put = (key: keyof BugReportClientContext, value: unknown, max: number) => {
+    const trimmed = trimmedField(value, max);
+    if (trimmed !== undefined) {
+      context[key] = trimmed;
+    }
+  };
+  put("userAgent", source.userAgent, MAX_USER_AGENT);
+  put("viewport", source.viewport, MAX_VIEWPORT);
+  put("webVersion", source.webVersion, MAX_CONTEXT_FIELD);
+  put("device", source.device, MAX_CONTEXT_FIELD);
+  put("os", source.os, MAX_CONTEXT_FIELD);
+  put("browser", source.browser, MAX_CONTEXT_FIELD);
+  put("network", source.network, MAX_CONTEXT_FIELD);
   return Object.keys(context).length > 0 ? context : undefined;
 }
 
 export interface BugReportRoutesConfig {
   gate: preHandlerHookHandler;
   bugReportStore: BugReportStore;
+  /** The API build id stamped onto each filed report (authoritative, server-side). */
+  apiVersion: string;
   audit: AuditLog;
   clock: Clock;
 }
@@ -78,7 +92,7 @@ export interface BugReportRoutesConfig {
  *    terminal act; audited (D61).
  */
 export function registerBugReportRoutes(app: FastifyInstance, config: BugReportRoutesConfig): void {
-  const { gate, bugReportStore, audit, clock } = config;
+  const { gate, bugReportStore, apiVersion, audit, clock } = config;
 
   app.post(
     "/api/bug-report",
@@ -122,6 +136,9 @@ export function registerBugReportRoutes(app: FastifyInstance, config: BugReportR
         submittedAt: now.toISOString(),
         page: trimmedField(body.page, MAX_PAGE) ?? "",
         description,
+        // Server-stamped (authoritative): compared to clientContext.webVersion it
+        // reveals a stale cached SPA or a web/API skew.
+        apiVersion,
         status: "new",
       };
       const url = trimmedField(body.url, MAX_URL);

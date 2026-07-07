@@ -80,11 +80,14 @@ test.describe("Report a bug — filing (any member)", () => {
     });
     const body = captured as {
       url: string;
-      clientContext: { viewport: string; userAgent: string };
+      clientContext: { viewport: string; userAgent: string; webVersion: string; device: string };
     };
     expect(body.url).toContain("http");
     expect(body.clientContext.viewport).toMatch(/^\d+x\d+$/);
     expect(body.clientContext.userAgent.length).toBeGreaterThan(0);
+    // The richer capture: a build id and a device class are always present.
+    expect(body.clientContext.webVersion.length).toBeGreaterThan(0);
+    expect(["Mobile", "Tablet", "Desktop"]).toContain(body.clientContext.device);
 
     await page.getByRole("button", { name: "Close" }).click();
     await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -125,7 +128,16 @@ type QueuedReport = {
   page: string;
   url?: string;
   description: string;
-  clientContext?: { userAgent?: string; viewport?: string; appVersion?: string };
+  clientContext?: {
+    userAgent?: string;
+    viewport?: string;
+    webVersion?: string;
+    device?: string;
+    os?: string;
+    browser?: string;
+    network?: string;
+  };
+  apiVersion?: string;
   status: "new" | "reviewed";
 };
 
@@ -138,7 +150,16 @@ const REPORTS: QueuedReport[] = [
     page: "/",
     url: "https://book.pbe400.org/",
     description: "The star column doesn't update right away on my iPad.",
-    clientContext: { userAgent: "Safari/iPad", viewport: "820x1180", appVersion: "abc123" },
+    clientContext: {
+      userAgent: "Safari/iPad",
+      viewport: "820x1180",
+      webVersion: "web-abc",
+      device: "Tablet",
+      os: "iPadOS 17.5",
+      browser: "Safari 17.5",
+      network: "Wi-Fi · 4g",
+    },
+    apiVersion: "api-def",
     status: "new",
   },
   {
@@ -218,6 +239,9 @@ test.describe("Bug reports — admin queue", () => {
     const clip = await page.evaluate(() => navigator.clipboard.readText());
     expect(clip).toContain("Bug report from Karen Nelson '05 (#5002)");
     expect(clip).toContain("Viewport: 820x1180");
+    expect(clip).toContain("OS: iPadOS 17.5");
+    expect(clip).toContain("Web version: web-abc");
+    expect(clip).toContain("API version: api-def");
     expect(clip).toContain("The star column doesn't update right away on my iPad.");
   });
 

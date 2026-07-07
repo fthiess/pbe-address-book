@@ -305,18 +305,23 @@ interface BugReport {
   page: string;                        // the SPA route the report was filed from (path + query)
   url?: string;                        // the absolute location, so an admin sees exactly where
   description: string;                 // free text; trimmed; capped at 2000 chars; treated as untrusted
-  clientContext?: {                    // optional, non-PII technical context
-    userAgent?: string;
+  clientContext?: {                    // optional, non-PII technical context; all best-effort
+    userAgent?: string;                // raw UA (the always-available fallback)
     viewport?: string;                 // e.g. "1280x720"
-    appVersion?: string;               // the SPA build hash / contract version
+    webVersion?: string;               // the SPA build id (commit SHA)
+    device?: string;                   // "Mobile" | "Tablet" | "Desktop" (model is never exposed)
+    os?: string;                       // e.g. "iOS 18.2", "Windows 11", "Android 14"
+    browser?: string;                  // e.g. "Safari 18.2", "Chrome 130"
+    network?: string;                  // best-effort, Chromium-only, e.g. "Wi-Fi · 4g · ~10 Mbps"
   };
+  apiVersion?: string;                 // the API build id (commit SHA), STAMPED SERVER-SIDE
   status: 'new' | 'reviewed';          // default 'new'
 }
 ```
 
 **Book is a triage-and-clear surface, not a bug tracker.** Real bug management happens in the team's external tracker; Book only *receives* reports and gives an admin a way to view, copy, and delete them (it exists as a viewer only because Book has no email and reading raw Firestore by hand would be cumbersome). The `status` is therefore a minimal **unread marker**, not a lifecycle: `new` = the admin has not yet seen it; `reviewed` = it has been displayed (the SPA marks reports reviewed after rendering the queue, one-way, via `POST /api/admin/bug-reports/mark-reviewed`) but not yet deleted. **Deletion is the terminal act** (`DELETE /api/admin/bug-reports/{id}`) — it removes the document entirely, so there is no stored "resolved"/"closed" state.
 
-`submitterName` is **snapshotted from the session identity at filing** rather than resolved on read, so the admin queue needs no roster lookup and a report still names its submitter after that brother's profile is deleted (the `submittedBy` id stays authoritative; a later rename is not reflected — an accepted trade for a short-lived triage record). There is **no outbound email**: a report is persisted and an audit entry written (decision D61), keeping the admin's inbox out of the attack surface; the endpoint is **rate-limited** (decision D86, 5/min per session) and size-capped, and `description` is never interpolated into a dangerous sink. Reports are **admin-read only** and are not part of any profile projection.
+`submitterName` is **snapshotted from the session identity at filing** rather than resolved on read, so the admin queue needs no roster lookup and a report still names its submitter after that brother's profile is deleted (the `submittedBy` id stays authoritative; a later rename is not reflected — an accepted trade for a short-lived triage record). `clientContext` is **best-effort** technical diagnostics the SPA captures: several fields depend on browser support (the device *model* and radio generation are never exposed; `network` is Chromium-only, blank on Safari/iOS), so a missing field just means the browser wouldn't report it. `webVersion` (SPA, client-supplied) and `apiVersion` (**stamped server-side**, authoritative) are the same commit SHA on a matched deploy, so a mismatch flags a **stale cached SPA** or a web/API skew. There is **no outbound email**: a report is persisted and an audit entry written (decision D61), keeping the admin's inbox out of the attack surface; the endpoint is **rate-limited** (decision D86, 5/min per session) and size-capped, and `description` is never interpolated into a dangerous sink. Reports are **admin-read only** and are not part of any profile projection.
 
 ## 7. Image assets (Google Cloud Storage)
 

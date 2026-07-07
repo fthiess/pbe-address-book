@@ -241,8 +241,21 @@ function BugReportRow({
 /** The captured technical context, in a collapsed `<details>` so it doesn't crowd the row. */
 function ReportContext({ report }: { report: AdminBugReport }) {
   const ctx = report.clientContext;
-  const hasContext = report.url || ctx?.userAgent || ctx?.viewport || ctx?.appVersion;
-  if (!hasContext) {
+  // Ordered label/value rows; a row is dropped when its value is absent (the
+  // browser wouldn't report it). User agent is last — it's the long raw fallback.
+  const rows: { label: string; value: string | undefined }[] = [
+    { label: "URL", value: report.url },
+    { label: "Device", value: ctx?.device },
+    { label: "OS", value: ctx?.os },
+    { label: "Browser", value: ctx?.browser },
+    { label: "Network", value: ctx?.network },
+    { label: "Viewport", value: ctx?.viewport },
+    { label: "Web version", value: ctx?.webVersion },
+    { label: "API version", value: report.apiVersion },
+    { label: "User agent", value: ctx?.userAgent },
+  ].filter((row): row is { label: string; value: string } => Boolean(row.value));
+
+  if (rows.length === 0) {
     return null;
   }
   return (
@@ -251,30 +264,12 @@ function ReportContext({ report }: { report: AdminBugReport }) {
         Technical details
       </summary>
       <dl className="mt-1 grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5 break-all">
-        {report.url && (
-          <>
-            <dt className="font-medium">URL</dt>
-            <dd>{report.url}</dd>
-          </>
-        )}
-        {ctx?.userAgent && (
-          <>
-            <dt className="font-medium">User agent</dt>
-            <dd>{ctx.userAgent}</dd>
-          </>
-        )}
-        {ctx?.viewport && (
-          <>
-            <dt className="font-medium">Viewport</dt>
-            <dd>{ctx.viewport}</dd>
-          </>
-        )}
-        {ctx?.appVersion && (
-          <>
-            <dt className="font-medium">App version</dt>
-            <dd>{ctx.appVersion}</dd>
-          </>
-        )}
+        {rows.map((row) => (
+          <div key={row.label} className="contents">
+            <dt className="font-medium">{row.label}</dt>
+            <dd>{row.value}</dd>
+          </div>
+        ))}
       </dl>
     </details>
   );

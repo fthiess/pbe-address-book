@@ -59,6 +59,7 @@ async function buildBugReportServer() {
     bannerStore: new InMemoryBannerStore(),
     backupSource: new InMemoryBackupSource(),
     bugReportStore,
+    apiVersion: "api-abc123",
     sessionStore,
     nonceStore: new InMemoryNonceStore(),
     getStars: async () => [],
@@ -104,7 +105,17 @@ describe("POST /api/bug-report", () => {
       page: "/",
       url: "https://book.example.test/",
       description: "  The star column didn't update on my iPad.  ",
-      clientContext: { userAgent: "UA", viewport: "390x844", appVersion: "abc" },
+      clientContext: {
+        userAgent: "UA",
+        viewport: "390x844",
+        webVersion: "web-xyz",
+        device: "Mobile",
+        os: "iOS 18.2",
+        browser: "Safari 18.2",
+        network: "Wi-Fi",
+        // A client-sent apiVersion must be ignored (the server stamps its own).
+        apiVersion: "client-tampered",
+      },
     });
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({ status: "new" });
@@ -120,8 +131,20 @@ describe("POST /api/bug-report", () => {
       url: "https://book.example.test/",
       description: "The star column didn't update on my iPad.", // trimmed
       status: "new",
-      clientContext: { userAgent: "UA", viewport: "390x844", appVersion: "abc" },
+      // apiVersion is the SERVER's build id, never the client's claim.
+      apiVersion: "api-abc123",
+      clientContext: {
+        userAgent: "UA",
+        viewport: "390x844",
+        webVersion: "web-xyz",
+        device: "Mobile",
+        os: "iOS 18.2",
+        browser: "Safari 18.2",
+        network: "Wi-Fi",
+      },
     });
+    // The client-sent apiVersion never lands in the stored clientContext.
+    expect(stored[0]?.clientContext).not.toHaveProperty("apiVersion");
   });
 
   it("422s an empty/whitespace or oversized description", async () => {

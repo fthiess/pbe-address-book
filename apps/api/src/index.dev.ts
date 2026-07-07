@@ -24,6 +24,7 @@ import { NonceStore } from "./identity/nonce-store.js";
 import type { SessionCookieConfig } from "./identity/session-cookie.js";
 import { SessionStore } from "./identity/session-store.js";
 import { buildServer } from "./server.js";
+import { resolveApiVersion } from "./version.js";
 
 // Constructing this asserts we are not in a production-like config (D108 layers 2 + 4).
 const provider = new DevIdentityProvider();
@@ -51,6 +52,7 @@ async function main(): Promise<void> {
     bannerStore: new FirestoreBannerStore(db),
     backupSource: new FirestoreBackupSource(db),
     bugReportStore: new FirestoreBugReportStore(db),
+    apiVersion: resolveApiVersion(),
     sessionStore,
     nonceStore,
     getStars,
