@@ -65,9 +65,12 @@ export function Admin() {
           description="Reconciles Book against the membership list on PBE News and reports any differences for review. This arrives with the Ghost integration in a later update."
         />
 
-        <BugReportsCard />
-
         <BannerCard />
+
+        {/* Bug reports last: it is the one variable-length section, so keeping it at
+            the bottom means the fixed-length controls above never get pushed down an
+            unpredictable amount by a long queue. */}
+        <BugReportsCard />
       </div>
     </div>
   );

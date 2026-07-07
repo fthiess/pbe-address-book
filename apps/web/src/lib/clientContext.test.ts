@@ -89,16 +89,26 @@ describe("parseBrowserFromUa", () => {
 });
 
 describe("describeNetwork", () => {
-  it("summarizes the connection when present", () => {
+  it("summarizes the connection, never surfacing the misleading '4g' speed bucket", () => {
+    // The top "4g" bucket is dropped (it reads like cellular on a wired link); the
+    // downlink estimate is kept.
     expect(
       describeNetwork({ type: "wifi", effectiveType: "4g", downlink: 10, saveData: false }),
-    ).toBe("Wi-Fi · 4g · ~10 Mbps");
-    expect(describeNetwork({ type: "cellular", effectiveType: "3g" })).toBe("Cellular · 3g");
+    ).toBe("Wi-Fi · ~10 Mbps");
+    // A genuine desktop reading: no link type, "4g" dropped, just the speed estimate.
+    expect(describeNetwork({ type: "unknown", effectiveType: "4g", downlink: 10 })).toBe(
+      "~10 Mbps",
+    );
     expect(describeNetwork({ type: "ethernet" })).toBe("Ethernet");
-    expect(describeNetwork({ effectiveType: "4g", saveData: true })).toBe("4g · Data Saver");
+    expect(describeNetwork({ effectiveType: "4g", saveData: true })).toBe("Data Saver");
   });
-  it("drops an unknown type and returns undefined when nothing is known", () => {
-    expect(describeNetwork({ type: "unknown", effectiveType: "4g" })).toBe("4g");
+  it("flags genuinely-slow connections (the meaningful effectiveType buckets)", () => {
+    expect(describeNetwork({ type: "cellular", effectiveType: "3g", downlink: 2 })).toBe(
+      "Cellular · slow connection · ~2 Mbps",
+    );
+    expect(describeNetwork({ effectiveType: "slow-2g" })).toBe("very slow connection");
+  });
+  it("returns undefined when nothing is known", () => {
     expect(describeNetwork({})).toBeUndefined();
     expect(describeNetwork(undefined)).toBeUndefined();
   });

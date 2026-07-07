@@ -109,23 +109,37 @@ export function parseBrowserFromUa(ua: string): string | undefined {
   return undefined;
 }
 
-/** Summarize the network from the Network Information API (Chromium only). */
+/**
+ * Summarize the network from the Network Information API (Chromium only). We report
+ * the genuine link **type** (Wi-Fi / Cellular / Ethernet — only Android exposes it;
+ * absent on desktop, so we say nothing rather than guess), the **downlink** speed
+ * estimate ("~N Mbps"), and the Data Saver flag. `effectiveType` is surfaced ONLY
+ * as a slow-connection flag for its genuinely-slow buckets: it's a coarse SPEED
+ * estimate, not a radio type, and its top "4g" bucket reads misleadingly like
+ * cellular on a fast wired link (it just means "fine"), so we never show "4g".
+ */
 export function describeNetwork(connection: NetworkInformation | undefined): string | undefined {
   if (!connection) {
     return undefined;
   }
   const parts: string[] = [];
-  const type = connection.type;
-  if (type && type !== "unknown" && type !== "other") {
-    const pretty: Record<string, string> = {
-      wifi: "Wi-Fi",
-      cellular: "Cellular",
-      ethernet: "Ethernet",
-    };
-    parts.push(pretty[type] ?? type);
+  const pretty: Record<string, string> = {
+    wifi: "Wi-Fi",
+    cellular: "Cellular",
+    ethernet: "Ethernet",
+  };
+  const prettyType = connection.type ? pretty[connection.type] : undefined;
+  if (prettyType) {
+    parts.push(prettyType);
   }
-  if (connection.effectiveType) {
-    parts.push(connection.effectiveType);
+  const slow: Record<string, string> = {
+    "slow-2g": "very slow connection",
+    "2g": "very slow connection",
+    "3g": "slow connection",
+  };
+  const slowLabel = connection.effectiveType ? slow[connection.effectiveType] : undefined;
+  if (slowLabel) {
+    parts.push(slowLabel);
   }
   if (typeof connection.downlink === "number" && connection.downlink > 0) {
     parts.push(`~${connection.downlink} Mbps`);

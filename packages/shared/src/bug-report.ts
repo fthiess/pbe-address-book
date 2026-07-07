@@ -36,7 +36,7 @@ export interface BugReportClientContext {
   os?: string;
   /** Browser + major version, e.g. "Safari 18.2", "Chrome 130". */
   browser?: string;
-  /** Best-effort network summary (Chromium only), e.g. "Wi-Fi · 4g · ~10 Mbps". */
+  /** Best-effort network summary (Chromium only), e.g. "Wi-Fi · ~10 Mbps". */
   network?: string;
 }
 
