@@ -54,6 +54,8 @@ export interface BuildServerOptions {
   backupSource: BackupSource;
   /** The bug-report store (D121) behind the file POST and the admin review queue. */
   bugReportStore: BugReportStore;
+  /** The API build id (commit SHA) stamped onto filed bug reports; defaults to "dev". */
+  apiVersion?: string;
   /**
    * The Ghost member-lifecycle seam behind Delete and De-brother (N41). Defaults
    * to {@link StubGhostLifecycle} (succeed-and-log) — the intended behavior until
@@ -243,6 +245,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   registerBugReportRoutes(app, {
     gate,
     bugReportStore: options.bugReportStore,
+    apiVersion: options.apiVersion ?? "dev",
     audit,
     clock,
   });

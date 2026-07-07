@@ -18,15 +18,26 @@ export const MAX_BUG_REPORT_DESCRIPTION = 2000;
 
 /**
  * The optional, non-PII technical context the SPA captures with a report so an
- * admin can reproduce it (DATABASE-SCHEMA §6.4). Every field is optional — a
- * report is still valid with none of it.
+ * admin can diagnose it (DATABASE-SCHEMA §6.4). Every field is optional and
+ * best-effort — a report is valid with none of it, and several fields depend on
+ * browser support (the device *model* and radio generation are not exposed by any
+ * browser; network details are Chromium-only, absent on Safari/iOS).
  */
 export interface BugReportClientContext {
+  /** The raw User-Agent string (the always-available fallback for the parsed fields). */
   userAgent?: string;
   /** e.g. "1280x720". */
   viewport?: string;
-  /** The SPA build hash / contract version. */
-  appVersion?: string;
+  /** The SPA build identifier (commit SHA), for spotting a stale cached SPA vs `apiVersion`. */
+  webVersion?: string;
+  /** Coarse device class — "Mobile" | "Tablet" | "Desktop" (the specific model is never exposed). */
+  device?: string;
+  /** Operating system + version where derivable, e.g. "iOS 18.2", "Windows 11", "Android 14". */
+  os?: string;
+  /** Browser + major version, e.g. "Safari 18.2", "Chrome 130". */
+  browser?: string;
+  /** Best-effort network summary (Chromium only), e.g. "Wi-Fi · 4g · ~10 Mbps". */
+  network?: string;
 }
 
 /**
@@ -60,6 +71,12 @@ export interface BugReport {
   /** Free text; trimmed; capped at {@link MAX_BUG_REPORT_DESCRIPTION}; treated as untrusted. */
   description: string;
   clientContext?: BugReportClientContext;
+  /**
+   * The API build identifier (commit SHA), **stamped server-side** at filing (not
+   * client-supplied, so it's authoritative). Compared against
+   * `clientContext.webVersion` it reveals a stale cached SPA or a web/API skew.
+   */
+  apiVersion?: string;
   status: BugReportStatus;
 }
 

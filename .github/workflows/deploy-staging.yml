@@ -45,6 +45,12 @@ jobs:
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
+      # The build id stamped into both the SPA (BOOK_APP_VERSION → clientContext.webVersion)
+      # and the API (BOOK_API_VERSION → the server-stamped apiVersion on bug reports).
+      # Same commit for both, so a mismatch in a filed report flags a stale cached SPA (N61).
+      - name: Resolve build version
+        run: echo "BOOK_VERSION=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
       # Load the environment's values from the single source of truth shared with
       # the provisioning scripts (infra/environments/staging.env, OFC-84) so this
       # workflow no longer hardcodes project/region/SA/bucket/Ghost values inline.
@@ -67,6 +73,8 @@ jobs:
         run: npm ci
 
       - name: Build shared libs + SPA
+        env:
+          BOOK_APP_VERSION: ${{ env.BOOK_VERSION }}
         run: |
           npm run build:libs
           npm run build:web
@@ -162,6 +170,6 @@ jobs:
             --service-account "$RUNTIME_SA" \
             --max-instances 1 --min-instances 0 \
             --memory 1Gi \
-            --set-env-vars "IMAGE_BUCKET=$IMAGE_BUCKET,GHOST_JWKS_URL=$GHOST_JWKS_URL,GHOST_JWT_ISSUER=$GHOST_JWT_ISSUER,GHOST_JWT_AUDIENCE=$GHOST_JWT_AUDIENCE,GHOST_BRIDGE_URL=$GHOST_BRIDGE_URL,GHOST_BRIDGE_TARGET=$GHOST_BRIDGE_TARGET" \
+            --set-env-vars "IMAGE_BUCKET=$IMAGE_BUCKET,GHOST_JWKS_URL=$GHOST_JWKS_URL,GHOST_JWT_ISSUER=$GHOST_JWT_ISSUER,GHOST_JWT_AUDIENCE=$GHOST_JWT_AUDIENCE,GHOST_BRIDGE_URL=$GHOST_BRIDGE_URL,GHOST_BRIDGE_TARGET=$GHOST_BRIDGE_TARGET,BOOK_API_VERSION=$BOOK_VERSION" \
             --allow-unauthenticated \
             --quiet

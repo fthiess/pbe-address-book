@@ -20,9 +20,14 @@ export function formatForCopy(report: AdminBugReport): string {
   ];
   if (report.url) lines.push(`URL: ${report.url}`);
   const ctx = report.clientContext;
-  if (ctx?.userAgent) lines.push(`User agent: ${ctx.userAgent}`);
+  if (ctx?.device) lines.push(`Device: ${ctx.device}`);
+  if (ctx?.os) lines.push(`OS: ${ctx.os}`);
+  if (ctx?.browser) lines.push(`Browser: ${ctx.browser}`);
+  if (ctx?.network) lines.push(`Network: ${ctx.network}`);
   if (ctx?.viewport) lines.push(`Viewport: ${ctx.viewport}`);
-  if (ctx?.appVersion) lines.push(`App version: ${ctx.appVersion}`);
+  if (ctx?.webVersion) lines.push(`Web version: ${ctx.webVersion}`);
+  if (report.apiVersion) lines.push(`API version: ${report.apiVersion}`);
+  if (ctx?.userAgent) lines.push(`User agent: ${ctx.userAgent}`);
   lines.push("", report.description);
   return lines.join("\n");
 }

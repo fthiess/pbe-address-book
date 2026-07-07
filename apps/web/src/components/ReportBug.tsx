@@ -2,6 +2,7 @@ import { MAX_BUG_REPORT_DESCRIPTION } from "@pbe/shared";
 import { useCallback, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ApiError, fileBugReport } from "../lib/api.js";
+import { collectClientContext } from "../lib/clientContext.js";
 import { ModalDialog } from "./ModalDialog.js";
 
 /** The SPA build id (injected by Vite `define`); "dev" when unset or under a bare test runner. */
@@ -78,11 +79,8 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
         page: `${location.pathname}${location.search}${location.hash}`,
         url: window.location.href,
         description: trimmed,
-        clientContext: {
-          userAgent: navigator.userAgent,
-          viewport: `${window.innerWidth}x${window.innerHeight}`,
-          appVersion: APP_VERSION,
-        },
+        // Best-effort device / OS / browser / network / web-version capture.
+        clientContext: await collectClientContext(APP_VERSION),
       });
       if (result.status === "rate_limited") {
         setState({
@@ -140,12 +138,12 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
             Report a bug
           </h2>
           <p id={descId} className="mt-2 text-sm text-muted-foreground">
-            Tell us what went wrong or looked off. This goes to the site administrators — we don't
-            send email, so this is the way to reach them.
+            This goes straight to the site administrators — we don't send email, so it's the way to
+            reach them. The more you can tell us, the easier it is to fix.
           </p>
 
           <label htmlFor={`${titleId}-text`} className="mt-4 block text-sm font-medium">
-            What happened?
+            What happened? If you can, tell us how to make it happen again.
           </label>
           <textarea
             // biome-ignore lint/a11y/noAutofocus: the platform focuses this field when the modal opens (expected for a single-purpose dialog); WCAG 2.2 AA is satisfied.
@@ -156,7 +154,7 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
             rows={5}
             aria-describedby={`${titleId}-count`}
             className="mt-1 w-full resize-y rounded-lg border border-input bg-background p-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            placeholder="e.g. The star column didn't update when I tapped it on my iPad."
+            placeholder="e.g. On my iPhone I tapped the star next to a brother's name and expected it to fill in, but nothing changed until I reloaded the page."
           />
           <p
             id={`${titleId}-count`}

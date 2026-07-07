@@ -24,6 +24,7 @@ import { GhostIdentityProvider } from "./identity/ghost-provider.js";
 import { NonceStore } from "./identity/nonce-store.js";
 import { SessionStore } from "./identity/session-store.js";
 import { buildServer } from "./server.js";
+import { resolveApiVersion } from "./version.js";
 
 const port = Number(process.env.PORT ?? 8080);
 
@@ -68,6 +69,7 @@ async function main(): Promise<void> {
     bannerStore: new FirestoreBannerStore(db),
     backupSource: new FirestoreBackupSource(db),
     bugReportStore: new FirestoreBugReportStore(db),
+    apiVersion: resolveApiVersion(),
     sessionStore,
     nonceStore,
     getStars: async (profileId) => (await getUser(db, profileId))?.stars ?? [],
