@@ -238,14 +238,13 @@ export { MissingProfileError };
 
 /**
  * Capture a record's consent + verification state for the reversible force-off
- * (D80): both email-consent flags and, when present, the verification stamp. Used
+ * (D80): the newsletter-consent flag and, when present, the verification stamp. Used
  * by mark-deceased and de-brother; each stores its own snapshot ({@link Profile}
  * has two slots) so the orthogonal actions never clobber one another.
  */
 export function captureConsentSnapshot(profile: Profile): ConsentSnapshot {
   const snapshot: ConsentSnapshot = {
     allowNewsletterEmail: profile.allowNewsletterEmail,
-    allowCommentReplyEmail: profile.allowCommentReplyEmail,
   };
   if (profile.lastVerifiedDate !== undefined) {
     snapshot.lastVerifiedDate = profile.lastVerifiedDate;

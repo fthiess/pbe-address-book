@@ -142,11 +142,6 @@ export function FilterPanel({
                   onChange={(v) => setFilter("allowNewsletterEmail", v, "push")}
                 />
                 <BoolSelect
-                  label="Comment replies"
-                  value={filters.allowCommentReplyEmail}
-                  onChange={(v) => setFilter("allowCommentReplyEmail", v, "push")}
-                />
-                <BoolSelect
                   label="Share with MITAA"
                   value={filters.allowShareWithMITAA}
                   onChange={(v) => setFilter("allowShareWithMITAA", v, "push")}

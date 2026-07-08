@@ -94,7 +94,6 @@ export const FIELD_VISIBILITY: Record<keyof Profile, FieldVisibility> = {
 
   // --- Usage preferences / housekeeping — restricted (owner/manager/admin) ---
   allowNewsletterEmail: { cls: "restricted" },
-  allowCommentReplyEmail: { cls: "restricted" },
   allowShareWithMITAA: { cls: "restricted" },
   lastVerifiedDate: { cls: "restricted" },
   verifiedBy: { cls: "restricted" },

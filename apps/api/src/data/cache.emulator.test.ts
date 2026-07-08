@@ -84,7 +84,6 @@ describe.skipIf(!hasEmulator)(
         hasHeadshot: false,
         unlisted: false,
         allowNewsletterEmail: true,
-        allowCommentReplyEmail: true,
         allowShareWithMITAA: false,
         lastModified: "2026-01-01T00:00:00.000Z",
         newsletterConsentChangedAt: "2026-01-01T00:00:00.000Z",

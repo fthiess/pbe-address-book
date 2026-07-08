@@ -102,7 +102,6 @@ export interface DeceasedInfo {
  */
 export interface ConsentSnapshot {
   allowNewsletterEmail: boolean;
-  allowCommentReplyEmail: boolean;
   /** The verification date at mark-time, if the record was verified then. */
   lastVerifiedDate?: string;
   /** The verifier at mark-time, if the record was verified then. */
@@ -216,8 +215,6 @@ export interface Profile {
   // --- Usage preferences (restricted: owner/manager/admin only — §9) ---
   /** Default true — may PBE News be emailed; pushed to Ghost; forced false when deceased. */
   allowNewsletterEmail: boolean;
-  /** Default true — may Ghost email about comment replies; pushed to Ghost; forced false when deceased. */
-  allowCommentReplyEmail: boolean;
   /** Default false (opt-in, D89) — master switch for sharing own contact info with MITAA (§9). */
   allowShareWithMITAA: boolean;
 

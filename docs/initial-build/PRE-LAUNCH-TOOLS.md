@@ -12,11 +12,11 @@ These run once (or a handful of times during pre-launch dry runs) and are then r
 
 | Tool | Purpose | Source / adapt from | Status |
 |---|---|---|---|
-| **Ghost member export** | Pull the current Ghost membership (emails, names, notes, newsletter + comment-notification subscription state, member IDs) for the cleanup and seed steps. | `ghost-member-export` (existing) | Adapt |
+| **Ghost member export** | Pull the current Ghost membership (emails, names, notes, newsletter subscription state, member IDs) for the cleanup and seed steps. | `ghost-member-export` (existing) | Adapt |
 | **Mystery-email / Ghost-account dedup** | Collapse the multiple Ghost accounts some brothers have today down to **one primary email per brother** — the prerequisite that lets Book assume a single primary email. Identify the ~70 historical unidentified Ghost addresses. | `mystery-email-address` (existing) | Adapt |
 | **Big Brother / Little Brother import** | Source the Big Brother edges (the directed tree) to populate `bigBrotherId`. | `pbe-family-tree` (existing) | Adapt |
 | **Headshot & early-class-year import** | Source headshot photos and, for many pre-1970 brothers, class years. | `pbe-yearbook-project` (existing) | Adapt |
-| **Ghost pull-and-seed utility** | One-time read from Ghost of the member ID (→ `ghostMemberId`), notes (→ `adminNote`), and current newsletter/comment-notification state (→ `allowNewsletterEmail` / `allowCommentReplyEmail`) — seeding the email preferences *from* Ghost so existing opt-outs are honored. | New (this session) | To build |
+| **Ghost pull-and-seed utility** | One-time read from Ghost of the member ID (→ `ghostMemberId`), notes (→ `adminNote`), and current newsletter-subscription state (→ `allowNewsletterEmail`) — seeding the preference *from* Ghost so existing opt-outs are honored. (The comment-reply preference is no longer a Book field — DECISIONS N68.) | New (this session) | To build |
 | **Initial bulk-loader** | Write the merged Constitution-roster + MITAA + Ghost + family-tree + yearbook dataset into Book, including `ghostMemberId` (which the normal admin CSV import does **not** accept). | New (this session) | To build |
 
 **Sequencing note.** The dedup (collapse Ghost to one-primary-email-per-brother) must precede the pull-and-seed and the bulk-load. The merge across sources is expected to be substantially manual (human + AI), with these tools doing the mechanical pulls and the final write.

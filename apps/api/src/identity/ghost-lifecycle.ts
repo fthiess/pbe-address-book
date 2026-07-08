@@ -5,22 +5,24 @@ import type { Profile } from "@pbe/shared";
  * (DECISIONS D96/N65). Only the fields that actually changed on a given save are
  * present, so a push never re-asserts an unrelated value (in particular it cannot
  * silently re-subscribe a brother who used Ghost's own unsubscribe link). The
- * four pushable fields:
+ * three pushable fields:
  *
  *  - `email` — the brother's primary email (the auth join key).
  *  - `name`  — the constructed Canonical Name (`James Smyth '84`), sans the rare
  *    `(#5247)` disambiguation suffix.
- *  - `allowNewsletterEmail`     — the PBE-News newsletter subscription.
- *  - `allowCommentReplyEmail`   — the comment-reply notification preference.
+ *  - `allowNewsletterEmail` — the PBE-News newsletter subscription.
  *
- * Photos are deliberately **not** here — a Ghost platform limitation, not a
- * choice (DECISIONS N66; byline automation backlogged as Linear OFC-213).
+ * Two things a brother has in Ghost are deliberately **not** here — Ghost platform
+ * limitations, not choices (DECISIONS N66): photos (the member `avatar_image` is
+ * read-only) and the comment-reply notification preference (`enable_comment_
+ * notifications` is not settable via the documented Admin API — verified against
+ * ghost-staging 2026-07-08). The comment-reply preference was therefore removed
+ * from Book entirely rather than shipped as non-functional UI.
  */
 export interface GhostMemberDiff {
   email?: string;
   name?: string;
   allowNewsletterEmail?: boolean;
-  allowCommentReplyEmail?: boolean;
 }
 
 /** The result of a Ghost member **create**: the fresh Ghost Admin-API member id. */

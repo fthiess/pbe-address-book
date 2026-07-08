@@ -27,15 +27,11 @@ describe("computeGhostUpdateDiff (PATCH pushed-field diff, N65)", () => {
     }
   });
 
-  it("carries the two consent booleans by their new value", () => {
-    const next = makeProfile({
-      id: 5001,
+  it("carries the newsletter boolean by its new value", () => {
+    const next = makeProfile({ id: 5001, allowNewsletterEmail: false });
+    expect(computeGhostUpdateDiff(next, changed("allowNewsletterEmail"))).toEqual({
       allowNewsletterEmail: false,
-      allowCommentReplyEmail: false,
     });
-    expect(
-      computeGhostUpdateDiff(next, changed("allowNewsletterEmail", "allowCommentReplyEmail")),
-    ).toEqual({ allowNewsletterEmail: false, allowCommentReplyEmail: false });
   });
 
   it("makes an empty diff when no pushed field changed", () => {
@@ -51,34 +47,17 @@ describe("computeGhostUpdateDiff (PATCH pushed-field diff, N65)", () => {
 });
 
 describe("computeConsentDiff (deceased raise/reverse diff, N65)", () => {
-  it("pushes only the consent flags a status write actually changes", () => {
-    const stored = makeProfile({
-      id: 5001,
-      allowNewsletterEmail: true,
-      allowCommentReplyEmail: true,
-    });
-    const set: Partial<Profile> = { allowNewsletterEmail: false, allowCommentReplyEmail: false };
-    expect(computeConsentDiff(stored, set)).toEqual({
-      allowNewsletterEmail: false,
-      allowCommentReplyEmail: false,
-    });
+  it("pushes the newsletter flag when a status write changes it", () => {
+    const stored = makeProfile({ id: 5001, allowNewsletterEmail: true });
+    const set: Partial<Profile> = { allowNewsletterEmail: false };
+    expect(computeConsentDiff(stored, set)).toEqual({ allowNewsletterEmail: false });
   });
 
-  it("is empty when the write leaves consent untouched (a facts-only re-PUT)", () => {
+  it("is empty when the write leaves the newsletter flag untouched (a facts-only re-PUT)", () => {
     const stored = makeProfile({ id: 5001 });
     expect(
       computeConsentDiff(stored, { obituaryUrl: "https://x.test" } as Partial<Profile>),
     ).toEqual({});
-  });
-
-  it("pushes only the one flag that moved", () => {
-    const stored = makeProfile({
-      id: 5001,
-      allowNewsletterEmail: true,
-      allowCommentReplyEmail: false,
-    });
-    const set: Partial<Profile> = { allowNewsletterEmail: false, allowCommentReplyEmail: false };
-    expect(computeConsentDiff(stored, set)).toEqual({ allowNewsletterEmail: false });
   });
 });
 

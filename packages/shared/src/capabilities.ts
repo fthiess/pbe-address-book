@@ -87,7 +87,6 @@ export const WRITE_RULE: Record<keyof Profile, WriteRule> = {
   privacy: "consent",
   unlisted: "consent", // owner self-service; admin may set another's; manager may not (D124)
   allowNewsletterEmail: "consent",
-  allowCommentReplyEmail: "consent",
   allowShareWithMITAA: "consent",
 
   // Server-managed verification & housekeeping.

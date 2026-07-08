@@ -47,7 +47,6 @@ function ownerRecord() {
     },
     unlisted: false,
     allowNewsletterEmail: true,
-    allowCommentReplyEmail: true,
     allowShareWithMITAA: false,
     lastVerifiedDate: "2026-03-14",
     verifiedBy: 5247,

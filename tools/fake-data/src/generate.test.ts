@@ -66,7 +66,6 @@ describe("generateProfiles", () => {
       if (profile.deceased.isDeceased) {
         expect(profile.email).toBeUndefined();
         expect(profile.allowNewsletterEmail).toBe(false);
-        expect(profile.allowCommentReplyEmail).toBe(false);
         expect(profile.hasHeadshot).toBe(false);
         expect(profile.unlisted).toBe(false);
       }

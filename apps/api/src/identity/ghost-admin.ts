@@ -57,12 +57,11 @@ export class GhostAdminLifecycle implements GhostLifecycle {
   }
 
   async createMember(profile: Profile): Promise<GhostCreateResult> {
-    // A create pushes the full pushed set (all four fields) for a new member.
+    // A create pushes the full pushed set (all three fields) for a new member.
     const member = this.memberFields({
       email: profile.email,
       name: formatCanonicalName(profile, false),
       allowNewsletterEmail: profile.allowNewsletterEmail,
-      allowCommentReplyEmail: profile.allowCommentReplyEmail,
     });
     // `send_email=false` suppresses Ghost's signup email — the brother simply
     // becomes able to magic-link in (D96).
@@ -92,14 +91,20 @@ export class GhostAdminLifecycle implements GhostLifecycle {
   }
 
   /**
-   * Map a Book {@link GhostMemberDiff} to the Ghost Admin member object. **This is
-   * the field-shape must-verify (N67)** — confirmed against ghost-staging at
-   * bring-up and pinned here:
-   *  - newsletter subscription is a **`newsletters[]`** relation in Ghost v5 (not a
-   *    `subscribed` boolean): subscribe = `[{ id: newsletterId }]`, unsubscribe =
-   *    `[]`.
-   *  - comment-reply notifications = **`enable_comment_notifications`** (boolean).
-   * Only the fields present in the diff are emitted (diff-based push, N65).
+   * Map a Book {@link GhostMemberDiff} to the Ghost Admin member object. **The
+   * field-shape must-verify (N67), confirmed against ghost-staging 2026-07-08:**
+   *  - `email` / `name` — plain string fields (create + update **verified** end to
+   *    end: 201/200 with the values reflected back).
+   *  - newsletter subscription is a **`newsletters[]`** relation in Ghost v5, not the
+   *    `subscribed` boolean (which is read-only/derived): subscribe =
+   *    `[{ id: newsletterId }]`, unsubscribe = `[]`. **Verified** — a create with the
+   *    relation returns `subscribed: true`, a `newsletters: []` update returns
+   *    `subscribed: false`.
+   * The comment-reply notification preference (`enable_comment_notifications`) is
+   * **not** pushed: the Admin API neither serializes it back nor honors it on write
+   * (a live admin-UI cross-check confirmed no effect; Ghost silently drops it, as it
+   * does any unknown field). It was removed from Book entirely rather than shipped as
+   * non-functional UI (N66). Only the fields present in the diff are emitted (N65).
    */
   private memberFields(diff: GhostMemberDiff): Record<string, unknown> {
     const member: Record<string, unknown> = {};
@@ -112,9 +117,6 @@ export class GhostAdminLifecycle implements GhostLifecycle {
     if (diff.allowNewsletterEmail !== undefined) {
       member.newsletters =
         diff.allowNewsletterEmail && this.newsletterId ? [{ id: this.newsletterId }] : [];
-    }
-    if (diff.allowCommentReplyEmail !== undefined) {
-      member.enable_comment_notifications = diff.allowCommentReplyEmail;
     }
     return member;
   }

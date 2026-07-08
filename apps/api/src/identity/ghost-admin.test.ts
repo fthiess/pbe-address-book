@@ -90,9 +90,9 @@ describe("GhostAdminLifecycle", () => {
     const member = bodyMember(call);
     expect(member.email).toBe("james.smyth@example.test");
     expect(member.name).toBe("Jim Smyth '84");
-    // Subscribed → newsletters relation; comment pref → enable_comment_notifications.
+    // Subscribed → newsletters relation. The comment-reply pref is not pushed (N66).
     expect(member.newsletters).toEqual([{ id: "nl-1" }]);
-    expect(member.enable_comment_notifications).toBe(true);
+    expect(member).not.toHaveProperty("enable_comment_notifications");
   });
 
   it("maps an unsubscribe to an empty newsletters array", async () => {

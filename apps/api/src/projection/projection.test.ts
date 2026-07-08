@@ -59,7 +59,6 @@ function fullProfile(privacy: PrivacyFlags): Profile {
     privacy,
     unlisted: false,
     allowNewsletterEmail: true,
-    allowCommentReplyEmail: true,
     allowShareWithMITAA: true,
     lastVerifiedDate: "2026-01-01",
     verifiedBy: 5000,

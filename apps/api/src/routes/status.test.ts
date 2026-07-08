@@ -60,14 +60,13 @@ async function buildStatusServer(ghostLifecycle = new StubGhostLifecycle()) {
       ghostMemberId: "gm-5003",
       deceased: { isDeceased: true, deathYear: 2020 },
       allowNewsletterEmail: false,
-      allowCommentReplyEmail: false,
-      deceasedConsentSnapshot: { allowNewsletterEmail: true, allowCommentReplyEmail: true },
+      deceasedConsentSnapshot: { allowNewsletterEmail: true },
     }),
     // 5004: already de-brothered (reverse case).
     makeProfile({
       id: 5004,
       debrothered: { isDebrothered: true, debrotheredAt: "2026-02-02T00:00:00.000Z" },
-      debrotherConsentSnapshot: { allowNewsletterEmail: true, allowCommentReplyEmail: true },
+      debrotherConsentSnapshot: { allowNewsletterEmail: true },
     }),
   ]);
   const sessionStore = new InMemorySessionStore();
@@ -208,11 +207,7 @@ describe("PUT /api/profiles/:id/deceased", () => {
     const stored = ctx.cache.getById(5002) as Profile;
     expect(stored.deceased).toEqual({ isDeceased: true, deathYear: 2026, birthYear: 1962 });
     expect(stored.allowNewsletterEmail).toBe(false);
-    expect(stored.allowCommentReplyEmail).toBe(false);
-    expect(stored.deceasedConsentSnapshot).toEqual({
-      allowNewsletterEmail: true,
-      allowCommentReplyEmail: true,
-    });
+    expect(stored.deceasedConsentSnapshot).toEqual({ allowNewsletterEmail: true });
     expect(stored.newsletterConsentChangedAt).toBe(FIXED_NOW.toISOString());
     expect(ctx.audited.at(-1)).toMatchObject({ action: "profile.deceased", targetId: 5002 });
   });
@@ -239,10 +234,7 @@ describe("PUT /api/profiles/:id/deceased", () => {
     const stored = ctx.cache.getById(5003) as Profile;
     expect(stored.deceased.obituaryUrl).toBe("https://example.test/obit");
     // The original snapshot is untouched (not re-captured from the forced-off state).
-    expect(stored.deceasedConsentSnapshot).toEqual({
-      allowNewsletterEmail: true,
-      allowCommentReplyEmail: true,
-    });
+    expect(stored.deceasedConsentSnapshot).toEqual({ allowNewsletterEmail: true });
   });
 
   it("reverses deceased: restores the snapshotted consent and clears the block", async () => {
@@ -256,7 +248,6 @@ describe("PUT /api/profiles/:id/deceased", () => {
     const stored = ctx.cache.getById(5003) as Profile;
     expect(stored.deceased).toEqual({ isDeceased: false });
     expect(stored.allowNewsletterEmail).toBe(true);
-    expect(stored.allowCommentReplyEmail).toBe(true);
     expect(stored.deceasedConsentSnapshot).toBeUndefined();
     expect(stored.newsletterConsentChangedAt).toBe(FIXED_NOW.toISOString());
   });
@@ -271,13 +262,9 @@ describe("PUT /api/profiles/:id/deceased", () => {
       payload: { deceased: true, deathYear: 2026 },
     });
     expect(response.statusCode).toBe(200);
-    // Only the two consent flags are pushed (never email/name), by their new value.
+    // Only the newsletter flag is pushed (never email/name/comment-pref), by its new value.
     expect(ghost.updated).toEqual([
-      {
-        id: 5002,
-        ghostMemberId: "gm-5002",
-        diff: { allowNewsletterEmail: false, allowCommentReplyEmail: false },
-      },
+      { id: 5002, ghostMemberId: "gm-5002", diff: { allowNewsletterEmail: false } },
     ]);
     expect(ctx.cache.getById(5002)?.allowNewsletterEmail).toBe(false);
     await ctx.app.close();
@@ -344,10 +331,7 @@ describe("PUT /api/profiles/:id/debrothered", () => {
     const stored = ctx.cache.getById(5002) as Profile;
     expect(stored.debrothered.isDebrothered).toBe(true);
     expect(stored.debrothered.debrotheredAt).toBe(FIXED_NOW.toISOString());
-    expect(stored.debrotherConsentSnapshot).toEqual({
-      allowNewsletterEmail: true,
-      allowCommentReplyEmail: true,
-    });
+    expect(stored.debrotherConsentSnapshot).toEqual({ allowNewsletterEmail: true });
     expect(ctx.audited.at(-1)).toMatchObject({ action: "profile.debrother", targetId: 5002 });
     await ctx.app.close();
   });

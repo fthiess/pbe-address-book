@@ -294,9 +294,8 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
       // ~3% of living brothers choose to be unlisted (D124); not deceased ones.
       // The planted collision pair is forced listed (the draw is still spent).
       unlisted: !isDeceased && rng.chance(0.03) && !planted,
-      // Deceased forces both consent flags off (D49).
+      // Deceased forces the newsletter flag off (D49).
       allowNewsletterEmail: !isDeceased && rng.chance(0.9),
-      allowCommentReplyEmail: !isDeceased && rng.chance(0.9),
       allowShareWithMITAA: rng.chance(0.5),
       lastModified,
       newsletterConsentChangedAt: lastModified,

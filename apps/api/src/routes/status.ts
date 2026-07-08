@@ -338,8 +338,8 @@ interface DeceasedBody {
  * Build the write for **raising or editing** a deceased record. The five D122
  * fields replace the deceased block (PUT semantics — an omitted field clears).
  * On the *first* raise (`stored` not yet deceased) this also performs the D80
- * coordination: capture the consent/verification snapshot, force both email
- * flags off, and stamp `newsletterConsentChangedAt` if newsletter consent
+ * coordination: capture the consent/verification snapshot, force the newsletter
+ * flag off, and stamp `newsletterConsentChangedAt` if newsletter consent
  * actually changed. Verification is **frozen**, not cleared (D48) — left as-is,
  * captured in the snapshot for a faithful restore. A re-PUT on an already-deceased
  * record edits only the facts (the snapshot and consent are untouched).
@@ -363,7 +363,6 @@ function buildDeceasedRaise(
     // First raise: the D80 force-off + snapshot.
     set.deceasedConsentSnapshot = captureConsentSnapshot(stored);
     set.allowNewsletterEmail = false;
-    set.allowCommentReplyEmail = false;
     if (stored.allowNewsletterEmail) {
       set.newsletterConsentChangedAt = now.toISOString();
     }
@@ -455,7 +454,6 @@ function restoreConsentSnapshot(
     return;
   }
   set.allowNewsletterEmail = snapshot.allowNewsletterEmail;
-  set.allowCommentReplyEmail = snapshot.allowCommentReplyEmail;
   if (snapshot.lastVerifiedDate !== undefined) {
     set.lastVerifiedDate = snapshot.lastVerifiedDate;
   } else {

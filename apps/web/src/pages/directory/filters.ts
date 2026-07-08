@@ -48,7 +48,6 @@ export interface DirectoryFilters {
   phone: PresenceFilter;
   /** Staff-only — the consent flags. */
   allowNewsletterEmail: BoolFilter;
-  allowCommentReplyEmail: BoolFilter;
   allowShareWithMITAA: BoolFilter;
   /** Staff-only — verification state, plus an optional "not verified since" date. */
   verification: VerificationFilter;
@@ -66,7 +65,6 @@ export const EMPTY_FILTERS: DirectoryFilters = {
   email: "",
   phone: "",
   allowNewsletterEmail: "",
-  allowCommentReplyEmail: "",
   allowShareWithMITAA: "",
   verification: "",
   verifiedBefore: "",
@@ -77,7 +75,6 @@ const STAFF_FILTER_KEYS: readonly (keyof DirectoryFilters)[] = [
   "email",
   "phone",
   "allowNewsletterEmail",
-  "allowCommentReplyEmail",
   "allowShareWithMITAA",
   "verification",
   "verifiedBefore",
@@ -105,7 +102,6 @@ export function countActiveFilters(filters: DirectoryFilters): number {
   if (filters.email) n++;
   if (filters.phone) n++;
   if (filters.allowNewsletterEmail) n++;
-  if (filters.allowCommentReplyEmail) n++;
   if (filters.allowShareWithMITAA) n++;
   if (filters.verification) n++;
   if (filters.verifiedBefore.trim()) n++;
@@ -239,7 +235,6 @@ function addStaffClauses(
     }
   };
   bool(filters.allowNewsletterEmail, (p) => p.allowNewsletterEmail);
-  bool(filters.allowCommentReplyEmail, (p) => p.allowCommentReplyEmail);
   bool(filters.allowShareWithMITAA, (p) => p.allowShareWithMITAA);
 
   if (filters.verification === "verified") {

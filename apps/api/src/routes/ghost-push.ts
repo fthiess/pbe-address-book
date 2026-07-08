@@ -13,14 +13,12 @@ import type { GhostLifecycle, GhostMemberDiff } from "../identity/ghost-lifecycl
 const EMAIL_FIELD: keyof Profile = "email";
 const NAME_INPUT_FIELDS: readonly (keyof Profile)[] = ["firstName", "lastName", "classYear"];
 const NEWSLETTER_FIELD: keyof Profile = "allowNewsletterEmail";
-const COMMENT_FIELD: keyof Profile = "allowCommentReplyEmail";
 
 /** The full set that participates in the push, for a quick "is any pushed field touched" test. */
 export const GHOST_PUSHED_FIELDS: ReadonlySet<keyof Profile> = new Set<keyof Profile>([
   EMAIL_FIELD,
   ...NAME_INPUT_FIELDS,
   NEWSLETTER_FIELD,
-  COMMENT_FIELD,
 ]);
 
 /**
@@ -45,18 +43,15 @@ export function computeGhostUpdateDiff(
   if (changed.has(NEWSLETTER_FIELD)) {
     diff.allowNewsletterEmail = next.allowNewsletterEmail;
   }
-  if (changed.has(COMMENT_FIELD)) {
-    diff.allowCommentReplyEmail = next.allowCommentReplyEmail;
-  }
   return diff;
 }
 
 /**
- * Build the Ghost diff for a **deceased raise/reverse**, from the consent flags a
- * status write `set` establishes versus what is `stored`. Deceased writes only
- * ever move the two consent booleans (never email or name), and only the ones that
- * actually change are pushed — a re-PUT that edits the obituary link but leaves
- * consent alone yields an empty diff and makes no Ghost call.
+ * Build the Ghost diff for a **deceased raise/reverse**, from the newsletter flag a
+ * status write `set` establishes versus what is `stored`. Deceased writes only ever
+ * move consent booleans (never email or name), and only a genuine change to the one
+ * pushable flag is sent — a re-PUT that edits the obituary link but leaves the
+ * newsletter subscription alone yields an empty diff and makes no Ghost call.
  */
 export function computeConsentDiff(stored: Profile, set: Partial<Profile>): GhostMemberDiff {
   const diff: GhostMemberDiff = {};
@@ -65,12 +60,6 @@ export function computeConsentDiff(stored: Profile, set: Partial<Profile>): Ghos
     set.allowNewsletterEmail !== stored.allowNewsletterEmail
   ) {
     diff.allowNewsletterEmail = set.allowNewsletterEmail;
-  }
-  if (
-    set.allowCommentReplyEmail !== undefined &&
-    set.allowCommentReplyEmail !== stored.allowCommentReplyEmail
-  ) {
-    diff.allowCommentReplyEmail = set.allowCommentReplyEmail;
   }
   return diff;
 }

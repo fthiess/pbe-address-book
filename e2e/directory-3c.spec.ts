@@ -35,7 +35,6 @@ function meFor(role: "admin" | "brother") {
       },
       unlisted: false,
       allowNewsletterEmail: true,
-      allowCommentReplyEmail: true,
       allowShareWithMITAA: false,
       lastModified: "2026-06-03T12:00:00.000Z",
       newsletterConsentChangedAt: "2026-06-03T12:00:00.000Z",
