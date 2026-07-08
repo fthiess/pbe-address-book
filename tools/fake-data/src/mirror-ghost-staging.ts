@@ -135,6 +135,35 @@ function newsletters(subscribed: boolean): { id: string }[] {
   return subscribed ? [{ id: newsletterId as string }] : [];
 }
 
+/** The `book-seed` label id, resolved once up front so member creates reference it by id. */
+let seedLabelId = "";
+
+/**
+ * Ensure the `book-seed` label exists and return its id. Resolving it ONCE before
+ * the create pool is load-bearing: attaching the label by **name** on each create
+ * lets Ghost auto-create it, and the first burst of concurrent creates then races
+ * to create the same label → `UPDATE_RELATION` "cannot save member" 500s. Creating
+ * it once and attaching by **id** makes every member create a plain join insert.
+ */
+async function ensureLabelId(): Promise<string> {
+  const filter = encodeURIComponent(`slug:${SEED_LABEL}`);
+  const found = (await ghost("GET", `/labels/?filter=${filter}&limit=1`)) as {
+    labels?: { id?: string }[];
+  };
+  const existing = found.labels?.[0]?.id;
+  if (existing) {
+    return existing;
+  }
+  const created = (await ghost("POST", "/labels/", { labels: [{ name: SEED_LABEL }] })) as {
+    labels?: { id?: string }[];
+  };
+  const id = created.labels?.[0]?.id;
+  if (!id) {
+    throw new Error("could not create the book-seed label");
+  }
+  return id;
+}
+
 /** List every `book-seed`-labelled member across all pages. */
 async function listSeedMembers(): Promise<ExistingMember[]> {
   const out: ExistingMember[] = [];
@@ -164,7 +193,7 @@ async function createMember(m: DesiredMember): Promise<string> {
         email: m.email,
         name: m.name,
         newsletters: newsletters(m.subscribed),
-        labels: [{ name: SEED_LABEL }],
+        labels: [{ id: seedLabelId }],
       },
     ],
   })) as { members?: { id?: string }[] };
@@ -233,6 +262,9 @@ if (DRY_RUN) {
 }
 
 const links: { profileId: number; ghostMemberId: string }[] = [...plan.matchedLinks];
+
+// Resolve the label ONCE before the concurrent creates reference it (see ensureLabelId).
+seedLabelId = await ensureLabelId();
 
 const created = await pool(plan.toCreate, async (m) => {
   const id = await createMember(m);
