@@ -119,6 +119,61 @@ reusing the Compute Engine default.
   authentication is enforced by the app's session layer (D126); staging is fake
   data only (D72).
 
+## Testing the Book→Ghost write path against ghost-staging (Phase 5b-1)
+
+The write path (create/update/delete a Ghost member) only runs when the Cloud Run
+service has a Ghost Admin key; without it the app uses the succeed-and-log stub and
+edits never reach Ghost. Testing it against ghost-staging (never production — D72)
+is opt-in, in three parts:
+
+**One-time: the Admin key in Secret Manager.** The key is `{id}:{secret}` from
+ghost-staging's custom integration. It is **never** in the repo:
+
+```bash
+# create the secret (printf, not echo — no trailing newline in the value)
+printf '%s' '<ID>:<SECRET>' | gcloud secrets create ghost-admin-api-key \
+  --project=pbe-book-staging --replication-policy=automatic --data-file=-
+# the Cloud Run runtime SA reads it at request time…
+gcloud secrets add-iam-policy-binding ghost-admin-api-key --project=pbe-book-staging \
+  --member=serviceAccount:book-api@pbe-book-staging.iam.gserviceaccount.com \
+  --role=roles/secretmanager.secretAccessor
+# …and the deploy SA reads it for the seed-mirror step (below)
+gcloud secrets add-iam-policy-binding ghost-admin-api-key --project=pbe-book-staging \
+  --member=serviceAccount:github-deployer@pbe-book-staging.iam.gserviceaccount.com \
+  --role=roles/secretmanager.secretAccessor
+```
+
+The deploy wires `--set-secrets GHOST_ADMIN_API_KEY=ghost-admin-api-key:latest`
+plus the non-secret `GHOST_ADMIN_API_URL` / `GHOST_NEWSLETTER_ID` (in
+`environments/staging.env`). To rotate the key, add a new version
+(`gcloud secrets versions add ghost-admin-api-key --data-file=-`) — `:latest`
+follows it on the next deploy.
+
+**Per testing session: the mirror.** ghost-staging needs real members matching the
+fake profiles. Set the repo variable `STAGING_GHOST_MIRROR=true`; the next deploy's
+seed step runs `mirror:ghost-staging`, a **delta reconcile** that creates/updates/
+deletes only `book-seed`-labelled members to match the `@example.test` fake profiles
+and writes each real `ghostMemberId` back into Firestore. Re-running it (another
+deploy, or the script by hand) is the **reset** after a session mutated Ghost — it
+only fixes what changed, so it is cheap after the initial ~1k-member build. The fake
+generator no longer mints ids, so with the flag off every profile cleanly skips the
+push (no stale-id `502`); the mirror is the sole source of real ids.
+
+Run it by hand (e.g. to reset mid-session without a deploy):
+
+```bash
+GOOGLE_CLOUD_PROJECT=pbe-book-staging \
+GHOST_ADMIN_API_URL=https://staging.pbe400.org/ghost/api/admin \
+GHOST_NEWSLETTER_ID=6a3ebdd8415f8e0001858cb0 \
+GHOST_ADMIN_API_KEY="$(gcloud secrets versions access latest --secret=ghost-admin-api-key --project=pbe-book-staging)" \
+  npm run mirror:ghost-staging --workspace tools/fake-data   # add `-- --dry-run` to preview
+```
+
+When done testing, set `STAGING_GHOST_MIRROR=false` (or unset it) so ordinary
+deploys neither touch nor depend on ghost-staging. The `book-seed` label + the
+`@example.test` scope mean the mirror can never touch your own account or the
+linter member on ghost-staging.
+
 ## Teardown
 
 To remove an environment entirely, delete the project (reclaims everything;

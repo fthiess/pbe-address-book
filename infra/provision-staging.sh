@@ -55,6 +55,12 @@ GHOST_JWT_AUDIENCE="${GHOST_JWT_AUDIENCE:-https://staging.pbe400.org/members/api
 GHOST_BRIDGE_URL="${GHOST_BRIDGE_URL:-https://staging.pbe400.org/book}"
 GHOST_BRIDGE_TARGET="${GHOST_BRIDGE_TARGET:-staging}"
 
+# Ghost Admin API (Phase 5b-1 write path). The key is NOT here — it is in Secret
+# Manager (secret `ghost-admin-api-key`, created out-of-band) and referenced by the
+# Cloud Run deploy via --set-secrets below. These two are non-secret.
+GHOST_ADMIN_API_URL="${GHOST_ADMIN_API_URL:-https://staging.pbe400.org/ghost/api/admin}"
+GHOST_NEWSLETTER_ID="${GHOST_NEWSLETTER_ID:-6a3ebdd8415f8e0001858cb0}"
+
 echo "==> Project ${PROJECT_ID} | region ${REGION} | bucket ${IMAGE_BUCKET}"
 
 # 1. Project (create only if absent; the id is permanent and globally unique).
@@ -132,13 +138,23 @@ gcloud storage buckets add-iam-policy-binding "gs://${IMAGE_BUCKET}" \
   --member="serviceAccount:${SA_EMAIL}" --role="roles/storage.objectAdmin" >/dev/null
 
 # 7. Deploy the API to Cloud Run (built remotely by Cloud Build from ./Dockerfile).
+# The Ghost Admin key rides from Secret Manager via --set-secrets, but only if the
+# secret exists (it is created out-of-band); otherwise deploy without it (the app
+# then runs the succeed-and-log stub, N65 — the Ghost write path is simply inert).
 echo "==> Deploying ${SERVICE} to Cloud Run"
+SECRET_FLAG=()
+if gcloud secrets describe ghost-admin-api-key --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  SECRET_FLAG=(--set-secrets "GHOST_ADMIN_API_KEY=ghost-admin-api-key:latest")
+else
+  echo "    (note: secret ghost-admin-api-key not found — deploying without the Ghost Admin key)"
+fi
 gcloud run deploy "${SERVICE}" \
   --source . --region "${REGION}" --project "${PROJECT_ID}" \
   --service-account "${SA_EMAIL}" \
   --max-instances 1 --min-instances 0 \
   --memory 1Gi \
-  --set-env-vars "IMAGE_BUCKET=${IMAGE_BUCKET},GHOST_JWKS_URL=${GHOST_JWKS_URL},GHOST_JWT_ISSUER=${GHOST_JWT_ISSUER},GHOST_JWT_AUDIENCE=${GHOST_JWT_AUDIENCE},GHOST_BRIDGE_URL=${GHOST_BRIDGE_URL},GHOST_BRIDGE_TARGET=${GHOST_BRIDGE_TARGET}" \
+  --set-env-vars "IMAGE_BUCKET=${IMAGE_BUCKET},GHOST_JWKS_URL=${GHOST_JWKS_URL},GHOST_JWT_ISSUER=${GHOST_JWT_ISSUER},GHOST_JWT_AUDIENCE=${GHOST_JWT_AUDIENCE},GHOST_BRIDGE_URL=${GHOST_BRIDGE_URL},GHOST_BRIDGE_TARGET=${GHOST_BRIDGE_TARGET},GHOST_ADMIN_API_URL=${GHOST_ADMIN_API_URL},GHOST_NEWSLETTER_ID=${GHOST_NEWSLETTER_ID}" \
+  "${SECRET_FLAG[@]}" \
   --allow-unauthenticated --quiet
 
 echo "==> Cloud Run URL:"

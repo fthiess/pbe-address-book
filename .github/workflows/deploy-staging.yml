@@ -154,6 +154,27 @@ jobs:
           printf '%s' '{ "rule": [ { "action": { "type": "Delete" }, "condition": { "daysSinceNoncurrentTime": 90 } } ] }' > /tmp/img-lifecycle.json
           gcloud storage buckets update "gs://$IMAGE_BUCKET" --lifecycle-file=/tmp/img-lifecycle.json
 
+      # Mirror the freshly-seeded fake profiles into ghost-staging as real Ghost
+      # members, so the Book→Ghost write path (5b-1) can be tested end-to-end (D72,
+      # ghost-staging only). A delta reconcile scoped to `book-seed`-labelled members
+      # and @example.test profiles — safe, and re-running it is the reset. Runs AFTER
+      # the re-seed (needs the seeded profiles + the tester link) and BEFORE the API
+      # deploy (so the new revision cold-starts with the real ids hydrated).
+      #
+      # OPT-IN: only when the repo var STAGING_GHOST_MIRROR=true (and autoseed is on).
+      # Off by default so normal deploys neither hit ghost-staging nor depend on it.
+      # The Admin key is pulled from Secret Manager at run time (the deployer SA has
+      # secretAccessor); it is never written to the workflow or logged.
+      - name: Mirror fake profiles into ghost-staging (5b-1 write-path UAT)
+        if: vars.STAGING_AUTOSEED != 'false' && vars.STAGING_GHOST_MIRROR == 'true'
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ env.PROJECT_ID }}
+          GHOST_ADMIN_API_URL: ${{ env.GHOST_ADMIN_API_URL }}
+          GHOST_NEWSLETTER_ID: ${{ env.GHOST_NEWSLETTER_ID }}
+        run: |
+          GHOST_ADMIN_API_KEY="$(gcloud secrets versions access latest --secret=ghost-admin-api-key --project="$PROJECT_ID")" \
+            npm run mirror:ghost-staging --workspace tools/fake-data
+
       # API last: gcloud only needs the token briefly to SUBMIT the Cloud Build
       # (the build then runs server-side as the build SA), so it tolerates the
       # slightly older token. Same flags as the provisioning playbook (D83
@@ -170,6 +191,7 @@ jobs:
             --service-account "$RUNTIME_SA" \
             --max-instances 1 --min-instances 0 \
             --memory 1Gi \
-            --set-env-vars "IMAGE_BUCKET=$IMAGE_BUCKET,GHOST_JWKS_URL=$GHOST_JWKS_URL,GHOST_JWT_ISSUER=$GHOST_JWT_ISSUER,GHOST_JWT_AUDIENCE=$GHOST_JWT_AUDIENCE,GHOST_BRIDGE_URL=$GHOST_BRIDGE_URL,GHOST_BRIDGE_TARGET=$GHOST_BRIDGE_TARGET,BOOK_API_VERSION=$BOOK_VERSION" \
+            --set-env-vars "IMAGE_BUCKET=$IMAGE_BUCKET,GHOST_JWKS_URL=$GHOST_JWKS_URL,GHOST_JWT_ISSUER=$GHOST_JWT_ISSUER,GHOST_JWT_AUDIENCE=$GHOST_JWT_AUDIENCE,GHOST_BRIDGE_URL=$GHOST_BRIDGE_URL,GHOST_BRIDGE_TARGET=$GHOST_BRIDGE_TARGET,GHOST_ADMIN_API_URL=$GHOST_ADMIN_API_URL,GHOST_NEWSLETTER_ID=$GHOST_NEWSLETTER_ID,BOOK_API_VERSION=$BOOK_VERSION" \
+            --set-secrets "GHOST_ADMIN_API_KEY=ghost-admin-api-key:latest" \
             --allow-unauthenticated \
             --quiet

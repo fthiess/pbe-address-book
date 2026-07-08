@@ -8,7 +8,8 @@
     "seed:staging": "tsx src/seed-staging.ts",
     "seed:staging-images": "tsx src/seed-staging-images.ts",
     "author:thumbnails": "tsx src/author-thumbnails.ts",
-    "link:staging-tester": "tsx src/link-staging-tester.ts"
+    "link:staging-tester": "tsx src/link-staging-tester.ts",
+    "mirror:ghost-staging": "tsx src/mirror-ghost-staging.ts"
   },
   "dependencies": {
     "@pbe/shared": "*",

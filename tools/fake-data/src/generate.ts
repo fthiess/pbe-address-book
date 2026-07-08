@@ -356,8 +356,11 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
     }
 
     if (rng.chance(0.15)) profile.adminNote = "Staff note: confirmed mailing address by phone.";
-    // Most living brothers are Ghost members; the id is an opaque backend token.
-    if (!isDebrothered && rng.chance(0.9)) profile.ghostMemberId = `ghost-${id}`;
+    // No `ghostMemberId` is minted here: a fake id would 502 the Ghost-first push
+    // against a nonexistent member once the real Admin client is configured on
+    // staging (5b-1). With no id, a profile cleanly skips the push (N65); the
+    // ghost-staging mirror (`mirror-ghost-staging.ts`, gated by STAGING_GHOST_MIRROR)
+    // is the sole source of REAL ids when Book↔Ghost write-path testing is on.
 
     profiles.push(profile);
   }

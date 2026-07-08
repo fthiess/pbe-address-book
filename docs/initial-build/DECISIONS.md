@@ -1142,3 +1142,12 @@ Book carried `allowCommentReplyEmail` — a per-brother preference ("email me wh
 - **OFC-227 (Nit) — stale "four pushed fields" comment** in `ghost-push.ts` → three.
 
 Regression locks added: a deterministic serialization test (a blocking Ghost client holds the record lock across a PATCH's in-flight push while a concurrent verify is forced to wait — OFC-220) and an in-lock-snapshot test (a concurrent unsubscribe committing first is reflected in the deceased snapshot — OFC-221), plus targeted tests for OFC-219/222/223/224. Gate green: 563 unit + 42 emulator + 111 e2e.
+
+## Phase 5b-1 write-path test harness — ghost-staging mirror (2026-07-08)
+
+To exercise the Book→Ghost write path against a real Ghost (ghost-staging only, D72), the fake-data seed can mirror the seeded profiles into ghost-staging as real members. Design (Forrest's call — a delta reconcile in preference to a DB backup/restore):
+
+- **Delta reconcile, not a load.** `tools/fake-data/src/mirror-ghost-staging.ts` (pure planner in `ghost-reconcile.ts`, unit-tested) brings ghost-staging's seed-owned members into correspondence with the current fake profiles — create missing, update drifted (name/subscription), delete orphans — matching by normalized email, then writes each real `ghostMemberId` back into Firestore. **Re-running it is the reset** after a testing session mutated Ghost; it only touches what changed, so the recurring cost is trivial (the one-time cost is the initial ~1k creates). This is why no Ghost DB backup/restore is needed.
+- **Safety scoping.** Every seed-created member carries a `book-seed` label, and the reconcile only ever lists/updates/**deletes** members bearing it; it further manages only profiles with a fake `@example.test` email. So it can never touch the tester-linked profile (a real email), the operator's own account, or the linter member on ghost-staging.
+- **The generator no longer mints a fake `ghostMemberId`.** A fake id would `502` the Ghost-first push against a nonexistent member once the real Admin client is configured; with no id a profile cleanly skips the push (N65). The mirror is the sole source of real ids.
+- **Opt-in.** Gated by the repo var `STAGING_GHOST_MIRROR` (default off): the seed mirrors only when it is `true` (and autoseed is on), so ordinary deploys neither hit ghost-staging nor depend on it. The Admin key rides from Secret Manager (`ghost-admin-api-key`) into both Cloud Run (runtime) and the deploy's mirror step; it is never in the tree. Runbook in `infra/README.md`.
