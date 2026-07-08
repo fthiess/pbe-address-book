@@ -60,7 +60,12 @@ function bodyMember(call: Captured): Record<string, unknown> {
 describe("GhostAdminLifecycle", () => {
   it("signs a Ghost Admin JWT (HS256, kid, aud=/admin/) on every request", async () => {
     const { impl, calls } = fakeFetch({ status: 200, body: { members: [{ id: "m1" }] } });
-    const client = new GhostAdminLifecycle({ apiUrl: API_URL, adminApiKey: KEY, fetchImpl: impl });
+    const client = new GhostAdminLifecycle({
+      apiUrl: API_URL,
+      adminApiKey: KEY,
+      newsletterId: "nl-1",
+      fetchImpl: impl,
+    });
     await client.updateMember(makeProfile({ id: 5001, ghostMemberId: "m1" }), { name: "X '84" });
 
     const call = only(calls);
@@ -115,7 +120,12 @@ describe("GhostAdminLifecycle", () => {
 
   it("deletes a member by ghostMemberId", async () => {
     const { impl, calls } = fakeFetch({ status: 204 });
-    const client = new GhostAdminLifecycle({ apiUrl: API_URL, adminApiKey: KEY, fetchImpl: impl });
+    const client = new GhostAdminLifecycle({
+      apiUrl: API_URL,
+      adminApiKey: KEY,
+      newsletterId: "nl-1",
+      fetchImpl: impl,
+    });
     await client.deleteMember(makeProfile({ id: 5001, ghostMemberId: "m9" }));
     const call = only(calls);
     expect(call.method).toBe("DELETE");
@@ -124,13 +134,27 @@ describe("GhostAdminLifecycle", () => {
 
   it("throws on a non-2xx Ghost response (so the caller aborts clean)", async () => {
     const { impl } = fakeFetch({ status: 422, body: { errors: [{ message: "bad email" }] } });
-    const client = new GhostAdminLifecycle({ apiUrl: API_URL, adminApiKey: KEY, fetchImpl: impl });
+    const client = new GhostAdminLifecycle({
+      apiUrl: API_URL,
+      adminApiKey: KEY,
+      newsletterId: "nl-1",
+      fetchImpl: impl,
+    });
     await expect(
       client.updateMember(makeProfile({ id: 5001, ghostMemberId: "m1" }), { email: "bad" }),
     ).rejects.toThrow(/422/);
   });
 
   it("rejects a malformed admin key", () => {
-    expect(() => new GhostAdminLifecycle({ apiUrl: API_URL, adminApiKey: "no-colon" })).toThrow();
+    expect(
+      () =>
+        new GhostAdminLifecycle({ apiUrl: API_URL, adminApiKey: "no-colon", newsletterId: "nl-1" }),
+    ).toThrow(/id.*:.*secret/);
+  });
+
+  it("refuses to construct without a newsletter id (no silent unsubscribe — OFC-219)", () => {
+    expect(
+      () => new GhostAdminLifecycle({ apiUrl: API_URL, adminApiKey: KEY, newsletterId: "" }),
+    ).toThrow(/GHOST_NEWSLETTER_ID/);
   });
 });

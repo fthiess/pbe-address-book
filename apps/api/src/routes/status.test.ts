@@ -332,7 +332,39 @@ describe("PUT /api/profiles/:id/debrothered", () => {
     expect(stored.debrothered.isDebrothered).toBe(true);
     expect(stored.debrothered.debrotheredAt).toBe(FIXED_NOW.toISOString());
     expect(stored.debrotherConsentSnapshot).toEqual({ allowNewsletterEmail: true });
+    // The now-dangling ghostMemberId is dropped (OFC-222): the Ghost member was just
+    // deleted, so a later pushed-field PATCH must not push to a nonexistent member.
+    expect(stored.ghostMemberId).toBeUndefined();
     expect(ctx.audited.at(-1)).toMatchObject({ action: "profile.debrother", targetId: 5002 });
+    await ctx.app.close();
+  });
+
+  it("a pushed-field PATCH on a de-brothered record makes no Ghost call and saves (OFC-222)", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const ctx = await buildStatusServer(ghost);
+    // Raise de-brother on 5002 (drops its ghostMemberId).
+    await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5002/debrothered",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { debrothered: true },
+    });
+    // A staff PATCH of a pushed field (lastName) must not 502 on a deleted member.
+    const etag = (
+      await ctx.app.inject({
+        method: "GET",
+        url: "/api/profiles/5002",
+        headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      })
+    ).headers.etag as string;
+    const res = await ctx.app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5002",
+      headers: { cookie: await ctx.cookieFor(9001, "admin"), "if-match": etag },
+      payload: { lastName: "Renamed" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(ghost.updated).toHaveLength(0); // no ghostMemberId → no push
     await ctx.app.close();
   });
 

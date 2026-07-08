@@ -11,7 +11,7 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
-import { MissingProfileError, type ProfileStore, StaleWriteError } from "../data/profiles.js";
+import { type ProfileStore, StaleWriteError } from "../data/profiles.js";
 import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import { effectiveRole } from "../identity/types.js";
 import {
@@ -23,8 +23,9 @@ import {
 } from "../projection/projection.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { negotiateEncoding } from "./encoding.js";
-import { GhostPushError, computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
+import { computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
 import type { RecordLock } from "./record-lock.js";
+import { replyWriteError, runRecordWrite } from "./record-write.js";
 import { traceId } from "./trace.js";
 
 /** A clock seam so the write path's timestamps stay deterministic under test. */
@@ -337,60 +338,50 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
       const changedSet = new Set(changed);
 
       // 7. Ghost-first-gated push → conditional write → cache read-your-writes →
-      //    audit, serialized per record (N65) so no concurrent same-record write
-      //    commits between the Ghost push and the Firestore write.
-      return recordLock.run(id, async () => {
-        // Preflight the If-Match under the lock: if the record already moved past
-        // the caller's token, the write is doomed to 412 — return it now, without
-        // an ultimately-pointless push to Ghost (N65).
-        const currentToken = cache.concurrencyToken(id);
-        if (currentToken !== undefined && currentToken !== ifMatch) {
-          return reply
-            .code(412)
-            .send({ error: "stale_write", message: "This record changed since you loaded it." });
-        }
-
-        // Ghost-first-gated: push any changed pushed field before committing. A
-        // clear Ghost failure aborts the whole save — Book is untouched (N65). No
-        // pushed field changed, or no `ghostMemberId`, → no Ghost call.
-        try {
-          await pushGhostUpdate(ghostLifecycle, stored, computeGhostUpdateDiff(next, changedSet));
-        } catch (error) {
-          if (error instanceof GhostPushError) {
-            return reply.code(502).send({ error: "ghost_update_failed" });
-          }
-          throw error;
-        }
-
-        let token: string;
-        try {
-          token = await store.update(id, { set, remove, precondition: ifMatch });
-        } catch (error) {
-          if (error instanceof StaleWriteError) {
-            return reply
-              .code(412)
-              .send({ error: "stale_write", message: "This record changed since you loaded it." });
-          }
-          if (error instanceof MissingProfileError) {
-            return reply.code(404).send({ error: "not_found", message: "No such brother." });
-          }
-          throw error;
-        }
-        await cache.applyUpdate(next, token);
-        audit.record(
-          {
-            action: "profile.update",
-            actorId: actor.profileId,
-            targetId: id,
-            outcome: "ok",
-            fields: changed,
-            trace,
+      //    audit, all under the shared per-record lock (N65; OFC-220/226) so no
+      //    concurrent token-advancing write can commit between the Ghost push and
+      //    the Firestore write.
+      let token: string;
+      try {
+        token = await runRecordWrite(recordLock, id, {
+          // Preflight the If-Match INSIDE the lock: if the record already moved
+          // past the caller's token, the write is doomed to 412 — abort now, before
+          // an ultimately-pointless Ghost push (N65). (The conditional write below
+          // is the authoritative check; this only spares a wasted Ghost call.)
+          prepare: () => {
+            const currentToken = cache.concurrencyToken(id);
+            if (currentToken !== undefined && currentToken !== ifMatch) {
+              throw new StaleWriteError();
+            }
           },
-          now.toISOString(),
-        );
+          // Push any changed pushed field before committing; a clear failure throws
+          // GhostStepError → 502, Book untouched.
+          ghostStep: () =>
+            pushGhostUpdate(ghostLifecycle, stored, computeGhostUpdateDiff(next, changedSet)).then(
+              () => undefined,
+            ),
+          commit: async () => {
+            const t = await store.update(id, { set, remove, precondition: ifMatch });
+            await cache.applyUpdate(next, t);
+            return t;
+          },
+        });
+      } catch (error) {
+        return replyWriteError(error, reply);
+      }
+      audit.record(
+        {
+          action: "profile.update",
+          actorId: actor.profileId,
+          targetId: id,
+          outcome: "ok",
+          fields: changed,
+          trace,
+        },
+        now.toISOString(),
+      );
 
-        return sendRecord(reply, next, role, isOwner, token);
-      });
+      return sendRecord(reply, next, role, isOwner, token);
     },
   );
 }

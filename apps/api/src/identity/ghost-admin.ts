@@ -24,11 +24,14 @@ export interface GhostAdminConfig {
   adminApiKey: string;
   /**
    * The id of the newsletter a subscribed member is attached to (Ghost v5 models
-   * subscription as a `newsletters[]` relation, not a boolean). Required to *enable*
-   * the newsletter; unsubscribe (`[]`) needs no id. Confirmed against ghost-staging
-   * at bring-up (`GET /newsletters/`) and pinned as config (must-verify, N67).
+   * subscription as a `newsletters[]` relation, not a boolean). **Required** — the
+   * constructor throws without it, so a deployment that sets the Admin key but forgets
+   * the newsletter id fails fast at startup rather than silently pushing an
+   * *unsubscribe* (`[]`) for every enable and inverting members' consent (OFC-219).
+   * Confirmed against ghost-staging at bring-up (`GET /newsletters/`) and pinned as
+   * config (must-verify, N67).
    */
-  newsletterId?: string;
+  newsletterId: string;
   /** The pinned Ghost Admin-API version header (D99); defaults to `v5.0`. */
   acceptVersion?: string;
   /** Injectable `fetch` for tests; defaults to the global. */
@@ -39,7 +42,7 @@ export class GhostAdminLifecycle implements GhostLifecycle {
   private readonly apiUrl: string;
   private readonly keyId: string;
   private readonly secret: Buffer;
-  private readonly newsletterId?: string;
+  private readonly newsletterId: string;
   private readonly acceptVersion: string;
   private readonly fetchImpl: typeof fetch;
 
@@ -48,6 +51,12 @@ export class GhostAdminLifecycle implements GhostLifecycle {
     const [keyId, secret] = config.adminApiKey.split(":");
     if (!keyId || !secret) {
       throw new Error("GHOST_ADMIN_API_KEY must be in `{id}:{secret}` form");
+    }
+    // Fail fast without a newsletter id: subscribing needs it, and defaulting to `[]`
+    // would silently *unsubscribe* every member whose newsletter consent is enabled
+    // (OFC-219). A misconfigured deploy must crash at startup, not invert consent.
+    if (!config.newsletterId) {
+      throw new Error("GHOST_NEWSLETTER_ID is required to push newsletter subscription state");
     }
     this.keyId = keyId;
     this.secret = Buffer.from(secret, "hex");
@@ -115,8 +124,9 @@ export class GhostAdminLifecycle implements GhostLifecycle {
       member.name = diff.name;
     }
     if (diff.allowNewsletterEmail !== undefined) {
-      member.newsletters =
-        diff.allowNewsletterEmail && this.newsletterId ? [{ id: this.newsletterId }] : [];
+      // `newsletterId` is guaranteed non-empty by the constructor (OFC-219), so
+      // `true` always yields a real subscribe payload — never a silent `[]`.
+      member.newsletters = diff.allowNewsletterEmail ? [{ id: this.newsletterId }] : [];
     }
     return member;
   }

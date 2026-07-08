@@ -227,6 +227,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     audit,
     clock,
     mintVersion,
+    recordLock,
   });
   registerStatusRoutes(app, {
     cache: options.profileCache,

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { GhostLifecycle, GhostMemberDiff } from "../identity/ghost-lifecycle.js";
 import { makeProfile } from "../test-support/make-profile.js";
 import {
-  GhostPushError,
+  GhostStepError,
   computeConsentDiff,
   computeGhostUpdateDiff,
   hasGhostDiff,
@@ -101,7 +101,7 @@ describe("pushGhostUpdate (the Ghost-first gate, N65)", () => {
     expect(ghost.calls).toHaveLength(0);
   });
 
-  it("wraps a Ghost failure in GhostPushError", async () => {
+  it("wraps a Ghost failure in GhostStepError with the ghost_update_failed code", async () => {
     const ghost: GhostLifecycle = {
       async deleteMember() {},
       async createMember() {
@@ -115,6 +115,11 @@ describe("pushGhostUpdate (the Ghost-first gate, N65)", () => {
       pushGhostUpdate(ghost, makeProfile({ id: 5001, ghostMemberId: "gm-1" }), {
         email: "new@example.test",
       }),
-    ).rejects.toBeInstanceOf(GhostPushError);
+    ).rejects.toMatchObject({ name: "GhostStepError", code: "ghost_update_failed" });
+    // And it is the exported error type.
+    const err = await pushGhostUpdate(ghost, makeProfile({ id: 5001, ghostMemberId: "gm-1" }), {
+      email: "x@example.test",
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(GhostStepError);
   });
 });

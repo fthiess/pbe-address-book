@@ -7,7 +7,7 @@ import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecy
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
 import { writeRateLimit } from "../security/rate-limit.js";
-import { GhostPushError, computeConsentDiff, pushGhostUpdate } from "./ghost-push.js";
+import { GhostStepError, computeConsentDiff, pushGhostUpdate } from "./ghost-push.js";
 import {
   MissingProfileError,
   authorizePrivileged,
@@ -17,6 +17,7 @@ import {
 } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
 import type { RecordLock } from "./record-lock.js";
+import { WriteValidationError, replyWriteError, runRecordWrite } from "./record-write.js";
 
 /**
  * The profile **status** actions of 4c-2 (the privileged-action slice, DECISIONS
@@ -66,7 +67,7 @@ export function registerStatusRoutes(app: FastifyInstance, deps: StatusRouteDeps
  * response still carries the record's current verification and `ETag`.
  */
 function registerVerify(app: FastifyInstance, deps: StatusRouteDeps): void {
-  const { cache, gate, store, audit, clock } = deps;
+  const { cache, gate, store, audit, clock, recordLock } = deps;
   app.post(
     "/api/profiles/:id/verify",
     { preHandler: gate, config: writeRateLimit() },
@@ -97,11 +98,18 @@ function registerVerify(app: FastifyInstance, deps: StatusRouteDeps): void {
         verifiedBy: actorId,
         lastModified: now.toISOString(),
       };
+      // Under the shared per-record lock (OFC-220): verify advances the concurrency
+      // token, so it must serialize with the Ghost-gated writes — otherwise it could
+      // commit during a PATCH's awaited Ghost push and 412 that PATCH after Ghost was
+      // mutated. No Ghost step of its own.
       let result: { token: string; next: Profile };
       try {
-        result = await commitStatusWrite(store, cache, id, stored, set, []);
+        result = await runRecordWrite(recordLock, id, {
+          prepare: () => currentOr404(cache, id),
+          commit: (current) => commitStatusWrite(store, cache, id, current, set, []),
+        });
       } catch (error) {
-        return handleMissing(error, reply);
+        return replyWriteError(error, reply);
       }
       audit.record(
         {
@@ -145,7 +153,9 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
       if (ctx === null) {
         return reply;
       }
-      const { actorId, role, id, stored, trace } = ctx;
+      // `stored` from the auth ctx is intentionally not used for the write: the
+      // consent snapshot + diff are built from a FRESH in-lock read (OFC-221).
+      const { actorId, role, id, trace } = ctx;
 
       const body = request.body;
       if (body === null || typeof body !== "object" || Array.isArray(body)) {
@@ -159,61 +169,71 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
       }
 
       const now = clock();
-      let set: Partial<Profile>;
-      let remove: (keyof Profile)[];
-      if (raising) {
-        const built = buildDeceasedRaise(body as DeceasedBody, stored, now);
-        // Validate the candidate record; surface only deceased-field issues (the
-        // endpoint writes nothing else, so an unrelated legacy value must not block it).
-        const issues = validateProfile({ ...stored, ...built.set } as Profile, {
-          currentYear: now.getUTCFullYear(),
-        }).issues.filter((issue) => issue.field.startsWith("deceased"));
-        if (issues.length > 0) {
-          return reply.code(422).send({ error: "validation_failed", issues });
-        }
-        set = built.set;
-        remove = built.remove;
-      } else {
-        const built = buildDeceasedClear(stored, now);
-        set = built.set;
-        remove = built.remove;
-      }
-
-      // Ghost-first-gated (N65): the forced unsubscribes on a raise — and the
-      // restored subscription on a reverse — push to Ghost *before* Book commits;
-      // a Ghost failure fails the action (`502`, Book untouched). A re-PUT that
-      // edits only the deceased facts changes no consent flag → empty diff → no
-      // Ghost call. Serialized per record so it shares PATCH's write ordering.
-      const consentDiff = computeConsentDiff(stored, set);
-      return recordLock.run(id, async () => {
-        try {
-          await pushGhostUpdate(ghostLifecycle, stored, consentDiff);
-        } catch (error) {
-          if (error instanceof GhostPushError) {
-            return reply.code(502).send({ error: "ghost_update_failed" });
-          }
-          throw error;
-        }
-
-        let result: { token: string; next: Profile };
-        try {
-          result = await commitStatusWrite(store, cache, id, stored, set, remove);
-        } catch (error) {
-          return handleMissing(error, reply);
-        }
-        audit.record(
-          {
-            action: "profile.deceased",
-            actorId,
-            targetId: id,
-            outcome: "ok",
-            fields: auditFields(set, remove),
-            trace,
+      // The whole write runs under the shared per-record lock (N65; OFC-220/221/226):
+      // the consent SNAPSHOT and the pushed diff are built inside the lock from a FRESH
+      // read (`currentOr404`), so a PATCH that changed consent before this task acquired
+      // the lock is reflected — otherwise a later reverse would restore a stale snapshot
+      // and re-subscribe a brother who had unsubscribed (OFC-221). Ghost push precedes
+      // the Book commit; a Ghost failure aborts clean (502, Book untouched).
+      let outcome: {
+        token: string;
+        next: Profile;
+        set: Partial<Profile>;
+        remove: (keyof Profile)[];
+      };
+      try {
+        outcome = await runRecordWrite(recordLock, id, {
+          prepare: () => {
+            const current = currentOr404(cache, id);
+            const built = raising
+              ? buildDeceasedRaise(body as DeceasedBody, current, now)
+              : buildDeceasedClear(current, now);
+            if (raising) {
+              // Validate the candidate; surface only deceased-field issues (the endpoint
+              // writes nothing else, so an unrelated legacy value must not block it).
+              const issues = validateProfile({ ...current, ...built.set } as Profile, {
+                currentYear: now.getUTCFullYear(),
+              }).issues.filter((issue) => issue.field.startsWith("deceased"));
+              if (issues.length > 0) {
+                throw new WriteValidationError(issues);
+              }
+            }
+            return {
+              current,
+              set: built.set,
+              remove: built.remove,
+              consentDiff: computeConsentDiff(current, built.set),
+            };
           },
-          now.toISOString(),
-        );
-        return replyRecord(reply, result.next, role, result.token);
-      });
+          ghostStep: (p) =>
+            pushGhostUpdate(ghostLifecycle, p.current, p.consentDiff).then(() => undefined),
+          commit: async (p) => {
+            const { token, next } = await commitStatusWrite(
+              store,
+              cache,
+              id,
+              p.current,
+              p.set,
+              p.remove,
+            );
+            return { token, next, set: p.set, remove: p.remove };
+          },
+        });
+      } catch (error) {
+        return replyWriteError(error, reply);
+      }
+      audit.record(
+        {
+          action: "profile.deceased",
+          actorId,
+          targetId: id,
+          outcome: "ok",
+          fields: auditFields(outcome.set, outcome.remove),
+          trace,
+        },
+        now.toISOString(),
+      );
+      return replyRecord(reply, outcome.next, role, outcome.token);
     },
   );
 }
@@ -261,63 +281,85 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
 
       const now = clock();
 
-      // Serialized per record (N65) so the Ghost step and the Book write share the
-      // same ordering guarantee as PATCH/deceased.
-      return recordLock.run(id, async () => {
-        // Ghost-first (D96/D98): the member delete/create runs before any Book
-        // write. A failure aborts clean — nothing below has mutated Firestore/GCS/
-        // the cache. A **reverse** re-creates the member and gets a *fresh*
-        // `ghostMemberId` (N65/N67) — the stale one must not survive, so it is
-        // folded into the reinstating write below.
-        let createResult: GhostCreateResult | undefined;
-        try {
-          if (raising) {
-            await ghostLifecycle.deleteMember(stored);
-          } else {
-            createResult = await ghostLifecycle.createMember(stored);
-          }
-        } catch {
-          const error = raising ? "ghost_delete_failed" : "ghost_create_failed";
-          return reply.code(502).send({ error });
-        }
+      // Under the shared per-record lock (N65; OFC-220/221/226): Ghost-first
+      // (D96/D98) — the member delete/create runs (in `ghostStep`) before any Book
+      // write, and a failure aborts clean via GhostStepError → 502. A **reverse**
+      // re-creates the member and gets a *fresh* `ghostMemberId` (N65/N67), folded
+      // into the reinstating write; a **raise** drops the now-dangling id (OFC-222).
+      // The snapshot is captured from a FRESH in-lock read (OFC-221).
+      interface DebrotherPrepared {
+        current: Profile;
+        created?: GhostCreateResult;
+      }
+      let outcome: {
+        token: string;
+        next: Profile;
+        set: Partial<Profile>;
+        remove: (keyof Profile)[];
+      };
+      try {
+        outcome = await runRecordWrite<DebrotherPrepared, typeof outcome>(recordLock, id, {
+          prepare: () => ({ current: currentOr404(cache, id) }),
+          ghostStep: async (p) => {
+            try {
+              if (raising) {
+                await ghostLifecycle.deleteMember(p.current);
+              } else {
+                p.created = await ghostLifecycle.createMember(p.current);
+              }
+            } catch (cause) {
+              throw new GhostStepError(
+                raising ? "ghost_delete_failed" : "ghost_create_failed",
+                cause,
+              );
+            }
+          },
+          commit: async (p) => {
+            const { set, remove } = raising
+              ? buildDebrotherRaise(p.current, now)
+              : buildDebrotherReverse(p.current, now, p.created?.ghostMemberId);
+            const { token, next } = await commitStatusWrite(
+              store,
+              cache,
+              id,
+              p.current,
+              set,
+              remove,
+            );
+            return { token, next, set, remove };
+          },
+        });
+      } catch (error) {
+        return replyWriteError(error, reply);
+      }
+      const { set, remove } = outcome;
 
-        const { set, remove } = raising
-          ? buildDebrotherRaise(stored, now)
-          : buildDebrotherReverse(stored, now, createResult?.ghostMemberId);
-        let result: { token: string; next: Profile };
-        try {
-          result = await commitStatusWrite(store, cache, id, stored, set, remove);
-        } catch (error) {
-          return handleMissing(error, reply);
-        }
-
-        // Revoke the de-brothered member's live sessions on a raise (OFC-147): the
-        // sign-in denial (D115) blocks only *new* sessions, so without this a member
-        // de-brothered mid-session keeps directory access until the 4-hour cap (D22).
-        // Only on raise — reinstating restores access, it does not withdraw it.
-        // Best-effort (OFC-146 review): the gate's de-brothered liveness check is the
-        // structural backstop here, so a transient failure degrades safely and logs.
-        const sessionsRevoked = raising
-          ? await revokeSessionsBestEffort(sessionStore, id, {
-              action: "profile.debrother",
-              actorId,
-            })
-          : undefined;
-
-        audit.record(
-          {
+      // Revoke the de-brothered member's live sessions on a raise (OFC-147): the
+      // sign-in denial (D115) blocks only *new* sessions, so without this a member
+      // de-brothered mid-session keeps directory access until the 4-hour cap (D22).
+      // Only on raise — reinstating restores access, it does not withdraw it.
+      // Best-effort (OFC-146 review): the gate's de-brothered liveness check is the
+      // structural backstop here, so a transient failure degrades safely and logs.
+      const sessionsRevoked = raising
+        ? await revokeSessionsBestEffort(sessionStore, id, {
             action: "profile.debrother",
             actorId,
-            targetId: id,
-            outcome: "ok",
-            fields: auditFields(set, remove),
-            sessionsRevoked,
-            trace,
-          },
-          now.toISOString(),
-        );
-        return replyRecord(reply, result.next, role, result.token);
-      });
+          })
+        : undefined;
+
+      audit.record(
+        {
+          action: "profile.debrother",
+          actorId,
+          targetId: id,
+          outcome: "ok",
+          fields: auditFields(set, remove),
+          sessionsRevoked,
+          trace,
+        },
+        now.toISOString(),
+      );
+      return replyRecord(reply, outcome.next, role, outcome.token);
     },
   );
 }
@@ -398,6 +440,12 @@ function buildDeceasedClear(
  * consent flags are **not** forced off — the Ghost member deletion (already done,
  * Ghost-first) is what stops the mail, and the reconcile treats a de-brothered
  * profile as expected-to-have-no-Ghost-member (D99).
+ *
+ * **`ghostMemberId` is removed** (OFC-222): the Ghost member was just deleted, so
+ * the stored id now dangles. Leaving it would make any later pushed-field PATCH on
+ * the de-brothered record push to a deleted member → a hard `502`, rendering the
+ * record un-editable; and the D99 reconcile would see an id pointing at nothing.
+ * The reverse path re-mints a fresh id via `createMember`.
  */
 function buildDebrotherRaise(
   stored: Profile,
@@ -408,7 +456,7 @@ function buildDebrotherRaise(
     debrotherConsentSnapshot: captureConsentSnapshot(stored),
     lastModified: now.toISOString(),
   };
-  return { set, remove: [] };
+  return { set, remove: ["ghostMemberId"] };
 }
 
 /**
@@ -495,12 +543,18 @@ function auditFields(set: Partial<Profile>, remove: readonly (keyof Profile)[]):
   return [...Object.keys(set), ...remove].filter((field) => !housekeeping.has(field));
 }
 
-/** Map a store `MissingProfileError` (TOCTOU delete) to a 404; rethrow anything else. */
-function handleMissing(error: unknown, reply: FastifyReply): FastifyReply {
-  if (error instanceof MissingProfileError) {
-    return reply.code(404).send({ error: "not_found", message: "No such brother." });
+/**
+ * Read the record's **current** cached state, inside the lock, or throw
+ * `MissingProfileError` (→ 404) if it vanished. The fresh read is what makes the
+ * consent snapshot and the pushed diff reflect a concurrent write that committed
+ * before this task acquired the lock (OFC-221).
+ */
+function currentOr404(cache: ProfileCache, id: number): Profile {
+  const current = cache.getById(id);
+  if (!current) {
+    throw new MissingProfileError();
   }
-  throw error;
+  return current;
 }
 
 /** The verify response: `{ lastVerifiedDate, verifiedBy }` (API-SPEC §3) + the fresh ETag. */

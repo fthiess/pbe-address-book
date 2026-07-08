@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { RosterVerifier } from "../identity/google-oidc.js";
+import { RosterUnavailableError, type RosterVerifier } from "../identity/google-oidc.js";
 import { readRateLimit } from "../security/rate-limit.js";
 
 /**
@@ -40,7 +40,15 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
     }
     try {
       await deps.verifier.verify(token);
-    } catch {
+    } catch (error) {
+      // A transient JWKS/key-resolution failure is an availability problem, not a bad
+      // token — return a retryable 503 so the Linter backs off instead of treating a
+      // valid credential as permanently rejected (OFC-223). Everything else is a 401.
+      if (error instanceof RosterUnavailableError) {
+        return reply
+          .code(503)
+          .send({ error: "verification_unavailable", message: "Try again shortly." });
+      }
       return reply.code(401).send({ error: "unauthenticated", message: "Invalid identity token." });
     }
 
@@ -52,11 +60,15 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
   });
 }
 
-/** Extract the bearer token from an `Authorization: Bearer <token>` header. */
+/**
+ * Extract the bearer token from an `Authorization` header. The scheme match is
+ * **case-insensitive** per RFC 6750 / RFC 7235 (`Bearer`/`bearer`/`BEARER` are all
+ * valid), so a valid token isn't rejected over letter case (OFC-224).
+ */
 function bearerToken(header: string | undefined): string | null {
   if (typeof header !== "string") {
     return null;
   }
-  const match = /^Bearer (.+)$/.exec(header.trim());
+  const match = /^Bearer[ ]+(.+)$/i.exec(header.trim());
   return match?.[1] ? match[1].trim() : null;
 }

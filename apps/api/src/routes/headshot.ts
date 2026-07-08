@@ -8,6 +8,8 @@ import { effectiveRole } from "../identity/types.js";
 import { UnprocessableImageError, encodeHeadshot } from "../images/encode.js";
 import { writeRateLimit } from "../security/rate-limit.js";
 import type { Clock } from "./profiles.js";
+import type { RecordLock } from "./record-lock.js";
+import { runRecordWrite } from "./record-write.js";
 import { traceId } from "./trace.js";
 
 /** The content type of every object this pipeline stores. */
@@ -34,6 +36,14 @@ export interface HeadshotRouteDeps {
    * tests are deterministic and so it can never be a guessable sequential counter.
    */
   mintVersion: () => string;
+  /**
+   * The shared per-record write serializer (OFC-220). The headshot pointer write
+   * advances the profile's concurrency token, so it must serialize with the
+   * Ghost-gated writes (PATCH/deceased/debrother) — a pointer advance landing
+   * during a PATCH's awaited Ghost push would otherwise 412 that PATCH after Ghost
+   * was already mutated.
+   */
+  recordLock: RecordLock;
 }
 
 /**
@@ -64,7 +74,7 @@ export interface HeadshotRouteDeps {
  * only (N42).
  */
 export function registerHeadshotRoutes(app: FastifyInstance, deps: HeadshotRouteDeps): void {
-  const { cache, gate, store, imageStore, audit, clock, mintVersion } = deps;
+  const { cache, gate, store, imageStore, audit, clock, mintVersion, recordLock } = deps;
 
   // An encapsulated child scope (OFC-131): the raw-image parser and the 8 MB
   // per-route body limit live here and do not shadow body parsing for any route
@@ -132,6 +142,11 @@ export function registerHeadshotRoutes(app: FastifyInstance, deps: HeadshotRoute
         }
 
         // Pointer LAST — the unconditional advance (N42) that mints the fresh ETag.
+        // Only the pointer write + cache update take the per-record lock (OFC-220);
+        // the slow encode and object puts above deliberately stay outside it, so a
+        // decode spike never holds the lock (and thus never blocks a concurrent PATCH
+        // on the same record for its whole duration). The lock is held only across
+        // the quick token-advancing write, which is what must serialize.
         const now = clock();
         const set: Partial<Profile> = {
           hasHeadshot: true,
@@ -140,7 +155,21 @@ export function registerHeadshotRoutes(app: FastifyInstance, deps: HeadshotRoute
         };
         let token: string;
         try {
-          token = await store.updateUnconditional(id, { set, remove: [] });
+          token = await runRecordWrite(recordLock, id, {
+            prepare: () => undefined,
+            commit: async () => {
+              const t = await store.updateUnconditional(id, { set, remove: [] });
+              // Merge the pointer onto the CURRENT cached record, not the pre-encode
+              // `stored` snapshot (OFC-125): a `PATCH` on the same record can commit
+              // during the slow encode, so spreading `stored` would revert that text
+              // in the read model. `headshotVersion` is `protected`, so a concurrent
+              // PATCH never touches it; `stored`'s prior version is still the right one
+              // to purge below.
+              const current = cache.getById(id) ?? stored;
+              await cache.applyUpdate({ ...current, ...set }, t);
+              return t;
+            },
+          });
         } catch (error) {
           if (error instanceof MissingProfileError) {
             // The record vanished between the existence check and the write: undo the
@@ -150,15 +179,6 @@ export function registerHeadshotRoutes(app: FastifyInstance, deps: HeadshotRoute
           }
           throw error;
         }
-
-        // Merge the pointer onto the CURRENT cached record, not the pre-encode
-        // `stored` snapshot (OFC-125): a `PATCH` on the same record can commit during
-        // the slow encode, so spreading `stored` would revert that text in the read
-        // model (Firestore keeps the PATCH — the pointer write only `update()`s its
-        // own fields). `headshotVersion` is `protected`, so a concurrent PATCH never
-        // touches it; `stored`'s prior version is still the right one to purge below.
-        const current = cache.getById(id) ?? stored;
-        await cache.applyUpdate({ ...current, ...set }, token);
 
         // Purge the superseded prior version's objects (D94). Best-effort: a failed
         // cleanup leaves an orphan the bucket's versioning + 90-day lifecycle still
@@ -213,21 +233,27 @@ export function registerHeadshotRoutes(app: FastifyInstance, deps: HeadshotRoute
 
         // Pointer FIRST for a removal: flip `hasHeadshot` off (and drop the version)
         // before deleting the objects, so the pointer never references gone objects.
+        // Under the shared per-record lock (OFC-220), like the PUT pointer write.
         let token: string;
         try {
-          token = await store.updateUnconditional(id, { set, remove: ["headshotVersion"] });
+          token = await runRecordWrite(recordLock, id, {
+            prepare: () => undefined,
+            commit: async () => {
+              const t = await store.updateUnconditional(id, { set, remove: ["headshotVersion"] });
+              // Merge onto the CURRENT cached record (OFC-125, same interleave concern
+              // as PUT), dropping `headshotVersion` (destructure-omit, not `delete`).
+              const current = cache.getById(id) ?? stored;
+              const { headshotVersion: _removed, ...withoutVersion } = current;
+              await cache.applyUpdate({ ...withoutVersion, ...set }, t);
+              return t;
+            },
+          });
         } catch (error) {
           if (error instanceof MissingProfileError) {
             return reply.code(404).send({ error: "not_found", message: "No such brother." });
           }
           throw error;
         }
-
-        // Merge onto the CURRENT cached record (OFC-125, same interleave concern as
-        // PUT), dropping `headshotVersion` (destructure-omit, not `delete`).
-        const current = cache.getById(id) ?? stored;
-        const { headshotVersion: _removed, ...withoutVersion } = current;
-        await cache.applyUpdate({ ...withoutVersion, ...set }, token);
 
         if (priorVersion) {
           await purge(imageStore, [

@@ -1,6 +1,11 @@
 import { type KeyObject, sign as cryptoSign, generateKeyPairSync } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { type GoogleKeyResolver, GoogleOidcVerifier, RosterAuthError } from "./google-oidc.js";
+import {
+  type GoogleKeyResolver,
+  GoogleOidcVerifier,
+  RosterAuthError,
+  RosterUnavailableError,
+} from "./google-oidc.js";
 
 const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
 
@@ -90,5 +95,20 @@ describe("GoogleOidcVerifier (subject-pinned roster auth, D58/D78)", () => {
   it("rejects a token with no kid", async () => {
     const token = mintToken(validPayload(), { kid: "" });
     await expect(verifier().verify(token)).rejects.toThrow(/kid/);
+  });
+
+  it("surfaces a transient key-resolution failure as RosterUnavailableError, not RosterAuthError (OFC-223)", async () => {
+    const flaky = new GoogleOidcVerifier({
+      keyResolver: {
+        resolve: async () => {
+          throw new Error("JWKS endpoint 503");
+        },
+      },
+      audience: AUDIENCE,
+      subject: SUBJECT,
+    });
+    const error = await flaky.verify(mintToken(validPayload())).catch((e) => e);
+    expect(error).toBeInstanceOf(RosterUnavailableError);
+    expect(error).not.toBeInstanceOf(RosterAuthError);
   });
 });

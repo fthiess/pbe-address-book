@@ -68,10 +68,20 @@ const GHOST_NEWSLETTER_ID = process.env.GHOST_NEWSLETTER_ID;
 const ROSTER_AUDIENCE = process.env.ROSTER_AUDIENCE;
 const ROSTER_LINTER_SUBJECT = process.env.ROSTER_LINTER_SUBJECT;
 
-/** Build the real Ghost Admin client when configured, else undefined (→ stub). */
+/**
+ * Build the real Ghost Admin client when configured, else undefined (→ stub). When
+ * the Admin key IS set, `GHOST_NEWSLETTER_ID` must be too — the `GhostAdminLifecycle`
+ * constructor throws without it, so a half-configured deploy fails fast at startup
+ * rather than silently pushing newsletter *unsubscribes* (OFC-219).
+ */
 function resolveGhostLifecycle(): GhostLifecycle | undefined {
   if (!GHOST_ADMIN_API_URL || !GHOST_ADMIN_API_KEY) {
     return undefined;
+  }
+  if (!GHOST_NEWSLETTER_ID) {
+    throw new Error(
+      "GHOST_ADMIN_API_URL/KEY are set but GHOST_NEWSLETTER_ID is not — refusing to start (OFC-219).",
+    );
   }
   return new GhostAdminLifecycle({
     apiUrl: GHOST_ADMIN_API_URL,

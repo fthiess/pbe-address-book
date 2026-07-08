@@ -1,36 +1,34 @@
-import { KeyObject, verify as cryptoVerify, type webcrypto } from "node:crypto";
+import { KeyObject, type webcrypto } from "node:crypto";
 import { createRemoteJWKSet } from "jose";
+import {
+  JWT_CLOCK_SKEW_SEC,
+  JwtKeyResolutionError,
+  type JwtKeyResolver,
+  JwtVerifyError,
+  verifyRsJwt,
+} from "./jwt-verify.js";
 
 /**
  * Google service-account OIDC verification for the Linter roster endpoint
  * (DECISIONS D58/D78; ENGINEERING-DESIGN §5.2). The Linter authenticates with a
  * short-lived **Google-signed** identity token (not the Ghost session cookie); the
- * roster endpoint verifies it **in-code** against Google's JWKS, requiring
- * `iss` = Google, `aud` = Book, **and `sub` = the exact pinned Linter service
- * account** — the subject pin is essential, since issuer + audience alone would
- * accept any Google-issued token for that audience.
+ * roster endpoint verifies it **in-code**, requiring `iss` = Google, `aud` = Book,
+ * **and `sub` = the exact pinned Linter service account** — the subject pin is
+ * essential, since issuer + audience alone would accept any Google-issued token for
+ * that audience.
  *
- * The shape deliberately mirrors the Ghost JWKS check (`ghost-provider.ts`): the
- * algorithm is pinned (RS256 — Google's signing alg, 2048-bit keys), `alg:none`
- * and every symmetric algorithm are rejected before any key is touched, the `kid`
- * is required and resolved against the JWKS, and `iss`/`aud`/`sub`/`exp`/`nbf` are
- * checked explicitly. The signature is checked with Node `crypto.verify`.
+ * The signature + algorithm pin + kid-resolve are the **shared** {@link verifyRsJwt}
+ * skeleton (OFC-225), the same one the Ghost members check uses, so the security-
+ * critical logic cannot drift between the two auth paths. Only the registered-claim
+ * checks live here. Google signs identity tokens with RS256 over 2048-bit keys.
  */
 
 /** Google's OIDC discovery values. */
 const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 const GOOGLE_ISSUERS = ["https://accounts.google.com", "accounts.google.com"];
 
-/** Google signs identity tokens with RS256; only that maps to a digest here. */
-const ALG_TO_DIGEST: Record<string, string> = { RS256: "RSA-SHA256" };
-
-/** Clock-skew tolerance on `exp`/`nbf`, matching the Ghost verifier. */
-const CLOCK_SKEW_SEC = 60;
-
-/** Resolves a JWKS key by `kid` to a Node `KeyObject`. Injectable for tests. */
-export interface GoogleKeyResolver {
-  resolve(header: { alg: string; kid?: string }): Promise<KeyObject>;
-}
+/** The key-resolver shape (an alias of the shared {@link JwtKeyResolver}). */
+export type GoogleKeyResolver = JwtKeyResolver;
 
 /** Build the Google JWKS key resolver (fetch/cache/rotate via jose's remote set). */
 export function createGoogleKeyResolver(jwksUrl: string = GOOGLE_JWKS_URL): GoogleKeyResolver {
@@ -61,7 +59,7 @@ export interface GoogleOidcVerifierDeps {
   algorithms?: string[];
 }
 
-/** Thrown on any verification failure; the roster route maps it to `401`. */
+/** Thrown on a genuine verification failure (bad token); the roster route maps it to `401`. */
 export class RosterAuthError extends Error {
   constructor(message: string) {
     super(message);
@@ -69,51 +67,39 @@ export class RosterAuthError extends Error {
   }
 }
 
+/**
+ * Thrown on a **transient** failure to resolve Google's signing key (JWKS
+ * unreachable / rate-limited); the roster route maps it to a retryable `503` so the
+ * Linter backs off and retries rather than treating a valid token as permanently
+ * rejected (OFC-223).
+ */
+export class RosterUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RosterUnavailableError";
+  }
+}
+
 export class GoogleOidcVerifier implements RosterVerifier {
   constructor(private readonly deps: GoogleOidcVerifierDeps) {}
 
   async verify(token: string): Promise<void> {
-    const parts = token.split(".");
-    const [headerB64, payloadB64, signatureB64] = parts;
-    if (parts.length !== 3 || !headerB64 || !payloadB64 || !signatureB64) {
-      throw new RosterAuthError("malformed JWT");
-    }
-
-    const header = decodeSegment(headerB64);
-    const payload = decodeSegment(payloadB64);
-
-    // Algorithm pin: only the configured asymmetric RS algorithm(s).
-    const allowed = this.deps.algorithms ?? ["RS256"];
-    const alg = typeof header.alg === "string" ? header.alg : "";
-    const digest = ALG_TO_DIGEST[alg];
-    if (!digest || !allowed.includes(alg)) {
-      throw new RosterAuthError(`disallowed algorithm: ${alg || "none"}`);
-    }
-    if (typeof header.kid !== "string" || header.kid.length === 0) {
-      throw new RosterAuthError("token header has no kid");
-    }
-
-    // Resolve the signing key by kid and verify the signature.
-    let verified: boolean;
+    // Signature + alg pin + kid-resolve via the shared verifier. A key-resolution
+    // failure is transient (→ 503, OFC-223); any other failure is a bad token (→ 401).
+    let payload: Record<string, unknown>;
     try {
-      const key = await this.deps.keyResolver.resolve({ alg, kid: header.kid });
-      if (key.asymmetricKeyType !== "rsa") {
-        throw new RosterAuthError("JWKS key is not RSA");
-      }
-      verified = cryptoVerify(
-        digest,
-        Buffer.from(`${headerB64}.${payloadB64}`),
-        key,
-        Buffer.from(signatureB64, "base64url"),
-      );
+      ({ payload } = await verifyRsJwt(token, {
+        keyResolver: this.deps.keyResolver,
+        allowedAlgs: this.deps.algorithms ?? ["RS256"],
+      }));
     } catch (error) {
-      if (error instanceof RosterAuthError) {
-        throw error;
+      if (error instanceof JwtKeyResolutionError) {
+        throw new RosterUnavailableError(error.message);
       }
-      throw new RosterAuthError(`signature verification failed: ${describe(error)}`);
-    }
-    if (!verified) {
-      throw new RosterAuthError("bad signature");
+      if (error instanceof JwtVerifyError) {
+        throw new RosterAuthError(error.message);
+      }
+      throw error;
     }
 
     // Registered-claim checks: iss / aud / sub (the pin) / exp / nbf.
@@ -132,28 +118,11 @@ export class GoogleOidcVerifier implements RosterVerifier {
       throw new RosterAuthError("unexpected subject");
     }
     const nowSec = Date.now() / 1000;
-    if (typeof payload.exp !== "number" || payload.exp + CLOCK_SKEW_SEC < nowSec) {
+    if (typeof payload.exp !== "number" || payload.exp + JWT_CLOCK_SKEW_SEC < nowSec) {
       throw new RosterAuthError("token expired");
     }
-    if (typeof payload.nbf === "number" && payload.nbf - CLOCK_SKEW_SEC > nowSec) {
+    if (typeof payload.nbf === "number" && payload.nbf - JWT_CLOCK_SKEW_SEC > nowSec) {
       throw new RosterAuthError("token not yet valid");
     }
   }
-}
-
-/** Decode a base64url JWT segment to its JSON object, or throw `RosterAuthError`. */
-function decodeSegment(segment: string): Record<string, unknown> {
-  try {
-    const value = JSON.parse(Buffer.from(segment, "base64url").toString("utf8"));
-    if (value === null || typeof value !== "object") {
-      throw new Error("not an object");
-    }
-    return value as Record<string, unknown>;
-  } catch {
-    throw new RosterAuthError("unparseable JWT segment");
-  }
-}
-
-function describe(error: unknown): string {
-  return error instanceof Error ? error.message : "unknown error";
 }

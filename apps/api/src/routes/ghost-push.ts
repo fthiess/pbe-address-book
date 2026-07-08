@@ -4,9 +4,10 @@ import type { GhostLifecycle, GhostMemberDiff } from "../identity/ghost-lifecycl
 /**
  * The Ghost-first-gated update push shared by `PATCH /api/profiles/{id}` and
  * `PUT …/deceased` (DECISIONS N65). Both endpoints compute the changed subset of
- * the four pushed fields, then — before committing to Firestore — call
- * {@link pushGhostUpdate}, which forwards a non-empty diff to Ghost and lets a
- * failure abort the whole save (`502 ghost_update_failed`, Book untouched).
+ * the three pushed fields (email, name, `allowNewsletterEmail`), then — before
+ * committing to Firestore — call {@link pushGhostUpdate}, which forwards a
+ * non-empty diff to Ghost and lets a failure abort the whole save
+ * (`502 ghost_update_failed`, Book untouched).
  */
 
 /** The profile fields whose change drives a Ghost push (N65). */
@@ -69,21 +70,32 @@ export function hasGhostDiff(diff: GhostMemberDiff): boolean {
   return Object.keys(diff).length > 0;
 }
 
-/** Thrown by {@link pushGhostUpdate} on a clear Ghost failure → caller returns `502`. */
-export class GhostPushError extends Error {
-  constructor(cause: unknown) {
-    super(`ghost update push failed: ${cause instanceof Error ? cause.message : String(cause)}`);
-    this.name = "GhostPushError";
+/**
+ * Thrown by a Ghost-first step to abort a record write **clean** — before any Book
+ * mutation — so the endpoint returns `502 { error: code }` with Book untouched
+ * (N65). One error type carries every Ghost-step failure so all three write paths
+ * map it identically: `code` is `ghost_update_failed` for the diff push
+ * ({@link pushGhostUpdate}) and `ghost_delete_failed` / `ghost_create_failed` for
+ * the de-brother member delete / re-create.
+ */
+export class GhostStepError extends Error {
+  constructor(
+    readonly code: string,
+    cause?: unknown,
+  ) {
+    super(`ghost step failed (${code}): ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = "GhostStepError";
   }
 }
 
 /**
  * Perform the Ghost-first-gated push (N65): if `diff` is non-empty **and** the
  * profile has a `ghostMemberId`, push it to Ghost; a Ghost failure throws
- * {@link GhostPushError} so the caller aborts the save with `502` and Book stays
- * untouched. An empty diff (no pushed field changed) or a profile with no
- * `ghostMemberId` (nothing to update — e.g. a fake-data staging profile) is a
- * no-op that never contacts Ghost. Returns whether a push was actually made.
+ * {@link GhostStepError} (`ghost_update_failed`) so the caller aborts the save with
+ * `502` and Book stays untouched. An empty diff (no pushed field changed) or a
+ * profile with no `ghostMemberId` (nothing to update — e.g. a de-brothered record,
+ * or a fake-data staging profile) is a no-op that never contacts Ghost. Returns
+ * whether a push was actually made.
  */
 export async function pushGhostUpdate(
   ghostLifecycle: GhostLifecycle,
@@ -97,6 +109,6 @@ export async function pushGhostUpdate(
     await ghostLifecycle.updateMember(profile, diff);
     return true;
   } catch (cause) {
-    throw new GhostPushError(cause);
+    throw new GhostStepError("ghost_update_failed", cause);
   }
 }
