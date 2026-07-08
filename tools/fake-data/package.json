@@ -8,11 +8,13 @@
     "seed:staging": "tsx src/seed-staging.ts",
     "seed:staging-images": "tsx src/seed-staging-images.ts",
     "author:thumbnails": "tsx src/author-thumbnails.ts",
-    "link:staging-tester": "tsx src/link-staging-tester.ts"
+    "link:staging-tester": "tsx src/link-staging-tester.ts",
+    "mirror:ghost-staging": "tsx src/mirror-ghost-staging.ts"
   },
   "dependencies": {
     "@pbe/shared": "*",
-    "firebase-admin": "^13.0.2"
+    "firebase-admin": "^13.0.2",
+    "jose": "^6.2.3"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",

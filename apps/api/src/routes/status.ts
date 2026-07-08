@@ -3,10 +3,11 @@ import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from "fasti
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { ProfileStore } from "../data/profiles.js";
-import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
+import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
 import { writeRateLimit } from "../security/rate-limit.js";
+import { GhostStepError, computeConsentDiff, pushGhostUpdate } from "./ghost-push.js";
 import {
   MissingProfileError,
   authorizePrivileged,
@@ -15,6 +16,8 @@ import {
   revokeSessionsBestEffort,
 } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
+import type { RecordLock } from "./record-lock.js";
+import { WriteValidationError, replyWriteError, runRecordWrite } from "./record-write.js";
 
 /**
  * The profile **status** actions of 4c-2 (the privileged-action slice, DECISIONS
@@ -43,8 +46,10 @@ export interface StatusRouteDeps {
   sessionStore: SessionService;
   audit: AuditLog;
   clock: Clock;
-  /** Ghost-first member lifecycle (N41); a succeed-and-log stub until Phase 5. */
+  /** Ghost-first member lifecycle (N41/N65): deceased pushes the consent diff, de-brother the member. */
   ghostLifecycle: GhostLifecycle;
+  /** Per-record write serializer (N65): shared with PATCH so all pushed-field writes serialize. */
+  recordLock: RecordLock;
 }
 
 export function registerStatusRoutes(app: FastifyInstance, deps: StatusRouteDeps): void {
@@ -62,7 +67,7 @@ export function registerStatusRoutes(app: FastifyInstance, deps: StatusRouteDeps
  * response still carries the record's current verification and `ETag`.
  */
 function registerVerify(app: FastifyInstance, deps: StatusRouteDeps): void {
-  const { cache, gate, store, audit, clock } = deps;
+  const { cache, gate, store, audit, clock, recordLock } = deps;
   app.post(
     "/api/profiles/:id/verify",
     { preHandler: gate, config: writeRateLimit() },
@@ -93,11 +98,18 @@ function registerVerify(app: FastifyInstance, deps: StatusRouteDeps): void {
         verifiedBy: actorId,
         lastModified: now.toISOString(),
       };
+      // Under the shared per-record lock (OFC-220): verify advances the concurrency
+      // token, so it must serialize with the Ghost-gated writes — otherwise it could
+      // commit during a PATCH's awaited Ghost push and 412 that PATCH after Ghost was
+      // mutated. No Ghost step of its own.
       let result: { token: string; next: Profile };
       try {
-        result = await commitStatusWrite(store, cache, id, stored, set, []);
+        result = await runRecordWrite(recordLock, id, {
+          prepare: () => currentOr404(cache, id),
+          commit: (current) => commitStatusWrite(store, cache, id, current, set, []),
+        });
       } catch (error) {
-        return handleMissing(error, reply);
+        return replyWriteError(error, reply);
       }
       audit.record(
         {
@@ -124,7 +136,7 @@ function registerVerify(app: FastifyInstance, deps: StatusRouteDeps): void {
  * edits the facts (no re-snapshot, no re-force). Reversing restores the snapshot.
  */
 function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
-  const { cache, gate, store, audit, clock } = deps;
+  const { cache, gate, store, audit, clock, ghostLifecycle, recordLock } = deps;
   app.put(
     "/api/profiles/:id/deceased",
     { preHandler: gate, config: writeRateLimit() },
@@ -141,7 +153,9 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
       if (ctx === null) {
         return reply;
       }
-      const { actorId, role, id, stored, trace } = ctx;
+      // `stored` from the auth ctx is intentionally not used for the write: the
+      // consent snapshot + diff are built from a FRESH in-lock read (OFC-221).
+      const { actorId, role, id, trace } = ctx;
 
       const body = request.body;
       if (body === null || typeof body !== "object" || Array.isArray(body)) {
@@ -155,31 +169,58 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
       }
 
       const now = clock();
-      let set: Partial<Profile>;
-      let remove: (keyof Profile)[];
-      if (raising) {
-        const built = buildDeceasedRaise(body as DeceasedBody, stored, now);
-        // Validate the candidate record; surface only deceased-field issues (the
-        // endpoint writes nothing else, so an unrelated legacy value must not block it).
-        const issues = validateProfile({ ...stored, ...built.set } as Profile, {
-          currentYear: now.getUTCFullYear(),
-        }).issues.filter((issue) => issue.field.startsWith("deceased"));
-        if (issues.length > 0) {
-          return reply.code(422).send({ error: "validation_failed", issues });
-        }
-        set = built.set;
-        remove = built.remove;
-      } else {
-        const built = buildDeceasedClear(stored, now);
-        set = built.set;
-        remove = built.remove;
-      }
-
-      let result: { token: string; next: Profile };
+      // The whole write runs under the shared per-record lock (N65; OFC-220/221/226):
+      // the consent SNAPSHOT and the pushed diff are built inside the lock from a FRESH
+      // read (`currentOr404`), so a PATCH that changed consent before this task acquired
+      // the lock is reflected — otherwise a later reverse would restore a stale snapshot
+      // and re-subscribe a brother who had unsubscribed (OFC-221). Ghost push precedes
+      // the Book commit; a Ghost failure aborts clean (502, Book untouched).
+      let outcome: {
+        token: string;
+        next: Profile;
+        set: Partial<Profile>;
+        remove: (keyof Profile)[];
+      };
       try {
-        result = await commitStatusWrite(store, cache, id, stored, set, remove);
+        outcome = await runRecordWrite(recordLock, id, {
+          prepare: () => {
+            const current = currentOr404(cache, id);
+            const built = raising
+              ? buildDeceasedRaise(body as DeceasedBody, current, now)
+              : buildDeceasedClear(current, now);
+            if (raising) {
+              // Validate the candidate; surface only deceased-field issues (the endpoint
+              // writes nothing else, so an unrelated legacy value must not block it).
+              const issues = validateProfile({ ...current, ...built.set } as Profile, {
+                currentYear: now.getUTCFullYear(),
+              }).issues.filter((issue) => issue.field.startsWith("deceased"));
+              if (issues.length > 0) {
+                throw new WriteValidationError(issues);
+              }
+            }
+            return {
+              current,
+              set: built.set,
+              remove: built.remove,
+              consentDiff: computeConsentDiff(current, built.set),
+            };
+          },
+          ghostStep: (p) =>
+            pushGhostUpdate(ghostLifecycle, p.current, p.consentDiff).then(() => undefined),
+          commit: async (p) => {
+            const { token, next } = await commitStatusWrite(
+              store,
+              cache,
+              id,
+              p.current,
+              p.set,
+              p.remove,
+            );
+            return { token, next, set: p.set, remove: p.remove };
+          },
+        });
       } catch (error) {
-        return handleMissing(error, reply);
+        return replyWriteError(error, reply);
       }
       audit.record(
         {
@@ -187,12 +228,12 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
           actorId,
           targetId: id,
           outcome: "ok",
-          fields: auditFields(set, remove),
+          fields: auditFields(outcome.set, outcome.remove),
           trace,
         },
         now.toISOString(),
       );
-      return replyRecord(reply, result.next, role, result.token);
+      return replyRecord(reply, outcome.next, role, outcome.token);
     },
   );
 }
@@ -205,7 +246,7 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
  * (raise) or restores (reverse) consent/verification (D80).
  */
 function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
-  const { cache, gate, store, sessionStore, audit, clock, ghostLifecycle } = deps;
+  const { cache, gate, store, sessionStore, audit, clock, ghostLifecycle, recordLock } = deps;
   app.put(
     "/api/profiles/:id/debrothered",
     { preHandler: gate, config: writeRateLimit() },
@@ -240,28 +281,58 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
 
       const now = clock();
 
-      // Ghost-first (D96/D98): the member delete/create runs before any Book write.
-      // A failure aborts clean — nothing below has mutated Firestore/GCS/the cache.
-      try {
-        if (raising) {
-          await ghostLifecycle.deleteMember(stored);
-        } else {
-          await ghostLifecycle.createMember(stored);
-        }
-      } catch {
-        const error = raising ? "ghost_delete_failed" : "ghost_create_failed";
-        return reply.code(502).send({ error });
+      // Under the shared per-record lock (N65; OFC-220/221/226): Ghost-first
+      // (D96/D98) — the member delete/create runs (in `ghostStep`) before any Book
+      // write, and a failure aborts clean via GhostStepError → 502. A **reverse**
+      // re-creates the member and gets a *fresh* `ghostMemberId` (N65/N67), folded
+      // into the reinstating write; a **raise** drops the now-dangling id (OFC-222).
+      // The snapshot is captured from a FRESH in-lock read (OFC-221).
+      interface DebrotherPrepared {
+        current: Profile;
+        created?: GhostCreateResult;
       }
-
-      const { set, remove } = raising
-        ? buildDebrotherRaise(stored, now)
-        : buildDebrotherReverse(stored, now);
-      let result: { token: string; next: Profile };
+      let outcome: {
+        token: string;
+        next: Profile;
+        set: Partial<Profile>;
+        remove: (keyof Profile)[];
+      };
       try {
-        result = await commitStatusWrite(store, cache, id, stored, set, remove);
+        outcome = await runRecordWrite<DebrotherPrepared, typeof outcome>(recordLock, id, {
+          prepare: () => ({ current: currentOr404(cache, id) }),
+          ghostStep: async (p) => {
+            try {
+              if (raising) {
+                await ghostLifecycle.deleteMember(p.current);
+              } else {
+                p.created = await ghostLifecycle.createMember(p.current);
+              }
+            } catch (cause) {
+              throw new GhostStepError(
+                raising ? "ghost_delete_failed" : "ghost_create_failed",
+                cause,
+              );
+            }
+          },
+          commit: async (p) => {
+            const { set, remove } = raising
+              ? buildDebrotherRaise(p.current, now)
+              : buildDebrotherReverse(p.current, now, p.created?.ghostMemberId);
+            const { token, next } = await commitStatusWrite(
+              store,
+              cache,
+              id,
+              p.current,
+              set,
+              remove,
+            );
+            return { token, next, set, remove };
+          },
+        });
       } catch (error) {
-        return handleMissing(error, reply);
+        return replyWriteError(error, reply);
       }
+      const { set, remove } = outcome;
 
       // Revoke the de-brothered member's live sessions on a raise (OFC-147): the
       // sign-in denial (D115) blocks only *new* sessions, so without this a member
@@ -270,7 +341,10 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
       // Best-effort (OFC-146 review): the gate's de-brothered liveness check is the
       // structural backstop here, so a transient failure degrades safely and logs.
       const sessionsRevoked = raising
-        ? await revokeSessionsBestEffort(sessionStore, id, { action: "profile.debrother", actorId })
+        ? await revokeSessionsBestEffort(sessionStore, id, {
+            action: "profile.debrother",
+            actorId,
+          })
         : undefined;
 
       audit.record(
@@ -285,7 +359,7 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
         },
         now.toISOString(),
       );
-      return replyRecord(reply, result.next, role, result.token);
+      return replyRecord(reply, outcome.next, role, outcome.token);
     },
   );
 }
@@ -306,8 +380,8 @@ interface DeceasedBody {
  * Build the write for **raising or editing** a deceased record. The five D122
  * fields replace the deceased block (PUT semantics — an omitted field clears).
  * On the *first* raise (`stored` not yet deceased) this also performs the D80
- * coordination: capture the consent/verification snapshot, force both email
- * flags off, and stamp `newsletterConsentChangedAt` if newsletter consent
+ * coordination: capture the consent/verification snapshot, force the newsletter
+ * flag off, and stamp `newsletterConsentChangedAt` if newsletter consent
  * actually changed. Verification is **frozen**, not cleared (D48) — left as-is,
  * captured in the snapshot for a faithful restore. A re-PUT on an already-deceased
  * record edits only the facts (the snapshot and consent are untouched).
@@ -331,7 +405,6 @@ function buildDeceasedRaise(
     // First raise: the D80 force-off + snapshot.
     set.deceasedConsentSnapshot = captureConsentSnapshot(stored);
     set.allowNewsletterEmail = false;
-    set.allowCommentReplyEmail = false;
     if (stored.allowNewsletterEmail) {
       set.newsletterConsentChangedAt = now.toISOString();
     }
@@ -367,6 +440,12 @@ function buildDeceasedClear(
  * consent flags are **not** forced off — the Ghost member deletion (already done,
  * Ghost-first) is what stops the mail, and the reconcile treats a de-brothered
  * profile as expected-to-have-no-Ghost-member (D99).
+ *
+ * **`ghostMemberId` is removed** (OFC-222): the Ghost member was just deleted, so
+ * the stored id now dangles. Leaving it would make any later pushed-field PATCH on
+ * the de-brothered record push to a deleted member → a hard `502`, rendering the
+ * record un-editable; and the D99 reconcile would see an id pointing at nothing.
+ * The reverse path re-mints a fresh id via `createMember`.
  */
 function buildDebrotherRaise(
   stored: Profile,
@@ -377,18 +456,28 @@ function buildDebrotherRaise(
     debrotherConsentSnapshot: captureConsentSnapshot(stored),
     lastModified: now.toISOString(),
   };
-  return { set, remove: [] };
+  return { set, remove: ["ghostMemberId"] };
 }
 
-/** Build the write for **reversing** de-brothering: restore the snapshot, clear the flag. */
+/**
+ * Build the write for **reversing** de-brothering: restore the snapshot, clear the
+ * flag, and record the **fresh `ghostMemberId`** the re-created Ghost member
+ * received (N65/N67) — a re-created member gets a new id, so the stale one must not
+ * survive the reversal. `ghostMemberId` is omitted only if the caller had no id to
+ * fold in (e.g. a Ghost step that resolved without one), leaving the stored value.
+ */
 function buildDebrotherReverse(
   stored: Profile,
   now: Date,
+  ghostMemberId: string | undefined,
 ): { set: Partial<Profile>; remove: (keyof Profile)[] } {
   const set: Partial<Profile> = {
     debrothered: { isDebrothered: false },
     lastModified: now.toISOString(),
   };
+  if (ghostMemberId !== undefined) {
+    set.ghostMemberId = ghostMemberId;
+  }
   const remove: (keyof Profile)[] = [];
   restoreConsentSnapshot(stored.debrotherConsentSnapshot, stored, set, remove, now);
   remove.push("debrotherConsentSnapshot");
@@ -413,7 +502,6 @@ function restoreConsentSnapshot(
     return;
   }
   set.allowNewsletterEmail = snapshot.allowNewsletterEmail;
-  set.allowCommentReplyEmail = snapshot.allowCommentReplyEmail;
   if (snapshot.lastVerifiedDate !== undefined) {
     set.lastVerifiedDate = snapshot.lastVerifiedDate;
   } else {
@@ -455,12 +543,18 @@ function auditFields(set: Partial<Profile>, remove: readonly (keyof Profile)[]):
   return [...Object.keys(set), ...remove].filter((field) => !housekeeping.has(field));
 }
 
-/** Map a store `MissingProfileError` (TOCTOU delete) to a 404; rethrow anything else. */
-function handleMissing(error: unknown, reply: FastifyReply): FastifyReply {
-  if (error instanceof MissingProfileError) {
-    return reply.code(404).send({ error: "not_found", message: "No such brother." });
+/**
+ * Read the record's **current** cached state, inside the lock, or throw
+ * `MissingProfileError` (→ 404) if it vanished. The fresh read is what makes the
+ * consent snapshot and the pushed diff reflect a concurrent write that committed
+ * before this task acquired the lock (OFC-221).
+ */
+function currentOr404(cache: ProfileCache, id: number): Profile {
+  const current = cache.getById(id);
+  if (!current) {
+    throw new MissingProfileError();
   }
-  throw error;
+  return current;
 }
 
 /** The verify response: `{ lastVerifiedDate, verifiedBy }` (API-SPEC §3) + the fresh ETag. */

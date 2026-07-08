@@ -37,7 +37,6 @@ export type ColumnKey =
   | "constitutionId"
   // Restricted, manager/administrator only (§5.6.1, off by default):
   | "allowNewsletterEmail"
-  | "allowCommentReplyEmail"
   | "allowShareWithMITAA"
   | "lastVerifiedDate"
   | "lastModified";
@@ -293,18 +292,6 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     roles: STAFF,
     display: (p) => yesNo(p.allowNewsletterEmail),
     sortValue: (p) => boolRank(p.allowNewsletterEmail),
-  },
-  allowCommentReplyEmail: {
-    key: "allowCommentReplyEmail",
-    label: "Comment replies",
-    group: "restricted",
-    width: 132,
-    align: "start",
-    pinned: false,
-    sortable: true,
-    roles: STAFF,
-    display: (p) => yesNo(p.allowCommentReplyEmail),
-    sortValue: (p) => boolRank(p.allowCommentReplyEmail),
   },
   allowShareWithMITAA: {
     key: "allowShareWithMITAA",

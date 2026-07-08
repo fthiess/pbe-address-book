@@ -1,0 +1,81 @@
+import type { FastifyInstance } from "fastify";
+import { RosterUnavailableError, type RosterVerifier } from "../identity/google-oidc.js";
+import { readRateLimit } from "../security/rate-limit.js";
+
+/**
+ * `GET /api/roster` — the PBE News Linter's read-only roster feed (ENGINEERING-
+ * DESIGN §5.2; D58/D78/D112).
+ *
+ * Phase 5b-1 ships the **stub**: the endpoint, its subject-pinned Google service-
+ * account auth, and the contract-version envelope are real; the roster payload is
+ * an empty array (the name/year projection lands with the Linter's own build). The
+ * contract is stable from here — `contractVersion` (a field *and* the
+ * `X-Contract-Version` header) is bumped only on a breaking shape change, letting
+ * the independently-deployed, cross-language Linter pin a version (D112).
+ *
+ * Auth is deliberately **not** the session cookie: the Linter is a service, not a
+ * browser, so the route verifies a Google-signed identity token in-code, requiring
+ * `iss` = Google, `aud` = Book, **and `sub` = the pinned Linter service account**.
+ * Unconfigured (no {@link RosterVerifier} wired) the route fails closed with `503`.
+ */
+export const ROSTER_CONTRACT_VERSION = 1;
+
+export interface RosterRouteDeps {
+  /** The Google-OIDC verifier; omitted when the Linter integration is not configured. */
+  verifier?: RosterVerifier;
+}
+
+export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps): void {
+  app.get("/api/roster", { config: readRateLimit() }, async (request, reply) => {
+    if (!deps.verifier) {
+      // No Linter identity configured for this deployment — fail closed.
+      return reply.code(503).send({ error: "roster_unavailable" });
+    }
+
+    const token = bearerToken(request.headers.authorization);
+    if (!token) {
+      return reply
+        .code(401)
+        .send({ error: "unauthenticated", message: "A Google identity token is required." });
+    }
+    try {
+      await deps.verifier.verify(token);
+    } catch (error) {
+      // A transient JWKS/key-resolution failure is an availability problem, not a bad
+      // token — return a retryable 503 so the Linter backs off instead of treating a
+      // valid credential as permanently rejected (OFC-223). Everything else is a 401.
+      if (error instanceof RosterUnavailableError) {
+        return reply
+          .code(503)
+          .send({ error: "verification_unavailable", message: "Try again shortly." });
+      }
+      return reply.code(401).send({ error: "unauthenticated", message: "Invalid identity token." });
+    }
+
+    return reply
+      .header("Cache-Control", "no-store")
+      .header("X-Contract-Version", String(ROSTER_CONTRACT_VERSION))
+      .header("Content-Type", "application/json; charset=utf-8")
+      .send({ contractVersion: ROSTER_CONTRACT_VERSION, roster: [] });
+  });
+}
+
+/**
+ * Extract the bearer token from an `Authorization` header. The scheme match is
+ * **case-insensitive** per RFC 6750 / RFC 7235 (`Bearer`/`bearer`/`BEARER` are all
+ * valid; OFC-224). Parsed by splitting on the first space rather than a regex, so a
+ * crafted header (`bearer` + many spaces) can't trigger regex backtracking
+ * (polynomial ReDoS on unauthenticated input; OFC-218 follow-up).
+ */
+function bearerToken(header: string | undefined): string | null {
+  if (typeof header !== "string") {
+    return null;
+  }
+  const trimmed = header.trim();
+  const space = trimmed.indexOf(" ");
+  if (space < 0 || trimmed.slice(0, space).toLowerCase() !== "bearer") {
+    return null;
+  }
+  const token = trimmed.slice(space + 1).trim();
+  return token.length > 0 ? token : null;
+}

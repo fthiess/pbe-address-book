@@ -33,7 +33,6 @@ export function makeProfile(overrides: Partial<Profile> = {}): Profile {
     },
     unlisted: false,
     allowNewsletterEmail: true,
-    allowCommentReplyEmail: true,
     allowShareWithMITAA: false,
     lastModified: FIXED_TIMESTAMP,
     newsletterConsentChangedAt: FIXED_TIMESTAMP,

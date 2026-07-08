@@ -1,7 +1,7 @@
-import { verify as cryptoVerify } from "node:crypto";
 import { type Role, formatCanonicalName, normalizeEmail } from "@pbe/shared";
 import type { ProfileCache } from "../data/cache.js";
 import type { KeyResolver } from "./ghost-jwks.js";
+import { JWT_CLOCK_SKEW_SEC, verifyRsJwt } from "./jwt-verify.js";
 import type { NonceService } from "./nonce-store.js";
 import {
   AuthError,
@@ -14,24 +14,13 @@ import {
 /** The 4-hour absolute session cap (DECISIONS D22; ENGINEERING-DESIGN §2.3). */
 const FOUR_HOURS_MS = 4 * 60 * 60 * 1000;
 
-/** Tolerance for clock skew between Book and Ghost when checking `exp`/`nbf`. */
-const CLOCK_SKEW_SEC = 60;
-
 /**
- * The allowed JWT signing algorithms, mapped to the Node digest each one uses.
- * Ghost's members API signs with an **asymmetric RS-family** key (currently
- * RS512), so only RSASSA-PKCS1-v1_5 variants appear here. The security-critical
- * property (D104) is what is *excluded*: `alg:none` and every **symmetric**
- * algorithm — the two classic forges (an unsigned token; an `HS256` token HMAC'd
- * with the RSA public key). Because verification only ever feeds an RSA public
- * key into an RSA digest, there is no code path that could perform a symmetric
- * verification at all.
+ * The allowed JWT signing algorithms. Ghost's members API signs with an
+ * **asymmetric RS-family** key (currently RS512). The security-critical property
+ * (D104) is enforced by the shared {@link verifyRsJwt}: only RSASSA-PKCS1-v1_5
+ * variants map to a digest, so `alg:none` and every **symmetric** algorithm (the
+ * two classic forges) are rejected before any key is touched.
  */
-const ALG_TO_DIGEST: Record<string, string> = {
-  RS256: "RSA-SHA256",
-  RS512: "RSA-SHA512",
-};
-
 const DEFAULT_ALGS = ["RS256", "RS512"];
 
 export interface GhostProviderDeps {
@@ -146,59 +135,17 @@ export class GhostIdentityProvider implements IdentityProvider {
    * `aud`, and `exp` are checked explicitly.
    */
   private async verifyAndExtractEmail(token: string): Promise<string> {
-    const parts = token.split(".");
-    const headerB64 = parts[0];
-    const payloadB64 = parts[1];
-    const signatureB64 = parts[2];
-    if (
-      parts.length !== 3 ||
-      headerB64 === undefined ||
-      payloadB64 === undefined ||
-      signatureB64 === undefined
-    ) {
-      throw new AuthError(401, "invalid_token", "malformed JWT");
-    }
-
-    const header = decodeSegment(headerB64);
-    const payload = decodeSegment(payloadB64);
-
-    // Algorithm pin (D104): only the configured asymmetric RS algorithms. An
-    // unknown/none/symmetric `alg` never reaches a verify call.
-    const allowed = this.deps.algorithms ?? DEFAULT_ALGS;
-    const alg = typeof header.alg === "string" ? header.alg : "";
-    const digest = ALG_TO_DIGEST[alg];
-    if (!digest || !allowed.includes(alg)) {
-      throw new AuthError(401, "invalid_token", `disallowed algorithm: ${alg || "none"}`);
-    }
-    if (typeof header.kid !== "string" || header.kid.length === 0) {
-      throw new AuthError(401, "invalid_token", "token header has no kid");
-    }
-
-    // Resolve the signing key by kid (fetching/rotating via the JWKS) and verify.
-    let verified = false;
+    // Signature + alg-pin + kid-resolve via the shared verifier (OFC-225). A bad
+    // token or a key-resolution failure both surface as a `401 invalid_token`
+    // during sign-in (unchanged from before the extraction).
+    let payload: Record<string, unknown>;
     try {
-      const key = await this.deps.keyResolver.resolve({ alg, kid: header.kid });
-      if (key.asymmetricKeyType !== "rsa") {
-        throw new AuthError(401, "invalid_token", "JWKS key is not RSA");
-      }
-      verified = cryptoVerify(
-        digest,
-        Buffer.from(`${headerB64}.${payloadB64}`),
-        key,
-        Buffer.from(signatureB64, "base64url"),
-      );
+      ({ payload } = await verifyRsJwt(token, {
+        keyResolver: this.deps.keyResolver,
+        allowedAlgs: this.deps.algorithms ?? DEFAULT_ALGS,
+      }));
     } catch (error) {
-      if (error instanceof AuthError) {
-        throw error;
-      }
-      throw new AuthError(
-        401,
-        "invalid_token",
-        `signature verification failed: ${describe(error)}`,
-      );
-    }
-    if (!verified) {
-      throw new AuthError(401, "invalid_token", "bad signature");
+      throw new AuthError(401, "invalid_token", describe(error));
     }
 
     // Registered-claim checks (iss / aud / exp / nbf), with a small clock skew.
@@ -213,10 +160,10 @@ export class GhostIdentityProvider implements IdentityProvider {
     if (!audMatches) {
       throw new AuthError(401, "invalid_token", "unexpected audience");
     }
-    if (typeof payload.exp !== "number" || payload.exp + CLOCK_SKEW_SEC < nowSec) {
+    if (typeof payload.exp !== "number" || payload.exp + JWT_CLOCK_SKEW_SEC < nowSec) {
       throw new AuthError(401, "invalid_token", "token expired");
     }
-    if (typeof payload.nbf === "number" && payload.nbf - CLOCK_SKEW_SEC > nowSec) {
+    if (typeof payload.nbf === "number" && payload.nbf - JWT_CLOCK_SKEW_SEC > nowSec) {
       throw new AuthError(401, "invalid_token", "token not yet valid");
     }
 
@@ -225,20 +172,6 @@ export class GhostIdentityProvider implements IdentityProvider {
       throw new AuthError(401, "invalid_token", "token has no subject email");
     }
     return normalizeEmail(payload.sub);
-  }
-}
-
-/** Decode a base64url JWT segment to its JSON object, or throw `AuthError`. */
-function decodeSegment(segment: string): Record<string, unknown> {
-  try {
-    const json = Buffer.from(segment, "base64url").toString("utf8");
-    const value = JSON.parse(json);
-    if (value === null || typeof value !== "object") {
-      throw new Error("not an object");
-    }
-    return value as Record<string, unknown>;
-  } catch {
-    throw new AuthError(401, "invalid_token", "unparseable JWT segment");
   }
 }
 

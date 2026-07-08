@@ -52,7 +52,6 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
   privacy: "Privacy settings",
   unlisted: "Directory listing",
   allowNewsletterEmail: "Newsletter preference",
-  allowCommentReplyEmail: "Comment-reply preference",
   allowShareWithMITAA: "MITAA sharing",
   adminNote: "Admin note",
 };
@@ -503,12 +502,6 @@ export function ProfileEdit({
                   copy={CONSENT_COPY.allowNewsletterEmail}
                   value={form.draft.allowNewsletterEmail ?? false}
                   onChange={(v) => form.setBool("allowNewsletterEmail", v)}
-                  locked={consentLocked}
-                />
-                <ConsentSwitch
-                  copy={CONSENT_COPY.allowCommentReplyEmail}
-                  value={form.draft.allowCommentReplyEmail ?? false}
-                  onChange={(v) => form.setBool("allowCommentReplyEmail", v)}
                   locked={consentLocked}
                 />
               </Subgroup>

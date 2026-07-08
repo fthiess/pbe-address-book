@@ -107,11 +107,6 @@ const COLUMNS: readonly CsvColumn[] = [
     get: (p) => boolStr(p.allowNewsletterEmail),
   },
   {
-    header: "allowCommentReplyEmail",
-    field: "allowCommentReplyEmail",
-    get: (p) => boolStr(p.allowCommentReplyEmail),
-  },
-  {
     header: "allowShareWithMITAA",
     field: "allowShareWithMITAA",
     get: (p) => boolStr(p.allowShareWithMITAA),

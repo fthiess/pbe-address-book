@@ -85,7 +85,7 @@ Book shows each brother only what the brother whose page it is has chosen to sha
 
 Two kinds of sharing reach beyond Book itself, and both are under your control on your profile:
 
-- **PBE News email.** Your newsletter and comment-reply email preferences live on your Book profile and govern what PBE News sends you. Changing them here changes them on the PBE website too.
+- **PBE News email.** Your newsletter email preference lives on your Book profile and governs whether PBE News is emailed to you. Changing it here changes it on the PBE website too.
 - **The MIT Alumni Association.** The **Share with the MIT Alumni Association** switch controls whether your contact information may be included when PBE shares data with the MITAA. It starts **off** — PBE shares your contact information with the MITAA only if you deliberately turn it on. Turned on, PBE may include your full contact set; turned off, it shares none of it. Either way, your **emergency-contact** information is *never* shared with the MITAA, and basic facts that are already public — your name, class year, and, sadly, news of a brother's passing — always flow regardless, because that is MIT's own membership data. PBE's privacy notice describes this as well.
 
 You can read PBE's full privacy notice at any time: there is a link to it in the **footer at the bottom of every page** (it is also shown when you first sign in).

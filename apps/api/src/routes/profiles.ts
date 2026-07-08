@@ -11,7 +11,8 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
-import { MissingProfileError, type ProfileStore, StaleWriteError } from "../data/profiles.js";
+import { type ProfileStore, StaleWriteError } from "../data/profiles.js";
+import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import { effectiveRole } from "../identity/types.js";
 import {
   type ProjectedProfile,
@@ -22,6 +23,9 @@ import {
 } from "../projection/projection.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { negotiateEncoding } from "./encoding.js";
+import { computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
+import type { RecordLock } from "./record-lock.js";
+import { replyWriteError, runRecordWrite } from "./record-write.js";
 import { traceId } from "./trace.js";
 
 /** A clock seam so the write path's timestamps stay deterministic under test. */
@@ -37,6 +41,17 @@ export interface ProfileRouteDeps {
   audit: AuditLog;
   /** Supplies "now" for `lastModified`, the verification date, and audit stamps. */
   clock: Clock;
+  /**
+   * The Ghost member-lifecycle seam (N41/N65). PATCH uses its `updateMember` for
+   * the Ghost-first-gated push of a changed pushed field; a succeed-and-log stub
+   * until an Admin key is configured.
+   */
+  ghostLifecycle: GhostLifecycle;
+  /**
+   * The per-record write serializer (N65): the Ghost push and the Firestore write
+   * run one-at-a-time per record so no concurrent edit commits between them.
+   */
+  recordLock: RecordLock;
 }
 
 /**
@@ -156,11 +171,15 @@ function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteD
  *     dataset-level structural checks (email uniqueness, big-brother existence /
  *     no cycle) the shared module defers to the write path (D50/D97).
  *  6. The **D28 verification side-effect** and the server-stamped housekeeping.
- *  7. The **conditional write** (`412` on a stale token), then the cache
- *     read-your-writes update and the **audit** entry (names, never values).
+ *  7. The **Ghost-first-gated push** of any changed pushed field (`502` on a Ghost
+ *     failure, Book untouched — N65), then the **conditional write** (`412` on a
+ *     stale token), the cache read-your-writes update, and the **audit** entry
+ *     (names, never values). Steps from the If-Match preflight through the write
+ *     run under the {@link RecordLock} so no concurrent same-record edit commits
+ *     between the Ghost push and the Firestore write.
  */
 function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
-  const { cache, gate, store, audit, clock } = deps;
+  const { cache, gate, store, audit, clock, ghostLifecycle, recordLock } = deps;
 
   app.patch(
     "/api/profiles/:id",
@@ -316,23 +335,40 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
         now,
       );
       const next = mergeNext(stored, set, remove);
+      const changedSet = new Set(changed);
 
-      // 7. Conditional write → cache read-your-writes → audit.
+      // 7. Ghost-first-gated push → conditional write → cache read-your-writes →
+      //    audit, all under the shared per-record lock (N65; OFC-220/226) so no
+      //    concurrent token-advancing write can commit between the Ghost push and
+      //    the Firestore write.
       let token: string;
       try {
-        token = await store.update(id, { set, remove, precondition: ifMatch });
+        token = await runRecordWrite(recordLock, id, {
+          // Preflight the If-Match INSIDE the lock: if the record already moved
+          // past the caller's token, the write is doomed to 412 — abort now, before
+          // an ultimately-pointless Ghost push (N65). (The conditional write below
+          // is the authoritative check; this only spares a wasted Ghost call.)
+          prepare: () => {
+            const currentToken = cache.concurrencyToken(id);
+            if (currentToken !== undefined && currentToken !== ifMatch) {
+              throw new StaleWriteError();
+            }
+          },
+          // Push any changed pushed field before committing; a clear failure throws
+          // GhostStepError → 502, Book untouched.
+          ghostStep: () =>
+            pushGhostUpdate(ghostLifecycle, stored, computeGhostUpdateDiff(next, changedSet)).then(
+              () => undefined,
+            ),
+          commit: async () => {
+            const t = await store.update(id, { set, remove, precondition: ifMatch });
+            await cache.applyUpdate(next, t);
+            return t;
+          },
+        });
       } catch (error) {
-        if (error instanceof StaleWriteError) {
-          return reply
-            .code(412)
-            .send({ error: "stale_write", message: "This record changed since you loaded it." });
-        }
-        if (error instanceof MissingProfileError) {
-          return reply.code(404).send({ error: "not_found", message: "No such brother." });
-        }
-        throw error;
+        return replyWriteError(error, reply);
       }
-      await cache.applyUpdate(next, token);
       audit.record(
         {
           action: "profile.update",

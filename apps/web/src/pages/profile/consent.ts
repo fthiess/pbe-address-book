@@ -68,20 +68,15 @@ export const PRIVACY_COPY: Record<
   },
 };
 
-/** The three consent flags + the self-service directory-listing switch (top-level booleans). */
+/** The two consent flags + the self-service directory-listing switch (top-level booleans). */
 export const CONSENT_COPY: Record<
-  "allowNewsletterEmail" | "allowCommentReplyEmail" | "allowShareWithMITAA" | "listed",
+  "allowNewsletterEmail" | "allowShareWithMITAA" | "listed",
   ConsentCopy
 > = {
   allowNewsletterEmail: {
     label: "PBE News newsletter",
     whenOn: "You will receive PBE News by email.",
     whenOff: "You won't receive PBE News by email.",
-  },
-  allowCommentReplyEmail: {
-    label: "Comment-reply emails",
-    whenOn: "You'll be emailed when someone replies to your comments.",
-    whenOff: "You won't be emailed when someone replies to your comments.",
   },
   allowShareWithMITAA: {
     label: "Share with the MIT Alumni Association",

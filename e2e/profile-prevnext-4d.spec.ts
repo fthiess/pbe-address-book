@@ -37,7 +37,6 @@ function baseRecord(id: number, firstName: string, lastName: string, classYear: 
     },
     unlisted: false,
     allowNewsletterEmail: true,
-    allowCommentReplyEmail: true,
     allowShareWithMITAA: false,
     lastModified: "2026-03-14T12:00:00.000Z",
     newsletterConsentChangedAt: "2026-03-14T12:00:00.000Z",

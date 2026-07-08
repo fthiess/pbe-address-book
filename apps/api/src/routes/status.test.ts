@@ -52,21 +52,21 @@ async function buildStatusServer(ghostLifecycle = new StubGhostLifecycle()) {
   await cache.load([
     // 5001: living, verified brother/owner.
     makeProfile({ id: 5001, lastVerifiedDate: "2026-01-01", verifiedBy: 5001 }),
-    // 5002: a second living brother.
-    makeProfile({ id: 5002 }),
+    // 5002: a second living brother, linked to a Ghost member (consent-push cases).
+    makeProfile({ id: 5002, ghostMemberId: "gm-5002" }),
     // 5003: already deceased (verify-freeze + re-PUT-edit cases).
     makeProfile({
       id: 5003,
+      ghostMemberId: "gm-5003",
       deceased: { isDeceased: true, deathYear: 2020 },
       allowNewsletterEmail: false,
-      allowCommentReplyEmail: false,
-      deceasedConsentSnapshot: { allowNewsletterEmail: true, allowCommentReplyEmail: true },
+      deceasedConsentSnapshot: { allowNewsletterEmail: true },
     }),
     // 5004: already de-brothered (reverse case).
     makeProfile({
       id: 5004,
       debrothered: { isDebrothered: true, debrotheredAt: "2026-02-02T00:00:00.000Z" },
-      debrotherConsentSnapshot: { allowNewsletterEmail: true, allowCommentReplyEmail: true },
+      debrotherConsentSnapshot: { allowNewsletterEmail: true },
     }),
   ]);
   const sessionStore = new InMemorySessionStore();
@@ -207,11 +207,7 @@ describe("PUT /api/profiles/:id/deceased", () => {
     const stored = ctx.cache.getById(5002) as Profile;
     expect(stored.deceased).toEqual({ isDeceased: true, deathYear: 2026, birthYear: 1962 });
     expect(stored.allowNewsletterEmail).toBe(false);
-    expect(stored.allowCommentReplyEmail).toBe(false);
-    expect(stored.deceasedConsentSnapshot).toEqual({
-      allowNewsletterEmail: true,
-      allowCommentReplyEmail: true,
-    });
+    expect(stored.deceasedConsentSnapshot).toEqual({ allowNewsletterEmail: true });
     expect(stored.newsletterConsentChangedAt).toBe(FIXED_NOW.toISOString());
     expect(ctx.audited.at(-1)).toMatchObject({ action: "profile.deceased", targetId: 5002 });
   });
@@ -238,10 +234,7 @@ describe("PUT /api/profiles/:id/deceased", () => {
     const stored = ctx.cache.getById(5003) as Profile;
     expect(stored.deceased.obituaryUrl).toBe("https://example.test/obit");
     // The original snapshot is untouched (not re-captured from the forced-off state).
-    expect(stored.deceasedConsentSnapshot).toEqual({
-      allowNewsletterEmail: true,
-      allowCommentReplyEmail: true,
-    });
+    expect(stored.deceasedConsentSnapshot).toEqual({ allowNewsletterEmail: true });
   });
 
   it("reverses deceased: restores the snapshotted consent and clears the block", async () => {
@@ -255,9 +248,59 @@ describe("PUT /api/profiles/:id/deceased", () => {
     const stored = ctx.cache.getById(5003) as Profile;
     expect(stored.deceased).toEqual({ isDeceased: false });
     expect(stored.allowNewsletterEmail).toBe(true);
-    expect(stored.allowCommentReplyEmail).toBe(true);
     expect(stored.deceasedConsentSnapshot).toBeUndefined();
     expect(stored.newsletterConsentChangedAt).toBe(FIXED_NOW.toISOString());
+  });
+
+  it("pushes the forced unsubscribes to Ghost first on a raise (N65)", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const ctx = await buildStatusServer(ghost);
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5002/deceased",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { deceased: true, deathYear: 2026 },
+    });
+    expect(response.statusCode).toBe(200);
+    // Only the newsletter flag is pushed (never email/name/comment-pref), by its new value.
+    expect(ghost.updated).toEqual([
+      { id: 5002, ghostMemberId: "gm-5002", diff: { allowNewsletterEmail: false } },
+    ]);
+    expect(ctx.cache.getById(5002)?.allowNewsletterEmail).toBe(false);
+    await ctx.app.close();
+  });
+
+  it("fails the mark-deceased with 502 when Ghost rejects, leaving Book untouched (N65)", async () => {
+    const ctx = await buildStatusServer(new FailingGhostLifecycle("update"));
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5002/deceased",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { deceased: true, deathYear: 2026 },
+    });
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ error: "ghost_update_failed" });
+    // Untouched: neither the deceased flag nor consent moved.
+    const stored = ctx.cache.getById(5002) as Profile;
+    expect(stored.deceased.isDeceased).toBe(false);
+    expect(stored.allowNewsletterEmail).toBe(true);
+    await ctx.app.close();
+  });
+
+  it("makes no Ghost call on a facts-only re-PUT that changes no consent flag (N65)", async () => {
+    // 5003 is already deceased with consent already off → a re-PUT edits only the
+    // obituary link, so there is no consent change to push.
+    const ghost = new RecordingGhostLifecycle();
+    const ctx = await buildStatusServer(ghost);
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5003/deceased",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { deceased: true, obituaryUrl: "https://example.test/obit" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(ghost.updated).toHaveLength(0);
+    await ctx.app.close();
   });
 });
 
@@ -288,11 +331,40 @@ describe("PUT /api/profiles/:id/debrothered", () => {
     const stored = ctx.cache.getById(5002) as Profile;
     expect(stored.debrothered.isDebrothered).toBe(true);
     expect(stored.debrothered.debrotheredAt).toBe(FIXED_NOW.toISOString());
-    expect(stored.debrotherConsentSnapshot).toEqual({
-      allowNewsletterEmail: true,
-      allowCommentReplyEmail: true,
-    });
+    expect(stored.debrotherConsentSnapshot).toEqual({ allowNewsletterEmail: true });
+    // The now-dangling ghostMemberId is dropped (OFC-222): the Ghost member was just
+    // deleted, so a later pushed-field PATCH must not push to a nonexistent member.
+    expect(stored.ghostMemberId).toBeUndefined();
     expect(ctx.audited.at(-1)).toMatchObject({ action: "profile.debrother", targetId: 5002 });
+    await ctx.app.close();
+  });
+
+  it("a pushed-field PATCH on a de-brothered record makes no Ghost call and saves (OFC-222)", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const ctx = await buildStatusServer(ghost);
+    // Raise de-brother on 5002 (drops its ghostMemberId).
+    await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5002/debrothered",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { debrothered: true },
+    });
+    // A staff PATCH of a pushed field (lastName) must not 502 on a deleted member.
+    const etag = (
+      await ctx.app.inject({
+        method: "GET",
+        url: "/api/profiles/5002",
+        headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      })
+    ).headers.etag as string;
+    const res = await ctx.app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5002",
+      headers: { cookie: await ctx.cookieFor(9001, "admin"), "if-match": etag },
+      payload: { lastName: "Renamed" },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(ghost.updated).toHaveLength(0); // no ghostMemberId → no push
     await ctx.app.close();
   });
 
@@ -325,6 +397,8 @@ describe("PUT /api/profiles/:id/debrothered", () => {
     const stored = ctx.cache.getById(5004) as Profile;
     expect(stored.debrothered.isDebrothered).toBe(false);
     expect(stored.debrotherConsentSnapshot).toBeUndefined();
+    // The re-created member's FRESH id is folded into the reinstating write (N65/N67).
+    expect(stored.ghostMemberId).toBe("recreated-5004");
     await ctx.app.close();
   });
 
