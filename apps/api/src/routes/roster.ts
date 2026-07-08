@@ -63,12 +63,19 @@ export function registerRosterRoutes(app: FastifyInstance, deps: RosterRouteDeps
 /**
  * Extract the bearer token from an `Authorization` header. The scheme match is
  * **case-insensitive** per RFC 6750 / RFC 7235 (`Bearer`/`bearer`/`BEARER` are all
- * valid), so a valid token isn't rejected over letter case (OFC-224).
+ * valid; OFC-224). Parsed by splitting on the first space rather than a regex, so a
+ * crafted header (`bearer` + many spaces) can't trigger regex backtracking
+ * (polynomial ReDoS on unauthenticated input; OFC-218 follow-up).
  */
 function bearerToken(header: string | undefined): string | null {
   if (typeof header !== "string") {
     return null;
   }
-  const match = /^Bearer[ ]+(.+)$/i.exec(header.trim());
-  return match?.[1] ? match[1].trim() : null;
+  const trimmed = header.trim();
+  const space = trimmed.indexOf(" ");
+  if (space < 0 || trimmed.slice(0, space).toLowerCase() !== "bearer") {
+    return null;
+  }
+  const token = trimmed.slice(space + 1).trim();
+  return token.length > 0 ? token : null;
 }

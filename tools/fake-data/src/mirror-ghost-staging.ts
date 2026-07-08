@@ -26,10 +26,10 @@
  *   GHOST_ADMIN_API_KEY=<id>:<secret> GHOST_NEWSLETTER_ID=<id> \
  *   npm run mirror:ghost-staging --workspace tools/fake-data [-- --dry-run]
  */
-import { createHmac } from "node:crypto";
 import { type Profile, formatCanonicalName, normalizeEmail } from "@pbe/shared";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
+import { SignJWT } from "jose";
 import { type DesiredMember, type ExistingMember, planReconcile } from "./ghost-reconcile.js";
 
 /** The label every seed-created member carries; the only members this tool touches. */
@@ -97,24 +97,27 @@ if (!keyId || !keySecret) {
 }
 const secretBytes = Buffer.from(keySecret, "hex");
 
-function b64url(input: Buffer | string): string {
-  return Buffer.from(input).toString("base64url");
-}
-
-function adminToken(): string {
-  const header = b64url(JSON.stringify({ alg: "HS256", typ: "JWT", kid: keyId }));
-  const nowSec = Math.floor(Date.now() / 1000);
-  const payload = b64url(JSON.stringify({ iat: nowSec, exp: nowSec + 300, aud: "/admin/" }));
-  const data = `${header}.${payload}`;
-  const sig = createHmac("sha256", secretBytes).update(data).digest("base64url");
-  return `${data}.${sig}`;
+/**
+ * Mint a short-lived Ghost Admin JWT (HS256 over the hex secret, `kid`=key id,
+ * `aud=/admin/`). Signed via `jose` (the same library the app's `GhostAdminLifecycle`
+ * uses) rather than a hand-rolled `crypto.createHmac`, keeping one JWT path and
+ * avoiding the misfire where a static analyzer reads "secret → createHmac" as
+ * insecure password hashing (it is neither — this is standard HS256 signing).
+ */
+async function adminToken(): Promise<string> {
+  return new SignJWT({})
+    .setProtectedHeader({ alg: "HS256", kid: keyId })
+    .setIssuedAt()
+    .setExpirationTime("5m")
+    .setAudience("/admin/")
+    .sign(secretBytes);
 }
 
 async function ghost(method: string, path: string, body?: unknown): Promise<unknown> {
   const res = await fetch(`${apiUrl}${path}`, {
     method,
     headers: {
-      Authorization: `Ghost ${adminToken()}`,
+      Authorization: `Ghost ${await adminToken()}`,
       "Accept-Version": "v5.0",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
     },
