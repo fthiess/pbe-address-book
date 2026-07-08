@@ -14,7 +14,11 @@ import {
   StaleWriteError,
 } from "../data/profiles.js";
 import { type AdminUserStore, LastAdminError, type RoleChangeResult } from "../data/users.js";
-import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
+import type {
+  GhostCreateResult,
+  GhostLifecycle,
+  GhostMemberDiff,
+} from "../identity/ghost-lifecycle.js";
 import type { NonceService } from "../identity/nonce-store.js";
 import type { SessionService } from "../identity/session-store.js";
 import type { Session } from "../identity/types.js";
@@ -218,39 +222,54 @@ export class InMemoryAdminUserStore implements AdminUserStore {
 
 /**
  * A recording {@link GhostLifecycle} double: succeeds and remembers which profile
- * ids it was asked to delete/create, so a test can assert the Ghost-first step
- * ran (and ran before Book mutated its state).
+ * ids it was asked to delete/create and the update diffs it was handed, so a test
+ * can assert the Ghost-first step ran (and ran before Book mutated its state).
+ * `createMember` returns a deterministic synthetic id the de-brother reversal folds
+ * into its write, which a test can assert on the reinstated record.
  */
 export class RecordingGhostLifecycle implements GhostLifecycle {
   readonly deleted: number[] = [];
   readonly created: number[] = [];
+  readonly updated: { id: number; ghostMemberId?: string; diff: GhostMemberDiff }[] = [];
 
   async deleteMember(profile: Profile): Promise<void> {
     this.deleted.push(profile.id);
   }
 
-  async createMember(profile: Profile): Promise<void> {
+  async createMember(profile: Profile): Promise<GhostCreateResult> {
     this.created.push(profile.id);
+    return { ghostMemberId: `recreated-${profile.id}` };
+  }
+
+  async updateMember(profile: Profile, diff: GhostMemberDiff): Promise<void> {
+    this.updated.push({ id: profile.id, ghostMemberId: profile.ghostMemberId, diff });
   }
 }
 
 /**
  * A failing {@link GhostLifecycle} double: throws on the selected operation(s) to
- * prove the abort-clean contract (N41) — the endpoint must return `502` with
+ * prove the abort-clean contract (N41/N65) — the endpoint must return `502` with
  * Firestore, GCS, and the cache untouched.
  */
 export class FailingGhostLifecycle implements GhostLifecycle {
-  constructor(private readonly mode: "delete" | "create" | "both" = "both") {}
+  constructor(private readonly mode: "delete" | "create" | "update" | "both" = "both") {}
 
   async deleteMember(): Promise<void> {
-    if (this.mode !== "create") {
+    if (this.mode === "delete" || this.mode === "both") {
       throw new Error("ghost delete failed");
     }
   }
 
-  async createMember(): Promise<void> {
-    if (this.mode !== "delete") {
+  async createMember(profile: Profile): Promise<GhostCreateResult> {
+    if (this.mode === "create" || this.mode === "both") {
       throw new Error("ghost create failed");
+    }
+    return { ghostMemberId: `recreated-${profile.id}` };
+  }
+
+  async updateMember(): Promise<void> {
+    if (this.mode === "update" || this.mode === "both") {
+      throw new Error("ghost update failed");
     }
   }
 }

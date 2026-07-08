@@ -3,10 +3,11 @@ import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from "fasti
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { ProfileStore } from "../data/profiles.js";
-import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
+import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
 import { writeRateLimit } from "../security/rate-limit.js";
+import { GhostPushError, computeConsentDiff, pushGhostUpdate } from "./ghost-push.js";
 import {
   MissingProfileError,
   authorizePrivileged,
@@ -15,6 +16,7 @@ import {
   revokeSessionsBestEffort,
 } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
+import type { RecordLock } from "./record-lock.js";
 
 /**
  * The profile **status** actions of 4c-2 (the privileged-action slice, DECISIONS
@@ -43,8 +45,10 @@ export interface StatusRouteDeps {
   sessionStore: SessionService;
   audit: AuditLog;
   clock: Clock;
-  /** Ghost-first member lifecycle (N41); a succeed-and-log stub until Phase 5. */
+  /** Ghost-first member lifecycle (N41/N65): deceased pushes the consent diff, de-brother the member. */
   ghostLifecycle: GhostLifecycle;
+  /** Per-record write serializer (N65): shared with PATCH so all pushed-field writes serialize. */
+  recordLock: RecordLock;
 }
 
 export function registerStatusRoutes(app: FastifyInstance, deps: StatusRouteDeps): void {
@@ -124,7 +128,7 @@ function registerVerify(app: FastifyInstance, deps: StatusRouteDeps): void {
  * edits the facts (no re-snapshot, no re-force). Reversing restores the snapshot.
  */
 function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
-  const { cache, gate, store, audit, clock } = deps;
+  const { cache, gate, store, audit, clock, ghostLifecycle, recordLock } = deps;
   app.put(
     "/api/profiles/:id/deceased",
     { preHandler: gate, config: writeRateLimit() },
@@ -175,24 +179,41 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
         remove = built.remove;
       }
 
-      let result: { token: string; next: Profile };
-      try {
-        result = await commitStatusWrite(store, cache, id, stored, set, remove);
-      } catch (error) {
-        return handleMissing(error, reply);
-      }
-      audit.record(
-        {
-          action: "profile.deceased",
-          actorId,
-          targetId: id,
-          outcome: "ok",
-          fields: auditFields(set, remove),
-          trace,
-        },
-        now.toISOString(),
-      );
-      return replyRecord(reply, result.next, role, result.token);
+      // Ghost-first-gated (N65): the forced unsubscribes on a raise — and the
+      // restored subscription on a reverse — push to Ghost *before* Book commits;
+      // a Ghost failure fails the action (`502`, Book untouched). A re-PUT that
+      // edits only the deceased facts changes no consent flag → empty diff → no
+      // Ghost call. Serialized per record so it shares PATCH's write ordering.
+      const consentDiff = computeConsentDiff(stored, set);
+      return recordLock.run(id, async () => {
+        try {
+          await pushGhostUpdate(ghostLifecycle, stored, consentDiff);
+        } catch (error) {
+          if (error instanceof GhostPushError) {
+            return reply.code(502).send({ error: "ghost_update_failed" });
+          }
+          throw error;
+        }
+
+        let result: { token: string; next: Profile };
+        try {
+          result = await commitStatusWrite(store, cache, id, stored, set, remove);
+        } catch (error) {
+          return handleMissing(error, reply);
+        }
+        audit.record(
+          {
+            action: "profile.deceased",
+            actorId,
+            targetId: id,
+            outcome: "ok",
+            fields: auditFields(set, remove),
+            trace,
+          },
+          now.toISOString(),
+        );
+        return replyRecord(reply, result.next, role, result.token);
+      });
     },
   );
 }
@@ -205,7 +226,7 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
  * (raise) or restores (reverse) consent/verification (D80).
  */
 function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
-  const { cache, gate, store, sessionStore, audit, clock, ghostLifecycle } = deps;
+  const { cache, gate, store, sessionStore, audit, clock, ghostLifecycle, recordLock } = deps;
   app.put(
     "/api/profiles/:id/debrothered",
     { preHandler: gate, config: writeRateLimit() },
@@ -240,52 +261,63 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
 
       const now = clock();
 
-      // Ghost-first (D96/D98): the member delete/create runs before any Book write.
-      // A failure aborts clean — nothing below has mutated Firestore/GCS/the cache.
-      try {
-        if (raising) {
-          await ghostLifecycle.deleteMember(stored);
-        } else {
-          await ghostLifecycle.createMember(stored);
+      // Serialized per record (N65) so the Ghost step and the Book write share the
+      // same ordering guarantee as PATCH/deceased.
+      return recordLock.run(id, async () => {
+        // Ghost-first (D96/D98): the member delete/create runs before any Book
+        // write. A failure aborts clean — nothing below has mutated Firestore/GCS/
+        // the cache. A **reverse** re-creates the member and gets a *fresh*
+        // `ghostMemberId` (N65/N67) — the stale one must not survive, so it is
+        // folded into the reinstating write below.
+        let createResult: GhostCreateResult | undefined;
+        try {
+          if (raising) {
+            await ghostLifecycle.deleteMember(stored);
+          } else {
+            createResult = await ghostLifecycle.createMember(stored);
+          }
+        } catch {
+          const error = raising ? "ghost_delete_failed" : "ghost_create_failed";
+          return reply.code(502).send({ error });
         }
-      } catch {
-        const error = raising ? "ghost_delete_failed" : "ghost_create_failed";
-        return reply.code(502).send({ error });
-      }
 
-      const { set, remove } = raising
-        ? buildDebrotherRaise(stored, now)
-        : buildDebrotherReverse(stored, now);
-      let result: { token: string; next: Profile };
-      try {
-        result = await commitStatusWrite(store, cache, id, stored, set, remove);
-      } catch (error) {
-        return handleMissing(error, reply);
-      }
+        const { set, remove } = raising
+          ? buildDebrotherRaise(stored, now)
+          : buildDebrotherReverse(stored, now, createResult?.ghostMemberId);
+        let result: { token: string; next: Profile };
+        try {
+          result = await commitStatusWrite(store, cache, id, stored, set, remove);
+        } catch (error) {
+          return handleMissing(error, reply);
+        }
 
-      // Revoke the de-brothered member's live sessions on a raise (OFC-147): the
-      // sign-in denial (D115) blocks only *new* sessions, so without this a member
-      // de-brothered mid-session keeps directory access until the 4-hour cap (D22).
-      // Only on raise — reinstating restores access, it does not withdraw it.
-      // Best-effort (OFC-146 review): the gate's de-brothered liveness check is the
-      // structural backstop here, so a transient failure degrades safely and logs.
-      const sessionsRevoked = raising
-        ? await revokeSessionsBestEffort(sessionStore, id, { action: "profile.debrother", actorId })
-        : undefined;
+        // Revoke the de-brothered member's live sessions on a raise (OFC-147): the
+        // sign-in denial (D115) blocks only *new* sessions, so without this a member
+        // de-brothered mid-session keeps directory access until the 4-hour cap (D22).
+        // Only on raise — reinstating restores access, it does not withdraw it.
+        // Best-effort (OFC-146 review): the gate's de-brothered liveness check is the
+        // structural backstop here, so a transient failure degrades safely and logs.
+        const sessionsRevoked = raising
+          ? await revokeSessionsBestEffort(sessionStore, id, {
+              action: "profile.debrother",
+              actorId,
+            })
+          : undefined;
 
-      audit.record(
-        {
-          action: "profile.debrother",
-          actorId,
-          targetId: id,
-          outcome: "ok",
-          fields: auditFields(set, remove),
-          sessionsRevoked,
-          trace,
-        },
-        now.toISOString(),
-      );
-      return replyRecord(reply, result.next, role, result.token);
+        audit.record(
+          {
+            action: "profile.debrother",
+            actorId,
+            targetId: id,
+            outcome: "ok",
+            fields: auditFields(set, remove),
+            sessionsRevoked,
+            trace,
+          },
+          now.toISOString(),
+        );
+        return replyRecord(reply, result.next, role, result.token);
+      });
     },
   );
 }
@@ -380,15 +412,25 @@ function buildDebrotherRaise(
   return { set, remove: [] };
 }
 
-/** Build the write for **reversing** de-brothering: restore the snapshot, clear the flag. */
+/**
+ * Build the write for **reversing** de-brothering: restore the snapshot, clear the
+ * flag, and record the **fresh `ghostMemberId`** the re-created Ghost member
+ * received (N65/N67) — a re-created member gets a new id, so the stale one must not
+ * survive the reversal. `ghostMemberId` is omitted only if the caller had no id to
+ * fold in (e.g. a Ghost step that resolved without one), leaving the stored value.
+ */
 function buildDebrotherReverse(
   stored: Profile,
   now: Date,
+  ghostMemberId: string | undefined,
 ): { set: Partial<Profile>; remove: (keyof Profile)[] } {
   const set: Partial<Profile> = {
     debrothered: { isDebrothered: false },
     lastModified: now.toISOString(),
   };
+  if (ghostMemberId !== undefined) {
+    set.ghostMemberId = ghostMemberId;
+  }
   const remove: (keyof Profile)[] = [];
   restoreConsentSnapshot(stored.debrotherConsentSnapshot, stored, set, remove, now);
   remove.push("debrotherConsentSnapshot");

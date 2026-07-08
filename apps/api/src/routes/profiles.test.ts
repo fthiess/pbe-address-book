@@ -1,12 +1,14 @@
 import zlib from "node:zlib";
-import type { Profile, Role } from "@pbe/shared";
+import { type Profile, type Role, formatCanonicalName } from "@pbe/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { AuditLog } from "../audit/audit-log.js";
 import { ProfileCache } from "../data/cache.js";
+import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import { SESSION_COOKIE } from "../identity/session-cookie.js";
 import type { IdentityProvider, Session } from "../identity/types.js";
 import { buildServer } from "../server.js";
 import {
+  FailingGhostLifecycle,
   InMemoryAdminUserStore,
   InMemoryBackupSource,
   InMemoryBannerStore,
@@ -14,6 +16,7 @@ import {
   InMemoryNonceStore,
   InMemoryProfileStore,
   InMemorySessionStore,
+  RecordingGhostLifecycle,
 } from "../test-support/fakes.js";
 import { makeProfile } from "../test-support/make-profile.js";
 
@@ -232,7 +235,10 @@ function sessionAs(profileId: number, role: Role): Session {
   };
 }
 
-async function buildWriteServer(profiles: Profile[]) {
+async function buildWriteServer(
+  profiles: Profile[],
+  ghostLifecycle: GhostLifecycle = new RecordingGhostLifecycle(),
+) {
   const cache = new ProfileCache();
   await cache.load(profiles);
   const sessionStore = new InMemorySessionStore();
@@ -251,6 +257,7 @@ async function buildWriteServer(profiles: Profile[]) {
     addStar: async () => [],
     removeStar: async () => [],
     cookie: { secure: true },
+    ghostLifecycle,
     auditLog: new AuditLog({ write: (record) => audited.push(record) }),
     clock: () => FIXED_NOW,
   });
@@ -760,6 +767,124 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
       payload: { phone: "x" },
     });
     expect(response.statusCode).toBe(404);
+    await app.close();
+  });
+});
+
+describe("PATCH /api/profiles/:id — Ghost-first-gated push (N65)", () => {
+  it("pushes a changed pushed field to Ghost, then commits Book", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer(
+      [makeProfile({ id: 5001, email: "old@example.test", ghostMemberId: "gm-5001" })],
+      ghost,
+    );
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: "new@example.test" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    // Ghost got exactly the changed field, addressed by ghostMemberId…
+    expect(ghost.updated).toEqual([
+      { id: 5001, ghostMemberId: "gm-5001", diff: { email: "new@example.test" } },
+    ]);
+    // …and Book committed the change.
+    expect(cache.getById(5001)?.email).toBe("new@example.test");
+    await app.close();
+  });
+
+  it("pushes the recomputed Canonical Name when a name input changes", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cookieAs, etagOf } = await buildWriteServer(
+      [makeProfile({ id: 5001, firstName: "James", ghostMemberId: "gm-5001" })],
+      ghost,
+    );
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { firstName: "Jim" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const expectedName = formatCanonicalName(makeProfile({ id: 5001, firstName: "Jim" }), false);
+    expect(ghost.updated).toEqual([
+      { id: 5001, ghostMemberId: "gm-5001", diff: { name: expectedName } },
+    ]);
+    await app.close();
+  });
+
+  it("fails the whole save with 502 when Ghost rejects, leaving Book untouched", async () => {
+    const { app, cache, audited, cookieAs, etagOf } = await buildWriteServer(
+      [makeProfile({ id: 5001, email: "old@example.test", ghostMemberId: "gm-5001" })],
+      new FailingGhostLifecycle("update"),
+    );
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: "new@example.test" },
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ error: "ghost_update_failed" });
+    // Book is untouched: the email did not change and no success was audited.
+    expect(cache.getById(5001)?.email).toBe("old@example.test");
+    expect(audited.some((a) => a.outcome === "ok")).toBe(false);
+    await app.close();
+  });
+
+  it("makes no Ghost call when only a non-pushed field changes", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cookieAs, etagOf } = await buildWriteServer(
+      [makeProfile({ id: 5001, ghostMemberId: "gm-5001" })],
+      ghost,
+    );
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { jobTitle: "Engineer" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ghost.updated).toHaveLength(0);
+    await app.close();
+  });
+
+  it("skips the push (and still commits) for a profile with no ghostMemberId", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer(
+      [makeProfile({ id: 5001, email: "old@example.test" })], // no ghostMemberId
+      ghost,
+    );
+    const cookie = await cookieAs(5001, "brother");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: "new@example.test" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ghost.updated).toHaveLength(0);
+    expect(cache.getById(5001)?.email).toBe("new@example.test");
     await app.close();
   });
 });

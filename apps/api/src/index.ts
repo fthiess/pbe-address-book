@@ -19,8 +19,15 @@ import { ProfileCache } from "./data/cache.js";
 import { getDb } from "./data/firestore.js";
 import { FirestoreProfileStore } from "./data/profiles.js";
 import { FirestoreAdminUserStore, addStar, ensureUser, getUser, removeStar } from "./data/users.js";
+import { GhostAdminLifecycle } from "./identity/ghost-admin.js";
 import { createGhostKeyResolver } from "./identity/ghost-jwks.js";
+import type { GhostLifecycle } from "./identity/ghost-lifecycle.js";
 import { GhostIdentityProvider } from "./identity/ghost-provider.js";
+import {
+  GoogleOidcVerifier,
+  type RosterVerifier,
+  createGoogleKeyResolver,
+} from "./identity/google-oidc.js";
 import { NonceStore } from "./identity/nonce-store.js";
 import { SessionStore } from "./identity/session-store.js";
 import { buildServer } from "./server.js";
@@ -41,6 +48,49 @@ const GHOST_JWT_AUDIENCE = process.env.GHOST_JWT_AUDIENCE ?? "https://pbe400.org
 /** The relay page on the live Ghost site, and which callback the relay routes to. */
 const GHOST_BRIDGE_URL = process.env.GHOST_BRIDGE_URL ?? "https://pbe400.org/book";
 const GHOST_BRIDGE_TARGET = process.env.GHOST_BRIDGE_TARGET ?? "prod";
+
+/**
+ * The Ghost **Admin** API (the Book→Ghost write path, N65/N67). The key is
+ * `{id}:{secret}` and lives in Secret Manager — never the tree. When it is absent
+ * the lifecycle falls back to the succeed-and-log stub, so an unconfigured
+ * deployment still runs (writes just never reach Ghost). `GHOST_NEWSLETTER_ID`
+ * attaches a subscribed member to the newsletter (Ghost v5 models subscription as
+ * a relation; must-verify, N67).
+ */
+const GHOST_ADMIN_API_URL = process.env.GHOST_ADMIN_API_URL;
+const GHOST_ADMIN_API_KEY = process.env.GHOST_ADMIN_API_KEY;
+const GHOST_NEWSLETTER_ID = process.env.GHOST_NEWSLETTER_ID;
+
+/**
+ * The Linter roster's subject-pinned Google-OIDC identity (D58/D78). Both must be
+ * set for `GET /api/roster` to accept a token; otherwise the route fails closed.
+ */
+const ROSTER_AUDIENCE = process.env.ROSTER_AUDIENCE;
+const ROSTER_LINTER_SUBJECT = process.env.ROSTER_LINTER_SUBJECT;
+
+/** Build the real Ghost Admin client when configured, else undefined (→ stub). */
+function resolveGhostLifecycle(): GhostLifecycle | undefined {
+  if (!GHOST_ADMIN_API_URL || !GHOST_ADMIN_API_KEY) {
+    return undefined;
+  }
+  return new GhostAdminLifecycle({
+    apiUrl: GHOST_ADMIN_API_URL,
+    adminApiKey: GHOST_ADMIN_API_KEY,
+    newsletterId: GHOST_NEWSLETTER_ID,
+  });
+}
+
+/** Build the roster verifier when the Linter identity is configured, else undefined. */
+function resolveRosterVerifier(): RosterVerifier | undefined {
+  if (!ROSTER_AUDIENCE || !ROSTER_LINTER_SUBJECT) {
+    return undefined;
+  }
+  return new GoogleOidcVerifier({
+    keyResolver: createGoogleKeyResolver(),
+    audience: ROSTER_AUDIENCE,
+    subject: ROSTER_LINTER_SUBJECT,
+  });
+}
 
 async function main(): Promise<void> {
   const db = getDb();
@@ -77,12 +127,15 @@ async function main(): Promise<void> {
     removeStar: (profileId, starId) => removeStar(db, profileId, starId),
     cookie: { secure: true },
     ghostBridge: { url: GHOST_BRIDGE_URL, target: GHOST_BRIDGE_TARGET },
+    ghostLifecycle: resolveGhostLifecycle(),
+    rosterVerifier: resolveRosterVerifier(),
   });
 
   const address = await app.listen({ port, host: "0.0.0.0" });
   console.log(
     `Book API (production) listening at ${address} — ${profileCache.size} profiles cached; ` +
-      `Ghost iss=${GHOST_JWT_ISSUER} aud=${GHOST_JWT_AUDIENCE} bridge=${GHOST_BRIDGE_URL} target=${GHOST_BRIDGE_TARGET}`,
+      `Ghost iss=${GHOST_JWT_ISSUER} aud=${GHOST_JWT_AUDIENCE} bridge=${GHOST_BRIDGE_URL} target=${GHOST_BRIDGE_TARGET}; ` +
+      `ghost-admin=${GHOST_ADMIN_API_URL ? "configured" : "stub"} roster=${ROSTER_AUDIENCE ? "configured" : "unconfigured"}`,
   );
 }
 

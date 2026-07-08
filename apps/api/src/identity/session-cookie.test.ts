@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 import { AuditLog } from "../audit/audit-log.js";
 import { ProfileCache } from "../data/cache.js";
 import { registerProfileRoutes } from "../routes/profiles.js";
-import { InMemoryProfileStore, InMemorySessionStore } from "../test-support/fakes.js";
+import { RecordLock } from "../routes/record-lock.js";
+import {
+  InMemoryProfileStore,
+  InMemorySessionStore,
+  RecordingGhostLifecycle,
+} from "../test-support/fakes.js";
 import { makeProfile } from "../test-support/make-profile.js";
 import { SESSION_COOKIE, requireSession } from "./session-cookie.js";
 import type { Session } from "./types.js";
@@ -45,6 +50,8 @@ async function buildGatedServer() {
     store: new InMemoryProfileStore(),
     audit: new AuditLog({ write: () => {} }),
     clock: () => new Date(),
+    ghostLifecycle: new RecordingGhostLifecycle(),
+    recordLock: new RecordLock(),
   });
   return { app, cache, sessionStore };
 }

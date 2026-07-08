@@ -11,6 +11,7 @@ import { GcsImageStore, type ImageStore } from "./data/images.js";
 import type { ProfileStore } from "./data/profiles.js";
 import type { AdminUserStore } from "./data/users.js";
 import { type GhostLifecycle, StubGhostLifecycle } from "./identity/ghost-lifecycle.js";
+import type { RosterVerifier } from "./identity/google-oidc.js";
 import type { NonceService } from "./identity/nonce-store.js";
 import { type SessionCookieConfig, requireSession } from "./identity/session-cookie.js";
 import type { SessionService } from "./identity/session-store.js";
@@ -24,6 +25,8 @@ import { registerExportRoutes } from "./routes/exports.js";
 import { registerHeadshotRoutes } from "./routes/headshot.js";
 import { registerImageRoutes } from "./routes/images.js";
 import { type Clock, registerProfileRoutes } from "./routes/profiles.js";
+import { RecordLock } from "./routes/record-lock.js";
+import { registerRosterRoutes } from "./routes/roster.js";
 import { registerStarsRoutes } from "./routes/stars.js";
 import { registerStatusRoutes } from "./routes/status.js";
 import { traceId } from "./routes/trace.js";
@@ -81,6 +84,12 @@ export interface BuildServerOptions {
   cookie: SessionCookieConfig;
   /** The Ghost relay redirect target; omitted locally (dev uses the role switcher). */
   ghostBridge?: GhostBridgeConfig;
+  /**
+   * The subject-pinned Google-OIDC verifier behind `GET /api/roster` (D58/D78).
+   * Omitted when the Linter integration is not configured — the route then fails
+   * closed with `503`.
+   */
+  rosterVerifier?: RosterVerifier;
 }
 
 /**
@@ -183,8 +192,12 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   // version minter defaults to a UUID (opaque, non-enumerable — R16/N42).
   const imageStore = options.imageStore ?? new GcsImageStore(process.env.IMAGE_BUCKET);
   const mintVersion = options.mintVersion ?? (() => randomUUID());
-  // The Ghost lifecycle is a succeed-and-log stub until the Phase-5 write path (N41).
+  // The Ghost lifecycle is the real Admin-API client when an Admin key is
+  // configured (wired in index.ts), else a succeed-and-log stub (N41/N65).
   const ghostLifecycle = options.ghostLifecycle ?? new StubGhostLifecycle();
+  // One per-record write serializer shared by every pushed-field write path (N65),
+  // so PATCH, deceased, and de-brother on the same record serialize with each other.
+  const recordLock = new RecordLock();
 
   registerAuthRoutes(app, {
     provider: options.identityProvider,
@@ -203,6 +216,8 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     store: options.profileStore,
     audit,
     clock,
+    ghostLifecycle,
+    recordLock,
   });
   registerHeadshotRoutes(app, {
     cache: options.profileCache,
@@ -221,6 +236,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     audit,
     clock,
     ghostLifecycle,
+    recordLock,
   });
   registerAdminRoutes(app, {
     cache: options.profileCache,
@@ -239,6 +255,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     removeStar: options.removeStar,
   });
   registerExportRoutes(app, { gate, audit, clock, cache: options.profileCache });
+  registerRosterRoutes(app, { verifier: options.rosterVerifier });
   registerImageRoutes(app, { cache: options.profileCache, gate, imageStore });
   registerBannerRoutes(app, { gate, bannerStore: options.bannerStore, audit, clock });
   registerBackupRoutes(app, { gate, backupSource: options.backupSource, audit, clock });

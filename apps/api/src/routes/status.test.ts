@@ -52,11 +52,12 @@ async function buildStatusServer(ghostLifecycle = new StubGhostLifecycle()) {
   await cache.load([
     // 5001: living, verified brother/owner.
     makeProfile({ id: 5001, lastVerifiedDate: "2026-01-01", verifiedBy: 5001 }),
-    // 5002: a second living brother.
-    makeProfile({ id: 5002 }),
+    // 5002: a second living brother, linked to a Ghost member (consent-push cases).
+    makeProfile({ id: 5002, ghostMemberId: "gm-5002" }),
     // 5003: already deceased (verify-freeze + re-PUT-edit cases).
     makeProfile({
       id: 5003,
+      ghostMemberId: "gm-5003",
       deceased: { isDeceased: true, deathYear: 2020 },
       allowNewsletterEmail: false,
       allowCommentReplyEmail: false,
@@ -259,6 +260,61 @@ describe("PUT /api/profiles/:id/deceased", () => {
     expect(stored.deceasedConsentSnapshot).toBeUndefined();
     expect(stored.newsletterConsentChangedAt).toBe(FIXED_NOW.toISOString());
   });
+
+  it("pushes the forced unsubscribes to Ghost first on a raise (N65)", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const ctx = await buildStatusServer(ghost);
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5002/deceased",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { deceased: true, deathYear: 2026 },
+    });
+    expect(response.statusCode).toBe(200);
+    // Only the two consent flags are pushed (never email/name), by their new value.
+    expect(ghost.updated).toEqual([
+      {
+        id: 5002,
+        ghostMemberId: "gm-5002",
+        diff: { allowNewsletterEmail: false, allowCommentReplyEmail: false },
+      },
+    ]);
+    expect(ctx.cache.getById(5002)?.allowNewsletterEmail).toBe(false);
+    await ctx.app.close();
+  });
+
+  it("fails the mark-deceased with 502 when Ghost rejects, leaving Book untouched (N65)", async () => {
+    const ctx = await buildStatusServer(new FailingGhostLifecycle("update"));
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5002/deceased",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { deceased: true, deathYear: 2026 },
+    });
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ error: "ghost_update_failed" });
+    // Untouched: neither the deceased flag nor consent moved.
+    const stored = ctx.cache.getById(5002) as Profile;
+    expect(stored.deceased.isDeceased).toBe(false);
+    expect(stored.allowNewsletterEmail).toBe(true);
+    await ctx.app.close();
+  });
+
+  it("makes no Ghost call on a facts-only re-PUT that changes no consent flag (N65)", async () => {
+    // 5003 is already deceased with consent already off → a re-PUT edits only the
+    // obituary link, so there is no consent change to push.
+    const ghost = new RecordingGhostLifecycle();
+    const ctx = await buildStatusServer(ghost);
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5003/deceased",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { deceased: true, obituaryUrl: "https://example.test/obit" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(ghost.updated).toHaveLength(0);
+    await ctx.app.close();
+  });
 });
 
 describe("PUT /api/profiles/:id/debrothered", () => {
@@ -325,6 +381,8 @@ describe("PUT /api/profiles/:id/debrothered", () => {
     const stored = ctx.cache.getById(5004) as Profile;
     expect(stored.debrothered.isDebrothered).toBe(false);
     expect(stored.debrotherConsentSnapshot).toBeUndefined();
+    // The re-created member's FRESH id is folded into the reinstating write (N65/N67).
+    expect(stored.ghostMemberId).toBe("recreated-5004");
     await ctx.app.close();
   });
 
