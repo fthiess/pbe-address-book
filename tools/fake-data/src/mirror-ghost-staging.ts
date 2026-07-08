@@ -135,33 +135,28 @@ function newsletters(subscribed: boolean): { id: string }[] {
   return subscribed ? [{ id: newsletterId as string }] : [];
 }
 
-/** The `book-seed` label id, resolved once up front so member creates reference it by id. */
-let seedLabelId = "";
-
 /**
- * Ensure the `book-seed` label exists and return its id. Resolving it ONCE before
- * the create pool is load-bearing: attaching the label by **name** on each create
- * lets Ghost auto-create it, and the first burst of concurrent creates then races
- * to create the same label → `UPDATE_RELATION` "cannot save member" 500s. Creating
- * it once and attaching by **id** makes every member create a plain join insert.
+ * Ensure the `book-seed` label **exists** before the create pool runs. This is
+ * load-bearing for two reasons that bit us in turn:
+ *  1. If the label doesn't exist, attaching it by name on each create lets Ghost
+ *     auto-create it, and the first burst of concurrent creates races to create the
+ *     same label → `UPDATE_RELATION` "cannot save member" 500s. Pre-creating it once
+ *     means every concurrent create just *matches* the existing label — no create.
+ *  2. Members must still attach the label **by name** (not by id): Ghost's member
+ *     save derives the label slug from `label.name`, so a by-id-only reference makes
+ *     it read `undefined.toLowerCase()` → a 500. By name, with the label already
+ *     present, it matches the existing one cleanly.
+ * Idempotent: reuses the label if a prior run created it.
  */
-async function ensureLabelId(): Promise<string> {
+async function ensureSeedLabel(): Promise<void> {
   const filter = encodeURIComponent(`slug:${SEED_LABEL}`);
   const found = (await ghost("GET", `/labels/?filter=${filter}&limit=1`)) as {
     labels?: { id?: string }[];
   };
-  const existing = found.labels?.[0]?.id;
-  if (existing) {
-    return existing;
+  if (found.labels?.[0]?.id) {
+    return;
   }
-  const created = (await ghost("POST", "/labels/", { labels: [{ name: SEED_LABEL }] })) as {
-    labels?: { id?: string }[];
-  };
-  const id = created.labels?.[0]?.id;
-  if (!id) {
-    throw new Error("could not create the book-seed label");
-  }
-  return id;
+  await ghost("POST", "/labels/", { labels: [{ name: SEED_LABEL }] });
 }
 
 /** List every `book-seed`-labelled member across all pages. */
@@ -193,7 +188,7 @@ async function createMember(m: DesiredMember): Promise<string> {
         email: m.email,
         name: m.name,
         newsletters: newsletters(m.subscribed),
-        labels: [{ id: seedLabelId }],
+        labels: [{ name: SEED_LABEL }],
       },
     ],
   })) as { members?: { id?: string }[] };
@@ -263,8 +258,8 @@ if (DRY_RUN) {
 
 const links: { profileId: number; ghostMemberId: string }[] = [...plan.matchedLinks];
 
-// Resolve the label ONCE before the concurrent creates reference it (see ensureLabelId).
-seedLabelId = await ensureLabelId();
+// Ensure the label exists ONCE before the concurrent creates attach it by name.
+await ensureSeedLabel();
 
 const created = await pool(plan.toCreate, async (m) => {
   const id = await createMember(m);
