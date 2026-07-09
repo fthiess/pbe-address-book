@@ -64,64 +64,63 @@ function table(headers: string[], rows: string[][]): string {
   return `${head}\n${sep}\n${body}`;
 }
 
-function section(category: DiscrepancyCategory, items: Discrepancy[]): string {
-  const lines = [
-    `## ${CATEGORY_TITLES[category]} (${items.length})`,
-    "",
-    CATEGORY_NOTES[category],
-    "",
-  ];
+function sectionTable(category: DiscrepancyCategory, items: Discrepancy[]): string {
   if (category === "newsletterDrift") {
-    lines.push(
-      table(
-        ["Profile", "Ghost member", "Book", "Ghost", "Book changed", "Ghost changed"],
-        items.map((d) => [
-          cell(d.profileId),
-          cell(d.ghostMemberId),
-          cell(d.bookValue),
-          cell(d.ghostValue),
-          fmtTime(d.bookChangedAt),
-          fmtTime(d.ghostChangedAt),
-        ]),
-      ),
-    );
-  } else if (category === "fieldDrift") {
-    lines.push(
-      table(
-        ["Profile", "Ghost member", "Field", "Book value", "Ghost value"],
-        items.map((d) => [
-          cell(d.profileId),
-          cell(d.ghostMemberId),
-          cell(d.field),
-          cell(d.bookValue),
-          cell(d.ghostValue),
-        ]),
-      ),
-    );
-  } else if (category === "unmatchedGhostMember") {
-    lines.push(
-      table(
-        ["Ghost member", "Email"],
-        items.map((d) => [cell(d.ghostMemberId), cell(d.ghostValue)]),
-      ),
-    );
-  } else if (category === "missingGhostMember") {
-    lines.push(
-      table(
-        ["Profile", "Stale Ghost id"],
-        items.map((d) => [cell(d.profileId), cell(d.ghostMemberId)]),
-      ),
-    );
-  } else {
-    // bookInternalOrphan
-    lines.push(
-      table(
-        ["Profile / id", "Kind", "Dangling value"],
-        items.map((d) => [cell(d.profileId), cell(d.field), cell(d.bookValue)]),
-      ),
+    return table(
+      ["Profile", "Ghost member", "Book", "Ghost", "Book changed", "Ghost changed"],
+      items.map((d) => [
+        cell(d.profileId),
+        cell(d.ghostMemberId),
+        cell(d.bookValue),
+        cell(d.ghostValue),
+        fmtTime(d.bookChangedAt),
+        fmtTime(d.ghostChangedAt),
+      ]),
     );
   }
-  return lines.join("\n");
+  if (category === "fieldDrift") {
+    return table(
+      ["Profile", "Ghost member", "Field", "Book value", "Ghost value"],
+      items.map((d) => [
+        cell(d.profileId),
+        cell(d.ghostMemberId),
+        cell(d.field),
+        cell(d.bookValue),
+        cell(d.ghostValue),
+      ]),
+    );
+  }
+  if (category === "unmatchedGhostMember") {
+    return table(
+      ["Ghost member", "Email"],
+      items.map((d) => [cell(d.ghostMemberId), cell(d.ghostValue)]),
+    );
+  }
+  if (category === "missingGhostMember") {
+    return table(
+      ["Profile", "Stale Ghost id"],
+      items.map((d) => [cell(d.profileId), cell(d.ghostMemberId)]),
+    );
+  }
+  // bookInternalOrphan
+  return table(
+    ["Profile / id", "Kind", "Dangling value"],
+    items.map((d) => [cell(d.profileId), cell(d.field), cell(d.bookValue)]),
+  );
+}
+
+/**
+ * One category as a **collapsible** `<details>` block. `<details>/<summary>` isn't
+ * core Markdown but renders as a fold in the common viewers (GitHub, Obsidian, VS
+ * Code) and degrades to plain visible text elsewhere. Kept **open by default** — an
+ * audit must never hide a finding — but a long section can be collapsed so the
+ * reader can scan past it and not miss a shorter one below (Forrest's request). The
+ * blank lines are load-bearing: they let the viewer parse the note + table inside
+ * the block as Markdown rather than literal HTML.
+ */
+function section(category: DiscrepancyCategory, items: Discrepancy[]): string {
+  const heading = `${CATEGORY_TITLES[category]} (${items.length})`;
+  return `<details open>\n<summary><strong>${heading}</strong></summary>\n\n${CATEGORY_NOTES[category]}\n\n${sectionTable(category, items)}\n\n</details>`;
 }
 
 export function formatAuditReportMarkdown(report: GhostAuditReport): string {

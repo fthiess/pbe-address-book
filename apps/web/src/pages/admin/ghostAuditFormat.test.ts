@@ -32,12 +32,17 @@ describe("formatAuditReportMarkdown", () => {
     const md = formatAuditReportMarkdown(report);
     expect(md).toContain("**2 discrepancies:**");
     expect(md).toContain("it reports differences but changes nothing");
-    // Newsletter section carries both timestamps for the by-hand resolution.
-    expect(md).toContain("## Newsletter subscription drift (1)");
+    // Each section is a collapsible <details> block, open by default (Forrest's
+    // request), with the title + count in the <summary>.
+    expect(md).toContain("<details open>");
+    expect(md).toContain("<summary><strong>Newsletter subscription drift (1)</strong></summary>");
     expect(md).toContain("2026-01-01 · 00:00 UTC");
     expect(md).toContain("2026-06-01 · 00:00 UTC");
-    expect(md).toContain("## Unmatched Ghost member (1)");
+    expect(md).toContain("<summary><strong>Unmatched Ghost member (1)</strong></summary>");
     expect(md).toContain("x@example.test");
+    // One <details>/<summary>/</details> per present category (here: 2).
+    expect(md.match(/<details open>/g)).toHaveLength(2);
+    expect(md.match(/<\/details>/g)).toHaveLength(2);
   });
 
   it("escapes pipes so a value cannot break a Markdown table", () => {
