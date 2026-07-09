@@ -6,11 +6,9 @@
     <title>Down for maintenance · PBE Book</title>
     <meta name="robots" content="noindex" />
     <style>
-      /* Self-contained and byte-frugal (D118): the app and its assets may be down,
-         so this page depends on NOTHING — no scripts, no external CSS/fonts, no
-         images (which is why it can't @import tokens.css). The colours below are
-         copied from Book's design tokens (apps/web/src/styles/tokens.css) so it
-         still reads as Book; light/dark aware; calm and legible for a 60+ audience. */
+      /* Self-contained by design (D118): no scripts/external CSS/fonts/images, so it
+         serves from Hosting's edge even when Cloud Run is down. Colours copied from
+         Book's tokens (apps/web/src/styles/tokens.css); light/dark aware. */
       :root {
         color-scheme: light dark;
         --background: #eef0f1;
