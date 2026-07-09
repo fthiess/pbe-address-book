@@ -7,23 +7,27 @@
     <meta name="robots" content="noindex" />
     <style>
       /* Self-contained and byte-frugal (D118): the app and its assets may be down,
-         so this page depends on nothing — no scripts, no external CSS, no images.
-         Light/dark aware; calm and legible for an audience that skews 60+. */
+         so this page depends on NOTHING — no scripts, no external CSS/fonts, no
+         images (which is why it can't @import tokens.css). The colours below are
+         copied from Book's design tokens (apps/web/src/styles/tokens.css) so it
+         still reads as Book; light/dark aware; calm and legible for a 60+ audience. */
       :root {
         color-scheme: light dark;
-        --bg: #f4f6f8;
+        --background: #eef0f1;
         --card: #ffffff;
-        --fg: #1c2733;
-        --muted: #5b6673;
-        --border: #dde3ea;
+        --foreground: #14181b;
+        --muted-foreground: #5a6470;
+        --border: #e2e5e7;
+        --primary: #007194; /* Book teal */
       }
       @media (prefers-color-scheme: dark) {
         :root {
-          --bg: #10151b;
-          --card: #182029;
-          --fg: #e7edf3;
-          --muted: #9aa7b4;
-          --border: #2a333d;
+          --background: #0e1518;
+          --card: #101a1e;
+          --foreground: #e8edef;
+          --muted-foreground: #9aa7ad;
+          --border: #243036;
+          --primary: #34a9c4; /* brightened teal for dark surfaces */
         }
       }
       * {
@@ -35,9 +39,10 @@
         display: grid;
         place-items: center;
         padding: 1.5rem;
-        background: var(--bg);
-        color: var(--fg);
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
         line-height: 1.6;
       }
       main {
@@ -45,10 +50,17 @@
         max-width: 30rem;
         background: var(--card);
         border: 1px solid var(--border);
-        border-radius: 1rem;
+        border-radius: 16px; /* --radius-xl */
         padding: 2.5rem 2rem;
         text-align: center;
         box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+      .wordmark {
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.02em;
+        color: var(--primary);
+        margin-bottom: 1.5rem;
       }
       h1 {
         margin: 0 0 0.75rem;
@@ -57,25 +69,18 @@
       }
       p {
         margin: 0.5rem 0 0;
-        color: var(--muted);
+        color: var(--muted-foreground);
         font-size: 0.95rem;
-      }
-      .mark {
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        color: var(--muted);
-        font-size: 0.8rem;
-        margin-bottom: 1.25rem;
       }
     </style>
   </head>
   <body>
     <main role="main">
-      <div class="mark">ΦΒΕ &middot; 1890</div>
+      <div class="wordmark">Phi Beta Epsilon Address Book</div>
       <h1>Down for maintenance</h1>
       <p>
-        The PBE brother directory is offline for a short spell of maintenance. Nothing is lost —
-        please check back in a little while.
+        The brother directory is offline for a short spell of maintenance. Nothing is lost — please
+        check back in a little while.
       </p>
       <p>Thank you for your patience.</p>
     </main>
