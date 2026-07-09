@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Down for maintenance · PBE Book</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      /* Self-contained by design (D118): no scripts/external CSS/fonts/images, so it
+         serves from Hosting's edge even when Cloud Run is down. Colours copied from
+         Book's tokens (apps/web/src/styles/tokens.css); light/dark aware. */
+      :root {
+        color-scheme: light dark;
+        --background: #eef0f1;
+        --card: #ffffff;
+        --foreground: #14181b;
+        --muted-foreground: #5a6470;
+        --border: #e2e5e7;
+        --primary: #007194; /* Book teal */
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #0e1518;
+          --card: #101a1e;
+          --foreground: #e8edef;
+          --muted-foreground: #9aa7ad;
+          --border: #243036;
+          --primary: #34a9c4; /* brightened teal for dark surfaces */
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+        background: var(--background);
+        color: var(--foreground);
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial,
+          sans-serif;
+        line-height: 1.6;
+      }
+      main {
+        width: 100%;
+        max-width: 30rem;
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px; /* --radius-xl */
+        padding: 2.5rem 2rem;
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+      }
+      .wordmark {
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.02em;
+        color: var(--primary);
+        margin-bottom: 1.5rem;
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: 1.5rem;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0.5rem 0 0;
+        color: var(--muted-foreground);
+        font-size: 0.95rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main role="main">
+      <div class="wordmark">Phi Beta Epsilon Address Book</div>
+      <h1>Down for maintenance</h1>
+      <p>
+        The brother directory is offline for a short spell of maintenance. Nothing is lost — please
+        check back in a little while.
+      </p>
+      <p>Thank you for your patience.</p>
+    </main>
+  </body>
+</html>

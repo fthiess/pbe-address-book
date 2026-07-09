@@ -1,6 +1,8 @@
 import type {
   AdminBugReport,
+  BounceReport,
   BugReportClientContext,
+  GhostAuditReport,
   Profile,
   Role,
   ValidationIssue,
@@ -409,6 +411,33 @@ export async function downloadBackup(): Promise<void> {
   const filename =
     filenameFromDisposition(response.headers.get("Content-Disposition")) ?? "book-backup.json";
   saveBlob(blob, filename);
+}
+
+/**
+ * Run the Book/Ghost alignment audit and return its discrepancy report (`GET
+ * /api/admin/ghost-audit`, admin only; API-SPEC §7). Read-only into Book — it
+ * reports differences and changes nothing (the 5b-2 amendment to D103). The caller
+ * formats it to a Markdown download; nothing is rendered in the UI.
+ */
+export async function fetchGhostAudit(): Promise<GhostAuditReport> {
+  const response = await fetch("/api/admin/ghost-audit", { credentials: "same-origin" });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  return (await response.json()) as GhostAuditReport;
+}
+
+/**
+ * Run the email-bounce report and return its per-brother aggregates (`GET
+ * /api/admin/bounce-report`, admin only; D120). The caller formats it to a CSV
+ * download; nothing is rendered in the UI.
+ */
+export async function fetchBounceReport(): Promise<BounceReport> {
+  const response = await fetch("/api/admin/bounce-report", { credentials: "same-origin" });
+  if (!response.ok) {
+    throw await asError(response);
+  }
+  return (await response.json()) as BounceReport;
 }
 
 /** The fields the SPA sends when filing a bug report (`POST /api/bug-report`, D121). */

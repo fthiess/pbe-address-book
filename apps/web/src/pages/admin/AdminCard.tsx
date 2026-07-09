@@ -57,19 +57,6 @@ export function AdminCard({
   );
 }
 
-/**
- * A calm "not yet available" badge for the surfaces whose backend lands later
- * (Sync with Ghost → 5b; Bug reports → 5a-2). Deliberately understated for the
- * 60+ audience — a plain, muted pill, not a loud "Coming soon!".
- */
-export function ComingLaterBadge({ children = "Not yet available" }: { children?: ReactNode }) {
-  return (
-    <span className="rounded-[var(--radius-pill)] border border-border bg-muted px-2.5 py-0.5 text-[length:var(--text-caption)] font-semibold text-muted-foreground">
-      {children}
-    </span>
-  );
-}
-
 const ICON_PROPS = {
   width: 18,
   height: 18,
@@ -117,6 +104,19 @@ export function BugIcon() {
       <path d="M21 11h-4" />
       <path d="M7 16H4" />
       <path d="M20 16h-3" />
+    </svg>
+  );
+}
+
+/** An envelope with a warning (email-bounce report). */
+export function MailWarningIcon() {
+  return (
+    <svg aria-hidden="true" {...ICON_PROPS}>
+      <path d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8" />
+      <path d="M3 8v9a2 2 0 0 0 2 2h9" />
+      <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2" />
+      <path d="M19 13v3" />
+      <path d="M19 20h.01" />
     </svg>
   );
 }

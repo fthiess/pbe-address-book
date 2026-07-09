@@ -188,8 +188,13 @@ function escapeCsvCell(value: string): string {
   return /[",\r\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
 
-/** Format one cell: neutralize a formula leader, then RFC-4180-escape. */
-function formatCell(value: string): string {
+/**
+ * Format one cell for CSV output: neutralize a formula leader (S9/OFC-99), then
+ * RFC-4180-escape. The single canonical cell formatter — every Book CSV export
+ * (the directory/MITAA export and the email-bounce report) routes through this so
+ * the formula-injection hardening cannot drift between them.
+ */
+export function formatCsvCell(value: string): string {
   return escapeCsvCell(neutralizeCsvCell(value));
 }
 
@@ -201,7 +206,7 @@ function formatCell(value: string): string {
  */
 export function profilesToCsv(rows: readonly ProjectedProfile[], role: Role): string {
   const columns = columnsForRole(role);
-  const header = columns.map((c) => formatCell(c.header)).join(",");
-  const lines = rows.map((row) => columns.map((c) => formatCell(c.get(row))).join(","));
+  const header = columns.map((c) => formatCsvCell(c.header)).join(",");
+  const lines = rows.map((row) => columns.map((c) => formatCsvCell(c.get(row))).join(","));
   return [header, ...lines].join("\r\n");
 }

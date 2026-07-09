@@ -23,6 +23,13 @@ export {
 } from "./images.js";
 export { normalizeEmail } from "./email.js";
 export { BANNER_SEVERITIES, type BannerSeverity } from "./banner.js";
+export type {
+  BounceReport,
+  BounceRow,
+  Discrepancy,
+  DiscrepancyCategory,
+  GhostAuditReport,
+} from "./ghost-reports.js";
 export {
   BUG_REPORT_STATUSES,
   MAX_BUG_REPORT_DESCRIPTION,
@@ -71,7 +78,7 @@ export {
   impersonatableRoles,
   partitionWritableFields,
 } from "./capabilities.js";
-export { profilesToCsv, neutralizeCsvCell } from "./csv.js";
+export { profilesToCsv, neutralizeCsvCell, formatCsvCell } from "./csv.js";
 export {
   type Major,
   MAJORS,

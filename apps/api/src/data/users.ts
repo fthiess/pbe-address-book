@@ -165,6 +165,12 @@ export interface AdminUserStore {
   deleteUser(id: number): Promise<void>;
   /** Remove `id` from every user's `stars` list — the delete's inbound-reference scrub (D98). */
   removeStarFromAll(id: number): Promise<void>;
+  /**
+   * Every `users` document id (= Constitution ID). Read by the reconciliation
+   * audit (D99) to find a `users` doc with no live profile — a `bookInternalOrphan`
+   * (D98), typically the residue of a partial delete.
+   */
+  listUserIds(): Promise<number[]>;
 }
 
 /** The real {@link AdminUserStore}: transactional role changes + reference scrubs over Firestore. */
@@ -221,6 +227,14 @@ export class FirestoreAdminUserStore implements AdminUserStore {
   async deleteUser(id: number): Promise<void> {
     // Idempotent, like the profile delete — a re-run completes a partial delete (D98).
     await this.db.collection(COLLECTION).doc(String(id)).delete();
+  }
+
+  async listUserIds(): Promise<number[]> {
+    // Doc ids only (no field reads): the audit just needs the id set to diff
+    // against live profiles. Firestore's `select()` with no fields returns
+    // reference-only documents, so this stays cheap even as the collection grows.
+    const snap = await this.db.collection(COLLECTION).select().get();
+    return snap.docs.map((doc) => Number(doc.id)).filter((id) => Number.isInteger(id));
   }
 
   async removeStarFromAll(id: number): Promise<void> {

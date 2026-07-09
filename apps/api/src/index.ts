@@ -23,6 +23,7 @@ import { GhostAdminLifecycle } from "./identity/ghost-admin.js";
 import { createGhostKeyResolver } from "./identity/ghost-jwks.js";
 import type { GhostLifecycle } from "./identity/ghost-lifecycle.js";
 import { GhostIdentityProvider } from "./identity/ghost-provider.js";
+import { GhostAdminReader, type GhostReader } from "./identity/ghost-reader.js";
 import {
   GoogleOidcVerifier,
   type RosterVerifier,
@@ -90,6 +91,18 @@ function resolveGhostLifecycle(): GhostLifecycle | undefined {
   });
 }
 
+/**
+ * Build the read-only Ghost client (the admin alignment audit + bounce report,
+ * 5b-2) when the Admin API is configured, else undefined (→ the routes `503`).
+ * Reads need no `GHOST_NEWSLETTER_ID`, so this gates only on URL + key.
+ */
+function resolveGhostReader(): GhostReader | undefined {
+  if (!GHOST_ADMIN_API_URL || !GHOST_ADMIN_API_KEY) {
+    return undefined;
+  }
+  return new GhostAdminReader({ apiUrl: GHOST_ADMIN_API_URL, adminApiKey: GHOST_ADMIN_API_KEY });
+}
+
 /** Build the roster verifier when the Linter identity is configured, else undefined. */
 function resolveRosterVerifier(): RosterVerifier | undefined {
   if (!ROSTER_AUDIENCE || !ROSTER_LINTER_SUBJECT) {
@@ -138,6 +151,7 @@ async function main(): Promise<void> {
     cookie: { secure: true },
     ghostBridge: { url: GHOST_BRIDGE_URL, target: GHOST_BRIDGE_TARGET },
     ghostLifecycle: resolveGhostLifecycle(),
+    ghostReader: resolveGhostReader(),
     rosterVerifier: resolveRosterVerifier(),
   });
 

@@ -1,5 +1,5 @@
 import { type Profile, formatCanonicalName } from "@pbe/shared";
-import { SignJWT } from "jose";
+import { GhostAdminHttp } from "./ghost-admin-http.js";
 import type { GhostCreateResult, GhostLifecycle, GhostMemberDiff } from "./ghost-lifecycle.js";
 
 /**
@@ -39,30 +39,23 @@ export interface GhostAdminConfig {
 }
 
 export class GhostAdminLifecycle implements GhostLifecycle {
-  private readonly apiUrl: string;
-  private readonly keyId: string;
-  private readonly secret: Buffer;
+  private readonly http: GhostAdminHttp;
   private readonly newsletterId: string;
-  private readonly acceptVersion: string;
-  private readonly fetchImpl: typeof fetch;
 
   constructor(config: GhostAdminConfig) {
-    this.apiUrl = config.apiUrl.replace(/\/$/, "");
-    const [keyId, secret] = config.adminApiKey.split(":");
-    if (!keyId || !secret) {
-      throw new Error("GHOST_ADMIN_API_KEY must be in `{id}:{secret}` form");
-    }
     // Fail fast without a newsletter id: subscribing needs it, and defaulting to `[]`
     // would silently *unsubscribe* every member whose newsletter consent is enabled
     // (OFC-219). A misconfigured deploy must crash at startup, not invert consent.
     if (!config.newsletterId) {
       throw new Error("GHOST_NEWSLETTER_ID is required to push newsletter subscription state");
     }
-    this.keyId = keyId;
-    this.secret = Buffer.from(secret, "hex");
+    this.http = new GhostAdminHttp({
+      apiUrl: config.apiUrl,
+      adminApiKey: config.adminApiKey,
+      acceptVersion: config.acceptVersion,
+      fetchImpl: config.fetchImpl,
+    });
     this.newsletterId = config.newsletterId;
-    this.acceptVersion = config.acceptVersion ?? "v5.0";
-    this.fetchImpl = config.fetchImpl ?? fetch;
   }
 
   async createMember(profile: Profile): Promise<GhostCreateResult> {
@@ -74,7 +67,9 @@ export class GhostAdminLifecycle implements GhostLifecycle {
     });
     // `send_email=false` suppresses Ghost's signup email — the brother simply
     // becomes able to magic-link in (D96).
-    const body = await this.request("POST", "/members/?send_email=false", { members: [member] });
+    const body = await this.http.request("POST", "/members/?send_email=false", {
+      members: [member],
+    });
     const id = extractMemberId(body);
     if (!id) {
       throw new Error("Ghost create returned no member id");
@@ -87,7 +82,7 @@ export class GhostAdminLifecycle implements GhostLifecycle {
       throw new Error("updateMember called without a ghostMemberId");
     }
     const member = this.memberFields(diff);
-    await this.request("PUT", `/members/${encodeURIComponent(profile.ghostMemberId)}/`, {
+    await this.http.request("PUT", `/members/${encodeURIComponent(profile.ghostMemberId)}/`, {
       members: [member],
     });
   }
@@ -96,7 +91,7 @@ export class GhostAdminLifecycle implements GhostLifecycle {
     if (!profile.ghostMemberId) {
       throw new Error("deleteMember called without a ghostMemberId");
     }
-    await this.request("DELETE", `/members/${encodeURIComponent(profile.ghostMemberId)}/`);
+    await this.http.request("DELETE", `/members/${encodeURIComponent(profile.ghostMemberId)}/`);
   }
 
   /**
@@ -130,41 +125,6 @@ export class GhostAdminLifecycle implements GhostLifecycle {
     }
     return member;
   }
-
-  /** Mint a fresh short-lived Ghost Admin JWT (HS256 over the hex secret; D99). */
-  private async signToken(): Promise<string> {
-    return new SignJWT({})
-      .setProtectedHeader({ alg: "HS256", kid: this.keyId })
-      .setIssuedAt()
-      .setExpirationTime("5m")
-      .setAudience("/admin/")
-      .sign(this.secret);
-  }
-
-  /**
-   * Issue one authenticated Admin-API request, returning the parsed JSON body (or
-   * `undefined` for an empty response, e.g. a `DELETE`). Any non-2xx **throws** with
-   * Ghost's error message when present, so the Ghost-first callers abort clean. The
-   * thrown message is logged server-side only — it never reaches a Book client
-   * (the endpoints surface a generic `ghost_update_failed`/`ghost_*_failed`).
-   */
-  private async request(method: string, path: string, body?: unknown): Promise<unknown> {
-    const token = await this.signToken();
-    const response = await this.fetchImpl(`${this.apiUrl}${path}`, {
-      method,
-      headers: {
-        Authorization: `Ghost ${token}`,
-        "Accept-Version": this.acceptVersion,
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    if (!response.ok) {
-      throw new Error(`Ghost ${method} ${path} → ${response.status}: ${await safeError(response)}`);
-    }
-    const text = await response.text();
-    return text ? (JSON.parse(text) as unknown) : undefined;
-  }
 }
 
 /** Pull `members[0].id` out of a Ghost create/read response, or `undefined`. */
@@ -178,15 +138,4 @@ function extractMemberId(body: unknown): string | undefined {
   }
   const first = members[0] as { id?: unknown };
   return typeof first.id === "string" ? first.id : undefined;
-}
-
-/** Best-effort extraction of Ghost's error message for the thrown (server-only) log. */
-async function safeError(response: Response): Promise<string> {
-  try {
-    const text = await response.text();
-    const json = JSON.parse(text) as { errors?: { message?: string }[] };
-    return json.errors?.[0]?.message ?? text.slice(0, 200);
-  } catch {
-    return response.statusText;
-  }
 }

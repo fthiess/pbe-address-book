@@ -1,9 +1,10 @@
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
-import { AdminCard, ComingLaterBadge, SyncIcon } from "./admin/AdminCard.js";
 import { BackupCard } from "./admin/BackupCard.js";
 import { BannerCard } from "./admin/BannerCard.js";
+import { BounceReportCard } from "./admin/BounceReportCard.js";
 import { BugReportsCard } from "./admin/BugReportsCard.js";
+import { GhostAuditCard } from "./admin/GhostAuditCard.js";
 
 /** Shared styling for the "← Directory" affordance, whether button or link. */
 const BACK_CLASS =
@@ -12,8 +13,9 @@ const BACK_CLASS =
 /**
  * The Admin control panel (`/admin`; PRD §5.8) — the whole-database operations
  * that stay online. Live surfaces: Download backup, the system-message banner, and
- * (Phase 5a-2) the Bug-reports review queue. Sync with Ghost stays a calm
- * placeholder until its backend lands (the reconciliation audit, Phase 5b).
+ * (Phase 5a-2) the Bug-reports review queue, and (Phase 5b-2) the Book/Ghost
+ * alignment audit and the email-bounce report — both download-only, read-only
+ * reports (the audit changes nothing in Book; D103 as amended in 5b-2).
  *
  * Admin-only. The server enforces admin on every admin endpoint, so this route
  * guard is UX: a non-admin — or an admin "viewing as" a lower role (effective
@@ -58,12 +60,9 @@ export function Admin() {
       <div className="flex flex-col gap-5">
         <BackupCard />
 
-        <AdminCard
-          icon={<SyncIcon />}
-          title="Sync with Ghost (PBE News)"
-          badge={<ComingLaterBadge />}
-          description="Reconciles Book against the membership list on PBE News and reports any differences for review. This arrives with the Ghost integration in a later update."
-        />
+        <GhostAuditCard />
+
+        <BounceReportCard />
 
         <BannerCard />
 

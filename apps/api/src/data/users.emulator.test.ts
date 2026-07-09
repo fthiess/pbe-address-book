@@ -144,4 +144,14 @@ describe.skipIf(!hasEmulator)("FirestoreAdminUserStore (emulator)", () => {
     await store.deleteUser(5940);
     expect(await getUser(db, 5940)).toBeNull();
   });
+
+  it("listUserIds returns every users doc id as a number (the audit's orphan input, D98)", async () => {
+    await db.collection("users").doc("5970").set({ id: 5970, role: "brother", stars: [] });
+    await db.collection("users").doc("5971").set({ id: 5971, role: "manager", stars: [] });
+    const ids = await store.listUserIds();
+    expect(ids).toContain(5970);
+    expect(ids).toContain(5971);
+    // Every id is an integer (Number(docId)), never a string.
+    expect(ids.every((id) => Number.isInteger(id))).toBe(true);
+  });
 });

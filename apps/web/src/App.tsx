@@ -5,7 +5,7 @@ import { SessionProvider, useSession } from "./auth/SessionContext.js";
 import { AppShell } from "./components/AppShell.js";
 import { FontSizeProvider } from "./components/FontSizeProvider.js";
 import { LoadingOverlay } from "./components/LoadingOverlay.js";
-import { SessionError } from "./components/SessionError.js";
+import { MaintenanceOutage } from "./components/MaintenanceOutage.js";
 import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
 import { Admin } from "./pages/Admin.js";
@@ -50,10 +50,11 @@ function GateLayout() {
   if (state.status === "unauthenticated") {
     return <SignIn />;
   }
-  // A transient `/api/me` failure (survived one auto-retry) — offer a manual
-  // retry rather than a forced re-login (OFC-76).
+  // Backend unreachable / 5xx / down for maintenance (survived one auto-retry) —
+  // the D118 maintenance-outage screen with a manual retry, not a forced re-login
+  // (OFC-76, D118).
   if (state.status === "error") {
-    return <SessionError onRetry={() => void refresh()} />;
+    return <MaintenanceOutage onRetry={() => void refresh()} />;
   }
   return (
     <BannerProvider>
