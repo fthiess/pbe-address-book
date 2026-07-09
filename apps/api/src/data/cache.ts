@@ -328,6 +328,14 @@ export class ProfileCache {
     return this.byId.get(id) ?? null;
   }
 
+  /**
+   * Every loaded record, ordered by Constitution id. Read by the Book/Ghost
+   * alignment audit (D99), which joins the whole dataset against Ghost server-side.
+   */
+  allProfiles(): Profile[] {
+    return this.orderedProfiles();
+  }
+
   /** The record's current concurrency token (the `ETag`/`If-Match` value), or null. */
   concurrencyToken(id: number): string | null {
     return this.tokenById.get(id) ?? null;

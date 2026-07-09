@@ -19,6 +19,13 @@ import type {
   GhostLifecycle,
   GhostMemberDiff,
 } from "../identity/ghost-lifecycle.js";
+import type {
+  GhostBounceEvent,
+  GhostMemberRecord,
+  GhostNewsletterEmail,
+  GhostNewsletterEvent,
+  GhostReader,
+} from "../identity/ghost-reader.js";
 import type { NonceService } from "../identity/nonce-store.js";
 import type { SessionService } from "../identity/session-store.js";
 import type { Session } from "../identity/types.js";
@@ -218,6 +225,10 @@ export class InMemoryAdminUserStore implements AdminUserStore {
       set.delete(id);
     }
   }
+
+  async listUserIds(): Promise<number[]> {
+    return [...this.roles.keys()];
+  }
 }
 
 /**
@@ -271,6 +282,49 @@ export class FailingGhostLifecycle implements GhostLifecycle {
     if (this.mode === "update" || this.mode === "both") {
       throw new Error("ghost update failed");
     }
+  }
+}
+
+/**
+ * An in-memory {@link GhostReader} double for the admin alignment-audit + bounce-
+ * report routes (5b-2). Returns the fixtures it is constructed with; set `fail` to
+ * make the three throwing reads reject (proving the route's `502 ghost_read_failed`
+ * path) while `listNewsletterEmails` still resolves `[]` (it is best-effort — D120).
+ */
+export class InMemoryGhostReader implements GhostReader {
+  constructor(
+    private readonly data: {
+      members?: GhostMemberRecord[];
+      newsletterEvents?: GhostNewsletterEvent[];
+      bounceEvents?: GhostBounceEvent[];
+      newsletterEmails?: GhostNewsletterEmail[];
+    } = {},
+    private readonly fail = false,
+  ) {}
+
+  async listMembers(): Promise<GhostMemberRecord[]> {
+    if (this.fail) {
+      throw new Error("ghost members read failed");
+    }
+    return this.data.members ?? [];
+  }
+
+  async listNewsletterEvents(): Promise<GhostNewsletterEvent[]> {
+    if (this.fail) {
+      throw new Error("ghost events read failed");
+    }
+    return this.data.newsletterEvents ?? [];
+  }
+
+  async listBounceEvents(): Promise<GhostBounceEvent[]> {
+    if (this.fail) {
+      throw new Error("ghost bounce read failed");
+    }
+    return this.data.bounceEvents ?? [];
+  }
+
+  async listNewsletterEmails(): Promise<GhostNewsletterEmail[]> {
+    return this.data.newsletterEmails ?? [];
   }
 }
 

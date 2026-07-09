@@ -44,7 +44,12 @@ export type AuditAction =
   | "backup.download"
   | "banner.set"
   | "bug.report"
-  | "ghost.push";
+  | "ghost.push"
+  // Admin-triggered read reports over Ghost (5b-2): the Book/Ghost alignment audit
+  // (D99/D103) and the email-bounce report (D120). Both read-only; audited as a
+  // whole-database action with the discrepancy/row count in `count`.
+  | "ghost.audit"
+  | "bounce.report";
 
 /** The outcome of an audited action. */
 export type AuditOutcome = "ok" | "denied" | "error";

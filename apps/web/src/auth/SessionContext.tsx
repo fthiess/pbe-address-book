@@ -12,11 +12,12 @@ import { clearRoster } from "../lib/useRoster.js";
 
 /**
  * The app-wide auth state. The SPA loads `GET /api/me` once on mount (the
- * self-fetch half of the split read, D82). A `401`/`403` means "signed out",
- * which routes the user to the sign-in screen; a *transient* failure (a network
- * blip or a scale-to-zero cold-start timeout) instead lands on the retryable
- * `error` state after one automatic retry, rather than bouncing an already
- * signed-in member through the whole Ghost flow (OFC-76).
+ * self-fetch half of the split read, D82). Only a `401`/`403` means "signed out",
+ * which routes the user to the sign-in screen; every other failure — a network
+ * blip, a scale-to-zero cold-start timeout, or a `5xx`/`503` while Book is down for
+ * maintenance or in an outage (D118) — lands on the retryable `error` state after
+ * one automatic retry, which renders the maintenance/outage screen rather than
+ * bouncing an already-signed-in member through the whole Ghost flow (OFC-76, D118).
  */
 export type SessionState =
   | { status: "loading" }
@@ -67,15 +68,17 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setState({ status: "authenticated", me });
         return;
       } catch (error) {
-        // A real auth failure (401/403, carried as ApiError) is a definitive
-        // "signed out" — no retry, straight to the sign-in screen.
-        if (error instanceof ApiError) {
+        // Only a real auth failure (401/403) is a definitive "signed out" — no
+        // retry, straight to the sign-in screen.
+        if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
           setState({ status: "unauthenticated" });
           return;
         }
-        // A non-ApiError is a network error or a cold-start timeout — recoverable.
-        // Retry once, then surface the error state (which offers a manual retry)
-        // instead of forcing a full Ghost re-login on a momentary blip.
+        // Everything else is recoverable and must NOT force a re-login: a network
+        // error, a cold-start timeout, or a 5xx/503 while Book is **down for
+        // maintenance or in an outage** (D118 — a 503 must read as unavailable, not
+        // as signed-out). Retry once, then surface the outage screen with a manual
+        // retry (OFC-76 keeps an already-signed-in member out of the whole Ghost flow).
         if (attempt === 1) {
           await delay(REFRESH_RETRY_DELAY_MS);
           continue;

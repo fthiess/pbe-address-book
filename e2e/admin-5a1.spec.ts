@@ -99,13 +99,14 @@ test.describe("Admin page (5a-1)", () => {
     await expect(
       page.getByRole("heading", { name: "Administrative Tools", level: 1 }),
     ).toBeVisible();
-    // The two live surfaces and the two placeholders all render.
+    // All the live surfaces render (nothing is a placeholder anymore — the Ghost
+    // audit + bounce report went live in 5b-2, Bug reports in 5a-2).
     await expect(page.getByRole("heading", { name: "Download backup" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "System message banner" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Sync with Ghost/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Book / Ghost alignment audit" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Email bounce report" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Bug reports" })).toBeVisible();
-    // Sync with Ghost is the only remaining placeholder (Bug reports went live in 5a-2).
-    await expect(page.getByText("Not yet available")).toHaveCount(1);
+    await expect(page.getByText("Not yet available")).toHaveCount(0);
 
     // Reached from the Directory, "← Directory" pops the history (a button, not a
     // fresh-navigation link) so the Directory's place is restored, like the Profile

@@ -121,6 +121,19 @@ export function BugIcon() {
   );
 }
 
+/** An envelope with a warning (email-bounce report). */
+export function MailWarningIcon() {
+  return (
+    <svg aria-hidden="true" {...ICON_PROPS}>
+      <path d="M3 8l7.89 5.26a2 2 0 0 0 2.22 0L21 8" />
+      <path d="M3 8v9a2 2 0 0 0 2 2h9" />
+      <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2" />
+      <path d="M19 13v3" />
+      <path d="M19 20h.01" />
+    </svg>
+  );
+}
+
 /** A megaphone (system banner). */
 export function MegaphoneIcon() {
   return (

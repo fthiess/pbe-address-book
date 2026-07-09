@@ -49,7 +49,7 @@ Errors return the appropriate HTTP status and a JSON body:
 | 422 | Validation failed (see DATABASE-SCHEMA §8); body lists the offending fields. |
 | 428 | A mutating profile request omitted the required `If-Match` header. |
 | 500 | Unexpected server error. The body is **generic** — `{ "error": "internal", "message": "Something went wrong." }` — never the underlying exception message; the real error (with a trace id) is logged server-side only, so a Firestore/GCS internal detail cannot leak to the client (decision N55). |
-| 503 | Service unavailable — Book is in **maintenance / outage** mode; `Retry-After` and a maintenance-flavored body distinguish *planned* maintenance from an unplanned outage, and the SPA shows its maintenance/outage page (decision D118, §10). |
+| 503 | Service unavailable. Two uses: the admin Ghost reports return `{ "error": "ghost_unconfigured" }` when the Ghost Admin API is not configured (§7, N69); and a cached SPA that gets a `5xx`/`503` (or any unreachable backend) shows its generic maintenance/outage page — **no** maintenance-flavored body or planned/unplanned distinction (decision D118 as simplified by N69, §10). |
 
 ## 2. Authentication & session
 
@@ -238,28 +238,32 @@ These are admin-only. The bulk-operations surface was reshaped in the resolution
 | Endpoint | Method | Status | Purpose |
 |---|---|---|---|
 | `/api/admin/backup` | GET | MVP | Download a full database backup (text + images); a daily automated backup also runs server-side (decision D63). The admin is **custodian** of the downloaded archive (decision D101; USER-MANUAL). |
-| `/api/admin/sync-ghost` | POST | MVP | Manually trigger the Ghost reconciliation audit (decisions D55/D99) and return the discrepancy report (shape below). The same audit runs on a schedule inside the consolidated health-check job (decision D99). |
+| `/api/admin/ghost-audit` | GET | MVP | Run the **Book / Ghost alignment audit** (decisions D55/D99/N69) and return the discrepancy report (shape below). **Read-only into Book in every category** (N69, amending D103 — it resolves nothing). The same audit runs on a schedule inside the consolidated health-check job (decision D99). Renamed from `POST /api/admin/sync-ghost` (read-only ⇒ `GET`; nothing is "synced"). |
+| `/api/admin/bounce-report` | GET | MVP | Run the **email-bounce report** and return per-brother bounce aggregates (decision D120, as amended by N69 — its own endpoint, not riding the audit). Reuses the `export-bounces.js` join. |
 | `/api/admin/import` | — | **deferred (post-MVP)** | Online bulk-CSV upsert is **removed from MVP** (no online bulk-write path, decision D100, amending D52/D68); a MITAA-specific import is backlogged. Any rare bulk reconciliation is an **offline** operator task, not an online endpoint. |
 | `/api/admin/restore` | — | **offline (no API endpoint)** | Restore is an **offline maintenance event** (decisions D100/D101): Book goes hard-down, the three collections are replaced from a **structurally-validated** backup (cycle/ID-uniqueness/email-uniqueness/reference-integrity), and the single instance cold-hydrates on restart. Operator tooling, not an online endpoint. |
 
 **Backup envelope (`GET /api/admin/backup` response).** As shipped in Phase 5a-1 the download is **JSON-only** — the collections snapshot — served as a dated download attachment (`Content-Disposition: attachment; filename="book-backup-YYYY-MM-DD.json"`, `no-store`) and audited as `backup.download` (decisions D63/N58). The body is `{ "version": 1, "generatedAt": "<ISO>", "collections": { "profiles": [{ "id": "<docId>", "data": { … } }], "users": [ … ], "config": [ … ] } }` — each collection is an array of `{ id, data }` documents so a restore is a faithful, key-preserving replay. The `bugReports` collection (decision D121) is **not** in the backup: it is transient triage data an admin clears (like `sessions`/`authNonces`), not part of the durable directory a restore reconstructs. The **image-object bundle** (the zipped headshots/thumbnails, decision D63) and the **nightly automated backup** are Phase 7 (ENGINEERING-DESIGN §6.3), not this endpoint.
 
-**Reconciliation audit — discrepancy-report shape (`POST /api/admin/sync-ghost` response).** The audit (decisions D55/D99) is read-only into Book for **every field except** the scoped newsletter-flag most-recent-change-wins reconcile (decision D103, which it applies and logs). It returns a list of discrepancies, each tagged by category:
+**Reconciliation audit — discrepancy-report shape (`GET /api/admin/ghost-audit` response).** The audit (decisions D55/D99) is **read-only into Book in every category** — decision N69 removed D103's scoped newsletter write-back, so it reports differences and **changes nothing**. It returns a list of discrepancies, each tagged by category; the SPA formats it into a Markdown download (nothing is rendered in the UI — N69):
 
 ```json
 {
-  "generatedAt": "2026-06-11T12:00:00Z",
+  "generatedAt": "2026-07-09T12:00:00Z",
   "discrepancies": [
     { "category": "newsletterDrift", "profileId": 5247, "ghostMemberId": "6612af…",
-      "field": "allowNewsletterEmail", "bookValue": false, "ghostValue": true,
-      "bookChangedAt": "2026-06-10T09:00:00Z", "ghostChangedAt": "2026-05-01T00:00:00Z",
-      "resolution": "rePushedBookToGhost" }
+      "field": "allowNewsletterEmail", "bookValue": true, "ghostValue": false,
+      "bookChangedAt": "2026-01-01T09:00:00Z", "ghostChangedAt": "2026-06-01T00:00:00Z" }
   ]
 }
 ```
 
-- **Categories:** `unmatchedGhostMember` (a Ghost member with no Book profile), `fieldDrift` (a non-newsletter field differs — **report-only**), `missingGhostMember` (a Book profile whose Ghost member is gone), `bookInternalOrphan` (a dangling `bigBrotherId`, or a `users` doc with no live profile — decision D98), and `newsletterDrift` (the one field the audit may **resolve**: most-recent-change-wins by `bookChangedAt` vs. `ghostChangedAt`, re-pushing Book→Ghost or writing Ghost→Book — decision D103).
-- **Per-row fields:** `{ category, profileId?, ghostMemberId?, field?, bookValue?, ghostValue?, bookChangedAt?, ghostChangedAt?, resolution? }`. `resolution` is present only where the audit **acted** (the newsletter case, e.g. `rePushedBookToGhost` | `wroteGhostToBook`); every other category is report-only. The identical shape is produced by the scheduled health-check job (decision D99; ENGINEERING-DESIGN §5.1).
+- **Categories:** `unmatchedGhostMember` (a Ghost member with no Book profile), `fieldDrift` (a pushed field — email / name — differs), `missingGhostMember` (a Book profile with an email whose Ghost member is gone or was never linked; a de-brothered or no-email profile is *expected* to have none and is excluded), `bookInternalOrphan` (a dangling `bigBrotherId`, or a `users` doc with no live profile — decision D98), and `newsletterDrift` (Book and Ghost disagree on `allowNewsletterEmail`, carrying `bookChangedAt` vs. `ghostChangedAt` so a human resolves it by hand). **Every category is report-only** (N69).
+- **Per-row fields:** `{ category, profileId?, ghostMemberId?, field?, bookValue?, ghostValue?, bookChangedAt?, ghostChangedAt? }`. There is **no `resolution` field** — the audit acts on nothing (N69, amending D103). The identical shape is produced by the scheduled health-check job (decision D99; ENGINEERING-DESIGN §5.1).
+
+**Bounce report — shape (`GET /api/admin/bounce-report` response).** Per-brother bounce aggregates (decision D120), formatted by the SPA into a CSV download (not rendered in the UI). `{ generatedAt, skipped, rows: [{ email, bounce_count, last_bounce_at, last_bounce_newsletter }] }`, where `skipped` counts bounce events whose member Ghost has since hard-deleted (unresolvable to an email). Rows are ordered most-bounces-first.
+
+Both endpoints are admin-only at effective role (N31), `no-store`, and fail closed with **`503 { "error": "ghost_unconfigured" }`** when the Ghost Admin API is not configured, or **`502 { "error": "ghost_read_failed" }`** when a Ghost read fails.
 
 ## 8. First-party service access: the Linter roster
 
@@ -325,5 +329,8 @@ Delete a bug report from Book — the terminal act, once it has been copied into
 - **Auth:** **admin only** (effective role). Non-admin probe audited as a denial.
 - **Response 204:** on success (idempotent — deleting an already-absent report also returns `204`).
 
-### Maintenance / outage signalling (decision D118)
-When Book is in **planned maintenance**, the backend (if reached) responds **`503`** with `Retry-After` and a maintenance-flavored body, so an already-loaded SPA shows its "down for maintenance, check back" page rather than a generic outage message. An **unplanned** outage (no reachable backend) is detected by the SPA's failed/timed-out API calls and shows the generic outage page. A **fresh** load during planned downtime is served a **static maintenance page at the Hosting / edge layer**, independent of the backend (so it works even when Cloud Run is stopped) — swapped in by an operator script. See the `503` row in §1.5 and ENGINEERING-DESIGN §6.3.
+### Maintenance / outage signalling (decision D118, as simplified by N69)
+Two parts, and — per decision N69 — **no backend maintenance-mode flag** and **no planned-vs-unplanned distinction on the cached-SPA path**:
+
+- **Fresh load during planned downtime** is served a **static maintenance page at the Hosting / edge layer**, independent of the backend (so it works even when Cloud Run is stopped) — swapped in by an operator script (`infra/maintenance-on.sh`, which deploys the alternate `firebase.maintenance.json`; `maintenance-off.sh` restores normal serving). This is Forrest's chosen mechanism over an admin-page toggle.
+- **An already-loaded (cached) SPA that cannot reach the backend for any reason** — a network drop, a cold-start timeout, or a `5xx`/`503` — shows one calm, generic "Book is temporarily unavailable" page with a manual retry. The SPA does not try to tell planned from unplanned (N69). Crucially, a `5xx`/`503` from `/api/me` is treated as *unavailable*, **not** as signed-out: only `401`/`403` routes to the sign-in flow (ENGINEERING-DESIGN §2.3, D118/N69). See ENGINEERING-DESIGN §6.3.

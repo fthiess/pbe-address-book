@@ -11,6 +11,7 @@ import { GcsImageStore, type ImageStore } from "./data/images.js";
 import type { ProfileStore } from "./data/profiles.js";
 import type { AdminUserStore } from "./data/users.js";
 import { type GhostLifecycle, StubGhostLifecycle } from "./identity/ghost-lifecycle.js";
+import type { GhostReader } from "./identity/ghost-reader.js";
 import type { RosterVerifier } from "./identity/google-oidc.js";
 import type { NonceService } from "./identity/nonce-store.js";
 import { type SessionCookieConfig, requireSession } from "./identity/session-cookie.js";
@@ -22,6 +23,7 @@ import { registerBackupRoutes } from "./routes/backup.js";
 import { registerBannerRoutes } from "./routes/banner.js";
 import { registerBugReportRoutes } from "./routes/bug-reports.js";
 import { registerExportRoutes } from "./routes/exports.js";
+import { registerGhostAuditRoutes } from "./routes/ghost-audit.js";
 import { registerHeadshotRoutes } from "./routes/headshot.js";
 import { registerImageRoutes } from "./routes/images.js";
 import { type Clock, registerProfileRoutes } from "./routes/profiles.js";
@@ -66,6 +68,12 @@ export interface BuildServerOptions {
    * fake to prove the abort-clean contract.
    */
   ghostLifecycle?: GhostLifecycle;
+  /**
+   * The read-only Ghost seam behind the admin alignment audit + bounce report
+   * (5b-2). Optional — when absent (Ghost unconfigured), those two routes fail
+   * closed with `503`; there is nothing to reconcile against.
+   */
+  ghostReader?: GhostReader;
   /** The audit stream sink (D61); defaults to structured JSON on stdout. */
   auditLog?: AuditLog;
   /** "Now" for write timestamps and audit entries; defaults to the wall clock. */
@@ -256,6 +264,14 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     removeStar: options.removeStar,
   });
   registerExportRoutes(app, { gate, audit, clock, cache: options.profileCache });
+  registerGhostAuditRoutes(app, {
+    gate,
+    cache: options.profileCache,
+    adminUsers: options.adminUsers,
+    ghostReader: options.ghostReader,
+    audit,
+    clock,
+  });
   registerRosterRoutes(app, { verifier: options.rosterVerifier });
   registerImageRoutes(app, { cache: options.profileCache, gate, imageStore });
   registerBannerRoutes(app, { gate, bannerStore: options.bannerStore, audit, clock });
