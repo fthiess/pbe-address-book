@@ -152,6 +152,36 @@ describe("planGhostAudit", () => {
     expect(report.discrepancies).toEqual([]);
   });
 
+  it("surfaces a de-brothered profile's STILL-LIVE Ghost member as unmatched (failed delete)", () => {
+    // A de-brother is supposed to delete the Ghost member; if that failed, the member
+    // lingers. Its id must NOT be treated as legitimately referenced, so the leftover
+    // is flagged rather than hidden in no category (review OFC).
+    const report = run({
+      profiles: [makeProfile({ ghostMemberId: "g1", debrothered: { isDebrothered: true } })],
+      members: [member({ id: "g1", email: "ex.brother@example.test" })],
+    });
+    expect(report.discrepancies).toEqual([
+      {
+        category: "unmatchedGhostMember",
+        ghostMemberId: "g1",
+        ghostValue: "ex.brother@example.test",
+      },
+    ]);
+  });
+
+  it("does not flag a name differing only by Unicode form (NFC-normalized comparison)", () => {
+    // Book stores the composed form (é = U+00E9); Ghost returns the decomposed form
+    // (e + U+0301). Same name — must not be a permanent false-positive fieldDrift.
+    const composed = "José Smyth '84";
+    const decomposed = composed.normalize("NFD");
+    expect(decomposed).not.toBe(composed); // genuinely different code units
+    const report = run({
+      profiles: [makeProfile({ firstName: "José", ghostMemberId: "g1" })],
+      members: [member({ id: "g1", name: decomposed })],
+    });
+    expect(report.discrepancies.filter((d) => d.field === "name")).toEqual([]);
+  });
+
   it("reports an unmatched Ghost member (a self-signup / historical address)", () => {
     const report = run({
       profiles: [makeProfile({ ghostMemberId: "g1" })],

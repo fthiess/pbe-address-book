@@ -53,13 +53,16 @@ export function planGhostAudit(input: GhostAuditInput): GhostAuditReport {
   for (const member of members) {
     ghostById.set(member.id, member);
   }
-  // The Ghost member ids Book references (from any profile, incl. de-brothered), so
-  // a member legitimately linked to a profile is never flagged `unmatchedGhostMember`.
+  // The Ghost member ids Book *legitimately* references — from non-de-brothered
+  // profiles only. A de-brothered profile's Ghost member is expected to be deleted
+  // (D115), so if a stale `ghostMemberId` on one still resolves to a live member,
+  // that member is a leftover that SHOULD surface as `unmatchedGhostMember` (a failed
+  // Ghost delete) — excluding de-brothered ids here is what lets it (OFC review).
   const referencedGhostIds = new Set<string>();
   const profileIds = new Set<number>();
   for (const profile of profiles) {
     profileIds.add(profile.id);
-    if (profile.ghostMemberId) {
+    if (profile.ghostMemberId && !profile.debrothered.isDebrothered) {
       referencedGhostIds.add(profile.ghostMemberId);
     }
   }
@@ -91,8 +94,11 @@ export function planGhostAudit(input: GhostAuditInput): GhostAuditReport {
     }
 
     // Matched — compare the three pushed fields (email, Canonical Name, newsletter).
+    // Names are NFC-normalized on both sides before comparison, mirroring the email
+    // comparison below: a name differing only by Unicode form (composed vs decomposed
+    // accents) is the same name and must not read as permanent `fieldDrift` (review).
     const expectedName = formatCanonicalName(profile, false);
-    if (member.name !== expectedName) {
+    if (member.name.normalize("NFC") !== expectedName.normalize("NFC")) {
       discrepancies.push({
         category: "fieldDrift",
         profileId: profile.id,
@@ -168,12 +174,20 @@ export function planGhostAudit(input: GhostAuditInput): GhostAuditReport {
   return { generatedAt, discrepancies };
 }
 
-/** Latest event timestamp per member id (ISO strings compare lexicographically). */
+/**
+ * Latest event timestamp per member id. Compares by parsed epoch millis rather than
+ * lexically, so a mixed-precision feed (`…00.500Z` vs `…00Z`) can't misorder events
+ * (review); an unparseable timestamp sorts as oldest (`-Infinity`) so it never wins.
+ */
 function latestEventByMember(events: readonly GhostNewsletterEvent[]): Map<string, string> {
   const latest = new Map<string, string>();
+  const latestMs = new Map<string, number>();
   for (const event of events) {
-    const current = latest.get(event.memberId);
-    if (current === undefined || event.at > current) {
+    const ms = Date.parse(event.at);
+    const at = Number.isNaN(ms) ? Number.NEGATIVE_INFINITY : ms;
+    const current = latestMs.get(event.memberId);
+    if (current === undefined || at > current) {
+      latestMs.set(event.memberId, at);
       latest.set(event.memberId, event.at);
     }
   }

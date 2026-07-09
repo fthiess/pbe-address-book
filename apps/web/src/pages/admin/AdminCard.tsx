@@ -57,19 +57,6 @@ export function AdminCard({
   );
 }
 
-/**
- * A calm "not yet available" badge for the surfaces whose backend lands later
- * (Sync with Ghost → 5b; Bug reports → 5a-2). Deliberately understated for the
- * 60+ audience — a plain, muted pill, not a loud "Coming soon!".
- */
-export function ComingLaterBadge({ children = "Not yet available" }: { children?: ReactNode }) {
-  return (
-    <span className="rounded-[var(--radius-pill)] border border-border bg-muted px-2.5 py-0.5 text-[length:var(--text-caption)] font-semibold text-muted-foreground">
-      {children}
-    </span>
-  );
-}
-
 const ICON_PROPS = {
   width: 18,
   height: 18,

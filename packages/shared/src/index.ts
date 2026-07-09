@@ -78,7 +78,7 @@ export {
   impersonatableRoles,
   partitionWritableFields,
 } from "./capabilities.js";
-export { profilesToCsv, neutralizeCsvCell } from "./csv.js";
+export { profilesToCsv, neutralizeCsvCell, formatCsvCell } from "./csv.js";
 export {
   type Major,
   MAJORS,

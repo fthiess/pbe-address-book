@@ -227,7 +227,10 @@ export class InMemoryAdminUserStore implements AdminUserStore {
   }
 
   async listUserIds(): Promise<number[]> {
-    return [...this.roles.keys()];
+    // A `users` doc exists if it has a role OR a star list — union both maps, so a
+    // stars-only (roleless) doc, a realistic partial-delete residue, is reported
+    // just as the Firestore store would, keeping the orphan-detection test honest.
+    return [...new Set([...this.roles.keys(), ...this.stars.keys()])];
   }
 }
 

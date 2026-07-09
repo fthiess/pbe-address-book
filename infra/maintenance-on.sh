@@ -19,9 +19,38 @@
 # token exchange under Node 24 ("Premature close"), run this under Node 20.
 set -euo pipefail
 
+usage() {
+  cat <<'USAGE'
+maintenance-on.sh — put Book into "down for maintenance" (D118).
+
+Usage:  PROJECT_ID=<project> ./infra/maintenance-on.sh [--dry-run] [--help]
+
+  --dry-run   Print the firebase deploy that WOULD run, and do nothing else.
+  --help      Show this help.
+
+Env:  PROJECT_ID   Firebase/GCP project (default: pbe-book-staging)
+USAGE
+}
+
+DRY_RUN=0
+for arg in "$@"; do
+  case "$arg" in
+    --help|-h) usage; exit 0 ;;
+    --dry-run) DRY_RUN=1 ;;
+    *) echo "unknown argument: $arg" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
 PROJECT_ID="${PROJECT_ID:-pbe-book-staging}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+if [[ "$DRY_RUN" == "1" ]]; then
+  echo "[dry-run] would deploy the maintenance page to ${PROJECT_ID}:"
+  echo "  npx firebase deploy --only hosting --config firebase.maintenance.json --project ${PROJECT_ID}"
+  echo "[dry-run] all paths would serve /maintenance.html until maintenance-off.sh runs. No changes made."
+  exit 0
+fi
 
 # The maintenance page ships in the web build output (apps/web/public → dist). Build
 # if it isn't there, so the rewrite target exists.

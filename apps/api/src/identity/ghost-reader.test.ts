@@ -37,7 +37,7 @@ describe("GhostAdminReader.listMembers", () => {
   it("projects id/email/name and derives subscribed from the newsletters relation", async () => {
     const r = reader(
       fetchFrom({
-        "/members/?newsletters,labels": {
+        "/members/?newsletters": {
           members: [
             { id: "m1", email: "a@example.test", name: "A '84", newsletters: [{ id: "nl" }] },
             {
@@ -57,6 +57,30 @@ describe("GhostAdminReader.listMembers", () => {
       { id: "m1", email: "a@example.test", name: "A '84", subscribed: true },
       { id: "m2", email: "b@example.test", name: "B '85", subscribed: false },
     ]);
+  });
+
+  it("derives subscribed from the newsletters relation even when the global boolean disagrees", async () => {
+    // Ghost's top-level `subscribed` is a legacy/global flag; the relation is
+    // authoritative. A member in the newsletter with global subscribed:false is
+    // subscribed for our purposes — no spurious newsletterDrift (review).
+    const r = reader(
+      fetchFrom({
+        "/members/?newsletters": {
+          members: [
+            {
+              id: "m1",
+              email: "a@example.test",
+              name: "A",
+              subscribed: false,
+              newsletters: [{ id: "nl" }],
+            },
+          ],
+          meta: { pagination: { next: null } },
+        },
+      }),
+    );
+    const [m] = await r.listMembers();
+    expect(m?.subscribed).toBe(true);
   });
 
   it("follows pagination until meta.pagination.next is null", async () => {

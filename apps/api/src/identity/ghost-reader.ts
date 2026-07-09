@@ -92,7 +92,8 @@ export class GhostAdminReader implements GhostReader {
   }
 
   async listMembers(): Promise<GhostMemberRecord[]> {
-    const rows = await this.http.getAll("/members/", "members", { include: "newsletters,labels" });
+    // Only `newsletters` is read (the label relation was requested but never used).
+    const rows = await this.http.getAll("/members/", "members", { include: "newsletters" });
     const members: GhostMemberRecord[] = [];
     for (const row of rows) {
       const m = row as Record<string, unknown>;
@@ -105,12 +106,14 @@ export class GhostAdminReader implements GhostReader {
         id,
         email,
         name: typeof m.name === "string" ? m.name : "",
-        // Prefer Ghost's derived boolean; fall back to a non-empty newsletters
-        // relation. Book is single-newsletter, so the two always agree here.
-        subscribed:
-          typeof m.subscribed === "boolean"
-            ? m.subscribed
-            : Array.isArray(m.newsletters) && m.newsletters.length > 0,
+        // The `newsletters` **relation** is authoritative in Ghost v5 (it is what the
+        // write path sets); the top-level `subscribed` boolean is a legacy/global
+        // flag that can disagree with per-newsletter membership. So derive from the
+        // relation when present (Book is single-newsletter → non-empty = subscribed),
+        // falling back to the boolean only if the relation wasn't returned (review).
+        subscribed: Array.isArray(m.newsletters)
+          ? m.newsletters.length > 0
+          : typeof m.subscribed === "boolean" && m.subscribed,
       });
     }
     return members;
@@ -122,9 +125,12 @@ export class GhostAdminReader implements GhostReader {
     });
     const events: GhostNewsletterEvent[] = [];
     for (const row of rows) {
-      const data = (row as Record<string, unknown>).data as Record<string, unknown> | undefined;
+      const event = row as Record<string, unknown>;
+      const data = event.data as Record<string, unknown> | undefined;
       const memberId = eventMemberId(data);
-      const at = typeof data?.created_at === "string" ? data.created_at : null;
+      // Same defensive timestamp extraction as bounce events (data.created_at, then
+      // the event-level created_at) so a shape shift doesn't drop every event (review).
+      const at = eventTimestamp(event, data);
       if (!memberId || at === null || typeof data?.subscribed !== "boolean") {
         continue;
       }

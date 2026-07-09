@@ -15,6 +15,7 @@ export function BounceReportCard() {
     "idle",
   );
   const [count, setCount] = useState(0);
+  const [skipped, setSkipped] = useState(0);
 
   const onRun = async () => {
     setStatus("working");
@@ -28,11 +29,19 @@ export function BounceReportCard() {
         `book-bounce-report-${date}.csv`,
       );
       setCount(report.rows.length);
+      setSkipped(report.skipped);
       setStatus("done");
     } catch (error) {
       setStatus(error instanceof ApiError && error.status === 503 ? "unconfigured" : "error");
     }
   };
+
+  // A trailing note whenever bounce events were dropped because their member is no
+  // longer in Ghost — so a header-only CSV is never read as a clean "no bounces".
+  const skippedNote =
+    skipped > 0
+      ? ` ${skipped} event${skipped === 1 ? "" : "s"} skipped (the bouncing member is no longer in Ghost).`
+      : "";
 
   return (
     <AdminCard
@@ -54,10 +63,10 @@ export function BounceReportCard() {
       {status === "done" && (
         <output className="mt-4 block text-[length:var(--text-body-sm)] text-primary">
           {count === 0
-            ? "Report complete — no bounces on record. Nothing to follow up."
+            ? `Report complete — no current bouncing addresses.${skippedNote}`
             : `Report complete — the CSV has downloaded (${count} bouncing address${
                 count === 1 ? "" : "es"
-              }).`}
+              }).${skippedNote}`}
         </output>
       )}
       {status === "unconfigured" && (

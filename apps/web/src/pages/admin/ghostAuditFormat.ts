@@ -1,4 +1,5 @@
 import type { Discrepancy, DiscrepancyCategory, GhostAuditReport } from "@pbe/shared";
+import { formatTimestamp } from "./bugReportFormat.js";
 
 /**
  * Render the alignment-audit JSON (`GET /api/admin/ghost-audit`) as a Markdown
@@ -13,14 +14,9 @@ import type { Discrepancy, DiscrepancyCategory, GhostAuditReport } from "@pbe/sh
  * flip by hand — the copy says so.
  */
 
-/** ISO 8601 → "2026-07-09 12:00 UTC" (locale-independent, matches the bug-report view). */
+/** The shared admin timestamp format ({@link formatTimestamp}), with an em-dash for absent. */
 function fmtTime(iso: string | undefined): string {
-  if (!iso) {
-    return "—";
-  }
-  const date = iso.slice(0, 10);
-  const time = iso.slice(11, 16);
-  return date && time ? `${date} · ${time} UTC` : iso;
+  return iso ? formatTimestamp(iso) : "—";
 }
 
 const CATEGORY_TITLES: Record<DiscrepancyCategory, string> = {

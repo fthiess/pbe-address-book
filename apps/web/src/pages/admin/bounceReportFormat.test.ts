@@ -40,25 +40,33 @@ describe("formatBounceReportCsv", () => {
     expect(csv).toContain('"Issue 3, Spring"');
   });
 
-  it("defuses spreadsheet formula injection on a leading =/+/-/@", () => {
+  it("defuses formula injection incl. a stripped-control leader (shared neutralizer, OFC-99)", () => {
     const csv = formatBounceReportCsv({
       generatedAt: GEN,
       skipped: 0,
       rows: [
         {
-          email: "=cmd@example.test",
+          email: "a@example.test",
           bounce_count: 1,
           last_bounce_at: "",
-          last_bounce_newsletter: "x",
+          // A Ghost subject beginning with a stripped control + '=' — the OFC-99 case
+          // the shared neutralizer covers but the old regex-only copy did not.
+          last_bounce_newsletter: "\n=CMD()",
         },
       ],
     });
-    // Leading apostrophe inside quotes → Excel treats it as text, not a formula.
-    expect(csv).toContain('"\'=cmd@example.test"');
+    // Neutralized with a leading apostrophe (then RFC-quoted for the embedded newline),
+    // so a spreadsheet renders it as text, not a formula (S9/OFC-99).
+    expect(csv).toContain("'\n=CMD()");
   });
 
   it("emits just the header when there are no bounces", () => {
     const csv = formatBounceReportCsv({ generatedAt: GEN, skipped: 0, rows: [] });
     expect(csv).toBe("email,bounce_count,last_bounce_at,last_bounce_newsletter");
+  });
+
+  it("records skipped events as a trailing note so dropped bounces aren't hidden", () => {
+    const csv = formatBounceReportCsv({ generatedAt: GEN, skipped: 3, rows: [] });
+    expect(csv).toContain("3 bounce event(s) skipped");
   });
 });

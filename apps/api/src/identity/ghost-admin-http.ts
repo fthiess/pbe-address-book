@@ -111,11 +111,16 @@ export class GhostAdminHttp {
     params: Record<string, string> = {},
   ): Promise<unknown[]> {
     const items: unknown[] = [];
-    let page = 1;
-    // ~1000 pages × 100 = 100k rows — far above Book's ~2k members, so this only
-    // ever trips on a pathological/looping cursor, never in normal operation.
+    // ~1000 pages × 100 = 100k rows — far above Book's ~2k members. If a fetch ever
+    // exhausts this, it **throws** rather than returning a partial list: a silent
+    // truncation would make an audit/bounce report quietly *undercount* (miss the
+    // tail) while looking complete, defeating its purpose. A loud failure surfaces as
+    // `502 ghost_read_failed` and forces the fix (bounding the fetch, OFC-231).
     const MAX_PAGES = 1000;
-    for (; page <= MAX_PAGES; page += 1) {
+    for (let page = 1; ; page += 1) {
+      if (page > MAX_PAGES) {
+        throw new Error(`Ghost ${path}: exceeded ${MAX_PAGES} pages — refusing a partial result`);
+      }
       const query = new URLSearchParams({
         limit: String(this.pageSize),
         page: String(page),
