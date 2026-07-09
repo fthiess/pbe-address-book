@@ -35,10 +35,11 @@ describe("formatAuditReportMarkdown", () => {
     // Each section is a collapsible <details> block, open by default (Forrest's
     // request), with the title + count in the <summary>.
     expect(md).toContain("<details open>");
-    expect(md).toContain("<summary><strong>Newsletter subscription drift (1)</strong></summary>");
+    // Section titles are H2 (under the report's H1) and the fold control.
+    expect(md).toContain("<summary><h2>Newsletter subscription drift (1)</h2></summary>");
     expect(md).toContain("2026-01-01 · 00:00 UTC");
     expect(md).toContain("2026-06-01 · 00:00 UTC");
-    expect(md).toContain("<summary><strong>Unmatched Ghost member (1)</strong></summary>");
+    expect(md).toContain("<summary><h2>Unmatched Ghost member (1)</h2></summary>");
     expect(md).toContain("x@example.test");
     // One <details>/<summary>/</details> per present category (here: 2).
     expect(md.match(/<details open>/g)).toHaveLength(2);

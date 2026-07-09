@@ -110,7 +110,9 @@ function sectionTable(category: DiscrepancyCategory, items: Discrepancy[]): stri
 }
 
 /**
- * One category as a **collapsible** `<details>` block. `<details>/<summary>` isn't
+ * One category as a **collapsible** `<details>` block, its title an `<h2>` inside
+ * the `<summary>` — so it's a real level-2 heading under the report's H1 (visible,
+ * in the outline) *and* the clickable fold control. `<details>/<summary>` isn't
  * core Markdown but renders as a fold in the common viewers (GitHub, Obsidian, VS
  * Code) and degrades to plain visible text elsewhere. Kept **open by default** — an
  * audit must never hide a finding — but a long section can be collapsed so the
@@ -120,7 +122,7 @@ function sectionTable(category: DiscrepancyCategory, items: Discrepancy[]): stri
  */
 function section(category: DiscrepancyCategory, items: Discrepancy[]): string {
   const heading = `${CATEGORY_TITLES[category]} (${items.length})`;
-  return `<details open>\n<summary><strong>${heading}</strong></summary>\n\n${CATEGORY_NOTES[category]}\n\n${sectionTable(category, items)}\n\n</details>`;
+  return `<details open>\n<summary><h2>${heading}</h2></summary>\n\n${CATEGORY_NOTES[category]}\n\n${sectionTable(category, items)}\n\n</details>`;
 }
 
 export function formatAuditReportMarkdown(report: GhostAuditReport): string {
