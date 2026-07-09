@@ -152,8 +152,8 @@ follows it on the next deploy.
 **Per testing session: the mirror.** ghost-staging needs real members matching the
 fake profiles. Set the repo variable `STAGING_GHOST_MIRROR=true`; the next deploy's
 seed step runs `mirror:ghost-staging`, a **delta reconcile** that creates/updates/
-deletes only `book-seed`-labelled members to match the `@example.test` fake profiles
-and writes each real `ghostMemberId` back into Firestore. Re-running it (another
+deletes only Ghost members with a fake `@example.test` email to match the fake
+profiles and writes each real `ghostMemberId` back into Firestore. Re-running it (another
 deploy, or the script by hand) is the **reset** after a session mutated Ghost — it
 only fixes what changed, so it is cheap after the initial ~1k-member build. The fake
 generator no longer mints ids, so with the flag off every profile cleanly skips the
@@ -170,9 +170,10 @@ GHOST_ADMIN_API_KEY="$(gcloud secrets versions access latest --secret=ghost-admi
 ```
 
 When done testing, set `STAGING_GHOST_MIRROR=false` (or unset it) so ordinary
-deploys neither touch nor depend on ghost-staging. The `book-seed` label + the
-`@example.test` scope mean the mirror can never touch your own account or the
-linter member on ghost-staging.
+deploys neither touch nor depend on ghost-staging. The `@example.test` email scope
+means the mirror can never touch your own account or the linter member on
+ghost-staging (real emails), and it cleans up members the real write path creates
+during a session (which carry no distinguishing label).
 
 ## Teardown
 

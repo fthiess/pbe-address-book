@@ -11,11 +11,12 @@
  * changed — the one-time cost is the initial ~1k creates. The reconcile is pure
  * (`ghost-reconcile.ts`); this file is its I/O shell.
  *
- * SAFETY: every member it creates carries the `book-seed` label, and it only ever
- * lists / updates / **deletes** members bearing that label. It further manages only
- * profiles whose email is a fake `@example.test` address, so it can never touch the
- * tester-linked profile (a real email, `link-staging-tester.ts`) or your own /
- * the linter's real ghost-staging account.
+ * SAFETY: it only ever lists / updates / **deletes** Ghost members whose email is a
+ * fake `@example.test` address — the fake-data domain (generate.ts). Real accounts —
+ * the tester-linked profile (`link-staging-tester.ts`), your own, the linter's — have
+ * real emails and are never touched. This domain scope (rather than a label) also
+ * catches members the real write path created during testing, so the reset actually
+ * cleans them up rather than orphaning them.
  *
  * Guarded like the other staging tools: refuses unless the project id ends
  * `-staging` and refuses if pointed at the emulator.
@@ -32,9 +33,18 @@ import { getFirestore } from "firebase-admin/firestore";
 import { SignJWT } from "jose";
 import { type DesiredMember, type ExistingMember, planReconcile } from "./ghost-reconcile.js";
 
-/** The label every seed-created member carries; the only members this tool touches. */
-const SEED_LABEL = "book-seed";
-/** Fake profiles use this email domain (generate.ts); the mirror manages only these. */
+/**
+ * Fake profiles use this email domain (generate.ts). It is the mirror's scope on
+ * BOTH sides: the desired set (staging profiles with such an email) and the managed
+ * Ghost members it may create/update/**delete**. Real accounts — the operator's, the
+ * linter's, the tester-linked profile — have real emails and are never touched.
+ *
+ * Scoping on the email domain rather than a `book-seed` label is deliberate: members
+ * the real write path creates during testing (a de-brother reversal, a future
+ * new-brother create) carry NO test-only label, so a label-scoped reconcile could
+ * never see or clean them up — they'd orphan on every reset. The email domain
+ * catches them.
+ */
 const FAKE_EMAIL_SUFFIX = "@example.test";
 /** Bound concurrent Ghost calls so the first-run create burst can't overwhelm ghost-staging. */
 const CONCURRENCY = 8;
@@ -54,7 +64,7 @@ function printHelp(): void {
       "  --dry-run   Report the create/update/delete plan; make NO Ghost or Firestore changes.",
       "  --help,-h   Show this help and exit.",
       "",
-      "Only touches Ghost members labelled `book-seed` and profiles with @example.test emails.",
+      "Only ever touches Ghost members with @example.test emails (fake data); never real accounts.",
     ].join("\n"),
   );
 }
@@ -89,7 +99,7 @@ function fail(message: string): never {
   process.exit(1);
 }
 
-// --- Ghost Admin client (labelled, paginating) ------------------------------
+// --- Ghost Admin client (paginating) ----------------------------------------
 
 const [keyId, keySecret] = adminKey.split(":");
 if (!keyId || !keySecret) {
@@ -136,41 +146,28 @@ function newsletters(subscribed: boolean): { id: string }[] {
 }
 
 /**
- * Ensure the `book-seed` label **exists** before the create pool runs. This is
- * load-bearing for two reasons that bit us in turn:
- *  1. If the label doesn't exist, attaching it by name on each create lets Ghost
- *     auto-create it, and the first burst of concurrent creates races to create the
- *     same label → `UPDATE_RELATION` "cannot save member" 500s. Pre-creating it once
- *     means every concurrent create just *matches* the existing label — no create.
- *  2. Members must still attach the label **by name** (not by id): Ghost's member
- *     save derives the label slug from `label.name`, so a by-id-only reference makes
- *     it read `undefined.toLowerCase()` → a 500. By name, with the label already
- *     present, it matches the existing one cleanly.
- * Idempotent: reuses the label if a prior run created it.
+ * List every managed member — those with a fake `@example.test` email — across all
+ * pages. Includes members the real write path created during testing (they carry no
+ * label), so the reconcile can clean them up as orphans. Real accounts are skipped
+ * by the email-domain filter.
  */
-async function ensureSeedLabel(): Promise<void> {
-  const filter = encodeURIComponent(`slug:${SEED_LABEL}`);
-  const found = (await ghost("GET", `/labels/?filter=${filter}&limit=1`)) as {
-    labels?: { id?: string }[];
-  };
-  if (found.labels?.[0]?.id) {
-    return;
-  }
-  await ghost("POST", "/labels/", { labels: [{ name: SEED_LABEL }] });
-}
-
-/** List every `book-seed`-labelled member across all pages. */
-async function listSeedMembers(): Promise<ExistingMember[]> {
+async function listManagedMembers(): Promise<ExistingMember[]> {
   const out: ExistingMember[] = [];
-  const filter = encodeURIComponent(`label:${SEED_LABEL}`);
   let page = 1;
   for (;;) {
-    const body = (await ghost("GET", `/members/?filter=${filter}&limit=100&page=${page}`)) as {
+    const body = (await ghost("GET", `/members/?limit=100&page=${page}`)) as {
       members?: { id: string; email: string; name?: string; subscribed?: boolean }[];
       meta?: { pagination?: { pages?: number } };
     };
     for (const m of body.members ?? []) {
-      out.push({ id: m.id, email: m.email, name: m.name ?? "", subscribed: m.subscribed === true });
+      if (m.email?.toLowerCase().endsWith(FAKE_EMAIL_SUFFIX)) {
+        out.push({
+          id: m.id,
+          email: m.email,
+          name: m.name ?? "",
+          subscribed: m.subscribed === true,
+        });
+      }
     }
     const pages = body.meta?.pagination?.pages ?? 1;
     if (page >= pages) {
@@ -183,14 +180,7 @@ async function listSeedMembers(): Promise<ExistingMember[]> {
 
 async function createMember(m: DesiredMember): Promise<string> {
   const body = (await ghost("POST", "/members/?send_email=false", {
-    members: [
-      {
-        email: m.email,
-        name: m.name,
-        newsletters: newsletters(m.subscribed),
-        labels: [{ name: SEED_LABEL }],
-      },
-    ],
+    members: [{ email: m.email, name: m.name, newsletters: newsletters(m.subscribed) }],
   })) as { members?: { id?: string }[] };
   const id = body.members?.[0]?.id;
   if (!id) {
@@ -244,11 +234,11 @@ for (const doc of snapshot.docs) {
   });
 }
 
-const existing = await listSeedMembers();
+const existing = await listManagedMembers();
 const plan = planReconcile(desired, existing);
 
 console.log(
-  `Ghost mirror plan for ${projectId}: ${desired.length} managed profiles; ${existing.length} existing seed members → create ${plan.toCreate.length}, update ${plan.toUpdate.length}, delete ${plan.toDelete.length}.`,
+  `Ghost mirror plan for ${projectId}: ${desired.length} managed profiles; ${existing.length} existing @example.test members → create ${plan.toCreate.length}, update ${plan.toUpdate.length}, delete ${plan.toDelete.length}.`,
 );
 
 if (DRY_RUN) {
@@ -257,9 +247,6 @@ if (DRY_RUN) {
 }
 
 const links: { profileId: number; ghostMemberId: string }[] = [...plan.matchedLinks];
-
-// Ensure the label exists ONCE before the concurrent creates attach it by name.
-await ensureSeedLabel();
 
 const created = await pool(plan.toCreate, async (m) => {
   const id = await createMember(m);
