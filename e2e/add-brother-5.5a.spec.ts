@@ -119,16 +119,34 @@ test.describe("Add Brother essentials (5.5a)", () => {
     await expect(page.getByRole("heading", { name: "Add Brother" })).toHaveCount(0);
   });
 
-  test("shows the required-fields + two-step note and passes an axe scan", async ({ page }) => {
+  test("shows the essentials + two-step note (email optional) and passes an axe scan", async ({
+    page,
+  }) => {
     await gotoNew(page, "admin");
     await expect(page.getByRole("heading", { name: "Add Brother" })).toBeVisible();
-    await expect(page.getByText("All fields are required.")).toBeVisible();
+    await expect(page.getByText("email is optional")).toBeVisible();
     await expect(
       page.getByText(/full profile page to optionally add other details/i),
     ).toBeVisible();
 
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
+  });
+
+  test("creates a Book-only brother when email is left blank", async ({ page }) => {
+    const mocks = await gotoNew(page, "admin");
+    await page.fill("#new-constitutionId", String(NEW_ID));
+    await page.fill("#new-firstName", "Fred");
+    await page.fill("#new-lastName", "Newman");
+    await page.fill("#new-classYear", "2001");
+    // Email deliberately left blank — Book-only brother, no Ghost record.
+    await page.getByRole("button", { name: "Create brother" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/brother/${NEW_ID}/edit$`));
+    // The POST carried the essentials with no `email` key at all.
+    const posted = mocks.posted();
+    expect(posted).toMatchObject({ id: NEW_ID, firstName: "Fred", lastName: "Newman" });
+    expect(posted && "email" in posted).toBe(false);
   });
 
   test("creates a brother and hands off to the edit page", async ({ page }) => {

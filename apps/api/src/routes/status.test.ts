@@ -68,6 +68,15 @@ async function buildStatusServer(ghostLifecycle = new StubGhostLifecycle()) {
       debrothered: { isDebrothered: true, debrotheredAt: "2026-02-02T00:00:00.000Z" },
       debrotherConsentSnapshot: { allowNewsletterEmail: true },
     }),
+    // 5005: a living Book-only brother — no email, so no Ghost member (raise case).
+    makeProfile({ id: 5005, email: undefined }),
+    // 5006: a de-brothered Book-only brother — no email, no Ghost member (reverse case).
+    makeProfile({
+      id: 5006,
+      email: undefined,
+      debrothered: { isDebrothered: true, debrotheredAt: "2026-02-02T00:00:00.000Z" },
+      debrotherConsentSnapshot: { allowNewsletterEmail: true },
+    }),
   ]);
   const sessionStore = new InMemorySessionStore();
   const store = new InMemoryProfileStore();
@@ -413,6 +422,39 @@ describe("PUT /api/profiles/:id/debrothered", () => {
     expect(response.statusCode).toBe(502);
     expect(response.json()).toEqual({ error: "ghost_create_failed" });
     expect(ctx.cache.getById(5004)?.debrothered.isDebrothered).toBe(true);
+    await ctx.app.close();
+  });
+
+  it("raises de-brother on a Book-only (Ghost-less) brother with no Ghost call, even if Ghost would fail", async () => {
+    // 5005 has no ghostMemberId. The Ghost delete must be skipped — a real
+    // deleteMember without an id throws, which would otherwise 502 every email-less
+    // brother out of ever being de-brothered (OFC-201 follow-up).
+    const ctx = await buildStatusServer(new FailingGhostLifecycle("delete"));
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5005/debrothered",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { debrothered: true },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(ctx.cache.getById(5005)?.debrothered.isDebrothered).toBe(true);
+    await ctx.app.close();
+  });
+
+  it("reverses de-brother on an email-less brother Book-only: no Ghost re-create", async () => {
+    // 5006 has no email, so reinstating it must NOT mint a Ghost member (mirroring
+    // the create path); it stays Book-only with no ghostMemberId.
+    const ctx = await buildStatusServer(new FailingGhostLifecycle("create"));
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5006/debrothered",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { debrothered: false },
+    });
+    expect(response.statusCode).toBe(200);
+    const stored = ctx.cache.getById(5006) as Profile;
+    expect(stored.debrothered.isDebrothered).toBe(false);
+    expect(stored.ghostMemberId).toBeUndefined();
     await ctx.app.close();
   });
 

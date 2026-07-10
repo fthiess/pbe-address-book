@@ -7,7 +7,12 @@ import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecy
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
 import { writeRateLimit } from "../security/rate-limit.js";
-import { GhostStepError, computeConsentDiff, pushGhostUpdate } from "./ghost-push.js";
+import {
+  GhostStepError,
+  computeConsentDiff,
+  hasUsableEmail,
+  pushGhostUpdate,
+} from "./ghost-push.js";
 import {
   MissingProfileError,
   authorizePrivileged,
@@ -303,8 +308,17 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
           ghostStep: async (p) => {
             try {
               if (raising) {
-                await ghostLifecycle.deleteMember(p.current);
-              } else {
+                // Only delete a member that exists (OFC-201 follow-up): a Book-only
+                // brother (no email → no Ghost record, a tolerated state C15/D20/D115)
+                // has nothing to delete, and the real client throws without a
+                // `ghostMemberId`. De-brothering them is a Book-only operation.
+                if (p.current.ghostMemberId) {
+                  await ghostLifecycle.deleteMember(p.current);
+                }
+              } else if (hasUsableEmail(p.current.email)) {
+                // Re-create a member only for a brother who has an email (the Ghost
+                // identity key), mirroring the create path (same `hasUsableEmail`
+                // predicate): an email-less brother is reinstated Book-only, no Ghost.
                 p.created = await ghostLifecycle.createMember(p.current);
               }
             } catch (cause) {

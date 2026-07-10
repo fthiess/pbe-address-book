@@ -25,7 +25,12 @@ import {
 } from "../projection/projection.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { negotiateEncoding } from "./encoding.js";
-import { GhostStepError, computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
+import {
+  GhostStepError,
+  computeGhostUpdateDiff,
+  hasUsableEmail,
+  pushGhostUpdate,
+} from "./ghost-push.js";
 import type { RecordLock } from "./record-lock.js";
 import { replyWriteError, runRecordWrite } from "./record-write.js";
 import { traceId } from "./trace.js";
@@ -287,11 +292,11 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
           },
           ghostStep: async (p) => {
             // A Ghost member is email-keyed (the magic-link identity), so a new
-            // brother with no email on file is created **Book-only** — no member, no
+            // brother with no usable email is created **Book-only** — no member, no
             // `ghostMemberId` — exactly as the PATCH path treats a record without one;
             // the reconciliation audit reports it as `missingGhostMember` (D99). With
             // an email, create the member first and fold its fresh id into the write.
-            if (typeof candidate.email !== "string" || candidate.email.trim() === "") {
+            if (!hasUsableEmail(candidate.email)) {
               return;
             }
             try {
@@ -384,9 +389,11 @@ function assembleNewProfile(body: Record<string, unknown>, id: number, now: Date
     privacy,
     // The three consent booleans coerced to a real boolean (never left undefined
     // or a stray non-boolean), the status flags forced to their new-brother values,
-    // and the server-managed housekeeping stamped.
+    // and the server-managed housekeeping stamped. A new brother defaults to
+    // **subscribed** to PBE News (the D45 pro-sharing/opt-out default, and what an
+    // admin adding a member expects); `allowShareWithMITAA` stays opt-out (D56/D93).
     unlisted: (settable.unlisted ?? false) === true,
-    allowNewsletterEmail: (settable.allowNewsletterEmail ?? false) === true,
+    allowNewsletterEmail: (settable.allowNewsletterEmail ?? true) === true,
     allowShareWithMITAA: (settable.allowShareWithMITAA ?? false) === true,
     deceased: { isDeceased: false },
     debrothered: { isDebrothered: false },

@@ -50,13 +50,20 @@ function sessionFor(profileId: number, role: Role): Session {
 async function buildAdminServer(ghostLifecycle = new StubGhostLifecycle()) {
   const cache = new ProfileCache();
   await cache.load([
-    // 5001: the delete target — has a headshot and is someone's Big Brother.
-    makeProfile({ id: 5001, hasHeadshot: true, headshotVersion: "hv" }),
+    // 5001: the delete target — has a headshot, a Ghost member, and is someone's Big Brother.
+    makeProfile({
+      id: 5001,
+      hasHeadshot: true,
+      headshotVersion: "hv",
+      ghostMemberId: "ghost-5001",
+    }),
     // 5002: names 5001 as Big Brother (the inbound-reference scrub case).
     makeProfile({ id: 5002, bigBrotherId: 5001 }),
-    // 5010: an existing admin; 5011: a promotable brother.
+    // 5010: an existing admin; 5011: a promotable brother (with a Ghost member).
     makeProfile({ id: 5010 }),
-    makeProfile({ id: 5011 }),
+    makeProfile({ id: 5011, ghostMemberId: "ghost-5011" }),
+    // 5012: a Book-only brother — no email, so no Ghost member (C15/D20/D115).
+    makeProfile({ id: 5012 }),
   ]);
   const sessionStore = new InMemorySessionStore();
   const store = new InMemoryProfileStore();
@@ -163,6 +170,21 @@ describe("DELETE /api/profiles/:id", () => {
       headers: { cookie: await ctx.cookieFor(5010, "admin") },
     });
     expect(response.statusCode).toBe(404);
+  });
+
+  it("deletes a Book-only (Ghost-less) brother with no Ghost call, even if Ghost would fail", async () => {
+    // 5012 has no ghostMemberId. The Ghost step must be skipped entirely — a real
+    // deleteMember without an id throws, which would otherwise 502 every email-less
+    // brother (~1/3 of the real roster) into being undeletable (OFC-201 follow-up).
+    const failCtx = await buildAdminServer(new FailingGhostLifecycle("delete"));
+    const response = await failCtx.app.inject({
+      method: "DELETE",
+      url: "/api/profiles/5012",
+      headers: { cookie: await failCtx.cookieFor(5010, "admin") },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(failCtx.cache.getById(5012)).toBeNull();
+    await failCtx.app.close();
   });
 
   it("409s deleting the only remaining admin (last-admin invariant, no Ghost call) [OFC-134]", async () => {
