@@ -67,6 +67,25 @@ describe("buildPatch", () => {
     expect(patch.unlisted).toBeUndefined();
   });
 
+  it("drops a toggle field a manager cannot see on this record (OFC-206/N70)", () => {
+    // shareSpousePartner is off on the record, so the manager never received the
+    // value — the diff must drop it even though the empty draft field "changed",
+    // so a stray keystroke never blind-overwrites hidden data.
+    const original = record();
+    const draft = record({ employerName: "Akamai", spousePartnerName: "Blind Overwrite" });
+    const patch = buildPatch(original, draft, "manager", false);
+    expect(patch).toEqual({ employerName: "Akamai" });
+    expect(patch.spousePartnerName).toBeUndefined();
+  });
+
+  it("keeps a toggle field the owner has shared, for a manager (OFC-206/N70)", () => {
+    const shared = { ...record().privacy, shareSpousePartner: true } as ProfileRecord["privacy"];
+    const original = record({ privacy: shared });
+    const draft = record({ privacy: shared, spousePartnerName: "Pat Smyth" });
+    const patch = buildPatch(original, draft, "manager", false);
+    expect(patch.spousePartnerName).toBe("Pat Smyth");
+  });
+
   it("never includes the immutable id or a protected field", () => {
     const original = record({ lastModified: "2026-01-01T00:00:00.000Z" });
     const draft = record({ id: 9999, lastModified: "2026-06-29T00:00:00.000Z" } as ProfileRecord);

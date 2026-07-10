@@ -377,6 +377,32 @@ export class ProfileCache {
   }
 
   /**
+   * Apply a committed **create** to the in-memory model (read-your-writes, D83;
+   * OFC-201) — the insert counterpart to {@link applyUpdate}. Adds the new record
+   * and its initial concurrency `token`, rebuilds the indexes and the brother
+   * payload, and bumps the source count, so a freshly added brother is visible to
+   * the very next bulk read with zero Firestore reads. The same atomic-swap
+   * discipline as {@link load}/{@link applyUpdate} (OFC-82) keeps a concurrent
+   * reader from observing a torn state.
+   */
+  async applyCreate(created: Profile, token: string): Promise<void> {
+    const nextById = new Map(this.byId);
+    nextById.set(created.id, created);
+    const profiles = [...nextById.values()].sort((a, b) => a.id - b.id);
+    const payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
+    const { byId, byEmail } = buildIndexes(profiles);
+    const tokenById = new Map(this.tokenById);
+    tokenById.set(created.id, token);
+    // Atomic swap, after the last await (OFC-82).
+    this.byId = byId;
+    this.byEmail = byEmail;
+    this.tokenById = tokenById;
+    this.payload = payload;
+    this.sourceCount = profiles.length;
+    this.staffPayloads.clear();
+  }
+
+  /**
    * The records that name `id` as their Big Brother — the inbound references the
    * admin delete must scrub before removing `id` (API-SPEC §4; D98). Returned as
    * live records so the route can clear each in Firestore and hand the scrubbed

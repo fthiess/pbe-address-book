@@ -11,6 +11,7 @@ import { useDelayedFlag } from "./lib/useDelayedFlag.js";
 import { Admin } from "./pages/Admin.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
 import { Directory } from "./pages/Directory.js";
+import { NewProfile } from "./pages/NewProfile.js";
 import { ProfileContainer, ProfileEditRoute, ProfileViewRoute } from "./pages/Profile.js";
 import { SignIn } from "./pages/SignIn.js";
 
@@ -83,6 +84,10 @@ const router = createBrowserRouter([
         element: <GateLayout />,
         children: [
           { index: true, element: <Directory /> },
+          // `brother/new` (the Add-Brother essentials step, OFC-201) is a **static**
+          // sibling of `brother/:id`, so the router ranks it above the dynamic param
+          // and it is never mistaken for a brother whose id is "new" (the old bug).
+          { path: "brother/new", element: <NewProfile /> },
           {
             path: "brother/:id",
             element: <ProfileContainer />,

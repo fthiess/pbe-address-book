@@ -14,6 +14,7 @@ import { canonicalName } from "./display.js";
 import {
   FIELD_LABEL_CLASS,
   LockedField,
+  PrivateMarker,
   ReadField,
   Section,
   TextAreaField,
@@ -21,7 +22,7 @@ import {
 } from "./fields.js";
 import { useProfileDraft } from "./useProfileDraft.js";
 import { useUnsavedGuard } from "./useUnsavedGuard.js";
-import type { Viewer } from "./viewer.js";
+import { type Viewer, managerSeesPrivate } from "./viewer.js";
 
 /** The result the container reports back from a save attempt (§5.7.9). */
 export type SubmitResult =
@@ -113,6 +114,15 @@ export function ProfileEdit({
   // (`privacy` is representative), the staff note is manager|admin (`adminNote`).
   const consentLocked = !canWriteField(viewer.role, viewer.isOwner, "privacy");
   const isStaff = canWriteField(viewer.role, viewer.isOwner, "adminNote");
+  // A non-owner manager whose share-flag is off for a toggle field never received
+  // its value (the projection omitted it), so the edit form must not present an
+  // *empty editable* input they could blind-overwrite (OFC-206/N70). It shows the
+  // same "this field is private" marker the read view does, in place of the input.
+  const privateEmail = managerSeesPrivate(record, viewer, "shareEmail");
+  const privatePhone = managerSeesPrivate(record, viewer, "sharePhone");
+  const privateAddress = managerSeesPrivate(record, viewer, "shareAddress");
+  const privateEmergency = managerSeesPrivate(record, viewer, "shareEmergency");
+  const privateSpouse = managerSeesPrivate(record, viewer, "shareSpousePartner");
   const emailPresent = (form.draft.email ?? "").trim() !== "";
   const name = canonicalName(record);
 
@@ -318,66 +328,86 @@ export function ProfileEdit({
           {/* Contact ‖ Emergency. */}
           <EditRow>
             <Section title="Contact">
-              <TextField
-                id="profile-email"
-                label="Email"
-                type="email"
-                value={form.draft.email ?? ""}
-                onChange={(v) => form.setText("email", v)}
-                onBlur={() => form.touch("email")}
-                error={form.errorFor("email")}
-                inputMode="email"
-                autoComplete="email"
-              />
-              <TextField
-                id="profile-alternateEmail"
-                label="Alternate email"
-                type="email"
-                value={form.draft.alternateEmail ?? ""}
-                onChange={(v) => form.setText("alternateEmail", v)}
-                onBlur={() => form.touch("alternateEmail")}
-                error={form.errorFor("alternateEmail")}
-                inputMode="email"
-                disabled={!emailPresent}
-                helper={
-                  emailPresent
-                    ? "Optional — a second address we can reach you at."
-                    : "Add a primary email first to set an alternate."
-                }
-              />
-              <TextField
-                id="profile-phone"
-                label="Telephone"
-                type="tel"
-                value={form.draft.phone ?? ""}
-                onChange={(v) => form.setText("phone", v)}
-                onBlur={() => form.touch("phone")}
-                error={form.errorFor("phone")}
-                inputMode="tel"
-                autoComplete="tel"
-              />
-              <AddressEditor
-                address={form.draft.address}
-                onChange={form.setAddress}
-                countryError={form.errorFor("address.country")}
-                stateError={form.errorFor("address.stateProvince")}
-                postalError={form.errorFor("address.postalCode")}
-              />
+              {privateEmail ? (
+                <PrivateMarker label="Email" />
+              ) : (
+                <>
+                  <TextField
+                    id="profile-email"
+                    label="Email"
+                    type="email"
+                    value={form.draft.email ?? ""}
+                    onChange={(v) => form.setText("email", v)}
+                    onBlur={() => form.touch("email")}
+                    error={form.errorFor("email")}
+                    inputMode="email"
+                    autoComplete="email"
+                  />
+                  <TextField
+                    id="profile-alternateEmail"
+                    label="Alternate email"
+                    type="email"
+                    value={form.draft.alternateEmail ?? ""}
+                    onChange={(v) => form.setText("alternateEmail", v)}
+                    onBlur={() => form.touch("alternateEmail")}
+                    error={form.errorFor("alternateEmail")}
+                    inputMode="email"
+                    disabled={!emailPresent}
+                    helper={
+                      emailPresent
+                        ? "Optional — a second address we can reach you at."
+                        : "Add a primary email first to set an alternate."
+                    }
+                  />
+                </>
+              )}
+              {privatePhone ? (
+                <PrivateMarker label="Telephone" />
+              ) : (
+                <TextField
+                  id="profile-phone"
+                  label="Telephone"
+                  type="tel"
+                  value={form.draft.phone ?? ""}
+                  onChange={(v) => form.setText("phone", v)}
+                  onBlur={() => form.touch("phone")}
+                  error={form.errorFor("phone")}
+                  inputMode="tel"
+                  autoComplete="tel"
+                />
+              )}
+              {privateAddress ? (
+                <PrivateMarker label="Mailing address" />
+              ) : (
+                <AddressEditor
+                  address={form.draft.address}
+                  onChange={form.setAddress}
+                  countryError={form.errorFor("address.country")}
+                  stateError={form.errorFor("address.stateProvince")}
+                  postalError={form.errorFor("address.postalCode")}
+                />
+              )}
             </Section>
 
             <Section title="Emergency contacts">
-              <EmergencyContactsEditor
-                contacts={form.draft.emergencyContacts}
-                onChange={form.setEmergencyContacts}
-                errorFor={form.errorFor}
-                touch={form.touch}
-              />
-              <ConsentSwitch
-                copy={PRIVACY_COPY.shareEmergency}
-                value={form.draft.privacy?.shareEmergency ?? false}
-                onChange={(v) => form.setPrivacy("shareEmergency", v)}
-                locked={consentLocked}
-              />
+              {privateEmergency ? (
+                <PrivateMarker label="Emergency contacts" />
+              ) : (
+                <>
+                  <EmergencyContactsEditor
+                    contacts={form.draft.emergencyContacts}
+                    onChange={form.setEmergencyContacts}
+                    errorFor={form.errorFor}
+                    touch={form.touch}
+                  />
+                  <ConsentSwitch
+                    copy={PRIVACY_COPY.shareEmergency}
+                    value={form.draft.privacy?.shareEmergency ?? false}
+                    onChange={(v) => form.setPrivacy("shareEmergency", v)}
+                    locked={consentLocked}
+                  />
+                </>
+              )}
             </Section>
           </EditRow>
 
@@ -417,24 +447,28 @@ export function ProfileEdit({
                   </div>
                 </div>
                 <div className="space-y-4">
-                  <div>
-                    <TextField
-                      id="profile-spousePartnerName"
-                      label="Spouse / partner"
-                      value={form.draft.spousePartnerName ?? ""}
-                      onChange={(v) => form.setText("spousePartnerName", v)}
-                      onBlur={() => form.touch("spousePartnerName")}
-                      error={form.errorFor("spousePartnerName")}
-                    />
-                    <div className="mt-2">
-                      <ConsentSwitch
-                        copy={PRIVACY_COPY.shareSpousePartner}
-                        value={form.draft.privacy?.shareSpousePartner ?? false}
-                        onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
-                        locked={consentLocked}
+                  {privateSpouse ? (
+                    <PrivateMarker label="Spouse / partner" />
+                  ) : (
+                    <div>
+                      <TextField
+                        id="profile-spousePartnerName"
+                        label="Spouse / partner"
+                        value={form.draft.spousePartnerName ?? ""}
+                        onChange={(v) => form.setText("spousePartnerName", v)}
+                        onBlur={() => form.touch("spousePartnerName")}
+                        error={form.errorFor("spousePartnerName")}
                       />
+                      <div className="mt-2">
+                        <ConsentSwitch
+                          copy={PRIVACY_COPY.shareSpousePartner}
+                          value={form.draft.privacy?.shareSpousePartner ?? false}
+                          onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
+                          locked={consentLocked}
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
                   <MajorsEditor
                     codes={form.draft.majors ?? []}
                     onChange={form.setMajors}

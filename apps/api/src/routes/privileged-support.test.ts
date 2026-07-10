@@ -20,6 +20,9 @@ class RealTokenStore implements ProfileStore {
     private readonly returnedToken: string,
     private readonly onWrite?: (id: number) => Promise<void>,
   ) {}
+  create(_id: number, _profile: Profile): Promise<string> {
+    return Promise.reject(new Error("unused"));
+  }
   update(_id: number, _write: ProfileWrite): Promise<string> {
     return Promise.reject(new Error("unused"));
   }

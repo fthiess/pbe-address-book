@@ -75,6 +75,7 @@ export {
   canActOnProfile,
   canImpersonate,
   canWriteField,
+  canWriteFieldOnRecord,
   impersonatableRoles,
   partitionWritableFields,
 } from "./capabilities.js";

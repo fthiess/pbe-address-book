@@ -33,6 +33,14 @@ export class MissingProfileError extends Error {
   }
 }
 
+/** Raised when a create targets a Constitution id that already exists (→ 409). */
+export class ProfileExistsError extends Error {
+  constructor() {
+    super("A profile with that Constitution id already exists.");
+    this.name = "ProfileExistsError";
+  }
+}
+
 /**
  * One conditional write: the top-level fields to set, the top-level fields to
  * delete (the verification clear, D28), and the expected concurrency token.
@@ -64,6 +72,13 @@ export interface UnconditionalWrite {
 
 /** The write seam injected into the server (real = Firestore; tests = in-memory). */
 export interface ProfileStore {
+  /**
+   * Create profile `id`'s document in **one atomic write** (API-SPEC §3; OFC-201),
+   * returning its initial concurrency token. Firestore `create()` fails if the
+   * document already exists, so the id-uniqueness conflict is enforced natively —
+   * no read-modify-write race — surfacing as {@link ProfileExistsError} (→ 409).
+   */
+  create(id: number, profile: Profile): Promise<string>;
   /**
    * Apply a conditional write to profile `id`, returning the **new** concurrency
    * token. Throws {@link StaleWriteError} if the precondition no longer holds and
@@ -158,11 +173,28 @@ function parseTokenParts(token: string): { seconds: number; nanoseconds: number 
 
 /** Firestore/gRPC status codes the write path maps onto HTTP outcomes. */
 const GRPC_NOT_FOUND = 5;
+const GRPC_ALREADY_EXISTS = 6;
 const GRPC_FAILED_PRECONDITION = 9;
 
 /** The real store: a conditional `update()` against the live `profiles` doc. */
 export class FirestoreProfileStore implements ProfileStore {
   constructor(private readonly db: Firestore) {}
+
+  async create(id: number, profile: Profile): Promise<string> {
+    const ref = this.db.collection(COLLECTION).doc(String(id));
+    try {
+      // `create()` writes only if the document does not yet exist, so a duplicate
+      // Constitution id fails atomically as ALREADY_EXISTS (→ 409) rather than
+      // silently overwriting a live brother.
+      const result = await ref.create(profile as unknown as Record<string, unknown>);
+      return encodeToken(result.writeTime);
+    } catch (error) {
+      if ((error as { code?: number }).code === GRPC_ALREADY_EXISTS) {
+        throw new ProfileExistsError();
+      }
+      throw error;
+    }
+  }
 
   async update(id: number, write: ProfileWrite): Promise<string> {
     const ref = this.db.collection(COLLECTION).doc(String(id));
