@@ -983,6 +983,28 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     await app.close();
   });
 
+  it("defaults a new brother to subscribed to PBE News and fills the privacy defaults", async () => {
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "admin");
+
+    // Exactly the minimal body the essentials form sends — no privacy, no consent flags.
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: { id: 6002, firstName: "Min", lastName: "Imal", classYear: 1995, email: "m@x.test" },
+    });
+
+    expect(response.statusCode).toBe(201);
+    const stored = cache.getById(6002);
+    expect(stored?.allowNewsletterEmail).toBe(true); // subscribed by default (D45)
+    expect(stored?.allowShareWithMITAA).toBe(false); // MITAA sharing stays opt-out (D56/D93)
+    expect(stored?.privacy.shareEmail).toBe(true); // schema privacy defaults filled
+    expect(stored?.privacy.shareSpousePartner).toBe(false);
+    expect(stored?.unlisted).toBe(false);
+    await app.close();
+  });
+
   it("forbids a non-admin (manager) from creating a brother (403)", async () => {
     const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
     const cookie = await cookieAs(9001, "manager");

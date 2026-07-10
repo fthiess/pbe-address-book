@@ -303,8 +303,17 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
           ghostStep: async (p) => {
             try {
               if (raising) {
-                await ghostLifecycle.deleteMember(p.current);
-              } else {
+                // Only delete a member that exists (OFC-201 follow-up): a Book-only
+                // brother (no email → no Ghost record, a tolerated state C15/D20/D115)
+                // has nothing to delete, and the real client throws without a
+                // `ghostMemberId`. De-brothering them is a Book-only operation.
+                if (p.current.ghostMemberId) {
+                  await ghostLifecycle.deleteMember(p.current);
+                }
+              } else if (p.current.email) {
+                // Re-create a member only for a brother who has an email (the Ghost
+                // identity key), mirroring the create path: an email-less brother is
+                // reinstated Book-only, no Ghost record.
                 p.created = await ghostLifecycle.createMember(p.current);
               }
             } catch (cause) {

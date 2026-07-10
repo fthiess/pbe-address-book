@@ -131,11 +131,18 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
       }
 
       // Ghost-first (D96/D98): if the Ghost member delete fails, abort clean — no
-      // Book state has been touched, and the admin retries.
-      try {
-        await ghostLifecycle.deleteMember(stored);
-      } catch {
-        return reply.code(502).send({ error: "ghost_delete_failed" });
+      // Book state has been touched, and the admin retries. **Only when the brother
+      // actually has a Ghost member** (OFC-201 follow-up): a Book-only brother — no
+      // email, so no Ghost record, an explicitly tolerated state (C15/D20/D115) — has
+      // nothing to delete, and calling `deleteMember` without a `ghostMemberId` would
+      // throw in the real client (→ a spurious 502 that makes ~1/3 of the real roster
+      // undeletable). Skip the Ghost step for them.
+      if (stored.ghostMemberId) {
+        try {
+          await ghostLifecycle.deleteMember(stored);
+        } catch {
+          return reply.code(502).send({ error: "ghost_delete_failed" });
+        }
       }
 
       // Scrub inbound Big-Brother references first (D98): clear `bigBrotherId` on
