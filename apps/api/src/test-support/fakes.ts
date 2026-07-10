@@ -9,6 +9,7 @@ export { InMemoryBugReportStore } from "../data/bug-reports.js";
 import {
   INITIAL_CONCURRENCY_TOKEN,
   MissingProfileError,
+  ProfileExistsError,
   type ProfileStore,
   type ProfileWrite,
   StaleWriteError,
@@ -134,6 +135,20 @@ export class InMemoryProfileStore implements ProfileStore {
    */
   markMissing(id: number): void {
     this.missing.add(id);
+  }
+
+  async create(id: number, _profile: Profile): Promise<string> {
+    // Mirror Firestore `create()`: a second create for an id already written
+    // through the store fails ALREADY_EXISTS (→ 409). A record only *loaded* into
+    // the cache (never written here) is caught by the route's cache pre-check
+    // instead; the real atomic guard is proven in the emulator suite.
+    if (this.tokens.has(id)) {
+      throw new ProfileExistsError();
+    }
+    this.missing.delete(id);
+    const next = `token-${++this.counter}`;
+    this.tokens.set(id, next);
+    return next;
   }
 
   async update(id: number, write: ProfileWrite): Promise<string> {

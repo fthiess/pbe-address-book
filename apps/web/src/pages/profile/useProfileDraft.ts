@@ -5,6 +5,7 @@ import {
   type PrivacyFlags,
   type Profile,
   type ValidationIssue,
+  firstIssueByField,
   validateProfile,
 } from "@pbe/shared";
 import { useCallback, useMemo, useState } from "react";
@@ -185,16 +186,11 @@ export function useProfileDraft(record: ProfileRecord, viewer: Viewer): ProfileD
   // blank in-progress repeatable rows dropped), the always-required fields enforced
   // (this IS a full record edit).
   const sanitized = useMemo(() => sanitizeRepeatables(draft), [draft]);
-  const errors = useMemo(() => {
-    const { issues } = validateProfile(sanitized, { currentYear, requireRequired: true });
-    const map: Record<string, string> = {};
-    for (const issue of issues) {
-      if (!(issue.field in map)) {
-        map[issue.field] = issue.message;
-      }
-    }
-    return map;
-  }, [sanitized, currentYear]);
+  const errors = useMemo(
+    () =>
+      firstIssueByField(validateProfile(sanitized, { currentYear, requireRequired: true }).issues),
+    [sanitized, currentYear],
+  );
 
   const revealAll = useCallback((): string | null => {
     setSubmitted(true);
@@ -213,13 +209,7 @@ export function useProfileDraft(record: ProfileRecord, viewer: Viewer): ProfileD
 
   const applyServerIssues = useCallback((issues: ValidationIssue[]) => {
     setSubmitted(true);
-    const map: Record<string, string> = {};
-    for (const issue of issues) {
-      if (!(issue.field in map)) {
-        map[issue.field] = issue.message;
-      }
-    }
-    setServerIssues(map);
+    setServerIssues(firstIssueByField(issues));
   }, []);
 
   const dirty = useMemo(

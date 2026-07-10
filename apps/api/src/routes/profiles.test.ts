@@ -470,6 +470,52 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
     await app.close();
   });
 
+  it("forbids a manager overwriting a toggle field the owner has hidden (OFC-206/N70)", async () => {
+    // The default privacy hides spouse/partner (shareSpousePartner: false), so a
+    // manager never sees 5003's value — and must not be able to blind-overwrite it.
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5003 })]);
+    const cookie = await cookieAs(9001, "manager");
+    const etag = await etagOf(5003, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5003",
+      headers: { cookie, "if-match": etag },
+      payload: { spousePartnerName: "Blind Overwrite" },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ fields: ["spousePartnerName"] });
+    expect(cache.getById(5003)?.spousePartnerName).toBeUndefined();
+    await app.close();
+  });
+
+  it("lets a manager write a toggle field the owner has shared (OFC-206/N70)", async () => {
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer([
+      makeProfile({
+        id: 5003,
+        privacy: {
+          shareEmail: true,
+          sharePhone: true,
+          shareAddress: true,
+          shareEmergency: true,
+          shareSpousePartner: true,
+        },
+      }),
+    ]);
+    const cookie = await cookieAs(9001, "manager");
+    const etag = await etagOf(5003, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5003",
+      headers: { cookie, "if-match": etag },
+      payload: { spousePartnerName: "Pat Smyth" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(cache.getById(5003)?.spousePartnerName).toBe("Pat Smyth");
+    await app.close();
+  });
+
   it("clears verification when a manager edits another brother (D28)", async () => {
     const { app, cache, cookieAs, etagOf } = await buildWriteServer([
       makeProfile({
@@ -885,6 +931,233 @@ describe("PATCH /api/profiles/:id — Ghost-first-gated push (N65)", () => {
     expect(response.statusCode).toBe(200);
     expect(ghost.updated).toHaveLength(0);
     expect(cache.getById(5001)?.email).toBe("new@example.test");
+    await app.close();
+  });
+});
+
+describe("POST /api/profiles (Add Brother — OFC-201)", () => {
+  /** A complete admin-entered create body for a brand-new brother (#6001). */
+  function newBrotherBody(overrides: Record<string, unknown> = {}) {
+    return {
+      id: 6001,
+      firstName: "New",
+      lastName: "Brother",
+      classYear: 2000,
+      email: "new.brother@example.test",
+      privacy: {
+        shareEmail: true,
+        sharePhone: true,
+        shareAddress: true,
+        shareEmergency: false,
+        shareSpousePartner: false,
+      },
+      allowNewsletterEmail: true,
+      allowShareWithMITAA: false,
+      ...overrides,
+    };
+  }
+
+  it("creates a brother for an admin (201 + ETag), inserting it into the cache", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })], ghost);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: newBrotherBody(),
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.headers.etag).toBeTruthy();
+    expect(response.json()).toMatchObject({ id: 6001, firstName: "New", lastName: "Brother" });
+    const stored = cache.getById(6001);
+    expect(stored?.firstName).toBe("New");
+    // Ghost-first: the member is created and its fresh id folded into the record.
+    expect(ghost.created).toEqual([6001]);
+    expect(stored?.ghostMemberId).toBe("recreated-6001");
+    // New-brother status defaults are server-forced.
+    expect(stored?.hasHeadshot).toBe(false);
+    expect(stored?.deceased.isDeceased).toBe(false);
+    await app.close();
+  });
+
+  it("forbids a non-admin (manager) from creating a brother (403)", async () => {
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "manager");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: newBrotherBody(),
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(cache.getById(6001)).toBeNull();
+    await app.close();
+  });
+
+  it("409s when the Constitution id already exists", async () => {
+    const { app, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: newBrotherBody({ id: 5001 }),
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({ error: "conflict" });
+    await app.close();
+  });
+
+  it("422s a missing or invalid Constitution id", async () => {
+    const { app, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: newBrotherBody({ id: undefined }),
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json().issues).toMatchObject([{ field: "id" }]);
+    await app.close();
+  });
+
+  it("422s a create missing a required field", async () => {
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: newBrotherBody({ lastName: undefined }),
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(cache.getById(6001)).toBeNull();
+    await app.close();
+  });
+
+  it("aborts clean with 502 when the Ghost-first create fails (nothing written)", async () => {
+    const { app, cache, cookieAs } = await buildWriteServer(
+      [makeProfile({ id: 5001 })],
+      new FailingGhostLifecycle("create"),
+    );
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: newBrotherBody(),
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toEqual({ error: "ghost_create_failed" });
+    expect(cache.getById(6001)).toBeNull();
+    await app.close();
+  });
+
+  it("creates a Book-only record (no Ghost member) when the brother has no email", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })], ghost);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: newBrotherBody({ email: undefined }),
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(ghost.created).toHaveLength(0); // no email → no Ghost member
+    expect(cache.getById(6001)?.ghostMemberId).toBeUndefined();
+    await app.close();
+  });
+
+  it("ignores server-managed / protected fields sent in the body", async () => {
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      payload: newBrotherBody({
+        hasHeadshot: true,
+        deceased: { isDeceased: true, deathYear: 1990 },
+        lastVerifiedDate: "2000-01-01",
+        verifiedBy: 1,
+        ghostMemberId: "attacker-supplied",
+      }),
+    });
+
+    expect(response.statusCode).toBe(201);
+    const stored = cache.getById(6001);
+    expect(stored?.hasHeadshot).toBe(false);
+    expect(stored?.deceased.isDeceased).toBe(false);
+    expect(stored?.lastVerifiedDate).toBeUndefined();
+    expect(stored?.verifiedBy).toBeUndefined();
+    // The Ghost id is server-set from the create result, not the body.
+    expect(stored?.ghostMemberId).toBe("recreated-6001");
+    await app.close();
+  });
+
+  it("ignores prototype-named junk keys in the body (Object.hasOwn guard)", async () => {
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      // Keys that resolve up Object.prototype must not be treated as writable fields.
+      payload: newBrotherBody({ toString: "evil", hasOwnProperty: "x", valueOf: 1 }),
+    });
+
+    expect(response.statusCode).toBe(201);
+    const stored = cache.getById(6001) as unknown as Record<string, unknown>;
+    expect(Object.hasOwn(stored, "toString")).toBe(false);
+    expect(Object.hasOwn(stored, "hasOwnProperty")).toBe(false);
+    expect(Object.hasOwn(stored, "valueOf")).toBe(false);
+    await app.close();
+  });
+
+  it("serializes a same-id create race: one 201, one 409, exactly one Ghost create", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })], ghost);
+    const cookie = await cookieAs(9001, "admin");
+
+    // Two concurrent creates for the same id. The in-lock existence re-check must
+    // let exactly one commit and abort the other *before* it mints a Ghost member.
+    const [a, b] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/profiles",
+        headers: { cookie },
+        payload: newBrotherBody(),
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/profiles",
+        headers: { cookie },
+        payload: newBrotherBody(),
+      }),
+    ]);
+
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    expect(ghost.created).toEqual([6001]); // the Ghost member is minted exactly once
+    expect(cache.getById(6001)).not.toBeNull();
     await app.close();
   });
 });

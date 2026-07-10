@@ -49,6 +49,7 @@ export function ActionBar({ role, rows, selectedIds }: ActionBarProps) {
       {role === "admin" && (
         <Link
           to="/brother/new"
+          state={{ fromDirectory: true }}
           className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
         >
           Add Brother

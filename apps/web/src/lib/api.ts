@@ -140,6 +140,52 @@ export async function patchProfile(
 }
 
 /**
+ * The outcome of a profile create (`POST /api/profiles`, OFC-201). Success and the
+ * two *expected* non-OK paths — the `409` Constitution-id conflict and the `422`
+ * field-validation rejection — are modelled as data the Add-Brother form branches
+ * on; a `403` (a non-admin, or a client/server capability drift) is surfaced too;
+ * other statuses throw {@link ApiError}.
+ */
+export type CreateOutcome =
+  | { status: "ok"; profile: ProfileRecord; etag: string }
+  | { status: "conflict" }
+  | { status: "invalid"; issues: ValidationIssue[] }
+  | { status: "forbidden" };
+
+/**
+ * Create a brother (`POST /api/profiles`, admin-only — OFC-201). The whole record
+ * is sent (the admin-supplied Constitution `id` plus the entered fields); the
+ * server sets the housekeeping and status fields and mints the Ghost member. The
+ * response is the created, projected record with its initial `ETag`.
+ */
+export async function createProfile(profile: Partial<Profile>): Promise<CreateOutcome> {
+  const response = await fetch("/api/profiles", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(profile),
+  });
+  if (response.ok) {
+    return {
+      status: "ok",
+      profile: await response.json(),
+      etag: response.headers.get("ETag") ?? "",
+    };
+  }
+  if (response.status === 409) {
+    return { status: "conflict" };
+  }
+  if (response.status === 422) {
+    const body = await response.json().catch(() => ({}));
+    return { status: "invalid", issues: (body.issues as ValidationIssue[]) ?? [] };
+  }
+  if (response.status === 403) {
+    return { status: "forbidden" };
+  }
+  throw await asError(response);
+}
+
+/**
  * The result of a headshot write (`PUT`/`DELETE …/headshot`, API-SPEC §6). The
  * write advances the profile document, so it returns a **fresh `ETag`** the
  * container must apply in place of its held token — otherwise the *next* text edit

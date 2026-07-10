@@ -32,6 +32,22 @@ export interface ValidationResult {
   issues: ValidationIssue[];
 }
 
+/**
+ * Reduce a list of issues to a `field → first-message` map — the shape the edit
+ * form's inline-error display and the create form both consume (the *first* issue
+ * per field wins; dotted `address.*` names stay distinct). One shared helper so the
+ * several call sites can't drift on how they dedupe.
+ */
+export function firstIssueByField(issues: readonly ValidationIssue[]): Record<string, string> {
+  const map: Record<string, string> = {};
+  for (const issue of issues) {
+    if (!(issue.field in map)) {
+      map[issue.field] = issue.message;
+    }
+  }
+  return map;
+}
+
 export interface ValidationContext {
   /**
    * The reference "current year" for the class-year and lifespan ranges.

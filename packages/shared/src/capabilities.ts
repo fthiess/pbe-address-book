@@ -30,7 +30,8 @@
  * cannot ride the general PATCH path.
  */
 
-import type { BrotherId, Profile, Role } from "./types.js";
+import type { BrotherId, PrivacyFlags, Profile, Role } from "./types.js";
+import { FIELD_VISIBILITY, fieldVisibleToRole } from "./visibility.js";
 
 /**
  * How a field may be written through the general PATCH path:
@@ -137,6 +138,43 @@ export function canWriteField(role: Role, isOwner: boolean, field: keyof Profile
 }
 
 /**
+ * The **record-aware** write predicate — {@link canWriteField} narrowed by the
+ * record's own privacy flags, closing the read/write asymmetry OFC-206 found
+ * (DECISIONS N70). The principle: *a caller must not be able to write a field
+ * they cannot read on this record.*
+ *
+ * The static {@link canWriteField} marks the contact/spouse fields `editable`, so
+ * a manager could PATCH them on any record — but the read projection
+ * (`visibility.ts`) hides a `toggle` field from a manager when the owner's
+ * governing share-flag is **off** (only admins see through an off toggle, D19). A
+ * manager could therefore *overwrite* a spouse/emergency/phone value they were
+ * never allowed to *see* — a blind clobber of hidden data. This predicate removes
+ * that: a field hidden from the caller's projection is also unwritable by them.
+ *
+ * Only a **non-owner** is ever at risk of a blind write, and only on a
+ * privacy-gated `toggle` field — owners read their whole record, and admins read
+ * through every toggle — so those callers are never gated here, and every
+ * non-`toggle` field is unaffected (its read visibility already meets or exceeds
+ * its write rule). The route pairs this with {@link canActOnProfile} exactly as it
+ * did the static check; the client mirrors it in the edit form's diff.
+ */
+export function canWriteFieldOnRecord(
+  role: Role,
+  isOwner: boolean,
+  field: keyof Profile,
+  privacy: PrivacyFlags,
+): boolean {
+  if (!canWriteField(role, isOwner, field)) {
+    return false;
+  }
+  // "Can't write what you can't read." The owner reads their whole record, so the
+  // read gate applies only to a non-owner; for them it collapses to the toggle
+  // check (public → always visible, restricted/staff → managers+admins, and the
+  // never-writable classes are already `false` above).
+  return isOwner || fieldVisibleToRole(FIELD_VISIBILITY[field], role, privacy);
+}
+
+/**
  * The role hierarchy, low → high (DATABASE-SCHEMA §8). The single source of the
  * *ordering* the step-down impersonation rule reads; the projection/write rules
  * above are deliberately not ordinal (they branch on the role name), so this rank
@@ -172,16 +210,22 @@ export function impersonatableRoles(realRole: Role): Role[] {
   );
 }
 
-/** Partition a set of would-be-written field names into accepted and rejected. */
+/**
+ * Partition a set of would-be-written field names into accepted and rejected,
+ * **against a specific record's privacy flags** (N70). Uses the record-aware
+ * {@link canWriteFieldOnRecord}, so a `toggle` field hidden from the caller lands
+ * in `rejected` — the write path returns 403 rather than a blind clobber.
+ */
 export function partitionWritableFields(
   role: Role,
   isOwner: boolean,
   fields: Iterable<keyof Profile>,
+  privacy: PrivacyFlags,
 ): { readonly allowed: (keyof Profile)[]; readonly rejected: (keyof Profile)[] } {
   const allowed: (keyof Profile)[] = [];
   const rejected: (keyof Profile)[] = [];
   for (const field of fields) {
-    (canWriteField(role, isOwner, field) ? allowed : rejected).push(field);
+    (canWriteFieldOnRecord(role, isOwner, field, privacy) ? allowed : rejected).push(field);
   }
   return { allowed, rejected };
 }

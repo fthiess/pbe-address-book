@@ -5,12 +5,30 @@ import {
   canActOnProfile,
   canImpersonate,
   canWriteField,
+  canWriteFieldOnRecord,
   impersonatableRoles,
   partitionWritableFields,
 } from "./capabilities.js";
-import type { Profile, Role } from "./types.js";
+import type { PrivacyFlags, Profile, Role } from "./types.js";
 
 const ROLES: Role[] = ["brother", "manager", "admin"];
+
+/** All share-toggles on — the permissive baseline for the field-rule truth table. */
+const ALL_SHARED: PrivacyFlags = {
+  shareEmail: true,
+  sharePhone: true,
+  shareAddress: true,
+  shareEmergency: true,
+  shareSpousePartner: true,
+};
+/** All share-toggles off — the record whose contact/spouse fields are hidden. */
+const NONE_SHARED: PrivacyFlags = {
+  shareEmail: false,
+  sharePhone: false,
+  shareAddress: false,
+  shareEmergency: false,
+  shareSpousePartner: false,
+};
 
 describe("WRITE_RULE table", () => {
   it("classifies a representative of each rule (DATABASE-SCHEMA §8)", () => {
@@ -125,18 +143,70 @@ describe("impersonatableRoles — the menu source, highest-first", () => {
   });
 });
 
+describe("canWriteFieldOnRecord — the record-aware gate (N70, OFC-206)", () => {
+  const TOGGLE_FIELDS: { field: keyof Profile; flag: keyof PrivacyFlags }[] = [
+    { field: "email", flag: "shareEmail" },
+    { field: "alternateEmail", flag: "shareEmail" },
+    { field: "phone", flag: "sharePhone" },
+    { field: "address", flag: "shareAddress" },
+    { field: "emergencyContacts", flag: "shareEmergency" },
+    { field: "spousePartnerName", flag: "shareSpousePartner" },
+  ];
+
+  it("blocks a non-owner manager from writing a toggle field the owner has hidden", () => {
+    for (const { field } of TOGGLE_FIELDS) {
+      // Flag on → the manager sees it and may maintain it.
+      expect(canWriteFieldOnRecord("manager", false, field, ALL_SHARED)).toBe(true);
+      // Flag off → hidden from the manager's projection, so unwritable (no blind clobber).
+      expect(canWriteFieldOnRecord("manager", false, field, NONE_SHARED)).toBe(false);
+    }
+  });
+
+  it("never gates the owner or an admin — neither is blind to the value", () => {
+    for (const { field } of TOGGLE_FIELDS) {
+      // The owner reads their whole record.
+      expect(canWriteFieldOnRecord("brother", true, field, NONE_SHARED)).toBe(true);
+      // An admin reads through every toggle (D19).
+      expect(canWriteFieldOnRecord("admin", false, field, NONE_SHARED)).toBe(true);
+    }
+  });
+
+  it("leaves non-toggle fields exactly as the static rule decided", () => {
+    // Public editable field: writable regardless of privacy.
+    expect(canWriteFieldOnRecord("manager", false, "firstName", NONE_SHARED)).toBe(true);
+    // Staff note: manager yes, owner no — privacy-independent.
+    expect(canWriteFieldOnRecord("manager", false, "adminNote", NONE_SHARED)).toBe(true);
+    expect(canWriteFieldOnRecord("brother", true, "adminNote", ALL_SHARED)).toBe(false);
+    // Consent field: manager-on-another still no, even with everything shared.
+    expect(canWriteFieldOnRecord("manager", false, "privacy", ALL_SHARED)).toBe(false);
+    // Protected: never, either way.
+    expect(canWriteFieldOnRecord("admin", false, "lastModified", ALL_SHARED)).toBe(false);
+  });
+});
+
 describe("partitionWritableFields", () => {
   it("splits a patch into accepted and rejected by role/ownership", () => {
-    // A manager editing another brother: ordinary fields in, consent + protected out.
-    const { allowed, rejected } = partitionWritableFields("manager", false, [
-      "firstName",
-      "email",
-      "privacy", // consent — manager-on-another rejected
-      "unlisted", // consent — rejected
-      "adminNote", // staff — allowed
-      "lastModified", // protected — rejected
-    ]);
+    // A manager editing another brother whose contact fields are shared: ordinary
+    // fields in, consent + protected out.
+    const { allowed, rejected } = partitionWritableFields(
+      "manager",
+      false,
+      ["firstName", "email", "privacy", "unlisted", "adminNote", "lastModified"],
+      ALL_SHARED,
+    );
     expect(allowed).toEqual(["firstName", "email", "adminNote"]);
     expect(rejected).toEqual(["privacy", "unlisted", "lastModified"]);
+  });
+
+  it("rejects a hidden toggle field a manager cannot see on this record (N70)", () => {
+    // Same manager, but the owner has hidden email and spouse: those drop to rejected.
+    const { allowed, rejected } = partitionWritableFields(
+      "manager",
+      false,
+      ["firstName", "email", "spousePartnerName", "adminNote"],
+      NONE_SHARED,
+    );
+    expect(allowed).toEqual(["firstName", "adminNote"]);
+    expect(rejected).toEqual(["email", "spousePartnerName"]);
   });
 });

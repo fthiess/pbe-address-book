@@ -1,5 +1,21 @@
-import { type Profile, type Role, canWriteField } from "@pbe/shared";
+import { type PrivacyFlags, type Profile, type Role, canWriteFieldOnRecord } from "@pbe/shared";
 import type { ProfileRecord } from "../../lib/types.js";
+
+/**
+ * The conservative privacy fallback when the record carries no `privacy` block
+ * (N70): every share-flag *off*. It only ever affects a non-owner **manager** (the
+ * owner and admins are never gated by the record-aware write predicate), for whom
+ * "all hidden" is the safe read of a record whose flags didn't reach the client —
+ * a missing block should never be read as "everything shared." In practice the
+ * projection always sends `privacy` to anyone who may edit, so this is a belt.
+ */
+const ALL_PRIVATE: PrivacyFlags = {
+  shareEmail: false,
+  sharePhone: false,
+  shareAddress: false,
+  shareEmergency: false,
+  shareSpousePartner: false,
+};
 
 /**
  * The edit form's diff engine (§5.7.9). A Save sends a **`PATCH` of only the
@@ -51,12 +67,17 @@ export function buildPatch(
   isOwner: boolean,
 ): Partial<Profile> {
   const patch: Partial<Profile> = {};
+  const privacy = original.privacy ?? ALL_PRIVATE;
   const keys = new Set<keyof Profile>([
     ...(Object.keys(original) as (keyof Profile)[]),
     ...(Object.keys(draft) as (keyof Profile)[]),
   ]);
   for (const key of keys) {
-    if (key === "id" || !canWriteField(role, isOwner, key)) {
+    // The record-aware write gate (N70): as well as skipping fields this role may
+    // not write, drop a `toggle` field a non-owner manager cannot see on this
+    // record, so an accidental keystroke never blind-clobbers hidden data (and never
+    // draws a server 403 into the normal save path). The server re-checks.
+    if (key === "id" || !canWriteFieldOnRecord(role, isOwner, key, privacy)) {
       continue;
     }
     if (!valuesEqual(original[key], draft[key])) {

@@ -1,7 +1,9 @@
 import {
+  type PrivacyFlags,
   type Profile,
   type Role,
   type ValidationIssue,
+  WRITE_RULE,
   canActOnProfile,
   normalizeEmail,
   normalizePhone,
@@ -11,8 +13,8 @@ import {
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
-import { type ProfileStore, StaleWriteError } from "../data/profiles.js";
-import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
+import { ProfileExistsError, type ProfileStore, StaleWriteError } from "../data/profiles.js";
+import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import { effectiveRole } from "../identity/types.js";
 import {
   type ProjectedProfile,
@@ -23,7 +25,7 @@ import {
 } from "../projection/projection.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { negotiateEncoding } from "./encoding.js";
-import { computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
+import { GhostStepError, computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
 import type { RecordLock } from "./record-lock.js";
 import { replyWriteError, runRecordWrite } from "./record-write.js";
 import { traceId } from "./trace.js";
@@ -74,6 +76,7 @@ export interface ProfileRouteDeps {
 export function registerProfileRoutes(app: FastifyInstance, deps: ProfileRouteDeps): void {
   registerBulkRead(app, deps);
   registerRecordRead(app, deps);
+  registerCreate(app, deps);
   registerPatch(app, deps);
 }
 
@@ -155,6 +158,242 @@ function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteD
 
     return sendRecord(reply, stored, role, isOwner, cache.concurrencyToken(id) ?? "");
   });
+}
+
+/**
+ * `POST /api/profiles` — create a brother in one atomic write (API-SPEC §3;
+ * OFC-201). The Add-Brother path, admin-only. The full guard sequence:
+ *
+ *  1. **Admin only** — a non-admin is `403`ed and audited before any work.
+ *  2. The body must be an object carrying a valid, positive Constitution **`id`**
+ *     — the caller supplies it (it is the physical signature number, never
+ *     auto-assigned); an invalid or missing id is a `422` on `id`.
+ *  3. **Conflict** — an id already in the dataset is `409`; the atomic Firestore
+ *     `create()` is the authoritative backstop for the same race.
+ *  4. The candidate record is assembled **server-side**: the admin-settable fields
+ *     from the body, the server-managed housekeeping (`lastModified`,
+ *     `newsletterConsentChangedAt`), the safe status defaults (`deceased`/
+ *     `debrothered` off, `hasHeadshot: false`), and a **well-formed `privacy`
+ *     block** — so the one un-hydrated insert path can never seed a malformed
+ *     record the projection would later crash on.
+ *  5. **Validation** — the shared module in create mode (`requireRequired`) plus
+ *     the dataset-level structural checks (email uniqueness, big-brother existence
+ *     / no cycle), `422` on failure.
+ *  6. The **Ghost-first-gated** create (`createMember` mints the member and
+ *     returns the fresh `ghostMemberId`, folded into the write; a failure aborts
+ *     clean with `502 ghost_create_failed`, Book untouched — N65), then the atomic
+ *     Firestore `create`, the cache insert (read-your-writes), and the
+ *     `profile.create` audit entry (names, never values). `201` + `ETag`.
+ */
+function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
+  const { cache, gate, store, audit, clock, ghostLifecycle, recordLock } = deps;
+
+  app.post(
+    "/api/profiles",
+    { preHandler: gate, config: writeRateLimit() },
+    async (request, reply) => {
+      const session = request.session;
+      if (!session) {
+        return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+      }
+      const actor = session.identity;
+      const role = effectiveRole(session);
+      const now = clock();
+      const trace = traceId(request);
+
+      // 1. Admin only (API-SPEC §3). Audited denial before any work.
+      if (role !== "admin") {
+        audit.record(
+          { action: "profile.create", actorId: actor.profileId, outcome: "denied", trace },
+          now.toISOString(),
+        );
+        return reply
+          .code(403)
+          .send({ error: "forbidden", message: "Only administrators may add a brother." });
+      }
+
+      // 2. Body must be an object carrying a valid Constitution id.
+      const body = request.body;
+      if (body === null || typeof body !== "object" || Array.isArray(body)) {
+        return reply
+          .code(400)
+          .send({ error: "bad_request", message: "Body must be a complete profile object." });
+      }
+      const rawId = (body as { id?: unknown }).id;
+      if (typeof rawId !== "number" || !Number.isInteger(rawId) || rawId <= 0) {
+        return reply.code(422).send({
+          error: "validation_failed",
+          issues: [{ field: "id", message: "A valid Constitution id is required." }],
+        });
+      }
+      const id = rawId;
+
+      // 3. Conflict — a fast in-memory pre-check (the atomic `store.create` below is
+      //    the authoritative backstop for the create race).
+      if (cache.getById(id) !== null) {
+        audit.record(
+          {
+            action: "profile.create",
+            actorId: actor.profileId,
+            targetId: id,
+            outcome: "denied",
+            trace,
+          },
+          now.toISOString(),
+        );
+        return reply.code(409).send({
+          error: "conflict",
+          message: "A brother with that Constitution id already exists.",
+        });
+      }
+
+      // 4. Assemble the candidate server-side (admin body ⊕ server-managed fields).
+      const candidate = assembleNewProfile(body as Record<string, unknown>, id, now);
+      canonicalizePhones(candidate);
+
+      // 5. Validation — shared rules (required fields on) + dataset structural checks.
+      const issues = [
+        ...validateProfile(candidate, { currentYear: now.getUTCFullYear(), requireRequired: true })
+          .issues,
+        ...checkStructural(cache, candidate, candidate, id),
+      ];
+      if (issues.length > 0) {
+        return reply.code(422).send({ error: "validation_failed", issues });
+      }
+
+      // 6. Ghost-first create → atomic Firestore create → cache insert → audit, under
+      //    the shared per-record lock (N65) keyed by the new id. `createMember` mints
+      //    the Ghost member first and its returned id is folded into the stored record;
+      //    a Ghost failure aborts clean (502, nothing written). The Firestore `create`
+      //    fails `409` if the id was taken between the pre-check and the write.
+      interface CreatePrepared {
+        created?: GhostCreateResult;
+      }
+      let token: string;
+      let stored: Profile = candidate;
+      try {
+        token = await runRecordWrite<CreatePrepared, string>(recordLock, id, {
+          // Re-check existence **inside the lock**, mirroring the PATCH path's in-lock
+          // If-Match preflight (OFC review): the outside-the-lock conflict check can
+          // pass for a second same-id create whose sibling has not yet committed, and
+          // without this the doomed create would still mint a Ghost member in the
+          // ghostStep below before `store.create` rejected it (a `409` that orphans a
+          // real Ghost member). Aborting here — before any Ghost call — closes that.
+          prepare: () => {
+            if (cache.getById(id) !== null) {
+              throw new ProfileExistsError();
+            }
+            return {};
+          },
+          ghostStep: async (p) => {
+            // A Ghost member is email-keyed (the magic-link identity), so a new
+            // brother with no email on file is created **Book-only** — no member, no
+            // `ghostMemberId` — exactly as the PATCH path treats a record without one;
+            // the reconciliation audit reports it as `missingGhostMember` (D99). With
+            // an email, create the member first and fold its fresh id into the write.
+            if (typeof candidate.email !== "string" || candidate.email.trim() === "") {
+              return;
+            }
+            try {
+              p.created = await ghostLifecycle.createMember(candidate);
+            } catch (cause) {
+              throw new GhostStepError("ghost_create_failed", cause);
+            }
+          },
+          commit: async (p) => {
+            stored = p.created
+              ? { ...candidate, ghostMemberId: p.created.ghostMemberId }
+              : candidate;
+            const t = await store.create(id, stored);
+            await cache.applyCreate(stored, t);
+            return t;
+          },
+        });
+      } catch (error) {
+        if (error instanceof ProfileExistsError) {
+          return reply.code(409).send({
+            error: "conflict",
+            message: "A brother with that Constitution id already exists.",
+          });
+        }
+        return replyWriteError(error, reply);
+      }
+
+      audit.record(
+        { action: "profile.create", actorId: actor.profileId, targetId: id, outcome: "ok", trace },
+        now.toISOString(),
+      );
+      return sendRecord(reply.code(201), stored, role, false, token);
+    },
+  );
+}
+
+/**
+ * The schema privacy defaults for a new brother (DATABASE-SCHEMA §3.3, D93): the
+ * reachability toggles on, the two third-party-data toggles off. Overlaid by any
+ * boolean the admin actually sent, so an omitted flag never lands `undefined`.
+ */
+const DEFAULT_PRIVACY: PrivacyFlags = {
+  shareEmail: true,
+  sharePhone: true,
+  shareAddress: true,
+  shareEmergency: false,
+  shareSpousePartner: false,
+};
+
+/**
+ * Build a well-formed new `Profile` from the admin's create body (OFC-201). The
+ * body's **admin-settable** fields (everything not `protected` in `WRITE_RULE`)
+ * are taken as-is; the server owns the rest — the immutable `id`, the housekeeping
+ * stamps, the status flags (`deceased`/`debrothered` off, `hasHeadshot: false`),
+ * and a complete `privacy` block (schema defaults overlaid by the client's
+ * booleans). Building the required sub-objects here — rather than trusting the
+ * body — is what keeps this one un-hydrated insert from seeding a record the
+ * projection later hard-dereferences into a 500 (the guarantee `normalizeHydrated
+ * Profile` gives the Firestore-hydrated path).
+ */
+function assembleNewProfile(body: Record<string, unknown>, id: number, now: Date): Profile {
+  const settable: Partial<Profile> = {};
+  for (const [key, value] of Object.entries(body)) {
+    const field = key as keyof Profile;
+    // `Object.hasOwn`, not `WRITE_RULE[field] !== undefined` (OFC review): a body
+    // key that names an `Object.prototype` member (`toString`, `hasOwnProperty`, …)
+    // would resolve up the prototype chain to a function — passing a bare
+    // `!== undefined`/`!== "protected"` test — and get copied in and stored as a junk
+    // field (and could shadow a method on the record object). Only genuine own,
+    // non-`protected` `Profile` fields are settable.
+    if (key !== "id" && Object.hasOwn(WRITE_RULE, key) && WRITE_RULE[field] !== "protected") {
+      (settable as Record<string, unknown>)[key] = value;
+    }
+  }
+
+  const privacy: PrivacyFlags = { ...DEFAULT_PRIVACY };
+  const rawPrivacy = body.privacy;
+  if (rawPrivacy !== null && typeof rawPrivacy === "object" && !Array.isArray(rawPrivacy)) {
+    for (const flag of Object.keys(privacy) as (keyof PrivacyFlags)[]) {
+      const value = (rawPrivacy as Record<string, unknown>)[flag];
+      if (typeof value === "boolean") {
+        privacy[flag] = value;
+      }
+    }
+  }
+
+  return {
+    ...settable,
+    id,
+    privacy,
+    // The three consent booleans coerced to a real boolean (never left undefined
+    // or a stray non-boolean), the status flags forced to their new-brother values,
+    // and the server-managed housekeeping stamped.
+    unlisted: (settable.unlisted ?? false) === true,
+    allowNewsletterEmail: (settable.allowNewsletterEmail ?? false) === true,
+    allowShareWithMITAA: (settable.allowShareWithMITAA ?? false) === true,
+    deceased: { isDeceased: false },
+    debrothered: { isDebrothered: false },
+    hasHeadshot: false,
+    lastModified: now.toISOString(),
+    newsletterConsentChangedAt: now.toISOString(),
+  } as Profile;
 }
 
 /**
@@ -247,7 +486,12 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
       }
       const isOwner = actor.profileId === id;
       const patchFields = Object.keys(patch) as (keyof Profile)[];
-      const { rejected } = partitionWritableFields(role, isOwner, patchFields);
+      // Partition against **this record's** privacy flags (N70): a toggle field the
+      // owner has hidden is unwritable by a non-owner manager, who cannot see it and
+      // so must not blind-overwrite it. The stored flags are authoritative here — the
+      // only gated role (manager) cannot write `privacy` itself, so no in-flight
+      // privacy change can widen its own powers within the same request.
+      const { rejected } = partitionWritableFields(role, isOwner, patchFields, stored.privacy);
       if (rejected.length > 0) {
         audit.record(
           {

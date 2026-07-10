@@ -356,22 +356,47 @@ export class ProfileCache {
    * correct, which is what the access-control floor needs first.
    */
   async applyUpdate(updated: Profile, token: string): Promise<void> {
-    // Build the next state into locals, then swap it in atomically (OFC-82) —
-    // same discipline as {@link load}. The ordered set for the reprojection is
-    // derived from a *copy* with the update applied, so `this.byId` is not mutated
-    // before the new payload is ready.
     const nextById = new Map(this.byId);
     nextById.set(updated.id, updated);
+    await this.rebuildAndSwap(nextById, updated.id, token);
+  }
+
+  /**
+   * Apply a committed **create** to the in-memory model (read-your-writes, D83;
+   * OFC-201) — the insert counterpart to {@link applyUpdate}. Adds the new record
+   * and its initial concurrency `token`, so a freshly added brother is visible to
+   * the very next bulk read with zero Firestore reads.
+   */
+  async applyCreate(created: Profile, token: string): Promise<void> {
+    const nextById = new Map(this.byId);
+    nextById.set(created.id, created);
+    await this.rebuildAndSwap(nextById, created.id, token);
+  }
+
+  /**
+   * Reproject and atomically swap in a mutated record set (the shared body of
+   * {@link applyUpdate} and {@link applyCreate}). Everything is built into locals
+   * first and the instance fields are assigned together with **no `await` in
+   * between** (OFC-82), so a concurrent reader can never observe a torn state — a
+   * fresh `payload` against stale indexes. `sourceCount` is set to the new size,
+   * which is a no-op for an in-place update and the count bump for an insert.
+   */
+  private async rebuildAndSwap(
+    nextById: Map<number, Profile>,
+    changedId: number,
+    token: string,
+  ): Promise<void> {
     const profiles = [...nextById.values()].sort((a, b) => a.id - b.id);
     const payload = await this.projectAndCompress(profiles, "brother", BROTHER_BROTLI_QUALITY);
     const { byId, byEmail } = buildIndexes(profiles);
     const tokenById = new Map(this.tokenById);
-    tokenById.set(updated.id, token);
+    tokenById.set(changedId, token);
     // Atomic swap, after the last await.
     this.byId = byId;
     this.byEmail = byEmail;
     this.tokenById = tokenById;
     this.payload = payload;
+    this.sourceCount = profiles.length;
     // Invalidate the memoized staff payloads so the next staff read reprojects.
     this.staffPayloads.clear();
   }

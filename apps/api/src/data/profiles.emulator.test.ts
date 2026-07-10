@@ -5,6 +5,7 @@ import { makeProfile } from "../test-support/make-profile.js";
 import {
   FirestoreProfileStore,
   MissingProfileError,
+  ProfileExistsError,
   StaleWriteError,
   encodeToken,
 } from "./profiles.js";
@@ -148,6 +149,27 @@ describe.skipIf(!hasEmulator)("FirestoreProfileStore (emulator) — optimistic c
     await expect(
       store.update(5247, { set: { phone: "555-0100" }, remove: [], precondition: token }),
     ).rejects.toBeInstanceOf(StaleWriteError);
+  });
+
+  it("create() writes a new document and returns its initial token (OFC-201)", async () => {
+    await db.collection("profiles").doc("6001").delete(); // ensure absent
+    const token = await store.create(6001, makeProfile({ id: 6001, firstName: "New" }));
+    const snap = await db.collection("profiles").doc("6001").get();
+    expect(snap.exists).toBe(true);
+    expect(snap.data()?.firstName).toBe("New");
+    expect(token).toBe(encodeToken(snap.updateTime as FirebaseFirestore.Timestamp));
+    await db.collection("profiles").doc("6001").delete();
+  });
+
+  it("create() rejects a duplicate id atomically as a ProfileExistsError (→ 409)", async () => {
+    // 5247 is seeded in beforeEach, so a create must fail ALREADY_EXISTS rather
+    // than overwrite the live record — the native atomic guard behind the 409.
+    await expect(store.create(5247, makeProfile({ id: 5247 }))).rejects.toBeInstanceOf(
+      ProfileExistsError,
+    );
+    // The original record is untouched.
+    const snap = await db.collection("profiles").doc("5247").get();
+    expect(snap.data()?.firstName).toBe("James");
   });
 
   it("delete() removes the document and is idempotent (the admin delete, N41)", async () => {
