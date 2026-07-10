@@ -1112,4 +1112,52 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     expect(stored?.ghostMemberId).toBe("recreated-6001");
     await app.close();
   });
+
+  it("ignores prototype-named junk keys in the body (Object.hasOwn guard)", async () => {
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      // Keys that resolve up Object.prototype must not be treated as writable fields.
+      payload: newBrotherBody({ toString: "evil", hasOwnProperty: "x", valueOf: 1 }),
+    });
+
+    expect(response.statusCode).toBe(201);
+    const stored = cache.getById(6001) as unknown as Record<string, unknown>;
+    expect(Object.hasOwn(stored, "toString")).toBe(false);
+    expect(Object.hasOwn(stored, "hasOwnProperty")).toBe(false);
+    expect(Object.hasOwn(stored, "valueOf")).toBe(false);
+    await app.close();
+  });
+
+  it("serializes a same-id create race: one 201, one 409, exactly one Ghost create", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })], ghost);
+    const cookie = await cookieAs(9001, "admin");
+
+    // Two concurrent creates for the same id. The in-lock existence re-check must
+    // let exactly one commit and abort the other *before* it mints a Ghost member.
+    const [a, b] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/api/profiles",
+        headers: { cookie },
+        payload: newBrotherBody(),
+      }),
+      app.inject({
+        method: "POST",
+        url: "/api/profiles",
+        headers: { cookie },
+        payload: newBrotherBody(),
+      }),
+    ]);
+
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    expect(ghost.created).toEqual([6001]); // the Ghost member is minted exactly once
+    expect(cache.getById(6001)).not.toBeNull();
+    await app.close();
+  });
 });

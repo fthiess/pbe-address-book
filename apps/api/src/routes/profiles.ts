@@ -273,7 +273,18 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
       let stored: Profile = candidate;
       try {
         token = await runRecordWrite<CreatePrepared, string>(recordLock, id, {
-          prepare: () => ({}),
+          // Re-check existence **inside the lock**, mirroring the PATCH path's in-lock
+          // If-Match preflight (OFC review): the outside-the-lock conflict check can
+          // pass for a second same-id create whose sibling has not yet committed, and
+          // without this the doomed create would still mint a Ghost member in the
+          // ghostStep below before `store.create` rejected it (a `409` that orphans a
+          // real Ghost member). Aborting here — before any Ghost call — closes that.
+          prepare: () => {
+            if (cache.getById(id) !== null) {
+              throw new ProfileExistsError();
+            }
+            return {};
+          },
           ghostStep: async (p) => {
             // A Ghost member is email-keyed (the magic-link identity), so a new
             // brother with no email on file is created **Book-only** — no member, no
@@ -345,7 +356,13 @@ function assembleNewProfile(body: Record<string, unknown>, id: number, now: Date
   const settable: Partial<Profile> = {};
   for (const [key, value] of Object.entries(body)) {
     const field = key as keyof Profile;
-    if (key !== "id" && WRITE_RULE[field] !== undefined && WRITE_RULE[field] !== "protected") {
+    // `Object.hasOwn`, not `WRITE_RULE[field] !== undefined` (OFC review): a body
+    // key that names an `Object.prototype` member (`toString`, `hasOwnProperty`, …)
+    // would resolve up the prototype chain to a function — passing a bare
+    // `!== undefined`/`!== "protected"` test — and get copied in and stored as a junk
+    // field (and could shadow a method on the record object). Only genuine own,
+    // non-`protected` `Profile` fields are settable.
+    if (key !== "id" && Object.hasOwn(WRITE_RULE, key) && WRITE_RULE[field] !== "protected") {
       (settable as Record<string, unknown>)[key] = value;
     }
   }

@@ -59,6 +59,7 @@ export {
   MAX_LINKS,
   MAX_EMERGENCY_CONTACTS,
   normalizePhone,
+  firstIssueByField,
   validateProfile,
   type ValidationContext,
   type ValidationIssue,

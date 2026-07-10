@@ -1,4 +1,4 @@
-import { type Profile, validateProfile } from "@pbe/shared";
+import { type Profile, firstIssueByField, validateProfile } from "@pbe/shared";
 import { useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
@@ -71,12 +71,9 @@ export function NewProfile() {
       email: email.trim() || undefined,
     } as unknown as Profile;
 
-    const found: Record<string, string> = {};
-    for (const issue of validateProfile(candidate, { currentYear, requireRequired: true }).issues) {
-      if (!(issue.field in found)) {
-        found[issue.field] = issue.message;
-      }
-    }
+    const found = firstIssueByField(
+      validateProfile(candidate, { currentYear, requireRequired: true }).issues,
+    );
     if (idText.trim() === "" || !Number.isInteger(id) || id <= 0) {
       found.id = "Enter the brother's Constitution signer number (a positive whole number).";
     }
@@ -122,13 +119,7 @@ export function NewProfile() {
         setErrors({ id: "A brother with that Constitution id already exists." });
         focusFirstInvalid();
       } else if (outcome.status === "invalid") {
-        const found: Record<string, string> = {};
-        for (const issue of outcome.issues) {
-          if (!(issue.field in found)) {
-            found[issue.field] = issue.message;
-          }
-        }
-        setErrors(found);
+        setErrors(firstIssueByField(outcome.issues));
         focusFirstInvalid();
       } else if (outcome.status === "forbidden") {
         setBanner("Only administrators may add a brother.");
