@@ -7,7 +7,12 @@ import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecy
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
 import { writeRateLimit } from "../security/rate-limit.js";
-import { GhostStepError, computeConsentDiff, pushGhostUpdate } from "./ghost-push.js";
+import {
+  GhostStepError,
+  computeConsentDiff,
+  hasUsableEmail,
+  pushGhostUpdate,
+} from "./ghost-push.js";
 import {
   MissingProfileError,
   authorizePrivileged,
@@ -310,10 +315,10 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
                 if (p.current.ghostMemberId) {
                   await ghostLifecycle.deleteMember(p.current);
                 }
-              } else if (p.current.email) {
+              } else if (hasUsableEmail(p.current.email)) {
                 // Re-create a member only for a brother who has an email (the Ghost
-                // identity key), mirroring the create path: an email-less brother is
-                // reinstated Book-only, no Ghost record.
+                // identity key), mirroring the create path (same `hasUsableEmail`
+                // predicate): an email-less brother is reinstated Book-only, no Ghost.
                 p.created = await ghostLifecycle.createMember(p.current);
               }
             } catch (cause) {

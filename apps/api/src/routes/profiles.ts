@@ -25,7 +25,12 @@ import {
 } from "../projection/projection.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { negotiateEncoding } from "./encoding.js";
-import { GhostStepError, computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
+import {
+  GhostStepError,
+  computeGhostUpdateDiff,
+  hasUsableEmail,
+  pushGhostUpdate,
+} from "./ghost-push.js";
 import type { RecordLock } from "./record-lock.js";
 import { replyWriteError, runRecordWrite } from "./record-write.js";
 import { traceId } from "./trace.js";
@@ -287,11 +292,11 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
           },
           ghostStep: async (p) => {
             // A Ghost member is email-keyed (the magic-link identity), so a new
-            // brother with no email on file is created **Book-only** — no member, no
+            // brother with no usable email is created **Book-only** — no member, no
             // `ghostMemberId` — exactly as the PATCH path treats a record without one;
             // the reconciliation audit reports it as `missingGhostMember` (D99). With
             // an email, create the member first and fold its fresh id into the write.
-            if (typeof candidate.email !== "string" || candidate.email.trim() === "") {
+            if (!hasUsableEmail(candidate.email)) {
               return;
             }
             try {

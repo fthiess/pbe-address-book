@@ -71,6 +71,17 @@ export function hasGhostDiff(diff: GhostMemberDiff): boolean {
 }
 
 /**
+ * Whether a brother has an email usable as a Ghost identity key (OFC-201 follow-up)
+ * — a non-empty, non-whitespace string. The one predicate the **create** and
+ * **de-brother-reverse** paths both gate `createMember` on, so "does this brother
+ * get a Ghost member" is decided identically (a Ghost member is email-keyed; a
+ * brother with no usable email is Book-only, C15/D20/D115).
+ */
+export function hasUsableEmail(email: string | undefined): boolean {
+  return typeof email === "string" && email.trim() !== "";
+}
+
+/**
  * Thrown by a Ghost-first step to abort a record write **clean** — before any Book
  * mutation — so the endpoint returns `502 { error: code }` with Book untouched
  * (N65). One error type carries every Ghost-step failure so all three write paths
