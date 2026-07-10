@@ -336,13 +336,27 @@ export function ProfileContainer() {
 
   // The no-anachronistic-history model (N33): Edit pushed one entry tagged
   // `fromProfile`, so leaving edit pops it (Back from the view then reaches the
-  // Directory). A cold deep-link straight to `/edit` has nothing to pop, so we
-  // replace it with the display URL instead.
+  // Directory). A cold deep-link straight to `/edit` — or the Add-Brother handoff,
+  // which lands on `/edit` via a `replace` — has nothing to pop, so we replace it
+  // with the display URL. In that replace we **carry the directory-return state
+  // forward** (`fromDirectory`/`stashId`/`directoryDelta`) so the view's
+  // "← Directory" still pops to the Directory the user came from with its
+  // search/filter/sort intact, rather than a fresh, cleared one (OFC-233).
   const exitEdit = useCallback(() => {
-    if ((location.state as { fromProfile?: boolean } | null)?.fromProfile) {
+    const state = location.state as (DirectoryNavState & { fromProfile?: boolean }) | null;
+    if (state?.fromProfile) {
       navigate(-1);
     } else {
-      navigate(`/brother/${id}`, { replace: true });
+      navigate(`/brother/${id}`, {
+        replace: true,
+        state: state
+          ? {
+              fromDirectory: state.fromDirectory,
+              stashId: state.stashId,
+              directoryDelta: state.directoryDelta,
+            }
+          : undefined,
+      });
     }
   }, [location.state, navigate, id]);
 

@@ -112,8 +112,15 @@ export function NewProfile() {
       });
       if (outcome.status === "ok") {
         // Hand straight off to the regular edit page for the optional rest, replacing
-        // this step so Back returns to the Directory rather than the create form.
-        navigate(`/brother/${id}/edit`, { replace: true });
+        // this step so Back returns to the Directory rather than the create form. When
+        // we came from the Directory, carry the directory-return marker (delta 1 — the
+        // Directory sits exactly one push back, and both this and the later edit→view
+        // replace keep it there) so the eventual "← Directory" restores the Directory's
+        // search/filter/sort rather than opening a fresh, cleared one (OFC-233).
+        navigate(`/brother/${id}/edit`, {
+          replace: true,
+          state: fromDirectory ? { fromDirectory: true, directoryDelta: 1 } : undefined,
+        });
         return;
       }
       if (outcome.status === "conflict") {

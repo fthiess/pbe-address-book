@@ -189,4 +189,42 @@ test.describe("Add Brother essentials (5.5a)", () => {
     ).toBeVisible();
     await expect(page).toHaveURL(/\/brother\/new$/);
   });
+
+  test("← Directory after Add Brother restores the Directory's search/filter/sort (OFC-233)", async ({
+    page,
+  }) => {
+    // This needs the REAL Directory rendered, so the history the "← Directory" pop
+    // walks back to actually carries the Directory's URL state.
+    await page.route("**/api/me", (route) => route.fulfill({ json: meDoc("admin") }));
+    await page.route("**/api/banner", (route) => route.fulfill({ json: { active: false } }));
+    await page.route("**/api/profiles", (route) => {
+      if (route.request().method() === "POST") {
+        return route.fulfill({ status: 201, headers: { ETag: '"1.0"' }, json: createdRecord });
+      }
+      return route.fulfill({ json: { profiles: [meDoc("admin").profile], majors: [] } });
+    });
+    await page.route(`**/api/profiles/${NEW_ID}`, (route) =>
+      route.fulfill({ headers: { ETag: '"1.0"' }, json: createdRecord }),
+    );
+
+    // Start on a Directory carrying a search term in the URL, then Add Brother.
+    await page.goto("/?q=findme");
+    await page.getByRole("link", { name: "Add Brother" }).click();
+    await page.fill("#new-constitutionId", String(NEW_ID));
+    await page.fill("#new-firstName", "Fred");
+    await page.fill("#new-lastName", "Newman");
+    await page.fill("#new-classYear", "2001");
+    await page.fill("#new-email", "fred.newman@example.test");
+    await page.getByRole("button", { name: "Create brother" }).click();
+    await expect(page).toHaveURL(new RegExp(`/brother/${NEW_ID}/edit$`));
+
+    // Leave the edit page (Cancel, form is clean) → the brother's view page.
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expect(page).toHaveURL(new RegExp(`/brother/${NEW_ID}$`));
+
+    // "← Directory" must pop back to the Directory WITH its query intact — not a
+    // fresh, cleared one. (With the bug it rendered as a <Link to="/"> and cleared it.)
+    await page.getByRole("button", { name: "Directory" }).click();
+    await expect(page).toHaveURL(/\/\?q=findme$/);
+  });
 });
