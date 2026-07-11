@@ -45,7 +45,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Verification
 
-- **D28** (verification coupled to content edits) → **D48** (surfacing + staleness nudge) → **D68** (CSV import ignores verification fields) → **D80** (snapshot on mark-deceased); endpoint **N40**.
+- **D28** (verification coupled to content edits) → **D48** (surfacing + staleness nudge) → **D68** (CSV import ignores verification fields) → **D80** (snapshot on mark-deceased) → **N73** (read reclassified public — verification visible to all brothers, verifier Canonical Name shown; write coupling unchanged); endpoint **N40**.
 
 ## Directory page
 
