@@ -19,6 +19,21 @@ export interface RosterName {
   profile: DirectoryProfile;
 }
 
+/**
+ * The roster record for a given id, or null — the Big-Brother lookup, kept in this
+ * module so both relationship resolutions (Big via id, Little via the reverse
+ * edge) read from one place rather than a raw inline `.find` in the view (OFC-203).
+ */
+export function rosterMember(
+  roster: readonly DirectoryProfile[] | null,
+  id: number | null | undefined,
+): DirectoryProfile | null {
+  if (roster == null || id == null) {
+    return null;
+  }
+  return roster.find((p) => p.id === id) ?? null;
+}
+
 /** Map every roster id to its Canonical Name (ambiguous names get the `(#id)` tag). */
 export function rosterNames(roster: readonly DirectoryProfile[]): Map<number, string> {
   const inputs: CanonicalNameInput[] = roster.map((p) => ({

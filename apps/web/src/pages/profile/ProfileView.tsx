@@ -4,7 +4,7 @@ import { Link } from "react-router-dom";
 import { Avatar } from "../../components/Avatar.js";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
-import { Thumbnail } from "../directory/thumbnail.js";
+import { BOX, Thumbnail } from "../directory/thumbnail.js";
 import { DirectoryNav } from "./DirectoryNav.js";
 import { type ProfileActions, StaffControls, VerifyControl } from "./ProfileControls.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
@@ -19,7 +19,7 @@ import {
   verifierAttribution,
 } from "./display.js";
 import { PrivateMarker, ReadField, Section } from "./fields.js";
-import { littleBrothers, rosterNames } from "./relationships.js";
+import { littleBrothers, rosterMember, rosterNames } from "./relationships.js";
 import { type Viewer, canEdit, managerSeesPrivate, seesRestricted } from "./viewer.js";
 
 /**
@@ -348,8 +348,7 @@ function RelationshipsSection({
   }
 
   const bigBrotherId = record.bigBrotherId;
-  const bigBrother =
-    bigBrotherId != null ? (roster?.find((p) => p.id === bigBrotherId) ?? null) : null;
+  const bigBrother = rosterMember(roster, bigBrotherId);
   const bigBrotherName = bigBrotherId != null ? (names?.get(bigBrotherId) ?? null) : null;
 
   return (
@@ -405,7 +404,7 @@ function RelationshipLink({
       {profile ? (
         <Thumbnail profile={profile} name={name} decorative />
       ) : (
-        <Avatar name={name} seed={id} size={40} />
+        <Avatar name={name} seed={id} size={BOX} />
       )}
       <span className="font-medium text-foreground underline-offset-2 group-hover:underline">
         {name}

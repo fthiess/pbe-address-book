@@ -21,8 +21,12 @@ import type { DirectoryProfile } from "../../lib/types.js";
  *    paired with the row's strike-through and "DE-BROTHERED" badge (D115).
  */
 
-/** Rendered box size in the row (the stored thumbnail is 96²; displayed smaller). */
-const BOX = 40;
+/**
+ * Rendered box size in the row (the stored thumbnail is 96²; displayed smaller).
+ * Exported so callers that fall back to a bare `Avatar` beside a real thumbnail
+ * (the Profile page's relationship links, OFC-203) size both from one source.
+ */
+export const BOX = 40;
 
 /** The thumbnail `/img/*` URL, or null when there is nothing to load. */
 export function thumbnailUrl(profile: DirectoryProfile): string | null {
