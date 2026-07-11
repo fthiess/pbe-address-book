@@ -137,6 +137,16 @@ function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDep
  */
 function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteDeps): void {
   app.get("/api/profiles/:id", { preHandler: gate }, async (request, reply) => {
+    // `no-store` on **every** branch, set before any reply — not just the success
+    // path (OFC-192). This read's visibility is per-role: the *same* URL is a `404`
+    // for a brother (an unlisted/de-brothered record, D124/D115) and a `200` for an
+    // admin. If the `404` is cacheable, a shared cache layer (Firebase Hosting's CDN
+    // fronting Cloud Run, D126) can store the brother's `404` and then replay it to
+    // the admin's later request for the same id — the record "disappears" for the
+    // admin and stays gone across a hard reload and a new tab (the shared-cache
+    // signature). The success path was already `no-store` (D95); the error paths
+    // (401/400/404) were not, so this hoists it to cover them all.
+    reply.header("Cache-Control", "no-store");
     const session = request.session;
     if (!session) {
       return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });

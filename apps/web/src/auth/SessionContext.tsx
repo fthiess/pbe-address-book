@@ -1,11 +1,20 @@
 import type { Role } from "@pbe/shared";
-import { type ReactNode, createContext, useCallback, useContext, useEffect, useState } from "react";
+import {
+  type ReactNode,
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   ApiError,
   impersonate as apiImpersonate,
   signOut as apiSignOut,
   stopImpersonating as apiStopImpersonating,
   fetchMe,
+  setUnauthorizedHandler,
 } from "../lib/api.js";
 import type { Me } from "../lib/types.js";
 import { clearRoster } from "../lib/useRoster.js";
@@ -22,7 +31,13 @@ import { clearRoster } from "../lib/useRoster.js";
 export type SessionState =
   | { status: "loading" }
   | { status: "authenticated"; me: Me }
-  | { status: "unauthenticated" }
+  /**
+   * Signed out. `expired` marks the *mid-session* case — a session that was live
+   * and then lapsed under us (a gated call came back 401, OFC-193) — so the
+   * sign-in screen can explain the involuntary sign-out, distinct from a first-time
+   * visitor who simply hasn't signed in yet.
+   */
+  | { status: "unauthenticated"; expired?: boolean }
   | { status: "error" };
 
 /** Backoff before the single automatic retry of a transient `/api/me` failure. */
@@ -57,6 +72,30 @@ const SessionContext = createContext<SessionContextValue | null>(null);
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<SessionState>({ status: "loading" });
+
+  // A ref mirror of the live status so the (identity-stable) 401 handler can read
+  // the current state without being re-registered on every transition.
+  const statusRef = useRef(state.status);
+  statusRef.current = state.status;
+
+  // The app-wide 401 handler (OFC-193). A mid-session 401 means the cookie stopped
+  // resolving to a live session — flip to signed-out and drop the cached roster from
+  // the heap (D95), so the whole app (Directory, Profile, and any open Admin page)
+  // falls to the sign-in screen at once. Gated on *was-authenticated*: a 401 during
+  // the initial `/api/me` load is already handled by `refresh` below (and must not be
+  // mislabeled an "expired" involuntary sign-out — the visitor was never signed in).
+  const handleUnauthorized = useCallback(() => {
+    if (statusRef.current !== "authenticated") {
+      return;
+    }
+    clearRoster();
+    setState({ status: "unauthenticated", expired: true });
+  }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(handleUnauthorized);
+    return () => setUnauthorizedHandler(null);
+  }, [handleUnauthorized]);
 
   const refresh = useCallback(async () => {
     setState({ status: "loading" });

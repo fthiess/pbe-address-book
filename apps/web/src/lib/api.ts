@@ -28,7 +28,31 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * A single app-wide "the session is gone" hook (OFC-193). Any gated call that comes
+ * back **401** means the server no longer honors the cookie — the 4-hour cap lapsed
+ * (D22), or the session was revoked — so the SPA's in-memory "authenticated" belief
+ * is stale. Firing one central handler lets the session layer flip the whole app to
+ * signed-out at once, instead of every page mistaking its own 401 for a transient
+ * "please refresh" failure (and instead of an already-open Admin page lingering
+ * after the session died). A **403** is deliberately *not* routed here: it is an
+ * in-session authorization decision (a field the role may not write, §5.7.9), never
+ * "logged out". Registered by {@link SessionProvider}; unset in tests/teardown.
+ */
+let onUnauthorized: (() => void) | null = null;
+
+/** Register (or clear, with `null`) the app-wide 401 handler (OFC-193). */
+export function setUnauthorizedHandler(handler: (() => void) | null): void {
+  onUnauthorized = handler;
+}
+
 async function asError(response: Response): Promise<ApiError> {
+  // A 401 on any gated call is the definitive "session no longer valid" signal —
+  // notify the session layer before the per-call rejection propagates, so the app
+  // reacts once and uniformly (OFC-193).
+  if (response.status === 401) {
+    onUnauthorized?.();
+  }
   let code: string | undefined;
   try {
     code = (await response.json())?.error;

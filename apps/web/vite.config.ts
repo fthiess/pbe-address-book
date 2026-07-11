@@ -2,7 +2,31 @@ import { execSync } from "node:child_process";
 import { URL, fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { type Plugin, defineConfig } from "vite";
+
+/**
+ * Emit a tiny, un-hashed `version.json` carrying the build id (OFC-63). Because the
+ * filename is not content-hashed, Firebase Hosting serves it `no-cache,
+ * must-revalidate` (N25) — the freshness the long-lived-tab version poll relies on.
+ * The same document is served under the dev server so `npm run dev` behaves like a
+ * deploy for the toast.
+ */
+function versionJsonPlugin(version: string): Plugin {
+  const body = JSON.stringify({ version });
+  return {
+    name: "book-version-json",
+    generateBundle() {
+      this.emitFile({ type: "asset", fileName: "version.json", source: body });
+    },
+    configureServer(server) {
+      server.middlewares.use("/version.json", (_req, res) => {
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(body);
+      });
+    },
+  };
+}
 
 /**
  * The local git commit as a fallback build id, so even a dev build reports a real
@@ -41,7 +65,7 @@ export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
   },
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), versionJsonPlugin(APP_VERSION)],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
