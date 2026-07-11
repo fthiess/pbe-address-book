@@ -96,6 +96,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Security hardening
 
 - **D86** (rate limits), D107 → **N54** (security headers; CSP hashes CI-pinned), **D108** (DevIdentityProvider lockout, four layers), **D64** (Google-managed TLS), **N55** (generic 500 body; ungated sign-out), **D105** (threat posture) + **N56** (accepted residual risks).
+- Dependency/supply-chain hygiene: **N74** (transitive-dep advisory policy — assess reachability, prefer `overrides` when no patched parent version exists; the uuid CVE-2026-41907 fix, Dependabot #7). Open dev-only residual: OFC-234 (@opentelemetry/core via firebase-tools). Sibling: OFC-152 (CodeQL alert triage).
 
 ## Logging & analytics
 
