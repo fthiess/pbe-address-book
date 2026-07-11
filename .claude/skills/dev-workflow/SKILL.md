@@ -1,6 +1,6 @@
 ---
 name: dev-workflow
-description: Forrest's development-session methodology — the plan → build → review → remediate → live-test → close loop and its approval gates. Invoke at the start of ANY session that will change code or docs (feature, bugfix, refactor, ticket batch), before proposing a plan or writing code. Also covers PR/merge rules, code-review depth, Linear ticket hygiene, model/effort guidance, and the session close-out checklist. For new-project design-stage work (seed doc → PRD/engineering design → adversarial review), read design-methodology.md in this skill.
+description: Forrest's development-session methodology — the plan → build → review → remediate → live-test → close loop and its approval gates. Invoke at the start of ANY session that will change code or docs (feature, bugfix, refactor, ticket batch), before proposing a plan or writing code. Also covers PR/merge rules, code-review depth, Linear ticket hygiene, decision-log conventions (append-only + topic index), model/effort guidance, and the session close-out checklist. For new-project design-stage work (seed doc → PRD/engineering design → adversarial review), read design-methodology.md in this skill.
 ---
 
 # Development Session Workflow
@@ -25,7 +25,7 @@ Two standing sub-rules:
 - All work happens on a feature branch and lands via a PR. Never commit directly to `main`.
 - Unit tests for any non-trivial logic; run the project's formatter/linter on everything.
 - Keep the project's full verification gate green locally before pushing (for Book: `npm run verify:gate`).
-- **Documentation is code.** Design docs, the decision log, API specs, and user docs are updated in the same PR as the code they describe. Append significant decisions to the decision log (`DECISIONS.md`) as they're made, and propagate them to affected docs once, in place.
+- **Documentation is code.** Design docs, the decision log, API specs, and user docs are updated in the same PR as the code they describe. Append significant decisions to the decision log (`DECISIONS.md`) as they're made — following the decision-log conventions below — and propagate them to affected docs once, in place.
 - Anything discovered but deliberately not done now — deferred features, uncertain items, rough edges — gets a Linear ticket before the session ends, not a TODO comment or a mental note.
 
 ## Gate 3 — Code review, scaled to depth
@@ -50,10 +50,19 @@ Live cloud-infrastructure changes on his GCP projects (IAM grants, deletions of 
 Before ending a session, verify every box:
 
 - [ ] Linear tickets for completed work closed **with evidence comments**; tickets filed for everything deferred.
-- [ ] Decision log appended and doc changes committed alongside the code.
+- [ ] Decision log appended, its index (`DECISIONS-INDEX.md`) updated to match, and doc changes committed alongside the code.
 - [ ] Merged local branches deleted.
 - [ ] Auto-memory updated: current forward state, what's next, and any new landmines — lean pointers, not history (the repo's docs and git log are the record).
 - [ ] State plainly what was verified versus what wasn't.
+
+## The decision log
+
+The decision log (`DECISIONS.md`) is the compact read-first artifact that lets later sessions honor earlier conclusions. Conventions, learned as Book's log passed 400 KB:
+
+- **Append-only; supersession by pointer.** Never rewrite a past entry's decision text. A change of direction is a *new* entry that names what it changes ("amends D75", "supersedes D16"); the only in-place edit permitted on an old entry is appending an italic "*Later updated by: …*" trailer pointing forward. IDs: `D<n>` for design decisions, `N<n>` for implementation notes.
+- **Every entry records the Why**, not just the What — the rationale is the part a later session cannot reconstruct.
+- **Keep a topic index from decision one.** A sibling `DECISIONS-INDEX.md` maps each subsystem to its currently-authoritative decision chain (e.g. "read/cache: D7 → D82 → D83 → D84 (current)"). Update it in the same PR as any log append. Sessions consult the index first and jump to the few governing entries — never read the full log into context.
+- **Distill at completion.** When a project or major build phase closes, freeze the chronological log into `history/` and write an as-built digest organized by subsystem: the net of all decisions with superseded entries dropped, citing historical IDs for the reasoning. The digest becomes the read-first artifact for the next phase; the index is its skeleton.
 
 ## Model & effort guidance
 
