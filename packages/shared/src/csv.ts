@@ -8,9 +8,11 @@
  * shared so the (future) bulk import reads the same format.
  *
  * The column *set is role-aware*: a column is emitted only when the role may see
- * its underlying field (§10 — `adminNote`, the consent flags, `verifiedBy`, and
- * the status flags appear only in manager/admin exports). The column *values*
- * then come straight from each projected record, blank where absent.
+ * its underlying field (§10 — `adminNote`, the consent flags, and the staff-only
+ * status flags appear only in manager/admin exports). The verification columns
+ * (`lastVerifiedDate`/`verifiedBy`) are public (OFC-207), so they ride every
+ * role's export, brothers included. The column *values* then come straight from
+ * each projected record, blank where absent.
  */
 
 import type { PrivacyFlags, Profile, Role } from "./types.js";

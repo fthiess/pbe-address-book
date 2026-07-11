@@ -8,10 +8,15 @@ import type { DirectoryProfile } from "../../lib/types.js";
  * function so they read identically to the Directory.
  */
 
-/** A roster member reduced to what the relationship UI shows: id + display name. */
+/**
+ * A roster member reduced to what the relationship UI shows: id + display name +
+ * the roster record itself, so the relationship link can render the same
+ * thumbnail the Directory does (OFC-203).
+ */
 export interface RosterName {
   id: number;
   name: string;
+  profile: DirectoryProfile;
 }
 
 /** Map every roster id to its Canonical Name (ambiguous names get the `(#id)` tag). */
@@ -36,6 +41,6 @@ export function littleBrothers(
 ): RosterName[] {
   return roster
     .filter((p) => p.bigBrotherId === id)
-    .map((p) => ({ id: p.id, name: names.get(p.id) ?? `#${p.id}` }))
+    .map((p) => ({ id: p.id, name: names.get(p.id) ?? `#${p.id}`, profile: p }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }

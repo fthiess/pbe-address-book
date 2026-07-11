@@ -6,9 +6,13 @@ import { BounceReportCard } from "./admin/BounceReportCard.js";
 import { BugReportsCard } from "./admin/BugReportsCard.js";
 import { GhostAuditCard } from "./admin/GhostAuditCard.js";
 
-/** Shared styling for the "← Directory" affordance, whether button or link. */
+/**
+ * Shared styling for the "← Directory" affordance, whether button or link.
+ * Identical to the Profile page's back link so the affordance reads the same
+ * across pages, matched to the Prev/Next controls' size/weight/colour (OFC-198).
+ */
 const BACK_CLASS =
-  "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] text-[length:var(--text-label)] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-[length:var(--text-label)] font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * The Admin control panel (`/admin`; PRD §5.8) — the whole-database operations

@@ -42,6 +42,31 @@ export function lifespanLine(deceased: DeceasedInfo): string | null {
   return null;
 }
 
+/**
+ * The verifier attribution appended after "Verified {date}" on the record-status
+ * read-out (OFC-208). A self-confirm reads " (self)"; otherwise the verifier's
+ * Canonical Name when the roster resolves it (" by James Smyth '84"); when it does
+ * not — a verifier hidden from this viewer's roster, which happens only for a
+ * brother, since managers/admins hold the whole roster — the empty string, so the
+ * line degrades to a bare "Verified {date}" rather than leaking or inventing a
+ * name. `verifiedBy` absent (a legacy stamp from before the field existed) is
+ * likewise attribution-less.
+ */
+export function verifierAttribution(
+  recordId: number,
+  verifiedBy: number | undefined,
+  names: Map<number, string> | null,
+): string {
+  if (verifiedBy == null) {
+    return "";
+  }
+  if (verifiedBy === recordId) {
+    return " (self)";
+  }
+  const name = names?.get(verifiedBy);
+  return name ? ` by ${name}` : "";
+}
+
 /** A full `YYYY-MM-DD` date as "November 2, 2024" (UTC, so the day never drifts). */
 export function formatFullDate(iso: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);

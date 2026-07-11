@@ -131,6 +131,18 @@ describe("projectForRole — the exhaustive role × field matrix (§9)", () => {
   });
 });
 
+describe("projectForRole — verification is public (OFC-207, amends D28)", () => {
+  it("delivers lastVerifiedDate and verifiedBy to a brother, while lastModified stays restricted", () => {
+    const [view] = projectForRole([fullProfile(SHARED)], "brother");
+    expect(view?.lastVerifiedDate).toBe("2026-01-01");
+    expect(view?.verifiedBy).toBe(5000);
+    // The reclassification is scoped to the two verification fields; the other
+    // housekeeping timestamps remain owner/manager/admin only.
+    expect(view).not.toHaveProperty("lastModified");
+    expect(view).not.toHaveProperty("newsletterConsentChangedAt");
+  });
+});
+
 describe("projectForRole — whole-record hides (D124/D115)", () => {
   const roster = () => [
     makeProfile({ id: 5001 }),

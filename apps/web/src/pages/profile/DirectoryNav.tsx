@@ -3,9 +3,14 @@ import { Link } from "react-router-dom";
 import { cn } from "../../lib/utils.js";
 import type { DirectoryNav as DirectoryNavModel, StepDirection } from "./directory-nav.js";
 
-/** Shared styling for the "← Directory" affordance, whether it renders as a button or a link. */
+/**
+ * Shared styling for the "← Directory" affordance, whether it renders as a button
+ * or a link. Matched to the Prev/Next controls' size, weight, and foreground
+ * colour (OFC-198) — a borderless text link, not a bordered button, but no longer
+ * the smaller-looking muted grey it used to be.
+ */
 const BACK_CLASS =
-  "inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-[length:var(--text-label)] font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-[length:var(--text-label)] font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * The Profile-page directory navigation bar (Phase 4d, OFC-67 / N45): the
