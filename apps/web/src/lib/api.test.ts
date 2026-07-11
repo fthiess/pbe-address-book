@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ApiError, fetchProfile, setUnauthorizedHandler } from "./api.js";
+import { ApiError, fetchProfile, patchProfile, setUnauthorizedHandler } from "./api.js";
 
 /**
  * The app-wide 401 interceptor (OFC-193). A gated call that comes back 401 means
@@ -49,6 +49,20 @@ describe("api unauthorized interceptor (OFC-193)", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(404, { error: "not_found" })));
 
     await expect(fetchProfile(5001)).rejects.toBeInstanceOf(ApiError);
+    expect(handler).not.toHaveBeenCalled();
+  });
+
+  it("does not fire on a 401 from the edit-form Save path (opted out for D109)", async () => {
+    const handler = vi.fn();
+    setUnauthorizedHandler(handler);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(401, { error: "unauthenticated" })),
+    );
+
+    // patchProfile is the Profile edit Save; a mid-edit 401 must stay local so the
+    // editor keeps the form (D109), not bounce the whole app.
+    await expect(patchProfile(5001, { firstName: "X" }, 'W/"v1"')).rejects.toBeInstanceOf(ApiError);
     expect(handler).not.toHaveBeenCalled();
   });
 

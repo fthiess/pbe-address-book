@@ -28,7 +28,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Auth & sessions
 
 - Ghost bridge: D20 → **D104** (alg-pin, nonce, redirect allowlist) → **D105** (Ghost accepted as single point of compromise); implementation **N1** (RS512, Node crypto), **N2** (one live relay, hardcoded callback allowlist).
-- Sessions: D22 (4-hour cap) → **D109** (non-destructive 401/403 recovery) → **D125** (sessions + nonce persisted in Firestore) → **N53** (active revocation on trust withdrawal) → **N76** (one central 401 interceptor flips the whole SPA to signed-out; inactivity notice); cookie must be named `__session` **N5**; JWKS persisted across cold starts **D87**.
+- Sessions: D22 (4-hour cap) → **D109** (non-destructive 401/403 recovery) → **D125** (sessions + nonce persisted in Firestore) → **N53** (active revocation on trust withdrawal) → **N76** (central 401 interceptor → signed-out; carve-out: the edit-form Save path keeps the form per D109); cookie must be named `__session` **N5**; JWKS persisted across cold starts **D87**.
 - Identity: **D21** (IdentityProvider seam); **D97** (email uniqueness via in-memory index; alias clause dropped by N65); **N8** (de-brothered sign-in denied).
 
 ## Permissions & visibility projection

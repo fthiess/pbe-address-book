@@ -97,9 +97,19 @@ export function readSessionId(request: FastifyRequest): string | undefined {
  * route's active revocation handles that. Unlisting is not a withdrawal of the
  * owner's own access, so it is not checked here.
  */
-/** The single 401 body the gate answers with, whichever check fails. */
+/**
+ * The single 401 body the gate answers with, whichever check fails — and, being
+ * the one 401-emission point for *every* gated endpoint, the right place to make
+ * the 401 uncacheable. Firebase Hosting defaults a header-less `/api/**` (Cloud Run
+ * rewrite) response to `Cache-Control: max-age=600`, so an un-marked 401 can be
+ * cached and replayed across a role/session change (the same class as OFC-192/N75);
+ * `no-store` here covers the whole gated surface in one place.
+ */
 function sendUnauthenticated(reply: FastifyReply): FastifyReply {
-  reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
+  reply
+    .code(401)
+    .header("Cache-Control", "no-store")
+    .send({ error: "unauthenticated", message: "Sign in to continue." });
   return reply;
 }
 

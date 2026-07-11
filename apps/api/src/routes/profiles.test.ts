@@ -314,6 +314,16 @@ describe("GET /api/profiles/:id", () => {
     await app.close();
   });
 
+  it("serves the gate's unauthenticated 401 no-store (the shared 401 chokepoint)", async () => {
+    const { app } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    // No cookie → the session gate emits the 401 before the handler; it too must be
+    // uncacheable so a shared cache can't replay a stale 401 across a re-login (N75).
+    const res = await app.inject({ method: "GET", url: "/api/profiles/5001" });
+    expect(res.statusCode).toBe(401);
+    expect(res.headers["cache-control"]).toBe("no-store");
+    await app.close();
+  });
+
   it("lets a manager read an unlisted record", async () => {
     const { app, cookieAs } = await buildWriteServer([makeProfile({ id: 5002, unlisted: true })]);
     const cookie = await cookieAs(9001, "manager");

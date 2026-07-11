@@ -16,9 +16,11 @@ export function SignIn() {
   const { state, refresh } = useSession();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  // An involuntary, mid-session sign-out (the 4-hour cap lapsed under an open tab —
-  // OFC-193/D22). Explaining it turns the otherwise-baffling "why am I signed out?"
-  // into a calm, expected prompt; a first-time visitor sees nothing extra.
+  // An involuntary, mid-session sign-out — the 4-hour cap lapsed under an open tab
+  // (D22), or access was revoked (N53). The message stays cause-agnostic ("signed
+  // out", not "due to inactivity") so it's accurate either way; explaining it turns
+  // the otherwise-baffling "why am I signed out?" into a calm, expected prompt, while
+  // a first-time visitor sees nothing extra (OFC-193).
   const expired = state.status === "unauthenticated" && state.expired === true;
 
   async function ghostSignIn() {
@@ -68,7 +70,7 @@ export function SignIn() {
             // sign-out. `<output>`'s implicit "status" live region announces it on the
             // screen change; AA-contrast info styling (OFC-193).
             <output className="mt-4 block rounded-lg border border-border bg-secondary px-3 py-2 text-center text-sm text-foreground">
-              You've been signed out due to inactivity. Please sign in again.
+              You've been signed out. Please sign in again.
             </output>
           )}
 

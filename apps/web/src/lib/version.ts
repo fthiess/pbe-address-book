@@ -18,8 +18,14 @@ export const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSIO
  * a **real** id that **differs** from the one this tab loaded: an absent/empty id (a
  * failed poll, or local dev with no `version.json`) and an equal id are both no-ops,
  * so the toast is one quiet signal and never a false nag.
+ *
+ * Named *different*, not *newer*: build ids are git SHAs with **no ordering**, so we
+ * can only tell "changed," not "advanced." That is the right signal anyway — after a
+ * deploy *or* a rollback, an open tab should realign to whatever is currently live —
+ * even though the (rare) rollback case makes the toast's "new version" copy a slight
+ * overstatement.
  */
-export function isNewerVersion(loaded: string, fetched: string | null): boolean {
+export function isDifferentVersion(loaded: string, fetched: string | null): boolean {
   return typeof fetched === "string" && fetched !== "" && fetched !== loaded;
 }
 

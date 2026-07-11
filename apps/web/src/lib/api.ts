@@ -46,11 +46,22 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
 
-async function asError(response: Response): Promise<ApiError> {
+/**
+ * Options for {@link asError}. `silent` opts a call *out* of the app-wide 401 bounce
+ * (OFC-193): the **edit-form Save path** must preserve the user's in-progress form on
+ * a mid-edit session lapse rather than be yanked to the sign-in screen (D109's
+ * non-destructive-recovery contract), so those writes handle their own 401 locally.
+ */
+interface AsErrorOptions {
+  silent?: boolean;
+}
+
+async function asError(response: Response, options?: AsErrorOptions): Promise<ApiError> {
   // A 401 on any gated call is the definitive "session no longer valid" signal —
   // notify the session layer before the per-call rejection propagates, so the app
-  // reacts once and uniformly (OFC-193).
-  if (response.status === 401) {
+  // reacts once and uniformly (OFC-193) — UNLESS the caller opts out to keep an
+  // in-progress edit form alive (D109).
+  if (response.status === 401 && !options?.silent) {
     onUnauthorized?.();
   }
   let code: string | undefined;
@@ -160,7 +171,10 @@ export async function patchProfile(
     const body = await response.json().catch(() => ({}));
     return { status: "forbidden", fields: body.fields as string[] | undefined };
   }
-  throw await asError(response);
+  // Edit-form Save: a mid-edit 401 must not yank the user off their in-progress
+  // form to the sign-in screen (D109) — surface it as an `expired` SubmitResult the
+  // editor handles locally, so opt out of the app-wide bounce (OFC-193).
+  throw await asError(response, { silent: true });
 }
 
 /**
@@ -206,7 +220,9 @@ export async function createProfile(profile: Partial<Profile>): Promise<CreateOu
   if (response.status === 403) {
     return { status: "forbidden" };
   }
-  throw await asError(response);
+  // Add-Brother is an in-progress form too: keep the entered essentials on a 401
+  // rather than bounce (D109); NewProfile surfaces it locally (OFC-193).
+  throw await asError(response, { silent: true });
 }
 
 /**
@@ -223,7 +239,9 @@ export interface HeadshotWriteResult {
 
 async function headshotResult(response: Response): Promise<HeadshotWriteResult> {
   if (!response.ok) {
-    throw await asError(response);
+    // Edit-form write: keep the staged photo + form on a mid-edit 401 (D109), so
+    // opt out of the app-wide bounce and let the container surface it locally.
+    throw await asError(response, { silent: true });
   }
   const body = await response.json();
   return {

@@ -103,10 +103,41 @@ test.describe("5.5c app shell + session (OFC-202/193/63/192)", () => {
 
     await page.goto(`/brother/${OWN_ID}`);
 
-    await expect(page.getByText("You've been signed out due to inactivity.")).toBeVisible();
+    await expect(page.getByText("You've been signed out. Please sign in again.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in" })).toBeVisible();
     // The misleading transient-failure copy must NOT appear.
     await expect(page.getByText("Please refresh to try again")).toBeHidden();
+  });
+
+  test("OFC-193/D109: a mid-edit Save 401 keeps the form and does NOT bounce to sign-in", async ({
+    page,
+  }) => {
+    // The owner-admin edits their own record; the session lapses so the Save PATCH
+    // 401s. D109: the in-progress form must survive with an honest message — the
+    // edit-form write opts out of the app-wide bounce (Option A).
+    await page.route("**/api/me", (route) => route.fulfill({ json: meDoc(null) }));
+    await page.route("**/api/profiles", (route) =>
+      route.fulfill({ json: { profiles: [ownProfile], majors: [] } }),
+    );
+    await page.route(/\/api\/profiles\/\d+$/, (route) => {
+      if (route.request().method() === "PATCH") {
+        return route.fulfill({ status: 401, json: { error: "unauthenticated" } });
+      }
+      return route.fulfill({ headers: { ETag: 'W/"v1"' }, json: ownProfile });
+    });
+
+    await page.goto(`/brother/${OWN_ID}/edit`);
+    await expect(page.getByText("Editing", { exact: true })).toBeVisible();
+    await page.getByLabel("First name").fill("Devin");
+    await page.getByRole("button", { name: "Save changes" }).click();
+
+    // Still on the edit form, with the honest expired message — NOT bounced.
+    await expect(
+      page.getByText("Your session has expired. Please sign in again to save your changes."),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/edit$/);
+    await expect(page.getByLabel("First name")).toHaveValue("Devin");
+    await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(0);
   });
 
   test("OFC-63: a newer deployed build raises the calm update toast", async ({ page }) => {

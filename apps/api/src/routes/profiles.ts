@@ -137,15 +137,18 @@ function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDep
  */
 function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteDeps): void {
   app.get("/api/profiles/:id", { preHandler: gate }, async (request, reply) => {
-    // `no-store` on **every** branch, set before any reply — not just the success
-    // path (OFC-192). This read's visibility is per-role: the *same* URL is a `404`
-    // for a brother (an unlisted/de-brothered record, D124/D115) and a `200` for an
-    // admin. If the `404` is cacheable, a shared cache layer (Firebase Hosting's CDN
-    // fronting Cloud Run, D126) can store the brother's `404` and then replay it to
-    // the admin's later request for the same id — the record "disappears" for the
-    // admin and stays gone across a hard reload and a new tab (the shared-cache
-    // signature). The success path was already `no-store` (D95); the error paths
-    // (401/400/404) were not, so this hoists it to cover them all.
+    // `no-store` on every branch this handler emits (400/404/200), set before any
+    // reply — not just the success path (OFC-192). This read's visibility is
+    // per-role: the *same* URL is a `404` for a brother (an unlisted/de-brothered
+    // record, D124/D115) and a `200` for an admin. A cacheable `404` lets a shared
+    // cache replay the brother's `404` to the admin's later request for the same id —
+    // the record "disappears" and stays gone across a hard reload and a new tab (the
+    // shared-cache signature). Confirmed on staging: Firebase Hosting (which fronts
+    // Cloud Run, D126) injects a default `Cache-Control: max-age=600` on `/api/**`
+    // responses that set none, so the header-less `404` was cached for 10 minutes.
+    // The success path was already `no-store` (D95); the error branches were not.
+    // (The gate's own `401` is emitted before this handler runs and is made
+    // `no-store` in `sendUnauthenticated`.)
     reply.header("Cache-Control", "no-store");
     const session = request.session;
     if (!session) {

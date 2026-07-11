@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { APP_VERSION, fetchServerVersion, isNewerVersion } from "../lib/version.js";
+import { useEffect, useState } from "react";
+import { APP_VERSION, fetchServerVersion, isDifferentVersion } from "../lib/version.js";
 
 /** How often an open, focused tab re-checks the deployed build id (frugal — OFC-63). */
 const POLL_INTERVAL_MS = 30 * 60 * 1000;
@@ -9,9 +9,11 @@ const POLL_INTERVAL_MS = 30 * 60 * 1000;
  * authenticated shell, it records the build id this tab booted with and polls
  * `/version.json` **frugally** — on window refocus and tab-visibility, plus a
  * generous interval — backing off entirely while the tab is hidden (no bytes, no
- * battery on a backgrounded tab). When the deployed id has moved on it raises one
- * calm, non-blocking toast with a Refresh button; the user chooses when to reload,
- * and a dismiss leaves them be. Once a new version is seen the poll stops — the id
+ * battery on a backgrounded tab). A single refocus fires *both* `focus` and
+ * `visibilitychange`, so an in-flight guard coalesces them into one fetch. When the
+ * deployed id has moved on it raises one calm, non-blocking toast with a Refresh
+ * button; the user chooses when to reload, and a dismiss leaves them be. Once an
+ * update is seen the poll **fully stops** (listeners + interval torn down) — the id
  * only changes on a deploy, so there is nothing more to learn until a reload.
  *
  * Accessibility (D79): the toast is a polite live region (announced on appear, not
@@ -21,41 +23,42 @@ const POLL_INTERVAL_MS = 30 * 60 * 1000;
 export function VersionToast() {
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [dismissed, setDismissed] = useState(false);
-  // Once we know an update is out, stop polling — a ref (not state) so the effect's
-  // stable closure can read the latch without re-subscribing its listeners.
-  const foundRef = useRef(false);
 
   useEffect(() => {
-    let cancelled = false;
     const controller = new AbortController();
+    let inFlight = false;
+    // Assigned once the listeners/interval exist, so `check` can tear them all down
+    // the moment an update is found (nothing more to poll until the user reloads).
+    let stop = () => {};
 
     const check = async () => {
-      // Back off while hidden, and never re-poll once we've found an update.
-      if (foundRef.current || document.hidden) {
+      // Back off while hidden; coalesce the paired focus + visibilitychange events
+      // that both fire on a single refocus into one fetch (byte-frugal, N-audience).
+      if (document.hidden || inFlight) {
         return;
       }
+      inFlight = true;
       const deployed = await fetchServerVersion(controller.signal);
-      if (!cancelled && isNewerVersion(APP_VERSION, deployed)) {
-        foundRef.current = true;
+      inFlight = false;
+      if (isDifferentVersion(APP_VERSION, deployed)) {
         setUpdateAvailable(true);
+        stop();
       }
     };
 
-    const onFocusOrVisible = () => {
-      if (!document.hidden) {
-        void check();
-      }
+    const onWake = () => void check();
+    window.addEventListener("focus", onWake);
+    document.addEventListener("visibilitychange", onWake);
+    const interval = window.setInterval(onWake, POLL_INTERVAL_MS);
+    stop = () => {
+      window.removeEventListener("focus", onWake);
+      document.removeEventListener("visibilitychange", onWake);
+      window.clearInterval(interval);
     };
-    window.addEventListener("focus", onFocusOrVisible);
-    document.addEventListener("visibilitychange", onFocusOrVisible);
-    const interval = window.setInterval(() => void check(), POLL_INTERVAL_MS);
 
     return () => {
-      cancelled = true;
       controller.abort();
-      window.removeEventListener("focus", onFocusOrVisible);
-      document.removeEventListener("visibilitychange", onFocusOrVisible);
-      window.clearInterval(interval);
+      stop();
     };
   }, []);
 
