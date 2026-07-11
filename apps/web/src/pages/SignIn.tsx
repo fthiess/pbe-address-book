@@ -13,9 +13,15 @@ const DEV_ROLES: Role[] = ["brother", "manager", "admin"];
  * that block is compiled out of the production bundle by `import.meta.env.DEV`.
  */
 export function SignIn() {
-  const { refresh } = useSession();
+  const { state, refresh } = useSession();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // An involuntary, mid-session sign-out — the 4-hour cap lapsed under an open tab
+  // (D22), or access was revoked (N53). The message stays cause-agnostic ("signed
+  // out", not "due to inactivity") so it's accurate either way; explaining it turns
+  // the otherwise-baffling "why am I signed out?" into a calm, expected prompt, while
+  // a first-time visitor sees nothing extra (OFC-193).
+  const expired = state.status === "unauthenticated" && state.expired === true;
 
   async function ghostSignIn() {
     setBusy(true);
@@ -58,6 +64,15 @@ export function SignIn() {
             A private directory for brothers of Phi Beta Epsilon. Sign in with your pbe400.org
             membership to continue.
           </p>
+
+          {expired && (
+            // Polite (not an error): a calm, expected explanation of the involuntary
+            // sign-out. `<output>`'s implicit "status" live region announces it on the
+            // screen change; AA-contrast info styling (OFC-193).
+            <output className="mt-4 block rounded-lg border border-border bg-secondary px-3 py-2 text-center text-sm text-foreground">
+              You've been signed out. Please sign in again.
+            </output>
+          )}
 
           <button
             type="button"

@@ -12,6 +12,7 @@ import { Admin } from "./pages/Admin.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
 import { Directory } from "./pages/Directory.js";
 import { NewProfile } from "./pages/NewProfile.js";
+import { NotFoundPage } from "./pages/NotFoundPage.js";
 import { ProfileContainer, ProfileEditRoute, ProfileViewRoute } from "./pages/Profile.js";
 import { SignIn } from "./pages/SignIn.js";
 
@@ -97,7 +98,10 @@ const router = createBrowserRouter([
             ],
           },
           { path: "admin", element: <Admin /> },
-          { path: "*", element: <Directory /> },
+          // An unknown URL renders an honest "page not found" (OFC-202) rather than
+          // silently falling through to the Directory. Still a 200 (SPA behind the
+          // Hosting `**`→index.html rewrite), but a real not-found UI.
+          { path: "*", element: <NotFoundPage /> },
         ],
       },
     ],

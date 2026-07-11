@@ -12,6 +12,7 @@ import { ReportBug } from "./ReportBug.js";
 import { RoleBadge } from "./RoleBadge.js";
 import { SystemBanner } from "./SystemBanner.js";
 import { ThemeToggle } from "./ThemeToggle.js";
+import { VersionToast } from "./VersionToast.js";
 
 const ROLE_LABEL: Record<Role, string> = {
   brother: "Brother",
@@ -184,6 +185,10 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
       <main className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
 
       <PrivacyFooter />
+
+      {/* The long-lived-tab "new version available" toast (OFC-63) — only runs for a
+          signed-in tab, so it never polls on the sign-in screen. */}
+      <VersionToast />
     </div>
   );
 }

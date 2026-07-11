@@ -31,6 +31,9 @@ export type SubmitResult =
   | { status: "invalid"; issues: ValidationIssue[] }
   | { status: "forbidden" }
   | { status: "reload" }
+  /** The session lapsed mid-edit (401). The in-progress form is **kept** — the user
+   * is told to sign in again to save, never bounced away losing their work (D109). */
+  | { status: "expired" }
   | { status: "error" };
 
 /** Human-readable labels for the "changed underneath" reconcile notice (§5.7.9). */
@@ -157,6 +160,10 @@ export function ProfileEdit({
             setBanner("Your role may not change one or more of these fields.");
           } else if (result.status === "reload") {
             setBanner("This page is out of date. Please reload it, then make your changes again.");
+          } else if (result.status === "expired") {
+            // Session lapsed mid-edit (D109): keep the form exactly as left and tell
+            // the user how to recover, rather than the misleading generic failure.
+            setBanner("Your session has expired. Please sign in again to save your changes.");
           } else {
             setBanner("We couldn't save your changes just now. Please try again.");
           }

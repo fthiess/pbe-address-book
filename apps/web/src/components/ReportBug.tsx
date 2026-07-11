@@ -1,12 +1,10 @@
 import { MAX_BUG_REPORT_DESCRIPTION } from "@pbe/shared";
 import { useCallback, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { ApiError, fileBugReport } from "../lib/api.js";
+import { fileBugReport } from "../lib/api.js";
 import { collectClientContext } from "../lib/clientContext.js";
+import { APP_VERSION } from "../lib/version.js";
 import { ModalDialog } from "./ModalDialog.js";
-
-/** The SPA build id (injected by Vite `define`); "dev" when unset or under a bare test runner. */
-const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
 
 type SubmitState =
   | { phase: "idle" }
@@ -90,12 +88,14 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
         return;
       }
       setState({ phase: "done" });
-    } catch (error) {
-      const message =
-        error instanceof ApiError && error.status === 401
-          ? "Your session has expired. Please sign in again to send this report."
-          : "Something went wrong sending your report. Please try again.";
-      setState({ phase: "error", message });
+    } catch {
+      // A 401 here no longer reaches this branch — the app-wide interceptor flips to
+      // the sign-in screen and unmounts this dialog first (OFC-193/D109). What's left
+      // is the genuine "send failed" case.
+      setState({
+        phase: "error",
+        message: "Something went wrong sending your report. Please try again.",
+      });
     } finally {
       // Released so the user can retry after an error; on success the form unmounts.
       submittingRef.current = false;

@@ -13,7 +13,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 - Store & cache: D7 (Firestore system of record; in-memory cache) → D26 (snapshot listener, demoted to safety net by D83) → **D82** (split bulk read: roster projection + self-fetch) → **D83** → **D85** (GCS snapshot for cold-start hydration).
 - Dataset compression: D75 → **D84** (brotli-11 precomputed on write, off the event loop).
-- HTTP caching: **D73** (content-hashed immutable assets, no-cache HTML) + **N25** (no-cache SPA shell at every route); ~~D76~~ (conditional GET — retired by **D95** `no-store`); planned app-level conditional read: **N62** + **N63** (Phase 7.5).
+- HTTP caching: **D73** (content-hashed immutable assets, no-cache HTML) + **N25** (no-cache SPA shell at every route) → **N78** (long-lived-tab version.json toast); ~~D76~~ (conditional GET — retired by **D95** `no-store`); **N75** (per-role `/api` responses `no-store` on *all* branches — Hosting caches header-less `/api` rewrites `max-age=600`; overlaps OFC-212); planned app-level conditional read: **N62** + **N63** (Phase 7.5).
 - Bundle discipline: **D74**. Slow-load UX: **D119** (threshold-gated loading overlay).
 
 ## Data model & vocabularies
@@ -28,7 +28,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Auth & sessions
 
 - Ghost bridge: D20 → **D104** (alg-pin, nonce, redirect allowlist) → **D105** (Ghost accepted as single point of compromise); implementation **N1** (RS512, Node crypto), **N2** (one live relay, hardcoded callback allowlist).
-- Sessions: D22 (4-hour cap) → **D109** (non-destructive 401/403 recovery) → **D125** (sessions + nonce persisted in Firestore) → **N53** (active revocation on trust withdrawal); cookie must be named `__session` **N5**; JWKS persisted across cold starts **D87**.
+- Sessions: D22 (4-hour cap) → **D109** (non-destructive 401/403 recovery) → **D125** (sessions + nonce persisted in Firestore) → **N53** (active revocation on trust withdrawal) → **N76** (central 401 interceptor → signed-out; carve-out: the edit-form Save path keeps the form per D109); cookie must be named `__session` **N5**; JWKS persisted across cold starts **D87**.
 - Identity: **D21** (IdentityProvider seam); **D97** (email uniqueness via in-memory index; alias clause dropped by N65); **N8** (de-brothered sign-in denied).
 
 ## Permissions & visibility projection
@@ -91,7 +91,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 - Surface: **D24** (as amended by D82/D95/D112/D126).
 - Concurrency: **D25** (optimistic, on updateTime) → N13 → **N46** (quoted ETag; If-Match normalized); structural write checks **N12**.
-- Endpoints: **N28** (`POST /api/exports`), **N40** (`PUT …/deceased`), **N44**; create flow N71 → **N72** (two-step create; email optional).
+- Endpoints: **N28** (`POST /api/exports`), **N40** (`PUT …/deceased`), **N44**; create flow N71 → **N72** (two-step create; email optional); single-record read `no-store` on all branches **N75**.
 
 ## Security hardening
 
@@ -125,7 +125,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## UI shell & app-wide
 
-- **D30** (client prefs in localStorage) + **N15**; **D31** (three-bucket URL/state model); **N21** (full-bleed shell); **N24** (masthead font-size control); **D117** → **N57** (admin-set system banner); **D119** (loading overlay).
+- **D30** (client prefs in localStorage) + **N15**; **D31** (three-bucket URL/state model); **N21** (full-bleed shell); **N24** (masthead font-size control); **D117** → **N57** (admin-set system banner); **D119** (loading overlay); **N77** (client-rendered 404 for unknown URLs); **N78** (long-lived-tab new-version toast).
 
 ## Admin surfaces
 

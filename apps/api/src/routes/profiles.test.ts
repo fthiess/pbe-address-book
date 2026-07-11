@@ -286,7 +286,7 @@ describe("GET /api/profiles/:id", () => {
     await app.close();
   });
 
-  it("404s a brother asking for an unlisted record (the whole-record hide)", async () => {
+  it("404s a brother asking for an unlisted record (the whole-record hide), no-store", async () => {
     const { app, cookieAs } = await buildWriteServer([
       makeProfile({ id: 5001 }),
       makeProfile({ id: 5002, unlisted: true }),
@@ -298,6 +298,29 @@ describe("GET /api/profiles/:id", () => {
       headers: { cookie },
     });
     expect(response.statusCode).toBe(404);
+    // The 404 is **per-role** (an admin gets a 200 for the same URL), so it must be
+    // `no-store` — otherwise a shared cache can replay a brother's 404 to an admin
+    // and the record "disappears" until the cache lapses (OFC-192).
+    expect(response.headers["cache-control"]).toBe("no-store");
+    await app.close();
+  });
+
+  it("serves an invalid-id 400 no-store too (every branch of the read is uncacheable)", async () => {
+    const { app, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(5001, "brother");
+    const bad = await app.inject({ method: "GET", url: "/api/profiles/0", headers: { cookie } });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.headers["cache-control"]).toBe("no-store");
+    await app.close();
+  });
+
+  it("serves the gate's unauthenticated 401 no-store (the shared 401 chokepoint)", async () => {
+    const { app } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    // No cookie → the session gate emits the 401 before the handler; it too must be
+    // uncacheable so a shared cache can't replay a stale 401 across a re-login (N75).
+    const res = await app.inject({ method: "GET", url: "/api/profiles/5001" });
+    expect(res.statusCode).toBe(401);
+    expect(res.headers["cache-control"]).toBe("no-store");
     await app.close();
   });
 

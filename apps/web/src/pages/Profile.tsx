@@ -196,7 +196,14 @@ export function ProfileContainer() {
           return { status: "reload" };
         }
         return { status: "forbidden" };
-      } catch {
+      } catch (error) {
+        // A mid-edit session lapse (401) surfaces as its own result so the editor
+        // keeps the form and shows an honest "sign in again" message rather than the
+        // generic failure, and is NOT bounced to the sign-in screen (D109; the write
+        // opted out of the app-wide 401 handler in api.ts).
+        if (error instanceof ApiError && error.status === 401) {
+          return { status: "expired" };
+        }
         return { status: "error" };
       }
     },
