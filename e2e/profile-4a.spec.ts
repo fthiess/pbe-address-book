@@ -116,8 +116,11 @@ test.describe("profile — view mode", () => {
     await expect(page.getByRole("link", { name: "Edit profile" })).toBeVisible();
   });
 
-  test("a peer sees no restricted block and no Edit button", async ({ page }) => {
-    // A peer's projection omits the restricted fields and the off-toggle values.
+  test("a peer sees the public verification read-out but no restricted block or Edit button", async ({
+    page,
+  }) => {
+    // A peer's projection omits the restricted fields and off-toggle values, but
+    // verification is public (OFC-207), so it keeps lastVerifiedDate/verifiedBy.
     const peerView = {
       ...ownerRecord(),
       email: undefined,
@@ -127,8 +130,8 @@ test.describe("profile — view mode", () => {
       privacy: undefined,
       allowNewsletterEmail: undefined,
       allowShareWithMITAA: undefined,
-      lastVerifiedDate: undefined,
-      verifiedBy: undefined,
+      lastVerifiedDate: "2026-01-15",
+      verifiedBy: 5247, // self-verified — reads "(self)" without a roster lookup
       lastModified: undefined,
     } as unknown as ReturnType<typeof ownerRecord>;
     await mockProfile(page, { meDoc: me("brother", 9001), record: peerView });
@@ -136,8 +139,12 @@ test.describe("profile — view mode", () => {
 
     await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "Edit profile" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: /Record status/ })).toHaveCount(0);
+    // Verification is public (OFC-207): the Record status heading + read-out show…
+    await expect(page.getByRole("heading", { name: /Record status/ })).toBeVisible();
+    await expect(page.getByRole("article").getByText(/Verified 2026-01-15 \(self\)/)).toBeVisible();
+    // …but the owner/staff-only parts (consent digest, the Verify control) do not.
     await expect(page.getByRole("heading", { name: /Preferences/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Mark as verified" })).toHaveCount(0);
   });
 
   test("an admin can edit a deceased brother's profile (to manage the photo, etc.)", async ({

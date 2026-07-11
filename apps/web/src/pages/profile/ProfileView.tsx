@@ -1,12 +1,13 @@
 import { type EmergencyContact, formatClassYear, formatConstitutionId } from "@pbe/shared";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
+import { Avatar } from "../../components/Avatar.js";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
+import { BOX, Thumbnail } from "../directory/thumbnail.js";
 import { DirectoryNav } from "./DirectoryNav.js";
 import { type ProfileActions, StaffControls, VerifyControl } from "./ProfileControls.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
-import { RelationshipChip } from "./RelationshipChip.js";
 import { CONSENT_COPY, PRIVACY_COPY, activeConsequence } from "./consent.js";
 import type { DirectoryNav as DirectoryNavModel, StepDirection } from "./directory-nav.js";
 import {
@@ -15,9 +16,10 @@ import {
   formatFullDate,
   hasAddress,
   lifespanLine,
+  verifierAttribution,
 } from "./display.js";
 import { PrivateMarker, ReadField, Section } from "./fields.js";
-import { littleBrothers, rosterNames } from "./relationships.js";
+import { littleBrothers, rosterMember, rosterNames } from "./relationships.js";
 import { type Viewer, canEdit, managerSeesPrivate, seesRestricted } from "./viewer.js";
 
 /**
@@ -54,6 +56,10 @@ export function ProfileView({
   const name = canonicalName(record);
   const deceased = record.deceased?.isDeceased === true;
   const restricted = seesRestricted(viewer);
+  // The roster→Canonical-Name map, resolved once and shared by the Relationships
+  // links (Big/Little Brothers) and the verification read-out's verifier name
+  // (§5.7.4; OFC-208). Null until the roster loads.
+  const names = useMemo(() => (roster ? rosterNames(roster) : null), [roster]);
 
   return (
     <article className="mx-auto max-w-5xl">
@@ -84,14 +90,27 @@ export function ProfileView({
             <ProfessionalSection record={record} viewer={viewer} />
           </div>
           <div className="border-t border-border-hairline py-6">
-            <RelationshipsSection record={record} roster={roster} />
+            <RelationshipsSection record={record} roster={roster} names={names} />
           </div>
 
-          {restricted && (
+          {restricted ? (
             <Row>
               <PreferencesSection record={record} />
-              <RecordStatusSection record={record} viewer={viewer} onVerify={actions.verify} />
+              <RecordStatusSection
+                record={record}
+                viewer={viewer}
+                onVerify={actions.verify}
+                names={names}
+              />
             </Row>
+          ) : (
+            // Verification is public (OFC-207): a brother viewing another brother
+            // still sees the accuracy signal, without the staff-only record status.
+            <div className="border-t border-border-hairline py-6">
+              <Section title="Record status">
+                <VerificationReadout record={record} names={names} />
+              </Section>
+            </div>
           )}
         </div>
       </div>
@@ -313,11 +332,12 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
 function RelationshipsSection({
   record,
   roster,
+  names,
 }: {
   record: ProfileRecord;
   roster: DirectoryProfile[] | null;
+  names: Map<number, string> | null;
 }) {
-  const names = useMemo(() => (roster ? rosterNames(roster) : null), [roster]);
   const littles = useMemo(
     () => (roster && names ? littleBrothers(roster, names, record.id) : []),
     [roster, names, record.id],
@@ -327,28 +347,69 @@ function RelationshipsSection({
     return null;
   }
 
-  const bigBrotherName =
-    record.bigBrotherId != null ? (names?.get(record.bigBrotherId) ?? null) : null;
+  const bigBrotherId = record.bigBrotherId;
+  const bigBrother = rosterMember(roster, bigBrotherId);
+  const bigBrotherName = bigBrotherId != null ? (names?.get(bigBrotherId) ?? null) : null;
 
   return (
     <Section title="Relationships">
-      {record.bigBrotherId != null && (
+      {bigBrotherId != null && (
         <ReadField label="Big Brother">
-          <RelationshipChip id={record.bigBrotherId} name={bigBrotherName ?? "View his profile"} />
+          <RelationshipLink
+            id={bigBrotherId}
+            name={bigBrotherName ?? "View his profile"}
+            profile={bigBrother}
+          />
         </ReadField>
       )}
       {littles.length > 0 && (
         <ReadField label="Little Brothers">
-          <ul className="flex flex-wrap gap-1.5">
+          <ul className="flex flex-wrap gap-x-5 gap-y-2">
             {littles.map((little) => (
               <li key={little.id}>
-                <RelationshipChip id={little.id} name={little.name} />
+                <RelationshipLink id={little.id} name={little.name} profile={little.profile} />
               </li>
             ))}
           </ul>
         </ReadField>
       )}
     </Section>
+  );
+}
+
+/**
+ * One brother in the Relationships section (§5.7.4; OFC-203): the Directory's
+ * thumbnail (photo, or the initials/silhouette avatar, with the deceased/
+ * de-brothered overlays) to the left of his Canonical Name, the whole thing a
+ * link to his profile — so brother names read identically here and in the
+ * Directory. The thumbnail is decorative (the adjacent name is the link's
+ * accessible label). When the roster hasn't resolved the brother (a Big Brother
+ * hidden from this viewer, or the roster still loading), it falls back to a plain
+ * avatar seeded by his id.
+ */
+function RelationshipLink({
+  id,
+  name,
+  profile,
+}: {
+  id: number;
+  name: string;
+  profile: DirectoryProfile | null;
+}) {
+  return (
+    <Link
+      to={`/brother/${id}`}
+      className="group inline-flex items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {profile ? (
+        <Thumbnail profile={profile} name={name} decorative />
+      ) : (
+        <Avatar name={name} seed={id} size={BOX} />
+      )}
+      <span className="font-medium text-foreground underline-offset-2 group-hover:underline">
+        {name}
+      </span>
+    </Link>
   );
 }
 
@@ -413,36 +474,60 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
 }
 
 /**
- * Record status (§5.7.6): the verification read-out and the Verify affordance
- * (owner/staff — the 4c-2 verification pass, D28/D48), plus the staff-internal
- * Admin Note for managers/admins.
+ * The verification read-out (§5.7.6) — **public to every brother** (OFC-207;
+ * amends D28): a green "Verified {date}" badge, attributed to the verifier when
+ * known. A self-confirm reads "(self)"; otherwise the verifier's Canonical Name
+ * when the roster resolves it — managers/admins resolve every verifier, while a
+ * brother sees date-only for a verifier hidden from his roster (OFC-208). An
+ * unverified record reads plainly. The status is carried by shape + text, never
+ * colour alone (D32) — the ✓ and the word "Verified".
+ */
+function VerificationReadout({
+  record,
+  names,
+}: {
+  record: ProfileRecord;
+  names: Map<number, string> | null;
+}) {
+  const verified = record.lastVerifiedDate;
+  if (!verified) {
+    return <ReadField label="Verification">Not verified.</ReadField>;
+  }
+  const attribution = verifierAttribution(record.id, record.verifiedBy, names);
+  return (
+    <div className="rounded-[var(--radius-lg)] border border-[var(--success-border)] bg-[var(--success-bg)] px-4 py-3">
+      <p className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--success-strong)]">
+        <span aria-hidden="true">✓</span>
+        <span>
+          Verified {verified}
+          {attribution}
+        </span>
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Record status (§5.7.6), the owner/staff view: the verification read-out and the
+ * Verify affordance (owner/staff — the 4c-2 verification pass, D28/D48), the
+ * last-updated line, plus the staff-internal Admin Note for managers/admins.
+ * Brothers viewing another brother see only the verification read-out, rendered
+ * standalone in {@link ProfileView} (OFC-207).
  */
 function RecordStatusSection({
   record,
   viewer,
   onVerify,
+  names,
 }: {
   record: ProfileRecord;
   viewer: Viewer;
   onVerify: () => Promise<void>;
+  names: Map<number, string> | null;
 }) {
-  const verified = record.lastVerifiedDate;
-  const selfVerified = record.verifiedBy != null && record.verifiedBy === record.id;
   return (
     <Section title="Record status">
-      {verified ? (
-        <div className="rounded-[var(--radius-lg)] border border-[var(--success-border)] bg-[var(--success-bg)] px-4 py-3">
-          <p className="flex items-center gap-2 text-[length:var(--text-body)] text-[var(--success-strong)]">
-            <span aria-hidden="true">✓</span>
-            <span>
-              Verified {verified}
-              {selfVerified && " (self)"}
-            </span>
-          </p>
-        </div>
-      ) : (
-        <ReadField label="Verification">Not verified.</ReadField>
-      )}
+      <VerificationReadout record={record} names={names} />
       <VerifyControl record={record} viewer={viewer} onVerify={onVerify} />
       {record.lastModified && (
         <p className="text-[length:var(--text-body-sm)] text-muted-foreground">

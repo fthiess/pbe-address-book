@@ -95,8 +95,15 @@ export const FIELD_VISIBILITY: Record<keyof Profile, FieldVisibility> = {
   // --- Usage preferences / housekeeping — restricted (owner/manager/admin) ---
   allowNewsletterEmail: { cls: "restricted" },
   allowShareWithMITAA: { cls: "restricted" },
-  lastVerifiedDate: { cls: "restricted" },
-  verifiedBy: { cls: "restricted" },
+  // Verification state is public: an accuracy signal every brother may read, and a
+  // public administrative act — not PII (OFC-207; amends D28). The *right to mark*
+  // verified stays owner/manager/admin, governed on the write side by
+  // `capabilities.ts`; this read class does not widen it. `verifiedBy` is a
+  // Constitution id whose canonical name the client resolves from the roster
+  // (managers/admins resolve every verifier; a brother falls back to date-only for
+  // a verifier hidden from his roster — OFC-208).
+  lastVerifiedDate: { cls: "public" },
+  verifiedBy: { cls: "public" },
   lastModified: { cls: "restricted" },
   newsletterConsentChangedAt: { cls: "restricted" },
 

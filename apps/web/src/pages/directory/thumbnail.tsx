@@ -21,8 +21,12 @@ import type { DirectoryProfile } from "../../lib/types.js";
  *    paired with the row's strike-through and "DE-BROTHERED" badge (D115).
  */
 
-/** Rendered box size in the row (the stored thumbnail is 96²; displayed smaller). */
-const BOX = 40;
+/**
+ * Rendered box size in the row (the stored thumbnail is 96²; displayed smaller).
+ * Exported so callers that fall back to a bare `Avatar` beside a real thumbnail
+ * (the Profile page's relationship links, OFC-203) size both from one source.
+ */
+export const BOX = 40;
 
 /** The thumbnail `/img/*` URL, or null when there is nothing to load. */
 export function thumbnailUrl(profile: DirectoryProfile): string | null {
@@ -32,7 +36,21 @@ export function thumbnailUrl(profile: DirectoryProfile): string | null {
   return imageUrl(thumbnailObjectKey(profile.id, profile.headshotVersion));
 }
 
-export function Thumbnail({ profile, name }: { profile: DirectoryProfile; name: string }) {
+export function Thumbnail({
+  profile,
+  name,
+  decorative = false,
+}: {
+  profile: DirectoryProfile;
+  name: string;
+  /**
+   * Render the image as decorative (empty alt) — for contexts where an adjacent
+   * text label already names the brother (the Profile page's relationship links,
+   * OFC-203), so the thumbnail is not announced twice. Defaults to false: the
+   * Directory cell, where the thumbnail carries the accessible name itself.
+   */
+  decorative?: boolean;
+}) {
   const [failed, setFailed] = useState(false);
   const url = thumbnailUrl(profile);
   // Re-arm on URL change (OFC-128) so a re-uploaded thumbnail loads after a
@@ -42,7 +60,7 @@ export function Thumbnail({ profile, name }: { profile: DirectoryProfile; name: 
   const deceased = profile.deceased?.isDeceased === true;
   const debrothered = profile.debrothered?.isDebrothered === true;
   // The accessible name folds in the memorial status, matching §5.5's alt-text rule.
-  const alt = deceased ? `${name} — In Memoriam` : name;
+  const alt = decorative ? "" : deceased ? `${name} — In Memoriam` : name;
 
   return (
     <span

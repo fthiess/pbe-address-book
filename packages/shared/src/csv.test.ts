@@ -45,10 +45,17 @@ describe("profilesToCsv — role-aware columns (§10)", () => {
     expect(h[0]).toBe("id");
     expect(h).toContain("email"); // toggle column present for all roles
     expect(h).not.toContain("adminNote");
-    expect(h).not.toContain("verifiedBy");
     expect(h).not.toContain("allowNewsletterEmail");
     expect(h).not.toContain("privacy.shareEmail");
     expect(h).not.toContain("unlisted");
+  });
+
+  it("includes the public verification columns in a brother's export (OFC-207)", () => {
+    // Verification is public (amends D28), and the export inherits the projection,
+    // so a brother's file carries the same verification signal he sees on profiles.
+    const h = header(profilesToCsv(rows({ id: 5247 }), "brother"));
+    expect(h).toContain("lastVerifiedDate");
+    expect(h).toContain("verifiedBy");
   });
 
   it("includes staff-only columns for managers/admins", () => {
