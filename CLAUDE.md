@@ -25,7 +25,7 @@ Tooling: Biome (format + lint), Vitest (unit + Firestore-emulator integration �
 
 ## Documentation map
 
-`docs/initial-build/` holds the delivered design docs (PRD, DATABASE-SCHEMA, ENGINEERING-DESIGN, API-SPEC, CODING-PROJECT-PLAN, USER-MANUAL, DECISIONS, PRE-LAUNCH-TOOLS). **`DECISIONS.md` is the authoritative, append-only decision log** (`D*` design decisions, `N*` implementation notes) — when a significant decision lands, append it there and propagate the change to the affected docs **in the same PR as the code**. `docs/initial-build/history/` is frozen history — never edit it. DATABASE-SCHEMA §3 is authoritative for field names and semantics.
+`docs/initial-build/` holds the delivered design docs (PRD, DATABASE-SCHEMA, ENGINEERING-DESIGN, API-SPEC, CODING-PROJECT-PLAN, USER-MANUAL, DECISIONS, PRE-LAUNCH-TOOLS). **`DECISIONS.md` is the authoritative, append-only decision log** (`D*` design decisions, `N*` implementation notes) — when a significant decision lands, append it there, update **`DECISIONS-INDEX.md`** (the subsystem → currently-authoritative-decisions map) to match, and propagate the change to the affected docs **in the same PR as the code**. The log is huge: **consult the index first and read only the governing entries — never read the whole log.** `docs/initial-build/history/` is frozen history — never edit it. DATABASE-SCHEMA §3 is authoritative for field names and semantics.
 
 Deferred work and bugs are Linear tickets (team Techgnosys, project PBE-Book, `OFC-*`): file tickets for anything deferred, close them with evidence when resolved.
 
