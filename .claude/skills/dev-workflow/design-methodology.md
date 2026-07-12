@@ -34,6 +34,8 @@ Run the design sessions in order, each building on the previous. Discuss-first a
 
 When the design docs are complete, run them through **fresh sessions of the strongest model at max effort with no prior context on the project** — the reviewer must not share the designers' assumptions. Review from multiple independent angles (e.g., security/privacy, operations/cost, data integrity, UX/accessibility), each as its own review pass.
 
+Reviewer hygiene: hand each reviewer the artifact and the contract it must satisfy — never the designers' reasoning or conclusions, because a reviewer given conclusions returns validation of those conclusions. Bound the back-and-forth on any single finding at three cycles; non-convergence after three is information about the artifact (usually: it's too big — decompose it), not a reason to keep looping. And watch for **doubt theater**: if a review pass surfaces substantive findings and triage classifies none of them as actionable, the process is validating rather than reviewing — stop and escalate to Forrest.
+
 Then, back in a context-bearing session:
 
 1. **Consolidate** all review findings into a single composite.
@@ -56,6 +58,8 @@ Break implementation into phases using a **walking-skeleton approach** — an en
 - Phase n+1 — observability and hardening
 - Phase n+2 — launch (cutover, UAT, migration)
 
-Break phases into sub-phases by focus and complexity. Every phase ends live-tested on a staging environment; **CI/CD from Phase 0** — every merge to main runs the full test gate and, when green, deploys staging automatically.
+Break phases into sub-phases by focus and complexity, and size individual tasks for agent performance: small-to-medium units touching at most ~5 files, acceptance criteria that fit in three bullets, each task leaving the system green. An "and" in a task title usually means it's two tasks. Every phase ends live-tested on a staging environment; **CI/CD from Phase 0** — every merge to main runs the full test gate and, when green, deploys staging automatically.
+
+The launch phase (cutover, UAT, migration) has its own methodology: see `launch-and-cutover.md` in this skill.
 
 Between planned phases, schedule interim **ticket-batch sessions** as findings accumulate: triage the tracker, group tickets by code locality into small batches, and clear them batch-per-session with the normal coding loop.
