@@ -22,6 +22,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -106,6 +107,38 @@ export function DirectoryGrid({
   restoreReady,
 }: DirectoryGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Fill the grid to the viewport bottom so its *horizontal* scrollbar — pinned to
+  // the container's bottom edge — is always on-screen (OFC-205). A fixed
+  // `100dvh − Nrem` cap can't: the chrome above the grid (masthead, system banner,
+  // heading/search, the collapsible Filters panel, the action bar) varies in
+  // height, so any constant either overruns the viewport (scrollbar below the
+  // fold, unreachable) or wastes space. Instead measure the grid's live top and
+  // set its max-height to the remaining space, re-measuring on window resize and —
+  // via a ResizeObserver on <body> — whenever the chrome above changes height
+  // (banner appears, Filters expands). Recomputing from the grid's *top* (which the
+  // grid's own height never moves) keeps this idempotent, so no feedback loop.
+  const [maxHeight, setMaxHeight] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) {
+      return;
+    }
+    const BOTTOM_GAP = 24; // breathing room below the grid, matching the shell's rhythm
+    const measure = () => {
+      const top = el.getBoundingClientRect().top;
+      const next = Math.max(240, Math.round(window.innerHeight - top - BOTTOM_GAP));
+      setMaxHeight((prev) => (prev === next ? prev : next));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    const observer = new ResizeObserver(measure);
+    observer.observe(document.body);
+    return () => {
+      window.removeEventListener("resize", measure);
+      observer.disconnect();
+    };
+  }, []);
 
   // The stash carried into a Profile page so it can step Prev/Next through the
   // current displayed set (search ∩ filter ∩ sort) and "← Directory" can pop back
@@ -226,7 +259,9 @@ export function DirectoryGrid({
       // horizontal scrollbar stays discoverable when the columns overflow —
       // overlay scrollbars auto-hide and hid it entirely (OFC-205, see index.css).
       className="always-scrollbars overflow-auto rounded-xl border border-border bg-card"
-      style={{ maxHeight: "calc(100dvh - 13rem)" }}
+      // Measured to fill the viewport (OFC-205); the calc is only the first-paint
+      // fallback before the layout effect runs.
+      style={{ maxHeight: maxHeight === null ? "calc(100dvh - 13rem)" : `${maxHeight}px` }}
     >
       {/* autoScroll disabled: a column drag must never scroll the grid (the
           header is always in view; reordering off-screen columns isn't needed). */}
