@@ -158,7 +158,7 @@ test.describe("5.5c app shell + session (OFC-202/193/63/192)", () => {
 
     const toast = page
       .getByRole("status")
-      .filter({ hasText: "A new version of Book is available" });
+      .filter({ hasText: "A new version of PBE Address Book is available" });
     await expect(toast).toBeVisible();
     await expect(toast.getByRole("button", { name: "Refresh" })).toBeVisible();
     // Dismiss leaves the user be.

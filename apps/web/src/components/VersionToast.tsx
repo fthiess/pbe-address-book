@@ -69,9 +69,11 @@ export function VersionToast() {
   return (
     // `<output>` carries an implicit "status" polite live region (the same pattern as
     // the profile "Saved" toast), so the notice is announced without stealing focus.
-    <output className="fixed inset-x-0 bottom-4 z-50 flex justify-center px-4">
+    // Positioned a fifth of the way down (not the bottom edge, which was easy to
+    // miss) so it's noticed without covering the masthead controls.
+    <output className="fixed inset-x-0 top-[20%] z-50 flex justify-center px-4">
       <div className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-border bg-card px-4 py-3 text-card-foreground shadow-[var(--shadow-popover-strong)]">
-        <span className="text-sm">A new version of Book is available.</span>
+        <span className="text-sm">A new version of PBE Address Book is available.</span>
         <button
           type="button"
           onClick={() => window.location.reload()}
