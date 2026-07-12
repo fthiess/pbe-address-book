@@ -1,6 +1,6 @@
 ---
 name: dev-workflow
-description: Forrest's development-session methodology — the plan → build → review → remediate → live-test → close loop and its approval gates. Invoke at the start of ANY session that will change code or docs (feature, bugfix, refactor, ticket batch), before proposing a plan or writing code. Also covers PR/merge rules, code-review depth, Linear ticket hygiene, decision-log conventions (append-only + topic index), model/effort guidance, and the session close-out checklist. For new-project design-stage work (seed doc → PRD/engineering design → adversarial review), read design-methodology.md in this skill.
+description: Forrest's development-session methodology — the plan → build → review → remediate → live-test → close loop and its approval gates. Invoke at the start of ANY session that will change code or docs (feature, bugfix, refactor, ticket batch), before proposing a plan or writing code. Also covers PR/merge rules, code-review depth, bugfix discipline (repro-test-before-fix), Linear ticket hygiene, decision-log conventions (append-only + topic index), model/effort guidance, and the session close-out checklist. For new-project design-stage work (seed doc → PRD/engineering design → adversarial review), read design-methodology.md in this skill; for production cutovers and live-data migrations, read launch-and-cutover.md.
 ---
 
 # Development Session Workflow
@@ -25,8 +25,21 @@ Two standing sub-rules:
 - All work happens on a feature branch and lands via a PR. Never commit directly to `main`.
 - Unit tests for any non-trivial logic; run the project's formatter/linter on everything.
 - Keep the project's full verification gate green locally before pushing (for Book: `npm run verify:gate`).
+- **Never write framework-specific code from memory.** Check the actual dependency versions (`package.json` et al.), verify version-specific APIs against the official docs, and cite the page that settled a non-obvious question. When something can't be verified against official docs, flag it plainly as *unverified — from training data*; an explicit flag beats both confident hallucination and vague hedging.
+- **Dependency upgrades are their own PR** — one dependency per change. Read the changelog, not the version number (semver is a promise the maintainer may not have kept), and review the lockfile diff like code.
+- **Grep the staged diff for secrets before every push** (`git diff --staged | grep -iE "password|secret|api_key|token"`) — these repos are public.
 - **Documentation is code.** Design docs, the decision log, API specs, and user docs are updated in the same PR as the code they describe. Append significant decisions to the decision log (`DECISIONS.md`) as they're made — following the decision-log conventions below — and propagate them to affected docs once, in place.
-- Anything discovered but deliberately not done now — deferred features, uncertain items, rough edges — gets a Linear ticket before the session ends, not a TODO comment or a mental note.
+- Anything discovered but deliberately not done now — deferred features, uncertain items, rough edges — gets a Linear ticket before the session ends, not a TODO comment or a mental note. The PR description ends with a short **"Didn't touch (intentionally)"** list — adjacent issues noticed but left out of scope, each pointing at its ticket — so scope discipline is visible at review time.
+
+## When something breaks
+
+Debugging is where corners get cut fastest, so it has its own discipline:
+
+- **Stop the line.** Don't push past a failing test or broken build to keep feature work moving — errors compound. Fix it, or explicitly park it with a ticket, before building further.
+- **Reproduce before you fix (the prove-it pattern).** Never start with the fix. Write the reproduction test first and watch it fail; then fix; then watch it pass and run the full suite. A test written after the fix tends to prove the fix, not the bug — and the repro test stays in the suite as the regression guard. For subtle bugs, have a subagent write the repro test without knowledge of the intended fix.
+- **Reduce before you fix.** Shrink the failure to its minimal case first — a minimal reproduction makes the root cause obvious and prevents patching symptoms.
+- **One fix at a time.** No unrelated changes in the tree while debugging; a contaminated diff makes the fix unreviewable.
+- **Can't reproduce?** Don't guess-patch. Classify the suspect (timing, environment, state), add targeted logging around it, and file a ticket with the evidence so the next occurrence convicts itself. Remove the scaffolding logging once the bug is fixed and guarded.
 
 ## Gate 3 — Code review, scaled to depth
 
@@ -55,6 +68,22 @@ Before ending a session, verify every box:
 - [ ] Auto-memory updated: current forward state, what's next, and any new landmines — lean pointers, not history (the repo's docs and git log are the record).
 - [ ] State plainly what was verified versus what wasn't.
 
+## Rationalizations and red flags
+
+The gates erode through plausible-sounding exceptions, not open defiance. The usual suspects, pre-rebutted:
+
+| Rationalization | Reality |
+|---|---|
+| "This change is trivial — skip the plan." | Trivial still gets a two-line plan and a "go." Gate 1 is how *trivial* gets confirmed. |
+| "He answered my clarifying questions, so that's approval." | Approval is an unambiguous "go," nothing less. |
+| "CI is green and review is clean — merging." | Merging is Forrest's call, every time. In Book, a merge is a deploy. |
+| "I'll file the Linear ticket at close-out." | File it when discovered. Close-out verifies tickets exist; it doesn't remember them for you. |
+| "The fix is obvious — no need to reproduce first." | Obvious fixes are right most of the time; the rest cost hours. Repro test first. |
+| "Docs can follow in the next PR." | Documentation is code. Same PR. |
+| "This API is standard — I know it from memory." | Versions drift. Verify against the docs or flag it unverified. |
+
+Red flags — observable signs a session is drifting: the same test/build command run twice with no code change in between (reassurance, not verification); a hundred-plus lines written without running anything; unrelated edits appearing in the diff while debugging; a TODO comment where a ticket belongs; a "while I was in there" refactor that wasn't in the plan; a test modified so the change passes (the behavior probably changed).
+
 ## The decision log
 
 The decision log (`DECISIONS.md`) is the compact read-first artifact that lets later sessions honor earlier conclusions. Conventions, learned as Book's log passed 400 KB:
@@ -74,3 +103,7 @@ The decision log (`DECISIONS.md`) is the compact read-first artifact that lets l
 ## Starting a new project?
 
 Read `design-methodology.md` (in this skill) for the ideation → design → adversarial review → coding-plan process, and copy this skill folder into the new repo's `.claude/skills/` so the methodology travels with it.
+
+## Heading to production?
+
+When a project approaches production cutover — or any migration touches live data — read `launch-and-cutover.md` (in this skill) **at the planning stage, before proposing the plan**: rollback plans written before deploys, numeric hold/roll-back thresholds, the first-hour watch, and expand/contract for data-shape changes.
