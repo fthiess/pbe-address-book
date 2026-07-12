@@ -96,6 +96,51 @@ describe("buildIndex search", () => {
   });
 });
 
+describe("OFC-200 — search stays consistent across the prefixes of a name", () => {
+  // A Scandinavian first name whose folded token is 'soren'. Two compounding bugs
+  // made typing "sor" empty the list even though the record obviously matches:
+  //   1. "Søren" folded to "søren" (ø not decomposed by NFKD), so "sor" was not a
+  //      clean substring of the token; and
+  //   2. Fuse's error/length quantization makes a 3-char query intolerant of one
+  //      edit (1/3 ≈ 0.333 > the 0.30 threshold) while "so" and "sore" both match,
+  //      so the fuzzy path also dropped him at exactly three characters.
+  const RECS: NameRecord[] = [
+    {
+      id: 10,
+      firstName: "Søren",
+      lastName: "Kierkegaard",
+      canonicalName: "Søren Kierkegaard '88",
+    },
+    { id: 11, firstName: "Sam", lastName: "Sorenson", canonicalName: "Sam Sorenson '90" },
+  ];
+  const index = buildIndex(RECS, CONFIG);
+
+  it("finds Søren by every prefix of his folded name — no dead spot at 'sor'", () => {
+    for (const q of ["so", "sor", "sore", "soren"]) {
+      expect(ids(index.search(q))).toContain(10);
+    }
+  });
+});
+
+describe("OFC-200 — the worker result is always a superset of the substring match", () => {
+  // The invariant the fallback relies on (D110): the richer worker answer must
+  // never be *smaller* than the instant main-thread substring set, so a query
+  // never loses a hit the user already saw as they keep typing. Fuse's substring
+  // behavior is heuristic; unioning the deterministic substring set guarantees it.
+  const index = buildIndex(RECORDS, CONFIG);
+  const subIndex = buildSubstringIndex(RECORDS);
+
+  it("never drops a substring hit across a spread of query prefixes", () => {
+    for (const q of ["w", "wi", "will", "willi", "so", "sor", "sore", "gar", "smy", "jon", "hil"]) {
+      const worker = index.search(q) ?? new Set<number>();
+      const sub = substringMatchIndexed(subIndex, q) ?? new Set<number>();
+      for (const id of sub) {
+        expect(worker.has(id), `query "${q}": worker must keep substring hit #${id}`).toBe(true);
+      }
+    }
+  });
+});
+
 describe("searchDetailed — matched tokens for highlighting", () => {
   const index = buildIndex(RECORDS, CONFIG);
 
