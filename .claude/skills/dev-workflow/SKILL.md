@@ -11,6 +11,8 @@ Every substantive session follows one loop:
 
 The gates below are firm. When a gate and expedience conflict, the gate wins; when genuinely unsure whether something clears a gate, ask Forrest rather than guessing.
 
+**Freshness check (on invocation):** this skill's canonical upstream is the `fthiess/claude-skills` repo, cloned at `~/.claude/skills/`. When the working project carries a vendored copy (`.claude/skills/dev-workflow/`), diff it against the clone at session start; if they differ, say so and offer to sync — usually a shallow doc-only PR bringing the vendored copy up to the upstream, or a commit+push upstream when the newer change originated in the project.
+
 ## Gate 1 — Plan first, always
 
 Begin by discussing the work, not doing it. Review the relevant docs/tickets/code, ask clarifying questions, and propose a plan (scope, approach, what will and won't be touched, test strategy). Then **stop and wait for Forrest's explicit approval**. Clarifying questions and his answers are *not* approval — approval is an unambiguous "go." Use plan mode for substantial work. "Measure twice, cut once."
