@@ -29,16 +29,26 @@ export interface ActionBarProps {
   viewRows: DirectoryProfile[];
   /** The full selected set across the dataset, already resolved and sorted (may span filters). */
   selectedRows: DirectoryProfile[];
+  /** The raw count of selected ids — the count shown and the Clear affordance's gate. It may
+   *  exceed `selectedRows.length` if a selected brother was deleted mid-session; the count and
+   *  Clear track the raw set so a non-empty selection is always visible and clearable. */
+  selectedCount: number;
   /** Clear the entire selection, including any off-view picks. */
   onClear: () => void;
 }
 
-export function ActionBar({ role, viewRows, selectedRows, onClear }: ActionBarProps) {
-  const selectedCount = selectedRows.length;
+export function ActionBar({
+  role,
+  viewRows,
+  selectedRows,
+  selectedCount,
+  onClear,
+}: ActionBarProps) {
+  const hasSelection = selectedCount > 0;
 
   const onExport = () => {
-    const scope = selectedCount > 0 ? "selection" : "view";
-    const exportRows = selectedCount > 0 ? selectedRows : viewRows;
+    const scope = hasSelection ? "selection" : "view";
+    const exportRows = hasSelection ? selectedRows : viewRows;
     const csv = profilesToCsv(exportRows, role);
     downloadCsv(csv);
     void notifyExport(scope, exportRows.length);
@@ -49,13 +59,13 @@ export function ActionBar({ role, viewRows, selectedRows, onClear }: ActionBarPr
       <button
         type="button"
         onClick={onExport}
-        disabled={selectedCount === 0 && viewRows.length === 0}
+        disabled={!hasSelection && viewRows.length === 0}
         className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Export CSV{selectedCount > 0 ? ` (${selectedCount} selected)` : ""}
+        Export CSV{hasSelection ? ` (${selectedCount} selected)` : ""}
       </button>
 
-      {selectedCount > 0 && (
+      {hasSelection && (
         <button
           type="button"
           onClick={onClear}

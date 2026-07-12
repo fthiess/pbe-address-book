@@ -90,6 +90,10 @@ export function Directory() {
   // it lives in a context above the route rather than local state — no view-key
   // clear. The masthead's clean-slate reset (below) is what empties it deliberately.
   const selection = useSelection();
+  // A stable reference to the clear action (the context value's identity changes on
+  // every selection mutation, so depending on the whole `selection` in effects would
+  // re-run them needlessly).
+  const clearSelection = selection.clear;
 
   // The masthead logo navigates to "/" with a one-shot `reset` intent (OFC-194):
   // "home, fresh" clears every transient view dimension. The bare "/" URL already
@@ -109,7 +113,7 @@ export function Directory() {
     }
     resetHandledKey.current = location.key;
     setStarredOnly(false);
-    selection.clear();
+    clearSelection();
     // Consume the one-shot intent (replace the entry's state with null) so a later
     // Back never re-resets a view the user has since rebuilt.
     void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
@@ -120,7 +124,7 @@ export function Directory() {
     location.search,
     navigate,
     setStarredOnly,
-    selection,
+    clearSelection,
   ]);
 
   // Resolve every visible brother's Canonical Name in one O(n) ambiguity pass
@@ -216,14 +220,14 @@ export function Directory() {
   // CSV order matches what the user last saw.
   const selectedRows = useMemo(
     () =>
-      selection.count === 0
+      selection.selected.size === 0
         ? []
         : sortRows(
             (profiles ?? []).filter((p) => selection.selected.has(p.id)),
             sort.sortKey,
             sort.direction,
           ),
-    [profiles, selection.selected, selection.count, sort.sortKey, sort.direction],
+    [profiles, selection.selected, sort.sortKey, sort.direction],
   );
 
   // Auto-fit a column to its widest data value, measured over the *whole* dataset
@@ -341,7 +345,8 @@ export function Directory() {
           role={role}
           viewRows={rows}
           selectedRows={selectedRows}
-          onClear={selection.clear}
+          selectedCount={selection.count}
+          onClear={clearSelection}
         />
       )}
 
