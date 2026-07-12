@@ -82,6 +82,22 @@ function intersect(a: Set<number>, b: Set<number>): Set<number> {
 }
 
 /**
+ * Whether every query token is a substring of at least one of a record's folded
+ * name tokens — the plain substring-AND membership test. This is the **single**
+ * definition of that predicate: the worker's monotonic-floor union (`substringIds`
+ * inside {@link buildIndex}) and the main-thread fallback
+ * {@link substringMatchIndexed} both call it, so the D110 invariant — the worker
+ * result is always a superset of the instant substring match — cannot silently
+ * break by the two copies drifting apart.
+ */
+function matchesAllSubstrings(
+  recordTokens: readonly string[],
+  queryTokens: readonly string[],
+): boolean {
+  return queryTokens.every((qt) => recordTokens.some((token) => token.includes(qt)));
+}
+
+/**
  * Build the full fuzzy + phonetic + nickname index over the records (D35/D110).
  * Three inverted maps (exact token → ids, phonetic code → ids) plus a Fuse index
  * over the token *vocabulary* give typo tolerance; query tokens are expanded
@@ -193,16 +209,15 @@ export function buildIndex(records: readonly NameRecord[], config: SearchConfig)
   }
 
   /**
-   * The plain substring AND over the record tokens — every query token must be a
-   * substring of some name token. Identical semantics to the main-thread
-   * {@link substringMatchIndexed} fallback, computed here from the same token
-   * lists so the worker can guarantee it never returns *less* than what the
-   * instant fallback already showed (see below).
+   * The plain substring AND over the record tokens, from the worker's own
+   * `tokensByRecord`. Shares {@link matchesAllSubstrings} with the main-thread
+   * fallback so the two can never diverge — that identity is what makes the
+   * superset guarantee below sound.
    */
   function substringIds(queryTokens: string[]): Set<number> {
     const ids = new Set<number>();
     for (const [id, tokens] of tokensByRecord) {
-      if (queryTokens.every((qt) => tokens.some((token) => token.includes(qt)))) {
+      if (matchesAllSubstrings(tokens, queryTokens)) {
         ids.add(id);
       }
     }
@@ -299,10 +314,7 @@ export function substringMatchIndexed(
   }
   const ids = new Set<number>();
   for (const { id, tokens } of index) {
-    const everyMatches = queryTokens.every((queryToken) =>
-      tokens.some((token) => token.includes(queryToken)),
-    );
-    if (everyMatches) {
+    if (matchesAllSubstrings(tokens, queryTokens)) {
       ids.add(id);
     }
   }
