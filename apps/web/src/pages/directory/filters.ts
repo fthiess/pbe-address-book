@@ -108,10 +108,17 @@ export function countActiveFilters(filters: DirectoryFilters): number {
   return n;
 }
 
+/**
+ * A parsed range bound, `null` meaning "unbounded on this side": `[1985, null]`
+ * is `1985-` (that year and later), `[null, 1990]` is `-1990` (that year and
+ * earlier). A closed range has both bounds; at least one bound is always present.
+ */
+export type NumericRange = [number | null, number | null];
+
 /** A parsed numeric-grammar input: the discrete values, the ranges, and any bad tokens. */
 export interface NumericGrammar {
   values: number[];
-  ranges: [number, number][];
+  ranges: NumericRange[];
   /** Tokens that didn't parse — surfaced inline rather than silently dropped (§5.6.4). */
   errors: string[];
   /** True when there is at least one usable value/range (so the filter is active). */
@@ -119,14 +126,16 @@ export interface NumericGrammar {
 }
 
 /**
- * Parse the numeric grammar: comma-separated integers and `lo-hi` closed ranges,
- * freely combined (e.g. `1980, 1985-1989, 1992`). Whitespace is tolerated; an
- * unparseable token is collected into `errors`. A reversed range (`1990-1980`) is
- * normalised. Closed ranges only (MVP).
+ * Parse the numeric grammar: comma-separated integers and `lo-hi` ranges, freely
+ * combined (e.g. `1980, 1985-1989, 1992`). Ranges may be **one-sided** — `1985-`
+ * (that year and later) or `-1990` (that year and earlier) — carried as a `null`
+ * bound (OFC-195). Whitespace is tolerated; an unparseable token (including a bare
+ * `-`) is collected into `errors`. A reversed closed range (`1990-1980`) is
+ * normalised.
  */
 export function parseNumericGrammar(raw: string): NumericGrammar {
   const values: number[] = [];
-  const ranges: [number, number][] = [];
+  const ranges: NumericRange[] = [];
   const errors: string[] = [];
 
   for (const rawToken of raw.split(",")) {
@@ -134,11 +143,21 @@ export function parseNumericGrammar(raw: string): NumericGrammar {
     if (token === "") {
       continue;
     }
-    const rangeMatch = token.match(/^(\d+)\s*-\s*(\d+)$/);
-    if (rangeMatch) {
-      const lo = Number(rangeMatch[1]);
-      const hi = Number(rangeMatch[2]);
+    const closedMatch = token.match(/^(\d+)\s*-\s*(\d+)$/);
+    if (closedMatch) {
+      const lo = Number(closedMatch[1]);
+      const hi = Number(closedMatch[2]);
       ranges.push(lo <= hi ? [lo, hi] : [hi, lo]);
+      continue;
+    }
+    const lowerOpenMatch = token.match(/^(\d+)\s*-$/);
+    if (lowerOpenMatch) {
+      ranges.push([Number(lowerOpenMatch[1]), null]);
+      continue;
+    }
+    const upperOpenMatch = token.match(/^-\s*(\d+)$/);
+    if (upperOpenMatch) {
+      ranges.push([null, Number(upperOpenMatch[1])]);
       continue;
     }
     if (/^\d+$/.test(token)) {
@@ -159,7 +178,10 @@ function numericMatches(grammar: NumericGrammar, value: number | null | undefine
   if (grammar.values.includes(value)) {
     return true;
   }
-  return grammar.ranges.some(([lo, hi]) => value >= lo && value <= hi);
+  // An open bound (`null`) is unbounded on that side.
+  return grammar.ranges.some(
+    ([lo, hi]) => (lo == null || value >= lo) && (hi == null || value <= hi),
+  );
 }
 
 /**

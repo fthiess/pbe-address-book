@@ -2,8 +2,8 @@ import { getHelpEntry } from "@pbe/help-content";
 import type { NameRecord } from "@pbe/name-search";
 import { resolveCanonicalNames } from "@pbe/shared";
 import { parseAsBoolean, useQueryState } from "nuqs";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { ClearButton } from "../components/ClearButton.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
@@ -17,6 +17,7 @@ import { ColumnPicker } from "./directory/ColumnPicker.js";
 import { DirectoryCards } from "./directory/DirectoryCards.js";
 import { DirectoryGrid } from "./directory/DirectoryGrid.js";
 import { FilterPanel } from "./directory/FilterPanel.js";
+import { useSelection } from "./directory/SelectionContext.js";
 import {
   autoFitWidth,
   extraWidthFor,
@@ -36,7 +37,6 @@ import { useNameSearch } from "./directory/search/useNameSearch.js";
 import { useColumnLens } from "./directory/useColumnLens.js";
 import { useDirectoryFilters } from "./directory/useDirectoryFilters.js";
 import { useDirectorySort } from "./directory/useDirectorySort.js";
-import { useSelection } from "./directory/useSelection.js";
 import { useStars } from "./directory/useStars.js";
 import { clearDirectoryStashes } from "./profile/directory-stash.js";
 
@@ -86,13 +86,42 @@ export function Directory() {
   const [starredOnly, setStarredOnly] = useHistoryFlag("directoryStarredOnly");
   const wide = useMediaQuery("(min-width: 768px)");
 
-  // Selection clears whenever the search/filter view changes (§5.6.8) — keyed on
-  // the dimensions that change the row *set* (not sort or the column lens).
-  const selectionKey = useMemo(
-    () => JSON.stringify([q, filters.filters, includeDeceased, starredOnly]),
-    [q, filters.filters, includeDeceased, starredOnly],
-  );
-  const selection = useSelection(selectionKey);
+  // Row selection persists across search/filter/sort/navigation (N79/OFC-196), so
+  // it lives in a context above the route rather than local state — no view-key
+  // clear. The masthead's clean-slate reset (below) is what empties it deliberately.
+  const selection = useSelection();
+
+  // The masthead logo navigates to "/" with a one-shot `reset` intent (OFC-194):
+  // "home, fresh" clears every transient view dimension. The bare "/" URL already
+  // resets the URL-held state (search, filters, sort, deceased); here we also clear
+  // the History-held "Starred only" flag and the persisted selection — the two
+  // things a plain link to "/" would otherwise leave standing. The "← Directory"
+  // back-navigation carries no such intent, so it still restores the working view.
+  const navigate = useNavigate();
+  // Guard on the history entry's `key`, not a once-per-mount flag: two masthead
+  // clicks must each reset (the Directory doesn't remount when already on "/"),
+  // while the redundant re-renders from clearing must not re-fire for one intent.
+  const resetHandledKey = useRef<string | null>(null);
+  useEffect(() => {
+    const wantsReset = (location.state as { reset?: boolean } | null)?.reset === true;
+    if (!wantsReset || resetHandledKey.current === location.key) {
+      return;
+    }
+    resetHandledKey.current = location.key;
+    setStarredOnly(false);
+    selection.clear();
+    // Consume the one-shot intent (replace the entry's state with null) so a later
+    // Back never re-resets a view the user has since rebuilt.
+    void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [
+    location.key,
+    location.state,
+    location.pathname,
+    location.search,
+    navigate,
+    setStarredOnly,
+    selection,
+  ]);
 
   // Resolve every visible brother's Canonical Name in one O(n) ambiguity pass
   // when the dataset arrives; a name is then an O(1) lookup by Constitution ID.
@@ -180,6 +209,22 @@ export function Directory() {
     sort.sortKey,
     sort.direction,
   ]);
+
+  // The export scope for a non-empty selection: every selected brother across the
+  // *whole* dataset — not just the current view — so a disjoint set built across
+  // several filters exports in full (N79/OFC-196). Sorted by the active sort so the
+  // CSV order matches what the user last saw.
+  const selectedRows = useMemo(
+    () =>
+      selection.count === 0
+        ? []
+        : sortRows(
+            (profiles ?? []).filter((p) => selection.selected.has(p.id)),
+            sort.sortKey,
+            sort.direction,
+          ),
+    [profiles, selection.selected, selection.count, sort.sortKey, sort.direction],
+  );
 
   // Auto-fit a column to its widest data value, measured over the *whole* dataset
   // (cheap, off the DOM) and persisted in the lens (N27).
@@ -291,7 +336,14 @@ export function Directory() {
         onReset={onReset}
       />
 
-      {staff && <ActionBar role={role} rows={rows} selectedIds={selection.selected} />}
+      {staff && (
+        <ActionBar
+          role={role}
+          viewRows={rows}
+          selectedRows={selectedRows}
+          onClear={selection.clear}
+        />
+      )}
 
       {profiles && rows.length === 0 ? (
         <EmptyState q={q} starredOnly={starredOnly} hasStars={stars.set.size > 0} />

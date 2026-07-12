@@ -33,13 +33,13 @@ import type { DirectoryNavState } from "../profile/directory-nav.js";
 import { entryNavState, newStashId, putDirectoryStash } from "../profile/directory-stash.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
+import type { Selection } from "./SelectionContext.js";
 import type { ColumnKey, GridColumn } from "./grid-model.js";
 import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import type { DirectorySort } from "./useDirectorySort.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
 import { useScrollRestoration } from "./useScrollRestoration.js";
-import type { Selection } from "./useSelection.js";
 import type { Stars } from "./useStars.js";
 
 /**
@@ -127,18 +127,23 @@ export function DirectoryGrid({
   );
 
   // Header select-all spans the whole filtered view (every row, not just the
-  // virtualized window — §5.6.8). Derived from the full `rows` set.
+  // virtualized window — §5.6.8). Its tri-state reflects the **visible** rows only:
+  // selection now persists across views (N79), so it can hold off-view ids the
+  // header must ignore. Toggling unions the visible rows in, or removes just those
+  // rows out — never disturbing off-view picks (the disjoint-set workflow, OFC-196).
   const allSelected =
     selection !== undefined && rows.length > 0 && rows.every((r) => selection.isSelected(r.id));
-  const someSelected = selection !== undefined && selection.count > 0 && !allSelected;
+  const someSelected =
+    selection !== undefined && !allSelected && rows.some((r) => selection.isSelected(r.id));
   const toggleSelectAll = useCallback(() => {
     if (!selection) {
       return;
     }
+    const viewIds = rows.map((r) => r.id);
     if (allSelected) {
-      selection.clear();
+      selection.removeAll(viewIds);
     } else {
-      selection.setAll(rows.map((r) => r.id));
+      selection.addAll(viewIds);
     }
   }, [selection, allSelected, rows]);
 

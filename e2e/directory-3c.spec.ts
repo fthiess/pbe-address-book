@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { type Page, type Route, expect, test } from "@playwright/test";
 
@@ -294,6 +295,167 @@ test.describe("Directory 3c — follow-up fixes", () => {
       .getByLabel("Not verified since")
       .evaluate((el) => getComputedStyle(el).colorScheme);
     expect(scheme).toBe("dark");
+  });
+});
+
+test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
+  test("filters by a one-sided year range (OFC-195)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    // Target the input by role: once a value is present a same-named "Clear Class
+    // Year" button also appears, so getByLabel would match two elements.
+    const year = page.getByRole("textbox", { name: "Class Year" });
+
+    // "1988-" → 1988 and later: William (1988) and Dev (1990); Aaron (1984) drops.
+    await year.fill("1988-");
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /Dev Admin/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toHaveCount(0);
+
+    // "-1984" → 1984 and earlier: only Aaron among the living (Grace is deceased-hidden).
+    await year.fill("-1984");
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /Dev Admin/ })).toHaveCount(0);
+  });
+
+  test("selection persists across a filter change and the export includes off-view picks (OFC-196)", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    await page.route("**/api/exports", (route) => route.fulfill({ status: 204, body: "" }));
+
+    // Select Aaron (1984).
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+
+    // Filter to 1988 — Aaron leaves the view, but the selection survives (the D41 reversal).
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    await page.getByLabel("Class Year").fill("1988");
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+
+    // Add the now-visible William to build a disjoint set spanning two filters.
+    await page.getByRole("checkbox", { name: /^Select William Webster/ }).check();
+    await expect(page.getByRole("button", { name: /Export CSV \(2 selected\)/ })).toBeVisible();
+
+    // Export while Aaron is still filtered out: the CSV must include him anyway.
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByRole("button", { name: /Export CSV/ }).click();
+    const csv = readFileSync(await (await downloadPromise).path(), "utf8");
+    expect(csv).toContain("Adams"); // the off-view pick
+    expect(csv).toContain("Webster"); // the visible pick
+  });
+
+  test("Clear selection empties the whole selection (OFC-196)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+    await page.getByRole("button", { name: /Clear selection/ }).click();
+    await expect(page.getByRole("button", { name: /^Export CSV$/ })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: /^Select Aaron Adams/ })).not.toBeChecked();
+  });
+
+  test("selection survives navigating to a profile and back (OFC-196)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.route(/\/api\/profiles\/\d+$/, (route) =>
+      route.fulfill({
+        headers: { ETag: 'W/"v1"' },
+        json: {
+          id: 5001,
+          firstName: "Aaron",
+          lastName: "Adams",
+          classYear: 1984,
+          majors: ["6-3"],
+          deceased: { isDeceased: false },
+          debrothered: { isDebrothered: false },
+          unlisted: false,
+          hasHeadshot: false,
+          privacy: {
+            shareEmail: true,
+            sharePhone: true,
+            shareAddress: true,
+            shareEmergency: false,
+            shareSpousePartner: false,
+          },
+        },
+      }),
+    );
+
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    // Open Aaron's profile, then browser-Back — an SPA popstate, not a full reload.
+    await page
+      .getByRole("link", { name: /Aaron Adams/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/brother\/5001/);
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    // The selection lives in a context above the route, so it outlived the remount.
+    await expect(page.getByRole("checkbox", { name: /^Select Aaron Adams/ })).toBeChecked();
+  });
+
+  test("the masthead logo is a clean slate: clears Starred-only and the selection (OFC-194)", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    // Build transient state: star Aaron, restrict to Starred-only, select Aaron.
+    await page.getByRole("button", { name: /^Star Aaron Adams/ }).click();
+    await page.getByRole("checkbox", { name: "Starred only" }).check();
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+
+    // Click the masthead crest + wordmark — "home, fresh".
+    await page.getByRole("link", { name: "PBE Address Book" }).click();
+
+    // Starred-only is off (William is back) and the selection is cleared.
+    await expect(page.getByRole("checkbox", { name: "Starred only" })).not.toBeChecked();
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Export CSV$/ })).toBeVisible();
+  });
+
+  test("the masthead clears Starred-only after visiting a profile (OFC-194 exact repro)", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    await page.route(/\/api\/profiles\/\d+$/, (route) =>
+      route.fulfill({
+        headers: { ETag: 'W/"v1"' },
+        json: {
+          id: 5001,
+          firstName: "Aaron",
+          lastName: "Adams",
+          classYear: 1984,
+          deceased: { isDeceased: false },
+          debrothered: { isDebrothered: false },
+          unlisted: false,
+          hasHeadshot: false,
+          privacy: {
+            shareEmail: true,
+            sharePhone: true,
+            shareAddress: true,
+            shareEmergency: false,
+            shareSpousePartner: false,
+          },
+        },
+      }),
+    );
+
+    // The reported path: star a brother, restrict to Starred-only, open that
+    // brother's profile, then click the masthead to come home.
+    await page.getByRole("button", { name: /^Star Aaron Adams/ }).click();
+    await page.getByRole("checkbox", { name: "Starred only" }).check();
+    await page
+      .getByRole("link", { name: /Aaron Adams/ })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/brother\/5001/);
+
+    await page.getByRole("link", { name: "PBE Address Book" }).click();
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    // The Directory returns clean: Starred-only off, the un-starred William visible.
+    await expect(page.getByRole("checkbox", { name: "Starred only" })).not.toBeChecked();
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toBeVisible();
   });
 });
 

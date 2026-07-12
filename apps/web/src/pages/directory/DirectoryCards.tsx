@@ -7,12 +7,12 @@ import { cn } from "../../lib/utils.js";
 import { entryNavState, newStashId, putDirectoryStash } from "../profile/directory-stash.js";
 import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
+import type { Selection } from "./SelectionContext.js";
 import type { GridColumn } from "./grid-model.js";
 import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
 import { useScrollRestoration } from "./useScrollRestoration.js";
-import type { Selection } from "./useSelection.js";
 import type { Stars } from "./useStars.js";
 
 /**

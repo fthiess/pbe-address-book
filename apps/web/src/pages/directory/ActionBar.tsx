@@ -15,21 +15,30 @@ import { saveBlob } from "../../lib/utils.js";
  * rows — the current selection, or the whole current view when nothing is
  * selected — to the canonical CSV (§10), triggers the download, then fires the
  * audit ping (D92). Images are never included.
+ *
+ * Since a selection now persists across filters (N79/OFC-196), the export scope is
+ * the **whole selected set** — resolved over the full dataset upstream, not just
+ * the current view — so a disjoint selection built across several filters exports
+ * in full. A persistent selection can also be entirely off-screen, so the bar
+ * carries an always-visible count and a **Clear** control: the selection is never
+ * silently driving an export the user can't see.
  */
 export interface ActionBarProps {
   role: Role;
-  /** The current filtered/sorted view — the export's fallback scope. */
-  rows: DirectoryProfile[];
-  /** The selected brother ids (a subset of the current view). */
-  selectedIds: ReadonlySet<number>;
+  /** The current filtered/sorted view — the export's fallback when nothing is selected. */
+  viewRows: DirectoryProfile[];
+  /** The full selected set across the dataset, already resolved and sorted (may span filters). */
+  selectedRows: DirectoryProfile[];
+  /** Clear the entire selection, including any off-view picks. */
+  onClear: () => void;
 }
 
-export function ActionBar({ role, rows, selectedIds }: ActionBarProps) {
-  const selectedCount = selectedIds.size;
+export function ActionBar({ role, viewRows, selectedRows, onClear }: ActionBarProps) {
+  const selectedCount = selectedRows.length;
 
   const onExport = () => {
     const scope = selectedCount > 0 ? "selection" : "view";
-    const exportRows = selectedCount > 0 ? rows.filter((r) => selectedIds.has(r.id)) : rows;
+    const exportRows = selectedCount > 0 ? selectedRows : viewRows;
     const csv = profilesToCsv(exportRows, role);
     downloadCsv(csv);
     void notifyExport(scope, exportRows.length);
@@ -40,11 +49,21 @@ export function ActionBar({ role, rows, selectedIds }: ActionBarProps) {
       <button
         type="button"
         onClick={onExport}
-        disabled={rows.length === 0}
+        disabled={selectedCount === 0 && viewRows.length === 0}
         className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
       >
         Export CSV{selectedCount > 0 ? ` (${selectedCount} selected)` : ""}
       </button>
+
+      {selectedCount > 0 && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="rounded-lg px-3 py-1.5 text-sm font-medium text-muted-foreground underline-offset-2 outline-none hover:text-foreground hover:underline focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Clear selection
+        </button>
+      )}
 
       {role === "admin" && (
         <Link

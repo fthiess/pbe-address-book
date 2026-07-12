@@ -50,8 +50,8 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Directory page
 
 - Columns & grid: **D33** → **N16** (resizable, keyboard-operable) → **N27** (double-click auto-fit); **N17** (labels/status treatments), **N22** (4-digit Class year), **N15** (column lens mirrored to URL); sort **D34**; virtualization & thumbnail prefetch **D42** (images app-served per D126).
-- Behavior: **D36** (deceased default-hidden, dual marker), **D38** (filter panel; filterable ⟺ visible) + **N51** (always returns collapsed), **D39** (stars), **D40** (row opens the Profile page), **N26** (short search placeholder).
-- Manager/admin action bar: D41 (bulk-delete since dropped by D100; exports per D90/D92).
+- Behavior: **D36** (deceased default-hidden, dual marker), **D38** (filter panel; filterable ⟺ visible) + **N51** (always returns collapsed) + **N81** (one-sided open-bound year/ID ranges), **D39** (stars) + **N80** (masthead clean-slate clears Starred-only), **D40** (row opens the Profile page), **N26** (short search placeholder).
+- Manager/admin action bar & selection: D41 (bulk-delete since dropped by D100; exports per D90/D92) → **N79** (selection persists across search/filter/sort/navigation — D41's clear-on-view-change reversed; a per-instance in-memory bucket beyond D31's three; select-all unions the view; Export spans the whole selection; explicit Clear).
 
 ## Name search
 
@@ -125,7 +125,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## UI shell & app-wide
 
-- **D30** (client prefs in localStorage) + **N15**; **D31** (three-bucket URL/state model); **N21** (full-bleed shell); **N24** (masthead font-size control); **D117** → **N57** (admin-set system banner); **D119** (loading overlay); **N77** (client-rendered 404 for unknown URLs); **N78** (long-lived-tab new-version toast).
+- **D30** (client prefs in localStorage) + **N15**; **D31** (three-bucket URL/state model) → **N79** (adds a fourth bucket: per-instance transient row selection) + **N80** (masthead clean-slate `reset` vs. place-preserving back-nav); **N21** (full-bleed shell); **N24** (masthead font-size control); **D117** → **N57** (admin-set system banner); **D119** (loading overlay); **N77** (client-rendered 404 for unknown URLs); **N78** (long-lived-tab new-version toast).
 
 ## Admin surfaces
 
