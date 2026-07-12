@@ -116,7 +116,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Testing & environments
 
 - **D65** (Vitest + emulator; Playwright; committed fake-data generator) + **N23** (planted name collision) + **N4** (fixed dev ids).
-- Staging/UAT: D72 → **D108** + **N18** (staging wipe-reseeds every deploy) + **N64** (UAT on test data, non-production); backup-verification staging per D102.
+- Staging/UAT: D72 → **D108** + **N18** (staging wipe-reseeds every deploy) + **N64** (UAT on test data, non-production); backup-verification staging per D102; **N82** (docs-only merges skip the post-merge CI re-run → no deploy; PR gate unfiltered).
 
 ## Accessibility & help
 
