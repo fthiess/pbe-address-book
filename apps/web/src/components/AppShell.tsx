@@ -77,11 +77,17 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
       <header className={banner ? "bg-card" : "border-b border-border bg-card"}>
         <div className="flex w-full items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
           {/* The masthead crest + wordmark is the conventional "home" affordance:
-              it always returns to the Directory landing view (a fresh navigation,
-              not a history pop), available on every page. In edit mode the dirty-form
+              it always returns to a **clean** Directory landing view (a fresh
+              navigation, not a history pop), available on every page. The `reset`
+              intent tells the Directory this is a clean slate — clearing not just the
+              URL-held view (search/filters/sort/deceased, gone with the bare "/") but
+              also the History-held "Starred only" flag and the persisted row
+              selection (OFC-194/OFC-196). The "← Directory" back-links carry no such
+              intent, so they restore the working view. In edit mode the dirty-form
               blocker still intercepts it, so unsaved edits stay protected. */}
           <Link
             to="/"
+            state={{ reset: true }}
             className="flex items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <img src="/crest.svg" alt="" aria-hidden="true" className="size-7" />

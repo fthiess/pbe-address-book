@@ -84,7 +84,7 @@ export function FilterPanel({
           <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
             <NumericFilter
               label="Class Year"
-              placeholder="e.g. 1980, 1985-1989"
+              placeholder="e.g. 1980, 1985-1989, 1990-"
               value={filters.classYear}
               onChange={(v) => setFilter("classYear", v)}
             />
@@ -263,7 +263,8 @@ function NumericFilter({
       />
       {hasErrors && (
         <p id={errorId} className="text-xs text-destructive">
-          Couldn't read: {errors.join(", ")}. Use numbers, commas, and ranges like 1980-1989.
+          Couldn't read: {errors.join(", ")}. Use numbers, commas, and ranges like 1980-1989, 1990-,
+          or -1975.
         </p>
       )}
     </Field>

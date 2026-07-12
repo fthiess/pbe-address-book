@@ -15,6 +15,7 @@ import { NewProfile } from "./pages/NewProfile.js";
 import { NotFoundPage } from "./pages/NotFoundPage.js";
 import { ProfileContainer, ProfileEditRoute, ProfileViewRoute } from "./pages/Profile.js";
 import { SignIn } from "./pages/SignIn.js";
+import { SelectionProvider } from "./pages/directory/SelectionContext.js";
 
 /**
  * The root layout. nuqs's URL-state adapter reads the router's location, so it
@@ -58,11 +59,17 @@ function GateLayout() {
   if (state.status === "error") {
     return <MaintenanceOutage onRetry={() => void refresh()} />;
   }
+  // SelectionProvider wraps the shell (so the masthead's clean-slate reset can clear
+  // the selection) and lives on this layout route, which stays mounted across
+  // child navigations — so the row selection survives the Directory's remount
+  // (N79/OFC-196). It sits inside the gate, so a sign-out unmounts and clears it.
   return (
     <BannerProvider>
-      <AppShell me={state.me}>
-        <Outlet />
-      </AppShell>
+      <SelectionProvider>
+        <AppShell me={state.me}>
+          <Outlet />
+        </AppShell>
+      </SelectionProvider>
     </BannerProvider>
   );
 }

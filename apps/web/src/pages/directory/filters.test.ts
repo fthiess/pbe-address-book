@@ -24,10 +24,31 @@ describe("parseNumericGrammar", () => {
     expect(parseNumericGrammar(" 1990 - 1980 ").ranges).toEqual([[1980, 1990]]);
   });
 
-  it("collects unparseable tokens rather than dropping them silently", () => {
-    const g = parseNumericGrammar("1980, abc, 19-x");
+  it("parses one-sided ranges as an open (null) bound (OFC-195)", () => {
+    // `1985-` → that year and later; `-1990` → that year and earlier.
+    expect(parseNumericGrammar("1985-").ranges).toEqual([[1985, null]]);
+    expect(parseNumericGrammar("-1990").ranges).toEqual([[null, 1990]]);
+    // Whitespace around the dash is tolerated, same as closed ranges.
+    expect(parseNumericGrammar(" 1985 - ").ranges).toEqual([[1985, null]]);
+    expect(parseNumericGrammar(" - 1990 ").ranges).toEqual([[null, 1990]]);
+  });
+
+  it("combines one-sided ranges with lists and closed ranges", () => {
+    const g = parseNumericGrammar("1980, 1985-1989, 1992-, -1975");
     expect(g.values).toEqual([1980]);
-    expect(g.errors).toEqual(["abc", "19-x"]);
+    expect(g.ranges).toEqual([
+      [1985, 1989],
+      [1992, null],
+      [null, 1975],
+    ]);
+    expect(g.errors).toEqual([]);
+  });
+
+  it("collects unparseable tokens rather than dropping them silently", () => {
+    // A bare `-` has no bound on either side and is an error, not an open range.
+    const g = parseNumericGrammar("1980, abc, 19-x, -");
+    expect(g.values).toEqual([1980]);
+    expect(g.errors).toEqual(["abc", "19-x", "-"]);
   });
 
   it("is inactive on empty or whitespace-only input", () => {
@@ -52,6 +73,16 @@ describe("buildFilterPredicate — composition (D38)", () => {
   it("matches a numeric grammar over class year", () => {
     const pred = buildFilterPredicate({ ...EMPTY_FILTERS, classYear: "1984" }, "brother");
     expect(keep(pred)).toEqual([1, 3]);
+  });
+
+  it("matches one-sided year ranges through the predicate (OFC-195)", () => {
+    // `1985-` keeps only the class of 1990; `-1985` keeps the two 1984s.
+    expect(keep(buildFilterPredicate({ ...EMPTY_FILTERS, classYear: "1985-" }, "brother"))).toEqual(
+      [2],
+    );
+    expect(keep(buildFilterPredicate({ ...EMPTY_FILTERS, classYear: "-1985" }, "brother"))).toEqual(
+      [1, 3],
+    );
   });
 
   it("ORs within the Course multi-select (any major matches)", () => {
