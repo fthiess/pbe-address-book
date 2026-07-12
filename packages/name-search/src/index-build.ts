@@ -192,6 +192,23 @@ export function buildIndex(records: readonly NameRecord[], config: SearchConfig)
     return false;
   }
 
+  /**
+   * The plain substring AND over the record tokens — every query token must be a
+   * substring of some name token. Identical semantics to the main-thread
+   * {@link substringMatchIndexed} fallback, computed here from the same token
+   * lists so the worker can guarantee it never returns *less* than what the
+   * instant fallback already showed (see below).
+   */
+  function substringIds(queryTokens: string[]): Set<number> {
+    const ids = new Set<number>();
+    for (const [id, tokens] of tokensByRecord) {
+      if (queryTokens.every((qt) => tokens.some((token) => token.includes(qt)))) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }
+
   function searchDetailed(query: string): SearchResult | null {
     const queryTokens = tokenize(query);
     if (queryTokens.length === 0) {
@@ -199,7 +216,7 @@ export function buildIndex(records: readonly NameRecord[], config: SearchConfig)
     }
     const matches = queryTokens.map(matchFor);
 
-    // Membership: AND across query tokens.
+    // Membership: AND across query tokens (Fuse typo + nickname + phonetic).
     let ids: Set<number> | null = null;
     for (const match of matches) {
       const next = idsFor(match);
@@ -210,13 +227,29 @@ export function buildIndex(records: readonly NameRecord[], config: SearchConfig)
     }
     ids ??= new Set<number>();
 
+    // Union in the deterministic substring match so the worker's answer is always
+    // a superset of the instant main-thread fallback (D110): as the user keeps
+    // typing, a hit the substring pass already surfaced must never disappear when
+    // the richer answer lands. Fuse's substring behavior is heuristic — it needs
+    // ≥2 chars (`minMatchCharLength`) and its error/length score quantizes, so a
+    // 3-char query can drop a near-miss both shorter and longer queries keep
+    // (OFC-200) — this guarantees the monotonic floor regardless.
+    for (const id of substringIds(queryTokens)) {
+      ids.add(id);
+    }
+
     // For each matched record, the subset of its own tokens that matched — the
-    // words to highlight, wherever they appear in a displayed name column.
+    // words to highlight, wherever they appear in a displayed name column. A token
+    // counts if it matched a query token by any mechanism (literal/typo/nickname/
+    // phonetic) or as a plain substring (the union above).
     const tokens = new Map<number, Set<string>>();
     for (const id of ids) {
       const matched = new Set<string>();
       for (const token of tokensByRecord.get(id) ?? []) {
-        if (matches.some((match) => tokenMatches(token, match))) {
+        if (
+          matches.some((match) => tokenMatches(token, match)) ||
+          queryTokens.some((qt) => token.includes(qt))
+        ) {
           matched.add(token);
         }
       }

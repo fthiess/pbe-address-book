@@ -222,7 +222,10 @@ export function DirectoryGrid({
     <div
       ref={scrollRef}
       data-testid="directory-scroll"
-      className="overflow-auto rounded-xl border border-border bg-card"
+      // `always-scrollbars` forces classic, always-visible scrollbars so the
+      // horizontal scrollbar stays discoverable when the columns overflow —
+      // overlay scrollbars auto-hide and hid it entirely (OFC-205, see index.css).
+      className="always-scrollbars overflow-auto rounded-xl border border-border bg-card"
       style={{ maxHeight: "calc(100dvh - 13rem)" }}
     >
       {/* autoScroll disabled: a column drag must never scroll the grid (the

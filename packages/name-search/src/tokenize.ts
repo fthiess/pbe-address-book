@@ -15,6 +15,32 @@ const SEPARATORS = /[\s\p{Pd}]+/u;
 const HAS_LETTER = /\p{L}/u;
 
 /**
+ * Atomic Latin letters NFKD cannot fold. NFKD decomposes a *precomposed accent*
+ * (é → e + combining acute, which the combining-mark strip then removes), but
+ * these are single, indivisible code points — the diacritic is baked into the
+ * glyph — so NFKD leaves them untouched and "Søren" would tokenize to "søren",
+ * unreachable by a plain "soren"/"sor" search. Folded here to the conventional
+ * ASCII transliteration so accented and plain spellings share one token (D35,
+ * OFC-200). Keys are lower-case because the fold runs after `toLocaleLowerCase`.
+ */
+const ATOMIC_LATIN_FOLD: Record<string, string> = {
+  ø: "o",
+  æ: "ae",
+  œ: "oe",
+  ß: "ss",
+  ł: "l",
+  đ: "d",
+  ð: "d",
+  þ: "th",
+  ħ: "h",
+  ı: "i",
+  ŋ: "ng",
+  ĸ: "k",
+  ſ: "s",
+};
+const ATOMIC_LATIN = new RegExp(`[${Object.keys(ATOMIC_LATIN_FOLD).join("")}]`, "gu");
+
+/**
  * Fold one raw word to its comparison form: lower-cased, diacritics stripped,
  * and surrounding punctuation (apostrophes, periods, parens) removed. Internal
  * letters are preserved. Returns "" for a word that folds away to nothing.
@@ -24,6 +50,7 @@ export function normalizeToken(raw: string): string {
     .normalize("NFKD")
     .replace(/\p{M}+/gu, "") // strip combining marks (the diacritics NFKD split off)
     .toLocaleLowerCase()
+    .replace(ATOMIC_LATIN, (ch) => ATOMIC_LATIN_FOLD[ch] ?? ch) // fold what NFKD can't (OFC-200)
     .replace(/[^\p{L}\p{N}]+/gu, ""); // drop punctuation, keep letters/digits
 }
 

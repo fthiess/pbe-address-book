@@ -56,4 +56,38 @@
   .dark input[type="date"] {
     color-scheme: dark;
   }
+
+  /* Always-visible, classic (non-overlay) scrollbars on a tagged scroll panel.
+     Overlay scrollbars — the Windows 11 / modern-Chrome default when "Always
+     show scrollbars" is off — auto-hide, which left the Directory's *horizontal*
+     scrollbar effectively undiscoverable for our 60+ audience (OFC-205). Merely
+     defining `::-webkit-scrollbar` opts Chrome out of overlay rendering into the
+     legacy always-present scrollbar; `scrollbar-width`/`scrollbar-color` do the
+     same for Firefox. The 14px track is generous on purpose; the thumb is
+     --muted-foreground over the --card track (≥5.8:1 light, ≥7:1 dark — well past
+     the 3:1 WCAG 1.4.11 non-text floor), inset to a rounded pill by a card-color
+     border so it reads calmly against the panel. */
+  .always-scrollbars {
+    scrollbar-width: auto;
+    scrollbar-color: var(--muted-foreground) transparent;
+  }
+  .always-scrollbars::-webkit-scrollbar {
+    width: 14px;
+    height: 14px;
+  }
+  .always-scrollbars::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .always-scrollbars::-webkit-scrollbar-thumb {
+    background-color: var(--muted-foreground);
+    border-radius: 8px;
+    border: 3px solid var(--card);
+    background-clip: padding-box;
+  }
+  .always-scrollbars::-webkit-scrollbar-thumb:hover {
+    background-color: var(--foreground);
+  }
+  .always-scrollbars::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }

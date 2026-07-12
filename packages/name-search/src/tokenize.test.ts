@@ -13,6 +13,18 @@ describe("tokenize", () => {
     expect(tokenize("Renée")).toEqual(tokenize("Renee"));
   });
 
+  it("folds atomic Latin letters that NFKD does not decompose (OFC-200)", () => {
+    // ø/æ/œ/ß/ł are single code points — not letter + combining mark — so NFKD
+    // leaves them intact and the combining-mark strip can't reach them. They need
+    // an explicit fold, or "Søren" tokenizes to "søren" and a search for "sor"
+    // (or "soren") never finds him. D35 promises accent-insensitive search.
+    expect(tokenize("Søren")).toEqual(["soren"]);
+    expect(tokenize("Kjærgaard")).toEqual(["kjaergaard"]);
+    expect(tokenize("Œuvre")).toEqual(["oeuvre"]);
+    expect(normalizeToken("Straße")).toBe("strasse");
+    expect(normalizeToken("Łukasz")).toBe("lukasz");
+  });
+
   it("drops number-only tokens (class year, Constitution ID) and punctuation", () => {
     // The Canonical Name carries a year and possibly an ID — neither is a name.
     expect(tokenize("William Smyth '84 (#5247)")).toEqual(["william", "smyth"]);

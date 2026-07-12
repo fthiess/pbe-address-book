@@ -37,6 +37,16 @@ describe("highlightRanges (D35)", () => {
     expect(slice("Renée Fournét", highlightRanges("Renée Fournét", "renee"))).toEqual(["Renée"]);
   });
 
+  it("character-marks an atomic-diacritic name from a folded query (OFC-200)", () => {
+    // "Søren" folds to "soren" (ø is atomic, not a combining mark), so a plain
+    // "sor" must character-mark S-ø-r — the offset map carries the folded hit
+    // back onto the accented display chars.
+    expect(slice("Søren Berg", highlightRanges("Søren Berg", "sor"))).toEqual(["Sør"]);
+    expect(slice("Søren Berg", highlightRanges("Søren Berg", "soren"))).toEqual(["Søren"]);
+    // A length-expanding fold (ß → ss) still maps both marks onto the single glyph.
+    expect(slice("Straße 7", highlightRanges("Straße 7", "strasse"))).toEqual(["Straße"]);
+  });
+
   it("does NOT whole-word-mark without a worker match (pre-ready: substring only)", () => {
     // 'bill' is not a substring of 'William', and no matchedTokens were supplied.
     expect(highlightRanges("William Smyth '84", "bill")).toEqual([]);

@@ -49,13 +49,13 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Directory page
 
-- Columns & grid: **D33** → **N16** (resizable, keyboard-operable) → **N27** (double-click auto-fit); **N17** (labels/status treatments), **N22** (4-digit Class year), **N15** (column lens mirrored to URL); sort **D34**; virtualization & thumbnail prefetch **D42** (images app-served per D126).
+- Columns & grid: **D33** → **N16** (resizable, keyboard-operable) → **N27** (double-click auto-fit); **N17** (labels/status treatments), **N22** (4-digit Class year), **N15** (column lens mirrored to URL); sort **D34**; virtualization & thumbnail prefetch **D42** (images app-served per D126); horizontal scrollbar forced always-visible **N84** (`.always-scrollbars`, classic non-overlay — OFC-205).
 - Behavior: **D36** (deceased default-hidden, dual marker), **D38** (filter panel; filterable ⟺ visible) + **N51** (always returns collapsed) + **N81** (one-sided open-bound year/ID ranges), **D39** (stars) + **N80** (masthead clean-slate clears Starred-only), **D40** (row opens the Profile page), **N26** (short search placeholder).
 - Manager/admin action bar & selection: D41 (bulk-delete since dropped by D100; exports per D90/D92) → **N79** (selection persists across search/filter/sort/navigation — D41's clear-on-view-change reversed; a per-instance in-memory bucket beyond D31's three; select-all unions the view; Export spans the whole selection; explicit Clear).
 
 ## Name search
 
-- D35 (fuzzy + phonetic over tokenized names) → D66 (A/B criterion) → **N19** (Beider-Morse via bmpm) → **D110** (Web Worker; memo dropped) → **D123** (curated nickname expansion); package + highlighting **N20**.
+- D35 (fuzzy + phonetic over tokenized names) → D66 (A/B criterion) → **N19** (Beider-Morse via bmpm) → **D110** (Web Worker; memo dropped) → **D123** (curated nickname expansion) → **N83** (fold atomic Latin letters NFKD can't — ø/æ/ß/…; worker result ⊇ substring match, so a query never drops a hit it once showed); package + highlighting **N20**.
 
 ## Profile page
 
