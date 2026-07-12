@@ -1,7 +1,13 @@
+import { APP_VERSION } from "../lib/version.js";
+
 /**
  * The persistent privacy-notice footer (D116). It is shown on every page, a
  * standing reminder that Book is members-only and that what a brother sees is
  * governed by each member's own privacy settings. Intentionally calm and brief.
+ *
+ * It also carries a **discreet build id** (the deployed commit SHA), so an operator
+ * can read the running version straight off any page — handy for support and for
+ * spotting a stale cached tab (it is the same id the OFC-63 update toast compares).
  */
 export function PrivacyFooter() {
   return (
@@ -11,6 +17,7 @@ export function PrivacyFooter() {
         shown only to fellow brothers and only as each member has chosen to share them. Please keep
         what you find here within the brotherhood.
       </p>
+      <p className="mt-2">Version {APP_VERSION}</p>
     </footer>
   );
 }

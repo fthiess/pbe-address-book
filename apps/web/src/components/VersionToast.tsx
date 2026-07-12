@@ -72,7 +72,10 @@ export function VersionToast() {
     // Positioned a fifth of the way down (not the bottom edge, which was easy to
     // miss) so it's noticed without covering the masthead controls.
     <output className="fixed inset-x-0 top-[20%] z-50 flex justify-center px-4">
-      <div className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-border bg-card px-4 py-3 text-card-foreground shadow-[var(--shadow-popover-strong)]">
+      {/* The brand **amber** — the same tokens as the D117 info banner — so the notice
+          reads as an announcement rather than blending into the page (both themes,
+          AA per the banner's own use). */}
+      <div className="flex items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--gold-border-2)] bg-[var(--gold-bg-2)] px-4 py-3 text-[var(--gold-text-strong)] shadow-[var(--shadow-popover-strong)]">
         <span className="text-sm">A new version of PBE Address Book is available.</span>
         <button
           type="button"
@@ -85,7 +88,7 @@ export function VersionToast() {
           type="button"
           onClick={() => setDismissed(true)}
           aria-label="Dismiss"
-          className="inline-flex size-11 items-center justify-center rounded-lg text-lg text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="inline-flex size-11 items-center justify-center rounded-lg text-lg text-[var(--gold-text-strong)] hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span aria-hidden="true">×</span>
         </button>
