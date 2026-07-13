@@ -133,3 +133,13 @@ images, and tester link (the `STAGING_AUTOSEED` repo variable), so staging
 never drifts from the generator. One landmine documented in
 [`infra/README.md`](infra/README.md): the Firebase CLI deploy step is pinned to
 **Node 20** to dodge a Node-24 undici/STS bug — don't "fix" it.
+
+## License
+
+The source code is released under the **MIT License** ([`LICENSE`](LICENSE)) —
+you're welcome to use, modify, and redistribute it. The MIT grant covers the
+**code only**. The Phi Beta Epsilon names and marks — "Phi Beta Epsilon,"
+"PBE," the crest, the triangle device, and the gold leaf — and the brand-artwork
+asset files that depict them are trademarks and brand assets of **Phi Beta
+Epsilon Corporation**, are reserved, and are **not** licensed for reuse. See
+[`TRADEMARKS.md`](TRADEMARKS.md) for the specifics.

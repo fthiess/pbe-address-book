@@ -135,6 +135,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Process & scope
 
 - **D1** (doc homes), **D11** (MVP line; → D27, D60); re-plans **N30** (Phase 4), **N39** (4c split), **N59** (Phase 5.5 batches), **N67** (5b split), **N62** (Phase 7.5).
+- Licensing: **D127** (repo is MIT — code only; PBE names, marks + brand-artwork files reserved to Phi Beta Epsilon Corporation).
 
 ---
 

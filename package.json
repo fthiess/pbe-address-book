@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "description": "PBE Address Book (Book) — a members-only PBE alumni directory.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "engines": {
     "node": ">=24"
   },
