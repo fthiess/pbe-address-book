@@ -6,6 +6,7 @@ import {
   type Link,
   type PrivacyFlags,
   type Profile,
+  type Role,
 } from "@pbe/shared";
 import {
   FIRST_NAMES,
@@ -251,6 +252,24 @@ function makeDeceased(rng: Random, classYear: number | null): DeceasedInfo {
   return deceased;
 }
 
+/**
+ * A deterministic scatter of staff roles so the fake Directory has managers and
+ * administrators to filter for and display (OFC-139/OFC-199). Assigned purely from
+ * the record **index** — never the PRNG — so adding it leaves the generated stream
+ * byte-stable (every downstream random draw is unchanged). The planted collision
+ * pair (`i < COLLISION_COUNT`) stays plain brothers; a dataset of ≥ 10 records then
+ * carries ~2 admins and ~6 managers, mirroring the real org's handful of staff.
+ */
+function roleForIndex(i: number): Role {
+  if (i === COLLISION_COUNT || i === COLLISION_COUNT + 1) {
+    return "admin";
+  }
+  if (i >= COLLISION_COUNT + 2 && i < COLLISION_COUNT + 8) {
+    return "manager";
+  }
+  return "brother";
+}
+
 export function generateProfiles(options: GenerateOptions = {}): Profile[] {
   const count = options.count ?? DEFAULT_COUNT;
   const rng = new Random(options.seed ?? DEFAULT_SEED);
@@ -285,6 +304,7 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
       firstName,
       lastName,
       classYear,
+      role: roleForIndex(i),
       deceased: isDeceased ? makeDeceased(rng, classYear) : { isDeceased: false },
       debrothered: isDebrothered
         ? { isDebrothered: true, debrotheredAt: timestampFrom(rng) }

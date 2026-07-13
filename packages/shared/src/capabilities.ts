@@ -81,6 +81,7 @@ export const WRITE_RULE: Record<keyof Profile, WriteRule> = {
   // Owned by dedicated server actions, not PATCH.
   deceased: "protected", // mark-deceased flow (snapshots consent, forces flags off — §8)
   debrothered: "protected", // PUT …/debrothered (Ghost delete/recreate lifecycle — D115)
+  role: "protected", // PUT …/role — the change-role action only, never PATCH (OFC-139)
   hasHeadshot: "protected", // headshot upload/remove pipeline (pointer-last — §7)
   headshotVersion: "protected", // ditto; opaque server-set token (R16)
 

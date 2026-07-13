@@ -111,7 +111,8 @@ async function mockAdmin(page: Page): Promise<{ del: () => number }> {
   };
   await page.route("**/api/me", (route) => route.fulfill({ json: admin }));
   await page.route("**/api/profiles", (route) => route.fulfill({ json: LIST }));
-  await page.route(/\/api\/users\/\d+\/role$/, (route) =>
+  // Change-role re-pathed to PUT /api/profiles/:id/role (OFC-139/D128).
+  await page.route(/\/api\/profiles\/\d+\/role$/, (route) =>
     route.fulfill({ json: { id: 5301, role: "brother" } }),
   );
   await page.route(/\/api\/profiles\/\d+$/, (route) => {

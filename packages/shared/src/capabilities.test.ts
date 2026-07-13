@@ -41,6 +41,8 @@ describe("WRITE_RULE table", () => {
     expect(WRITE_RULE.adminNote).toBe("staff");
     expect(WRITE_RULE.deceased).toBe("protected");
     expect(WRITE_RULE.debrothered).toBe("protected");
+    // Role is protected: set only by the change-role action, never via PATCH (OFC-139).
+    expect(WRITE_RULE.role).toBe("protected");
     expect(WRITE_RULE.headshotVersion).toBe("protected");
     expect(WRITE_RULE.lastVerifiedDate).toBe("protected");
     expect(WRITE_RULE.lastModified).toBe("protected");

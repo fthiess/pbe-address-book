@@ -4,15 +4,14 @@ import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { ImageStore } from "../data/images.js";
 import type { ProfileStore } from "../data/profiles.js";
-import { type AdminUserStore, LastAdminError } from "../data/users.js";
+import type { AdminUserStore } from "../data/users.js";
 import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { SessionService } from "../identity/session-store.js";
-import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
+import { writeRateLimit } from "../security/rate-limit.js";
 import {
   authorizePrivileged,
+  commitStatusWrite,
   mergeProfile,
-  parseProfileId,
-  requireEffectiveAdmin,
   revokeSessionsBestEffort,
 } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
@@ -24,9 +23,12 @@ import type { Clock } from "./profiles.js";
  *    **Ghost-first** (D96/D98), scrubbing inbound references (`bigBrotherId`,
  *    `users.stars`) first so no dangling pointer survives, then the idempotent
  *    Book-side deletes (GCS objects → `users` doc → `profiles` doc). API-SPEC §4.
- *  - `PUT /api/users/{id}/role` — the Change-role function with the server-enforced
- *    last-admin invariant and create-if-absent for a never-signed-in brother
- *    (N44). API-SPEC §5.
+ *  - `PUT /api/profiles/{id}/role` — the Change-role function with the
+ *    server-enforced last-admin invariant. Re-pathed from `…/users/{id}/role`
+ *    once `role` moved onto the profile (OFC-139, superseding N44/N50): it is now
+ *    a protected-field profile write (like `…/deceased` / `…/debrothered`) that
+ *    advances the cache token, and the invariant reads {@link ProfileCache.adminCount}.
+ *    API-SPEC §5.
  *
  * Both authorize at the caller's **effective** admin role (a "View as manager/
  * brother" admin cannot delete or change roles — N31), via the shared
@@ -39,7 +41,7 @@ export interface AdminRouteDeps {
   /** Session revocation on delete + role change (OFC-147). */
   sessionStore: SessionService;
   imageStore: ImageStore;
-  /** The admin `users` operations: role change (with the invariant) + delete scrubs. */
+  /** The admin `users`-collection delete scrubs (stars removal, user-doc delete, orphan audit). */
   adminUsers: AdminUserStore;
   /** Ghost-first member lifecycle (N41); a succeed-and-log stub until Phase 5. */
   ghostLifecycle: GhostLifecycle;
@@ -49,41 +51,7 @@ export interface AdminRouteDeps {
 
 export function registerAdminRoutes(app: FastifyInstance, deps: AdminRouteDeps): void {
   registerDelete(app, deps);
-  registerRoleRead(app, deps);
   registerRole(app, deps);
-}
-
-/**
- * `GET /api/users/{id}/role` — read a brother's current role (admin only; API-SPEC
- * §5). Backs the admin Role control so its segmented control can highlight the
- * active role. Returns `brother` when the brother has no `users` document yet (a
- * never-signed-in brother — the role a first sign-in would give, R20/N44). A read,
- * so it is not audited; `404` only when no **profile** with that id exists.
- */
-function registerRoleRead(app: FastifyInstance, deps: AdminRouteDeps): void {
-  const { cache, gate, adminUsers } = deps;
-  app.get(
-    "/api/users/:id/role",
-    { preHandler: gate, config: readRateLimit() },
-    async (request, reply) => {
-      // Admin-only at the caller's **effective** role (a "View as" step-down loses it,
-      // N31), via the shared guard (OFC-185). No denial audit passed — a role *read*'s
-      // denial is not audited, consistent with the pre-existing behavior here.
-      if (requireEffectiveAdmin(request, reply) === null) {
-        return reply;
-      }
-      const id = parseProfileId(request);
-      if (id === null) {
-        return reply.code(400).send({ error: "bad_request", message: "Invalid profile id." });
-      }
-      if (!cache.getById(id)) {
-        return reply.code(404).send({ error: "not_found", message: "No such brother." });
-      }
-      return reply
-        .header("Cache-Control", "no-store")
-        .send({ id, role: await adminUsers.getRole(id) });
-    },
-  );
 }
 
 /**
@@ -119,10 +87,11 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
 
       // Last-admin invariant (D106; OFC-134): deleting the only remaining admin would
       // lock the org out of every admin function — the same lockout the role-change
-      // guard prevents — and the UI deliberately doesn't show roles, so an admin can't
-      // see they're removing the last one. Checked BEFORE the Ghost-first step so a
-      // rejection leaves Ghost, GCS, and Book untouched.
-      if (await adminUsers.isLastAdmin(id)) {
+      // guard prevents. Read from the authoritative in-memory dataset now that `role`
+      // lives on the profile (OFC-139): this brother is the last admin iff their stored
+      // record is `admin` and the cache holds exactly one admin. Checked BEFORE the
+      // Ghost-first step so a rejection leaves Ghost, GCS, and Book untouched.
+      if (stored.role === "admin" && cache.adminCount() === 1) {
         audit.record(
           { action: "profile.delete", actorId, targetId: id, outcome: "denied", trace },
           now.toISOString(),
@@ -207,26 +176,27 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
 const ROLES: ReadonlySet<string> = new Set<Role>(["brother", "manager", "admin"]);
 
 /**
- * `PUT /api/users/{id}/role` — the admin Change-role function (API-SPEC §5; D51/
- * N44). The target must be an existing **profile** (404 otherwise); a missing
- * `users` doc is created with the given role (N44), so a never-signed-in brother
- * is promotable. The last-admin invariant is enforced server-side inside the
- * store's transaction (`409 last_admin`). Audited with the before/after role
- * (D106).
+ * `PUT /api/profiles/{id}/role` — the admin Change-role function (API-SPEC §5;
+ * D51/D106; re-pathed from `…/users/{id}/role` by OFC-139, superseding N44/N50).
+ * The target must be an existing **profile** (404 otherwise). Now that `role`
+ * lives on the profile it is a **protected-field profile write**, committed like
+ * mark-deceased / de-brother through {@link commitStatusWrite} so the cache token
+ * advances in lock-step. The last-admin invariant reads the authoritative
+ * in-memory admin count ({@link ProfileCache.adminCount}) rather than a Firestore
+ * `users` query: a demotion of the sole admin is rejected `409 last_admin`.
+ * Audited with the before/after role (D106).
  */
 function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
-  const { cache, gate, sessionStore, adminUsers, audit, clock } = deps;
+  const { cache, gate, store, sessionStore, audit, clock } = deps;
   app.put(
-    "/api/users/:id/role",
+    "/api/profiles/:id/role",
     { preHandler: gate, config: writeRateLimit() },
     async (request, reply) => {
-      // The `:id` addresses a brother; existence is checked against `profiles`
-      // (N44), which is exactly what `authorizePrivileged` verifies against the cache.
       const ctx = authorizePrivileged(request, reply, cache, audit, clock, "role.change", "admin");
       if (ctx === null) {
         return reply;
       }
-      const { actorId, id, trace } = ctx;
+      const { actorId, id, stored, trace } = ctx;
 
       const role = (request.body as { role?: unknown } | null)?.role;
       if (typeof role !== "string" || !ROLES.has(role)) {
@@ -237,29 +207,49 @@ function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
       }
 
       const now = clock();
-      let before: Role;
-      try {
-        ({ before } = await adminUsers.setRole(id, role as Role));
-      } catch (error) {
-        if (error instanceof LastAdminError) {
-          return reply.code(409).send({ error: "last_admin" });
-        }
-        throw error;
+      // Role now lives on the profile (concrete in the cache — created records are
+      // stamped `brother`, hydrated ones normalized), so the prior role is simply the
+      // stored record's: no separate read, no create-if-absent (the profile always
+      // exists, checked above). A same-role reassignment is a no-op.
+      const before: Role = stored.role;
+      const changed = role !== before;
+
+      // Last-admin invariant (D51/D106): a demotion that would leave zero admins is
+      // rejected. Read from the in-memory dataset (OFC-139) — this is the sole admin
+      // iff the stored record is `admin` and the cache holds exactly one. The narrow
+      // check-then-write race is the same one the delete path accepts as negligible
+      // under the single-instance model (D83).
+      if (changed && before === "admin" && role !== "admin" && cache.adminCount() === 1) {
+        return reply.code(409).send({ error: "last_admin" });
       }
 
-      // Revoke the target's live sessions when the role actually changed (OFC-147):
-      // the role is snapshotted on the session, so without this a demoted admin
-      // keeps admin powers — and could re-promote themselves — until the 4-hour cap
-      // (D22). The next request re-auths through the bridge and picks up the new
-      // role. A no-op reassignment (same role) touches nothing. This includes the
-      // admin demoting themselves (legal when other admins remain): their own
-      // session is torn down, this response still completes, and their next action
-      // re-auths silently. Best-effort (OFC-146 review): a transient revocation
-      // failure logs and degrades to the D22 cap rather than dropping the audit.
-      const sessionsRevoked =
-        before === role
-          ? 0
-          : await revokeSessionsBestEffort(sessionStore, id, { action: "role.change", actorId });
+      // Only a real change writes and revokes; a no-op reassignment does neither (but
+      // is still audited, with sessionsRevoked 0, for OFC-147 parity).
+      let sessionsRevoked: number | null = 0;
+      if (changed) {
+        // Commit as a protected-field profile write (advances the cache token in
+        // lock-step, tolerating a concurrent PATCH — OFC-125/136); `lastModified` is
+        // stamped like the other status writes.
+        await commitStatusWrite(
+          store,
+          cache,
+          id,
+          stored,
+          { role: role as Role, lastModified: now.toISOString() },
+          [],
+        );
+        // Revoke the target's live sessions (OFC-147): the role is snapshotted on the
+        // session, so without this a demoted admin keeps admin powers — and could
+        // re-promote themselves — until the 4-hour cap (D22). The next request re-auths
+        // and picks up the new role. This includes an admin demoting themselves (legal
+        // when other admins remain): their own session is torn down, this response still
+        // completes, and their next action re-auths silently. Best-effort (OFC-146): a
+        // transient failure logs and degrades to the cap.
+        sessionsRevoked = await revokeSessionsBestEffort(sessionStore, id, {
+          action: "role.change",
+          actorId,
+        });
+      }
 
       audit.record(
         {

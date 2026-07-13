@@ -58,6 +58,51 @@ describe.skipIf(!hasEmulator)("ProfileCache.hydrateFromFirestore (emulator)", ()
 });
 
 describe.skipIf(!hasEmulator)(
+  "ProfileCache.hydrateFromFirestore — role normalization (OFC-139)",
+  () => {
+    let db: Firestore;
+
+    beforeAll(async () => {
+      if (getApps().length === 0) {
+        initializeApp({ projectId: "demo-pbe-book" });
+      }
+      db = getFirestore();
+
+      // A doc that OMITS role (the common case — the initial load writes role only
+      // for non-brothers), a doc with an explicit staff role, and a doc with an
+      // unrecognized role value (must fail closed to brother, least privilege).
+      const { role: _role, ...roleless } = makeProfile({ id: 5001 });
+      await db.collection("profiles").doc("5001").set(roleless);
+      await db
+        .collection("profiles")
+        .doc("5002")
+        .set(makeProfile({ id: 5002, role: "admin" }));
+      const bad = { ...makeProfile({ id: 5003 }) } as Record<string, unknown>;
+      bad.role = "superuser";
+      await db.collection("profiles").doc("5003").set(bad);
+    });
+
+    afterAll(async () => {
+      const snapshot = await db.collection("profiles").get();
+      const batch = db.batch();
+      for (const doc of snapshot.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+    });
+
+    it("normalizes a missing or unrecognized stored role to brother, preserving explicit roles", async () => {
+      const cache = new ProfileCache();
+      await cache.hydrateFromFirestore(db);
+      expect(cache.getById(5001)?.role).toBe("brother"); // omitted → brother
+      expect(cache.getById(5002)?.role).toBe("admin"); // explicit staff role preserved
+      expect(cache.getById(5003)?.role).toBe("brother"); // unrecognized → brother (fail closed)
+      expect(cache.adminCount()).toBe(1);
+    });
+  },
+);
+
+describe.skipIf(!hasEmulator)(
   "ProfileCache.hydrateFromFirestore — malformed records (OFC-91)",
   () => {
     let db: Firestore;

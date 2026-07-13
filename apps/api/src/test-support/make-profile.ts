@@ -21,6 +21,7 @@ export function makeProfile(overrides: Partial<Profile> = {}): Profile {
     lastName: "Smyth",
     classYear: 1984,
     email: "james.smyth@example.test",
+    role: "brother",
     deceased: { isDeceased: false },
     debrothered: { isDebrothered: false },
     hasHeadshot: false,

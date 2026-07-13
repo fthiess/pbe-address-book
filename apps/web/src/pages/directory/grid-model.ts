@@ -35,6 +35,7 @@ export type ColumnKey =
   | "fullName"
   | "mugName"
   | "constitutionId"
+  | "role"
   // Restricted, manager/administrator only (§5.6.1, off by default):
   | "allowNewsletterEmail"
   | "allowShareWithMITAA"
@@ -281,6 +282,21 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     display: (p) => formatConstitutionId(p.id),
     sortValue: (p) => p.id,
   },
+  role: {
+    key: "role",
+    // The brother's Book role (public since OFC-139; OFC-199 column). Off by
+    // default, selectable by **any** role — the staff roles are official, not
+    // secret. Ordinary brothers render as an em-dash rather than a wall of
+    // "Brother", so the column reads at a glance as "who's staff".
+    label: "Role",
+    group: "optional",
+    width: 128,
+    align: "start",
+    pinned: false,
+    sortable: true,
+    display: (p) => roleLabel(p.role),
+    sortValue: (p) => roleRank(p.role),
+  },
   allowNewsletterEmail: {
     key: "allowNewsletterEmail",
     label: "Newsletter",
@@ -336,6 +352,21 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
 /** Yes/No rendering for a boolean consent column (text, never colour alone — D32). */
 function yesNo(value: boolean | undefined): string {
   return value === undefined ? EMPTY : value ? "Yes" : "No";
+}
+
+/** The Role column's cell: staff labelled, an ordinary brother an em-dash (OFC-199). */
+function roleLabel(role: Role | undefined): string {
+  return role === "admin" ? "Administrator" : role === "manager" ? "Manager" : EMPTY;
+}
+
+/**
+ * Sort rank for the Role column: admins above managers above everyone else.
+ * Ordinary brothers (and an absent role) are `null` so they sort last in both
+ * directions like every other "absent/withheld" value, keeping staff together at
+ * the top when sorting by Role.
+ */
+function roleRank(role: Role | undefined): number | null {
+  return role === "admin" ? 2 : role === "manager" ? 1 : null;
 }
 
 /** Sort rank for a boolean: false < true, with undefined (withheld) last. */

@@ -197,6 +197,24 @@ export interface Profile {
   /** Admin-only; hides the record from brothers (D115). */
   debrothered: DebrotherInfo;
 
+  // --- Access ---
+  /**
+   * The brother's Book role (D19; DATABASE-SCHEMA §3.1/§6.1). Moved onto the
+   * profile from the private `users` collection (OFC-139): a role is a property
+   * *of the brother*, like class year — not per-viewer state (only `stars` is
+   * genuinely per-viewer and stays in `users`). **Public** on read — every
+   * brother may see who holds a staff role, which is official and not secret
+   * (OFC-199) — and **protected** on write, set only by the change-role action,
+   * never through PATCH.
+   *
+   * Stored *optionally* in Firestore: a document that omits `role` is a
+   * `brother`, so the initial data load writes `role` only for the non-brothers.
+   * The single Firestore→`Profile` hydration boundary normalizes a missing value
+   * to `"brother"`, so the in-memory value is always concrete — no authorization
+   * path ever sees an undefined role.
+   */
+  role: Role;
+
   // --- Photos (binaries live in GCS, §7; only metadata is stored here) ---
   hasHeadshot: boolean;
   /** Opaque cache-busting token for the immutable headshot/thumbnail URLs (R16). */

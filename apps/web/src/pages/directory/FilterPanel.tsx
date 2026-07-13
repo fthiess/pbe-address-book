@@ -7,6 +7,7 @@ import {
   type FilterOption,
   type FilterOptions,
   type PresenceFilter,
+  type StaffFilter,
   type VerificationFilter,
   canUseStaffFilters,
   parseNumericGrammar,
@@ -118,6 +119,7 @@ export function FilterPanel({
               value={filters.city}
               onChange={(v) => setFilter("city", v)}
             />
+            <StaffSelect value={filters.staff} onChange={(v) => setFilter("staff", v, "push")} />
           </div>
 
           {staff && (
@@ -394,6 +396,35 @@ function MultiSelectFilter({
           )}
         </fieldset>
       </details>
+    </Field>
+  );
+}
+
+/**
+ * The Staff filter (OFC-199) — an all-brothers control (role is public, OFC-139),
+ * so it lives in the top section, not the manager/admin block. A single "Any /
+ * Managers and Administrators" toggle: with only ~6–8 staff, a combined filter is
+ * simpler than separate manager/admin options and no less useful.
+ */
+function StaffSelect({
+  value,
+  onChange,
+}: {
+  value: StaffFilter;
+  onChange: (value: StaffFilter) => void;
+}) {
+  const id = useId();
+  return (
+    <Field label="Staff" htmlFor={id} onClear={value ? () => onChange("") : undefined}>
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value as StaffFilter)}
+        className={inputClass}
+      >
+        <option value="">Any</option>
+        <option value="staffOnly">Managers and Administrators</option>
+      </select>
     </Field>
   );
 }

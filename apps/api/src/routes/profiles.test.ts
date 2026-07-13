@@ -1003,6 +1003,11 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     // New-brother status defaults are server-forced.
     expect(stored?.hasHeadshot).toBe(false);
     expect(stored?.deceased.isDeceased).toBe(false);
+    // Role enters the cache CONCRETE as `brother` (D128 invariant): the create path
+    // commits via `applyCreate`, which does not run the hydration normalization, so a
+    // missing role here would leave `undefined` in the cache and mis-audit a later
+    // "set to Brother" no-op as a real change.
+    expect(stored?.role).toBe("brother");
     await app.close();
   });
 

@@ -95,7 +95,6 @@ function buildProvider(
   publicKey: KeyObject,
   cache: ProfileCache,
   nonceStore: NonceService,
-  ensureRole: "brother" | "manager" | "admin" = "brother",
 ): GhostIdentityProvider {
   return new GhostIdentityProvider({
     keyResolver: resolverFor(publicKey),
@@ -103,16 +102,18 @@ function buildProvider(
     audience: AUDIENCE,
     nonceStore,
     cache,
-    ensureUser: async () => ({ role: ensureRole }),
+    // Role now comes from the resolved profile (OFC-139), not this call; ensureUser
+    // only guarantees the private `users` doc (stars) exists.
+    ensureUser: async () => ({ stars: [] }),
   });
 }
 
 describe("GhostIdentityProvider.createSession", () => {
   it("verifies a valid token, consumes the nonce, and resolves the email", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL, role: "admin" });
     const nonce = singleUseNonce("good-nonce");
-    const provider = buildProvider(publicKey, cache, nonce, "admin");
+    const provider = buildProvider(publicKey, cache, nonce);
 
     const session = await provider.createSession({
       token: makeToken({ privateKey }),
@@ -121,7 +122,7 @@ describe("GhostIdentityProvider.createSession", () => {
 
     expect(session.identity.profileId).toBe(5001);
     expect(session.identity.email).toBe(LINKED_EMAIL);
-    expect(session.identity.role).toBe("admin"); // from ensureUser
+    expect(session.identity.role).toBe("admin"); // snapshotted from the profile (OFC-139)
     expect(session.expiresAt).toBeGreaterThan(Date.now());
     expect(nonce.consumedCount).toBe(1);
   });

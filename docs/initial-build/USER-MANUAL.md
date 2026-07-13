@@ -26,6 +26,8 @@ The **Directory** is Book's home page: a searchable, sortable list of every brot
 
 **Filtering.** The filter panel lets you narrow the list — by class year, major, city, state or province, country, and (for managers and admins) a few additional fields. Filters combine sensibly: choosing two majors shows brothers in *either*, while also setting a class-year range shows only brothers who match *both*. The class-year filter is more capable than it looks — it accepts single years, ranges, and lists together (for example, `1980-1989, 1992`); the page's own help explains this where you type.
 
+**Finding a manager or administrator.** A few brothers serve as Book's managers and administrators — the people to contact for help with Book, or to tell us a brother's information is out of date or that a brother has passed. The filter panel has a **Staff** setting that narrows the list to just those brothers. You can also add an optional **Role** column to the list: it shows "Manager" or "Administrator" beside those brothers and a small dash (—) for everyone else, so you can see at a glance who to reach. Both are open to every brother — staff are official points of contact, not a secret. (Book remembers your column choices, so the Role column stays off until you add it.)
+
 **Sorting.** Click a column heading to sort by that column; click again to reverse it. Whatever you sort by, brothers with the same value fall into name order, so the list never looks arbitrary.
 
 **Stars.** The star in each row is yours alone — a private bookmark. Star the brothers you look up often, then turn on **Starred only** to see just them. Your stars are visible only to you, and the starred view shows your starred brothers whether or not they're living.

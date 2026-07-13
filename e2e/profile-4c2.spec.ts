@@ -84,11 +84,9 @@ async function mockAdminViewing(page: Page, record = targetRecord()) {
       },
     });
   });
-  await page.route(/\/api\/users\/\d+\/role$/, (route) => {
-    // GET is the Role control reading the current role on mount; PUT applies a change.
-    if (route.request().method() === "GET") {
-      return route.fulfill({ json: { id: 5247, role: "brother" } });
-    }
+  // Change-role is now PUT /api/profiles/:id/role (OFC-139/D128); the control reads
+  // the current role off the record it already holds, so there is no GET to mock.
+  await page.route(/\/api\/profiles\/\d+\/role$/, (route) => {
     calls.role += 1;
     const body = JSON.parse(route.request().postData() ?? "{}");
     return route.fulfill({ json: { id: 5247, role: body.role } });

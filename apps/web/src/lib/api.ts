@@ -404,28 +404,18 @@ export async function deleteProfile(
 }
 
 /**
- * Read a brother's current role (`GET /api/users/:id/role`, admin only; API-SPEC
- * §5) — so the admin Role control can show which role is active. `brother` for a
- * never-signed-in brother.
- */
-export async function getUserRole(id: number): Promise<Role> {
-  const response = await fetch(`/api/users/${id}/role`, { credentials: "same-origin" });
-  if (!response.ok) {
-    throw await asError(response);
-  }
-  return (await response.json()).role;
-}
-
-/**
- * Change a brother's role (`PUT /api/users/:id/role`, admin only; API-SPEC §5;
- * D51/N44). A `409 last_admin` — the only remaining admin cannot be demoted — is
- * surfaced as data so the UI can explain it rather than throw.
+ * Change a brother's role (`PUT /api/profiles/:id/role`, admin only; API-SPEC §5;
+ * D51/D106; re-pathed by OFC-139 now that `role` lives on the profile). A `409
+ * last_admin` — the only remaining admin cannot be demoted — is surfaced as data
+ * so the UI can explain it rather than throw. The Role control reads the *current*
+ * role straight off the profile record it already holds (`record.role`), so no
+ * separate role fetch is needed.
  */
 export async function changeRole(
   id: number,
   role: Role,
 ): Promise<{ status: "ok"; role: Role } | { status: "last_admin" }> {
-  const response = await fetch(`/api/users/${id}/role`, {
+  const response = await fetch(`/api/profiles/${id}/role`, {
     method: "PUT",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
