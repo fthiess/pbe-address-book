@@ -602,6 +602,16 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
       const next = mergeNext(stored, set, remove);
       const changedSet = new Set(changed);
 
+      // Last-admin invariant (OFC-241): if this edit would strip the **sole usable
+      // admin's** usable email, they become unusable and the org is left with zero
+      // usable admins. Role/deceased/de-brothered are `protected` and can't ride PATCH,
+      // so email is the only usability factor an edit can change — checked on the
+      // *resulting* record, before the Ghost push / write, so an unrelated edit is
+      // unaffected.
+      if (cache.isSoleUsableAdmin(stored) && !hasUsableEmail(next.email)) {
+        return reply.code(409).send({ error: "last_admin" });
+      }
+
       // 7. Ghost-first-gated push → conditional write → cache read-your-writes →
       //    audit, all under the shared per-record lock (N65; OFC-220/226) so no
       //    concurrent token-advancing write can commit between the Ghost push and

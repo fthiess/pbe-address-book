@@ -29,12 +29,13 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 - Ghost bridge: D20 → **D104** (alg-pin, nonce, redirect allowlist) → **D105** (Ghost accepted as single point of compromise); implementation **N1** (RS512, Node crypto), **N2** (one live relay, hardcoded callback allowlist).
 - Sessions: D22 (4-hour cap) → **D109** (non-destructive 401/403 recovery) → **D125** (sessions + nonce persisted in Firestore) → **N53** (active revocation on trust withdrawal) → **N76** (central 401 interceptor → signed-out; carve-out: the edit-form Save path keeps the form per D109); cookie must be named `__session` **N5**; JWKS persisted across cold starts **D87**.
+- Gate liveness check: **OFC-147** (present-and-de-brothered session → 401 + destroy) → **D130** (also a role-**downgrade** re-check: live cache role below the session snapshot → 401 + destroy, OFC-239; the free per-request backstop to N53's active revocation, now that role is cache-resident per D128).
 - Identity: **D21** (IdentityProvider seam); **D97** (email uniqueness via in-memory index; alias clause dropped by N65); **N8** (de-brothered sign-in denied).
 
 ## Permissions & visibility projection
 
 - Read projection: D5 → D16 → **D19** (three roles, three tiers) → **D82**; exhaustive keyof-Profile tables **N9**; staff-internal classes **N10**; whole-record omission **D115** (de-brothered) + **D124** (unlisted); `role` on the profile, **public** — **D128** (reverses OFC-139's staff-only; stored optional, normalized→brother at hydration).
-- Write side: **D106** (field allowlist, object predicate, last-admin invariant) + **N70** (managers can't write privacy-hidden toggle fields); role write **D128** (re-pathed to `PUT /api/profiles/{id}/role`, protected field, last-admin over `ProfileCache.adminCount`; supersedes N44/N50's `users`-doc model) → **D129** (last-admin counts only *usable* admins — `isUsableAdmin`: living, non-de-brothered, has usable email; nominal-only admins were an org-lockout hole, OFC-241).
+- Write side: **D106** (field allowlist, object predicate, last-admin invariant) + **N70** (managers can't write privacy-hidden toggle fields); role write **D128** (re-pathed to `PUT /api/profiles/{id}/role`, protected field, last-admin over `ProfileCache.adminCount`; supersedes N44/N50's `users`-doc model) → **D129** (last-admin counts only *usable* admins — `isUsableAdmin`: living, non-de-brothered, has usable email; nominal-only admins were an org-lockout hole, OFC-241) → **D130** (enforce the usable-admin invariant across *all five* removal/transition paths — role/delete/mark-deceased/de-brother/PATCH-email — via `cache.isSoleUsableAdmin`; a promote-guard rejects making an ineligible brother admin; and the session gate 401s a role **downgrade** re-check, OFC-239).
 - Impersonation: **N31** (admins step *down* a role; server-side effective role).
 
 ## Privacy & consent

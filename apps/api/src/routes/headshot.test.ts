@@ -58,13 +58,23 @@ function png(size = 400): Promise<Buffer> {
 
 async function buildHeadshotServer() {
   const cache = new ProfileCache();
+  // Each record's cached role is `admin` so no session role used below is a *downgrade*
+  // relative to it — otherwise the gate's role-downgrade liveness check (OFC-239) 401s
+  // the actor. (These tests drive owner/manager/admin sessions against these ids; role
+  // itself is irrelevant to the headshot behavior under test.)
   await cache.load([
-    // 5001: a brother/owner with a prior verification stamp (to prove no coupling).
-    makeProfile({ id: 5001, lastVerifiedDate: "2026-01-01", verifiedBy: 5001 }),
+    // 5001: an owner with a prior verification stamp (to prove no coupling).
+    makeProfile({ id: 5001, lastVerifiedDate: "2026-01-01", verifiedBy: 5001, role: "admin" }),
     // 5002: unlisted — hidden from brothers (the /img visibility case).
-    makeProfile({ id: 5002, unlisted: true, hasHeadshot: true, headshotVersion: "u1" }),
+    makeProfile({
+      id: 5002,
+      unlisted: true,
+      hasHeadshot: true,
+      headshotVersion: "u1",
+      role: "admin",
+    }),
     // 5003: already has a headshot (the DELETE + D94 superseded-purge case).
-    makeProfile({ id: 5003, hasHeadshot: true, headshotVersion: "old" }),
+    makeProfile({ id: 5003, hasHeadshot: true, headshotVersion: "old", role: "admin" }),
   ]);
   const sessionStore = new InMemorySessionStore();
   const imageStore = new InMemoryImageStore();

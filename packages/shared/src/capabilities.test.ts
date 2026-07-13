@@ -8,6 +8,8 @@ import {
   canWriteFieldOnRecord,
   hasUsableEmail,
   impersonatableRoles,
+  isRoleDowngrade,
+  isRoleEligible,
   isUsableAdmin,
   partitionWritableFields,
 } from "./capabilities.js";
@@ -81,6 +83,27 @@ describe("hasUsableEmail / isUsableAdmin — the last-admin invariant's usable-a
     expect(isUsableAdmin({ ...usableAdmin, debrothered: { isDebrothered: true } })).toBe(false);
     expect(isUsableAdmin({ ...usableAdmin, email: undefined })).toBe(false);
     expect(isUsableAdmin({ ...usableAdmin, email: "   " })).toBe(false);
+  });
+
+  it("isRoleEligible is the sign-in-eligibility half, role-agnostic (backs the promote-guard)", () => {
+    const eligible = {
+      deceased: { isDeceased: false },
+      debrothered: { isDebrothered: false },
+      email: "x@y.test",
+    };
+    expect(isRoleEligible(eligible)).toBe(true);
+    expect(isRoleEligible({ ...eligible, deceased: { isDeceased: true } })).toBe(false);
+    expect(isRoleEligible({ ...eligible, debrothered: { isDebrothered: true } })).toBe(false);
+    expect(isRoleEligible({ ...eligible, email: undefined })).toBe(false);
+  });
+
+  it("isRoleDowngrade is true only for a strictly lower role (backs the gate re-check, OFC-239)", () => {
+    expect(isRoleDowngrade("admin", "brother")).toBe(true);
+    expect(isRoleDowngrade("admin", "manager")).toBe(true);
+    expect(isRoleDowngrade("manager", "brother")).toBe(true);
+    expect(isRoleDowngrade("brother", "admin")).toBe(false); // an upgrade
+    expect(isRoleDowngrade("manager", "admin")).toBe(false); // an upgrade
+    expect(isRoleDowngrade("admin", "admin")).toBe(false); // unchanged
   });
 });
 

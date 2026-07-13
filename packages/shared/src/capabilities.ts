@@ -122,25 +122,36 @@ export function hasUsableEmail(email: string | undefined): boolean {
 }
 
 /**
- * Whether a profile is an admin who can **actually administer** — the quantity the
- * last-admin invariant must protect (D128, corrected by OFC-241). A brother holds
- * the `admin` role but cannot exercise it if they are **deceased**, **de-brothered**
- * (sign-in denied, D115), or have **no usable email** (the Ghost bridge can't resolve
- * them). Counting such nominal-only admins let the sole *usable* admin demote or
- * delete themselves into a **zero-usable-admins org lockout** — the very failure the
- * invariant exists to prevent (found in 5.5f live testing: a seeded *deceased* admin,
- * hidden from the Directory, silently satisfied the count). `unlisted` is deliberately
- * NOT disqualifying — an unlisted admin can still sign in and act.
+ * Whether a brother is **eligible to hold a working staff role** — living, not
+ * de-brothered (sign-in denied, D115), and with a usable email (the Ghost bridge
+ * resolves sign-in by email). A brother who fails this can never exercise a role,
+ * so promoting them to one is meaningless and — for `admin` — counting them toward
+ * the last-admin invariant is a lockout hole (OFC-241). `unlisted` is deliberately
+ * NOT disqualifying: an unlisted admin can still sign in and act.
  */
-export function isUsableAdmin(
-  profile: Pick<Profile, "role" | "deceased" | "debrothered" | "email">,
+export function isRoleEligible(
+  profile: Pick<Profile, "deceased" | "debrothered" | "email">,
 ): boolean {
   return (
-    profile.role === "admin" &&
     !profile.deceased.isDeceased &&
     !profile.debrothered.isDebrothered &&
     hasUsableEmail(profile.email)
   );
+}
+
+/**
+ * Whether a profile is an admin who can **actually administer** — the quantity the
+ * last-admin invariant must protect (D128, corrected by OFC-241): the `admin` role
+ * held by a {@link isRoleEligible} brother. Counting nominal-only admins (deceased /
+ * de-brothered / emailless) let the sole *usable* admin demote, delete, mark-deceased,
+ * or de-brother themselves into a **zero-usable-admins org lockout** — the very failure
+ * the invariant exists to prevent (found in 5.5f live testing: a seeded *deceased*
+ * admin, hidden from the Directory, silently satisfied the count).
+ */
+export function isUsableAdmin(
+  profile: Pick<Profile, "role" | "deceased" | "debrothered" | "email">,
+): boolean {
+  return profile.role === "admin" && isRoleEligible(profile);
 }
 
 /**
@@ -216,6 +227,16 @@ export function canWriteFieldOnRecord(
  * exists only where a comparison is genuinely needed.
  */
 const ROLE_RANK: Record<Role, number> = { brother: 0, manager: 1, admin: 2 };
+
+/**
+ * Whether moving `from` → `to` is a **demotion** (a strictly lower role). The
+ * session gate uses this to catch a caller whose real role was downgraded after
+ * their session snapshotted it (OFC-239): only a downgrade forces re-auth — an
+ * upgrade merely under-privileges the stale session, which is safe.
+ */
+export function isRoleDowngrade(from: Role, to: Role): boolean {
+  return ROLE_RANK[to] < ROLE_RANK[from];
+}
 
 /**
  * "View as" — may a caller whose **real** role is `realRole` step **down** to

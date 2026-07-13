@@ -77,6 +77,9 @@ async function buildStatusServer(ghostLifecycle = new StubGhostLifecycle()) {
       debrothered: { isDebrothered: true, debrotheredAt: "2026-02-02T00:00:00.000Z" },
       debrotherConsentSnapshot: { allowNewsletterEmail: true },
     }),
+    // 5010: the org's sole usable admin; 5011: a manager (last-admin guards, OFC-241).
+    makeProfile({ id: 5010, role: "admin" }),
+    makeProfile({ id: 5011, role: "manager" }),
   ]);
   const sessionStore = new InMemorySessionStore();
   const store = new InMemoryProfileStore();
@@ -193,6 +196,21 @@ describe("PUT /api/profiles/:id/deceased", () => {
   });
   afterEach(async () => {
     await ctx.app.close();
+  });
+
+  it("409s marking the sole usable admin deceased — even from a manager (last-admin, OFC-241)", async () => {
+    // 5010 is the org's only usable admin; marking them deceased makes them unusable and
+    // leaves zero. This route is manager-OR-admin tier, so a manager (5011) must be
+    // blocked too — otherwise a non-admin could lock the org out.
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5010/deceased",
+      headers: { cookie: await ctx.cookieFor(5011, "manager") },
+      payload: { deceased: true },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "last_admin" });
+    expect(ctx.cache.getById(5010)?.deceased.isDeceased).toBe(false);
   });
 
   it("403s a brother (staff-only action)", async () => {
@@ -323,6 +341,22 @@ describe("PUT /api/profiles/:id/debrothered", () => {
       payload: { debrothered: true },
     });
     expect(response.statusCode).toBe(403);
+    await ctx.app.close();
+  });
+
+  it("409s de-brothering the sole usable admin (last-admin, OFC-241)", async () => {
+    const ctx = await buildStatusServer();
+    // 5010 is the org's only usable admin; de-brothering them denies their sign-in
+    // (D115) and leaves zero usable admins. (De-brother is admin-tier, so 5010 acts here.)
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5010/debrothered",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+      payload: { debrothered: true },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "last_admin" });
+    expect(ctx.cache.getById(5010)?.debrothered.isDebrothered).toBe(false);
     await ctx.app.close();
   });
 

@@ -1,4 +1,4 @@
-import type { Profile } from "@pbe/shared";
+import { type Profile, isRoleDowngrade } from "@pbe/shared";
 import type { FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import type { SessionService } from "./session-store.js";
 import type { Session } from "./types.js";
@@ -91,11 +91,14 @@ export function readSessionId(request: FastifyRequest): string | undefined {
  * absence would risk locking out a live brother over a data-quality blip and
  * couple every request to cache completeness. The one case absence would guard —
  * a hard-deleted brother's session — is covered where it happens, by the delete
- * route's active revocation. The gate deliberately does **not** cover role
- * *demotion* either (the role lives in the `users` collection, not the profile
- * cache, and re-reading it per request would defeat D7/D83) — the role-change
- * route's active revocation handles that. Unlisting is not a withdrawal of the
- * owner's own access, so it is not checked here.
+ * route's active revocation. The gate **also** catches a **role downgrade**
+ * (OFC-239): now that `role` lives on the profile cache (D128), a free per-request
+ * rank comparison against the session's snapshotted real role rejects a session
+ * whose caller has since been demoted — the defense-in-depth backstop to the
+ * role-change route's active revocation, mirroring how the de-brothered check backs
+ * the de-brother route. Only a downgrade is caught (an upgrade under-privileges the
+ * stale session harmlessly). Unlisting is not a withdrawal of the owner's own
+ * access, so it is not checked here.
  */
 /**
  * The single 401 body the gate answers with, whichever check fails — and, being
@@ -127,6 +130,20 @@ export function requireSession(
     // trust withdrawn; tear the session down so the stale cookie stops resolving.
     const own = cache.getById(session.identity.profileId);
     if (own?.debrothered.isDebrothered) {
+      if (id) {
+        await store.destroy(id);
+      }
+      return sendUnauthenticated(reply);
+    }
+    // Role-downgrade liveness (OFC-239): the session snapshots the caller's real role
+    // at sign-in; if it has since been demoted below that snapshot, tear the session
+    // down so the stale cookie can't keep the higher powers even if the role-change
+    // route's active revocation failed. `role` now lives on the cached profile (D128),
+    // so this is a free lookup like the de-brothered check. Only a DOWNGRADE forces
+    // re-auth — an upgrade merely under-privileges the stale session, harmlessly. The
+    // comparison is against the **real** role (`identity.role`), independent of any
+    // "View as" step-down (`effectiveRole`).
+    if (own && isRoleDowngrade(session.identity.role, own.role)) {
       if (id) {
         await store.destroy(id);
       }

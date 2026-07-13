@@ -79,6 +79,8 @@ export {
   canWriteFieldOnRecord,
   hasUsableEmail,
   impersonatableRoles,
+  isRoleDowngrade,
+  isRoleEligible,
   isUsableAdmin,
   partitionWritableFields,
 } from "./capabilities.js";

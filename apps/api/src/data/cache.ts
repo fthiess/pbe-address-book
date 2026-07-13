@@ -366,6 +366,19 @@ export class ProfileCache {
     return count;
   }
 
+  /**
+   * Whether `profile` is the org's **sole usable admin** — a usable admin and the
+   * only one loaded. The single last-admin predicate every removal/transition guard
+   * shares (OFC-241): a role demotion, delete, mark-deceased, de-brother, or email
+   * clear that targets this brother would leave zero usable admins and lock the org
+   * out, so each of those actions refuses when it holds.
+   */
+  isSoleUsableAdmin(
+    profile: Pick<Profile, "role" | "deceased" | "debrothered" | "email">,
+  ): boolean {
+    return isUsableAdmin(profile) && this.adminCount() === 1;
+  }
+
   /** The record's current concurrency token (the `ETag`/`If-Match` value), or null. */
   concurrencyToken(id: number): string | null {
     return this.tokenById.get(id) ?? null;

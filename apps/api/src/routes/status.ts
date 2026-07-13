@@ -159,9 +159,9 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
       if (ctx === null) {
         return reply;
       }
-      // `stored` from the auth ctx is intentionally not used for the write: the
-      // consent snapshot + diff are built from a FRESH in-lock read (OFC-221).
-      const { actorId, role, id, trace } = ctx;
+      // `stored` from the auth ctx drives only the last-admin pre-check below; the
+      // write's consent snapshot + diff are built from a FRESH in-lock read (OFC-221).
+      const { actorId, role, id, stored, trace } = ctx;
 
       const body = request.body;
       if (body === null || typeof body !== "object" || Array.isArray(body)) {
@@ -172,6 +172,15 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
         return reply
           .code(400)
           .send({ error: "bad_request", message: "`deceased` must be true or false." });
+      }
+
+      // Last-admin invariant (OFC-241): marking the sole usable admin deceased makes
+      // them unusable and leaves zero usable admins — an org lockout, and note this
+      // route is manager-OR-admin tier, so without this a *manager* could trigger it.
+      // Only on a raise (clearing deceased restores usability). Rejected before the
+      // Ghost push / write so nothing is touched.
+      if (raising && cache.isSoleUsableAdmin(stored)) {
+        return reply.code(409).send({ error: "last_admin" });
       }
 
       const now = clock();
@@ -283,6 +292,14 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
       // return the current token so the client's held ETag stays valid.
       if (raising === stored.debrothered.isDebrothered) {
         return replyRecord(reply, stored, role, cache.concurrencyToken(id) ?? "");
+      }
+
+      // Last-admin invariant (OFC-241): de-brothering the sole usable admin makes them
+      // unusable (sign-in is denied for a de-brothered member, D115) and leaves zero
+      // usable admins. Only on a raise; rejected before the Ghost-first step so nothing
+      // is touched.
+      if (raising && cache.isSoleUsableAdmin(stored)) {
+        return reply.code(409).send({ error: "last_admin" });
       }
 
       const now = clock();

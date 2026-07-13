@@ -384,6 +384,44 @@ describe("PUT /api/profiles/:id/role", () => {
     expect(response.statusCode).toBe(404);
   });
 
+  it("422s promoting a brother who can't sign in (emailless) to administrator (promote-guard, OFC-241)", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ id: 5010, role: "admin" }), // a usable acting admin
+      makeProfile({ id: 5020, email: undefined }), // an email-less brother — can never sign in
+    ]);
+    const sessionStore = new InMemorySessionStore();
+    const app = await buildServer({
+      identityProvider: stubProvider,
+      profileCache: cache,
+      profileStore: new InMemoryProfileStore(),
+      adminUsers: new InMemoryAdminUserStore(),
+      bannerStore: new InMemoryBannerStore(),
+      backupSource: new InMemoryBackupSource(),
+      bugReportStore: new InMemoryBugReportStore(),
+      imageStore: new InMemoryImageStore(),
+      ghostLifecycle: new StubGhostLifecycle(),
+      sessionStore,
+      nonceStore: new InMemoryNonceStore(),
+      getStars: async () => [],
+      addStar: async () => [],
+      removeStar: async () => [],
+      auditLog: new AuditLog({ write: () => {} }),
+      clock: () => FIXED_NOW,
+      cookie: { secure: true },
+    });
+    const cookie = `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(5010, "admin"))}`;
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/profiles/5020/role",
+      headers: { cookie },
+      payload: { role: "admin" },
+    });
+    expect(response.statusCode).toBe(422);
+    expect(cache.getById(5020)?.role).toBe("brother"); // unchanged
+    await app.close();
+  });
+
   it("blocks the LAST admin's self-demotion after the other admins are demoted in sequence [live repro]", async () => {
     const admin = await ctx.cookieFor(5010, "admin");
     const put = (id: number, role: Role) =>

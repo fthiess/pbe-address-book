@@ -35,6 +35,7 @@ async function buildGatedServer() {
   const cache = new ProfileCache();
   await cache.load([
     makeProfile({ id: 5001 }), // a normal, live brother
+    makeProfile({ id: 5002, role: "admin" }), // a live admin (role-downgrade cases)
     makeProfile({
       id: 5099,
       debrothered: { isDebrothered: true, debrotheredAt: "2026-02-02T00:00:00.000Z" },
@@ -81,6 +82,37 @@ describe("requireSession liveness check (OFC-147)", () => {
     // The stale cookie is torn down, not merely rejected — a second try still 401s
     // and the store no longer resolves it.
     expect(await sessionStore.get(id)).toBeNull();
+    await app.close();
+  });
+
+  it("401s AND destroys a session whose real role was downgraded below its snapshot (OFC-239)", async () => {
+    // The session snapshotted `admin`, but the cached record is now a brother — a
+    // demotion since sign-in. The stale session must not keep admin powers even if the
+    // role-change route's active revocation failed.
+    const { app, sessionStore } = await buildGatedServer();
+    const id = await sessionStore.create(sessionFor(5001, "admin")); // 5001 is a brother in the cache
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/profiles",
+      headers: { cookie: `${SESSION_COOKIE}=${id}` },
+    });
+    expect(res.statusCode).toBe(401);
+    expect(await sessionStore.get(id)).toBeNull();
+    await app.close();
+  });
+
+  it("does NOT reject a session whose real role was UPGRADED above its snapshot (OFC-239)", async () => {
+    // 5002 is an admin in the cache; the session snapshotted `brother`. An upgrade only
+    // under-privileges the stale session, which is safe — the gate leaves it alone.
+    const { app, sessionStore } = await buildGatedServer();
+    const id = await sessionStore.create(sessionFor(5002, "brother"));
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/profiles",
+      headers: { cookie: `${SESSION_COOKIE}=${id}` },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(await sessionStore.get(id)).not.toBeNull();
     await app.close();
   });
 
