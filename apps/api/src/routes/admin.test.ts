@@ -384,7 +384,7 @@ describe("PUT /api/profiles/:id/role", () => {
     expect(response.statusCode).toBe(404);
   });
 
-  it("422s promoting a brother who can't sign in (emailless) to administrator (promote-guard, OFC-241)", async () => {
+  it("422s promoting a brother who can't sign in (emailless) to ANY staff role (promote-guard, OFC-241)", async () => {
     const cache = new ProfileCache();
     await cache.load([
       makeProfile({ id: 5010, role: "admin" }), // a usable acting admin
@@ -411,14 +411,20 @@ describe("PUT /api/profiles/:id/role", () => {
       cookie: { secure: true },
     });
     const cookie = `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(5010, "admin"))}`;
-    const response = await app.inject({
-      method: "PUT",
-      url: "/api/profiles/5020/role",
-      headers: { cookie },
-      payload: { role: "admin" },
-    });
-    expect(response.statusCode).toBe(422);
-    expect(cache.getById(5020)?.role).toBe("brother"); // unchanged
+    const put = (role: Role) =>
+      app.inject({
+        method: "PUT",
+        url: "/api/profiles/5020/role",
+        headers: { cookie },
+        payload: { role },
+      });
+
+    // Neither admin nor manager — both require a working sign-in.
+    expect((await put("admin")).statusCode).toBe(422);
+    expect((await put("manager")).statusCode).toBe(422);
+    expect(cache.getById(5020)?.role).toBe("brother"); // unchanged by either
+    // But a plain brother assignment (a no-op here) is never blocked by the guard.
+    expect((await put("brother")).statusCode).toBe(200);
     await app.close();
   });
 

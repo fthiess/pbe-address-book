@@ -165,6 +165,59 @@ test.describe("profile 4c-2 — privileged actions", () => {
     expect(calls.debrother).toBe(1);
   });
 
+  test("surfaces the last-admin refusal when marking the sole admin deceased, keeping the dialog open (409)", async ({
+    page,
+  }) => {
+    await mockAdminViewing(page);
+    await gotoProfile(page);
+    // Override the deceased route to refuse (sole usable admin, D130).
+    await page.route(/\/api\/profiles\/\d+\/deceased$/, (route) =>
+      route.fulfill({ status: 409, json: { error: "last_admin" } }),
+    );
+    await page.getByRole("button", { name: "Mark as deceased…" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "Continue" }).click();
+    await dialog.getByLabel("Death year (if the date is unknown)").fill("2026");
+    await dialog.getByRole("button", { name: "Mark as deceased" }).click();
+    // The refusal is shown IN the dialog, which stays open — not a silent no-op.
+    await expect(dialog.getByText(/only administrator/i)).toBeVisible();
+    await expect(dialog).toBeVisible();
+  });
+
+  test("surfaces the last-admin refusal when de-brothering the sole admin (409)", async ({
+    page,
+  }) => {
+    await mockAdminViewing(page);
+    await gotoProfile(page);
+    await page.route(/\/api\/profiles\/\d+\/debrothered$/, (route) =>
+      route.fulfill({ status: 409, json: { error: "last_admin" } }),
+    );
+    await page.getByRole("button", { name: "De-brother…" }).click();
+    const dialog = page.getByRole("dialog", { name: "De-brother this member?" });
+    await dialog.getByRole("button", { name: "De-brother", exact: true }).click();
+    await expect(page.getByText(/only administrator/i)).toBeVisible();
+  });
+
+  test("surfaces the promote-guard refusal when making an ineligible brother staff (422)", async ({
+    page,
+  }) => {
+    await mockAdminViewing(page);
+    await gotoProfile(page);
+    await page.route(/\/api\/profiles\/\d+\/role$/, (route) =>
+      route.fulfill({
+        status: 422,
+        json: {
+          error: "validation_failed",
+          message:
+            "This brother can’t sign in (deceased, de-brothered, or no email on file), so they can’t be made a manager or administrator.",
+        },
+      }),
+    );
+    const group = page.getByRole("group", { name: "Role" });
+    await group.getByRole("button", { name: "Administrator" }).click();
+    await expect(page.getByText(/can.t sign in/i)).toBeVisible();
+  });
+
   test("an admin can change a brother's role via the segmented control", async ({ page }) => {
     const calls = await mockAdminViewing(page);
     await gotoProfile(page);
