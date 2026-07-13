@@ -66,6 +66,9 @@ async function buildReadServer() {
       email: "a@example.test",
       adminNote: "staff eyes only",
       ghostMemberId: "ghost-5001",
+      // The actor (#5001) drives manager/admin roster reads here; its cached role must
+      // not be below the session's, or the gate's role-downgrade check (OFC-239) 401s it.
+      role: "admin",
     }),
     makeProfile({ id: 5002, unlisted: true }),
     makeProfile({
@@ -794,6 +797,28 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
     });
     expect(response.statusCode).toBe(200);
     expect(cache.getById(5001)?.jobTitle).toBe("Engineer");
+    await app.close();
+  });
+
+  it("409s an edit that would strip the sole usable admin's email (last-admin, OFC-241)", async () => {
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer([
+      makeProfile({ id: 5001, email: "admin@example.test", role: "admin" }),
+    ]);
+    const cookie = await cookieAs(5001, "admin");
+    const etag = await etagOf(5001, cookie);
+    // Clearing their own email makes them unusable (the Ghost bridge can't resolve a
+    // sign-in), and they are the only usable admin — so it would leave zero. Role,
+    // deceased, and de-brothered are protected against PATCH, so email is the only
+    // usability factor an edit can touch.
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: null }, // the OFC-107 clear sentinel
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "last_admin" });
+    expect(cache.getById(5001)?.email).toBe("admin@example.test"); // unchanged
     await app.close();
   });
 

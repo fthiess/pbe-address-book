@@ -1,6 +1,6 @@
 import { promisify } from "node:util";
 import zlib from "node:zlib";
-import { type Profile, type Role, normalizeEmail } from "@pbe/shared";
+import { type Profile, type Role, isUsableAdmin, normalizeEmail } from "@pbe/shared";
 import type { Firestore } from "firebase-admin/firestore";
 import { type ProjectedProfile, projectForRole } from "../projection/projection.js";
 import { INITIAL_CONCURRENCY_TOKEN, encodeToken } from "./profiles.js";
@@ -344,22 +344,39 @@ export class ProfileCache {
   }
 
   /**
-   * How many loaded records currently hold the `admin` role. Backs the last-admin
-   * invariant for the change-role and delete actions (D51/D106) now that `role`
-   * lives on the profile (OFC-139): the count is read straight from the
-   * authoritative in-memory dataset (D83) rather than a Firestore `users` query.
-   * Under the single-instance model this is consistent with the caller's `stored`
-   * record; the same narrow check-then-write race the delete path already accepts
-   * as negligible applies (two admins demoting the last two within one await gap).
+   * How many loaded records are **usable** admins — admins who can actually sign in
+   * and administer ({@link isUsableAdmin}: role admin, living, not de-brothered, with
+   * a usable email). Backs the last-admin invariant for the change-role and delete
+   * actions (D51/D106) now that `role` lives on the profile (OFC-139): the count is
+   * read straight from the authoritative in-memory dataset (D83) rather than a
+   * Firestore `users` query. Counting *usable* rather than *nominal* admins (OFC-241)
+   * is load-bearing: a deceased/emailless/de-brothered admin holds the role but can
+   * never exercise it, and counting them let the sole usable admin demote or delete
+   * themselves into a zero-usable-admins org lockout. Under the single-instance model
+   * this is consistent with the caller's `stored` record; the same narrow
+   * check-then-write race the delete path already accepts as negligible applies.
    */
   adminCount(): number {
     let count = 0;
     for (const profile of this.byId.values()) {
-      if (profile.role === "admin") {
+      if (isUsableAdmin(profile)) {
         count++;
       }
     }
     return count;
+  }
+
+  /**
+   * Whether `profile` is the org's **sole usable admin** — a usable admin and the
+   * only one loaded. The single last-admin predicate every removal/transition guard
+   * shares (OFC-241): a role demotion, delete, mark-deceased, de-brother, or email
+   * clear that targets this brother would leave zero usable admins and lock the org
+   * out, so each of those actions refuses when it holds.
+   */
+  isSoleUsableAdmin(
+    profile: Pick<Profile, "role" | "deceased" | "debrothered" | "email">,
+  ): boolean {
+    return isUsableAdmin(profile) && this.adminCount() === 1;
   }
 
   /** The record's current concurrency token (the `ETag`/`If-Match` value), or null. */

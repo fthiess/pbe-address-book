@@ -6,7 +6,11 @@ import {
   canImpersonate,
   canWriteField,
   canWriteFieldOnRecord,
+  hasUsableEmail,
   impersonatableRoles,
+  isRoleDowngrade,
+  isRoleEligible,
+  isUsableAdmin,
   partitionWritableFields,
 } from "./capabilities.js";
 import type { PrivacyFlags, Profile, Role } from "./types.js";
@@ -47,6 +51,59 @@ describe("WRITE_RULE table", () => {
     expect(WRITE_RULE.lastVerifiedDate).toBe("protected");
     expect(WRITE_RULE.lastModified).toBe("protected");
     expect(WRITE_RULE.ghostMemberId).toBe("protected");
+  });
+});
+
+describe("hasUsableEmail / isUsableAdmin — the last-admin invariant's usable-admin predicate (OFC-241)", () => {
+  const usableAdmin: Pick<Profile, "role" | "deceased" | "debrothered" | "email"> = {
+    role: "admin",
+    deceased: { isDeceased: false },
+    debrothered: { isDebrothered: false },
+    email: "admin@example.test",
+  };
+
+  it("hasUsableEmail is true only for a non-empty, non-whitespace string", () => {
+    expect(hasUsableEmail("a@x.test")).toBe(true);
+    expect(hasUsableEmail(undefined)).toBe(false);
+    expect(hasUsableEmail("")).toBe(false);
+    expect(hasUsableEmail("   ")).toBe(false);
+  });
+
+  it("counts a living, emailed, non-de-brothered admin as usable", () => {
+    expect(isUsableAdmin(usableAdmin)).toBe(true);
+  });
+
+  it("is false for a non-admin role", () => {
+    expect(isUsableAdmin({ ...usableAdmin, role: "manager" })).toBe(false);
+    expect(isUsableAdmin({ ...usableAdmin, role: "brother" })).toBe(false);
+  });
+
+  it("is false for an admin who cannot actually sign in (deceased / de-brothered / emailless)", () => {
+    expect(isUsableAdmin({ ...usableAdmin, deceased: { isDeceased: true } })).toBe(false);
+    expect(isUsableAdmin({ ...usableAdmin, debrothered: { isDebrothered: true } })).toBe(false);
+    expect(isUsableAdmin({ ...usableAdmin, email: undefined })).toBe(false);
+    expect(isUsableAdmin({ ...usableAdmin, email: "   " })).toBe(false);
+  });
+
+  it("isRoleEligible is the sign-in-eligibility half, role-agnostic (backs the promote-guard)", () => {
+    const eligible = {
+      deceased: { isDeceased: false },
+      debrothered: { isDebrothered: false },
+      email: "x@y.test",
+    };
+    expect(isRoleEligible(eligible)).toBe(true);
+    expect(isRoleEligible({ ...eligible, deceased: { isDeceased: true } })).toBe(false);
+    expect(isRoleEligible({ ...eligible, debrothered: { isDebrothered: true } })).toBe(false);
+    expect(isRoleEligible({ ...eligible, email: undefined })).toBe(false);
+  });
+
+  it("isRoleDowngrade is true only for a strictly lower role (backs the gate re-check, OFC-239)", () => {
+    expect(isRoleDowngrade("admin", "brother")).toBe(true);
+    expect(isRoleDowngrade("admin", "manager")).toBe(true);
+    expect(isRoleDowngrade("manager", "brother")).toBe(true);
+    expect(isRoleDowngrade("brother", "admin")).toBe(false); // an upgrade
+    expect(isRoleDowngrade("manager", "admin")).toBe(false); // an upgrade
+    expect(isRoleDowngrade("admin", "admin")).toBe(false); // unchanged
   });
 });
 

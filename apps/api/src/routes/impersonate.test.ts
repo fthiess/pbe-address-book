@@ -49,7 +49,10 @@ function sessionFor(profileId: number, role: Role): Session {
 async function buildImpersonateServer() {
   const cache = new ProfileCache();
   await cache.load([
-    makeProfile({ id: 5001, email: "actor@example.test" }),
+    // The acting profile's cached role must not be *below* the session's snapshot, or
+    // the gate's role-downgrade liveness check (OFC-239) 401s it. This harness drives
+    // one actor with several session roles, so `admin` (the max) is never a downgrade.
+    makeProfile({ id: 5001, email: "actor@example.test", role: "admin" }),
     // An unlisted record: visible in the manager/admin bulk read, hidden from the
     // brother bulk read — the crisp proof that the *effective* role selects the
     // projection actually downloaded (D124).
