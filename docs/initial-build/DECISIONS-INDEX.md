@@ -34,7 +34,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Permissions & visibility projection
 
 - Read projection: D5 → D16 → **D19** (three roles, three tiers) → **D82**; exhaustive keyof-Profile tables **N9**; staff-internal classes **N10**; whole-record omission **D115** (de-brothered) + **D124** (unlisted); `role` on the profile, **public** — **D128** (reverses OFC-139's staff-only; stored optional, normalized→brother at hydration).
-- Write side: **D106** (field allowlist, object predicate, last-admin invariant) + **N70** (managers can't write privacy-hidden toggle fields); role write **D128** (re-pathed to `PUT /api/profiles/{id}/role`, protected field, last-admin over `ProfileCache.adminCount`; supersedes N44/N50's `users`-doc model).
+- Write side: **D106** (field allowlist, object predicate, last-admin invariant) + **N70** (managers can't write privacy-hidden toggle fields); role write **D128** (re-pathed to `PUT /api/profiles/{id}/role`, protected field, last-admin over `ProfileCache.adminCount`; supersedes N44/N50's `users`-doc model) → **D129** (last-admin counts only *usable* admins — `isUsableAdmin`: living, non-de-brothered, has usable email; nominal-only admins were an org-lockout hole, OFC-241).
 - Impersonation: **N31** (admins step *down* a role; server-side effective role).
 
 ## Privacy & consent

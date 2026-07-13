@@ -1,4 +1,10 @@
-import { type DeceasedInfo, type Profile, type Role, validateProfile } from "@pbe/shared";
+import {
+  type DeceasedInfo,
+  type Profile,
+  type Role,
+  hasUsableEmail,
+  validateProfile,
+} from "@pbe/shared";
 import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
@@ -7,12 +13,7 @@ import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecy
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
 import { writeRateLimit } from "../security/rate-limit.js";
-import {
-  GhostStepError,
-  computeConsentDiff,
-  hasUsableEmail,
-  pushGhostUpdate,
-} from "./ghost-push.js";
+import { GhostStepError, computeConsentDiff, pushGhostUpdate } from "./ghost-push.js";
 import {
   MissingProfileError,
   authorizePrivileged,

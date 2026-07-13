@@ -6,7 +6,9 @@ import {
   canImpersonate,
   canWriteField,
   canWriteFieldOnRecord,
+  hasUsableEmail,
   impersonatableRoles,
+  isUsableAdmin,
   partitionWritableFields,
 } from "./capabilities.js";
 import type { PrivacyFlags, Profile, Role } from "./types.js";
@@ -47,6 +49,38 @@ describe("WRITE_RULE table", () => {
     expect(WRITE_RULE.lastVerifiedDate).toBe("protected");
     expect(WRITE_RULE.lastModified).toBe("protected");
     expect(WRITE_RULE.ghostMemberId).toBe("protected");
+  });
+});
+
+describe("hasUsableEmail / isUsableAdmin — the last-admin invariant's usable-admin predicate (OFC-241)", () => {
+  const usableAdmin: Pick<Profile, "role" | "deceased" | "debrothered" | "email"> = {
+    role: "admin",
+    deceased: { isDeceased: false },
+    debrothered: { isDebrothered: false },
+    email: "admin@example.test",
+  };
+
+  it("hasUsableEmail is true only for a non-empty, non-whitespace string", () => {
+    expect(hasUsableEmail("a@x.test")).toBe(true);
+    expect(hasUsableEmail(undefined)).toBe(false);
+    expect(hasUsableEmail("")).toBe(false);
+    expect(hasUsableEmail("   ")).toBe(false);
+  });
+
+  it("counts a living, emailed, non-de-brothered admin as usable", () => {
+    expect(isUsableAdmin(usableAdmin)).toBe(true);
+  });
+
+  it("is false for a non-admin role", () => {
+    expect(isUsableAdmin({ ...usableAdmin, role: "manager" })).toBe(false);
+    expect(isUsableAdmin({ ...usableAdmin, role: "brother" })).toBe(false);
+  });
+
+  it("is false for an admin who cannot actually sign in (deceased / de-brothered / emailless)", () => {
+    expect(isUsableAdmin({ ...usableAdmin, deceased: { isDeceased: true } })).toBe(false);
+    expect(isUsableAdmin({ ...usableAdmin, debrothered: { isDebrothered: true } })).toBe(false);
+    expect(isUsableAdmin({ ...usableAdmin, email: undefined })).toBe(false);
+    expect(isUsableAdmin({ ...usableAdmin, email: "   " })).toBe(false);
   });
 });
 

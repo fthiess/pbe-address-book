@@ -77,7 +77,9 @@ export {
   canImpersonate,
   canWriteField,
   canWriteFieldOnRecord,
+  hasUsableEmail,
   impersonatableRoles,
+  isUsableAdmin,
   partitionWritableFields,
 } from "./capabilities.js";
 export { profilesToCsv, neutralizeCsvCell, formatCsvCell } from "./csv.js";

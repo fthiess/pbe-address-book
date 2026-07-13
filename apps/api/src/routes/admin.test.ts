@@ -384,6 +384,78 @@ describe("PUT /api/profiles/:id/role", () => {
     expect(response.statusCode).toBe(404);
   });
 
+  it("blocks the LAST admin's self-demotion after the other admins are demoted in sequence [live repro]", async () => {
+    const admin = await ctx.cookieFor(5010, "admin");
+    const put = (id: number, role: Role) =>
+      ctx.app.inject({
+        method: "PUT",
+        url: `/api/profiles/${id}/role`,
+        headers: { cookie: admin },
+        payload: { role },
+      });
+
+    // Promote two brothers so there are three admins: 5010, 5011, 5012.
+    expect((await put(5011, "admin")).statusCode).toBe(200);
+    expect((await put(5012, "admin")).statusCode).toBe(200);
+    // Demote the two others in sequence — each is allowed (admins remain).
+    expect((await put(5011, "brother")).statusCode).toBe(200);
+    expect((await put(5012, "brother")).statusCode).toBe(200);
+    // 5010 is now the only admin; demoting itself must be refused (org lockout).
+    const selfDemote = await put(5010, "manager");
+    expect(selfDemote.statusCode).toBe(409);
+    expect(selfDemote.json()).toEqual({ error: "last_admin" });
+    expect(ctx.cache.getById(5010)?.role).toBe("admin");
+    expect(ctx.cache.adminCount()).toBe(1);
+  });
+
+  it("counts only USABLE admins — a deceased / emailless / de-brothered co-admin does not keep the last usable admin demotable [live bug: OFC-241]", async () => {
+    // 5010 is the only admin who can actually sign in and administer. The other three
+    // hold the `admin` role but can never exercise it — deceased (hidden from the
+    // Directory too), no email (the Ghost bridge can't resolve them), de-brothered
+    // (sign-in denied, D115). Counting them lets an admin demote themselves into a
+    // zero-usable-admins lockout (the live failure Forrest hit).
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ id: 5010, role: "admin" }), // living, has email — the ONLY usable admin
+      makeProfile({ id: 5020, role: "admin", deceased: { isDeceased: true } }),
+      makeProfile({ id: 5021, role: "admin", email: undefined }),
+      makeProfile({ id: 5022, role: "admin", debrothered: { isDebrothered: true } }),
+    ]);
+    expect(cache.adminCount()).toBe(1); // only 5010 is a usable admin
+
+    const sessionStore = new InMemorySessionStore();
+    const app = await buildServer({
+      identityProvider: stubProvider,
+      profileCache: cache,
+      profileStore: new InMemoryProfileStore(),
+      adminUsers: new InMemoryAdminUserStore(),
+      bannerStore: new InMemoryBannerStore(),
+      backupSource: new InMemoryBackupSource(),
+      bugReportStore: new InMemoryBugReportStore(),
+      imageStore: new InMemoryImageStore(),
+      ghostLifecycle: new StubGhostLifecycle(),
+      sessionStore,
+      nonceStore: new InMemoryNonceStore(),
+      getStars: async () => [],
+      addStar: async () => [],
+      removeStar: async () => [],
+      auditLog: new AuditLog({ write: () => {} }),
+      clock: () => FIXED_NOW,
+      cookie: { secure: true },
+    });
+    const cookie = `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(5010, "admin"))}`;
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/profiles/5010/role",
+      headers: { cookie },
+      payload: { role: "manager" },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "last_admin" });
+    expect(cache.getById(5010)?.role).toBe("admin");
+    await app.close();
+  });
+
   it("422s an invalid role value", async () => {
     const response = await ctx.app.inject({
       method: "PUT",

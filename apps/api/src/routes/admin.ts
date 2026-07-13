@@ -1,4 +1,4 @@
-import { type Role, headshotObjectKey, thumbnailObjectKey } from "@pbe/shared";
+import { type Role, headshotObjectKey, isUsableAdmin, thumbnailObjectKey } from "@pbe/shared";
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
@@ -85,13 +85,15 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
       const { actorId, id, stored, trace } = ctx;
       const now = clock();
 
-      // Last-admin invariant (D106; OFC-134): deleting the only remaining admin would
-      // lock the org out of every admin function — the same lockout the role-change
-      // guard prevents. Read from the authoritative in-memory dataset now that `role`
-      // lives on the profile (OFC-139): this brother is the last admin iff their stored
-      // record is `admin` and the cache holds exactly one admin. Checked BEFORE the
-      // Ghost-first step so a rejection leaves Ghost, GCS, and Book untouched.
-      if (stored.role === "admin" && cache.adminCount() === 1) {
+      // Last-admin invariant (D106; OFC-134/OFC-241): deleting the only remaining
+      // *usable* admin would lock the org out of every admin function — the same
+      // lockout the role-change guard prevents. Read from the authoritative in-memory
+      // dataset now that `role` lives on the profile (OFC-139): this brother is the
+      // last usable admin iff their stored record is a usable admin and the cache holds
+      // exactly one. (Deleting a nominal-only admin — deceased/emailless/de-brothered —
+      // is never blocked; it removes no usable admin.) Checked BEFORE the Ghost-first
+      // step so a rejection leaves Ghost, GCS, and Book untouched.
+      if (isUsableAdmin(stored) && cache.adminCount() === 1) {
         audit.record(
           { action: "profile.delete", actorId, targetId: id, outcome: "denied", trace },
           now.toISOString(),
@@ -214,12 +216,14 @@ function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
       const before: Role = stored.role;
       const changed = role !== before;
 
-      // Last-admin invariant (D51/D106): a demotion that would leave zero admins is
-      // rejected. Read from the in-memory dataset (OFC-139) — this is the sole admin
-      // iff the stored record is `admin` and the cache holds exactly one. The narrow
+      // Last-admin invariant (D51/D106; OFC-241): a demotion that would leave zero
+      // *usable* admins is rejected. `isUsableAdmin(stored)` (role admin, living, not
+      // de-brothered, with a usable email) is the sole usable admin iff the cache holds
+      // exactly one; demoting them to a non-admin role then locks the org out. Demoting
+      // a nominal-only admin is not blocked (they were never counted). The narrow
       // check-then-write race is the same one the delete path accepts as negligible
       // under the single-instance model (D83).
-      if (changed && before === "admin" && role !== "admin" && cache.adminCount() === 1) {
+      if (isUsableAdmin(stored) && role !== "admin" && cache.adminCount() === 1) {
         return reply.code(409).send({ error: "last_admin" });
       }
 

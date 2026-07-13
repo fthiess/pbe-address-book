@@ -110,6 +110,40 @@ export const WRITE_RULE: Record<keyof Profile, WriteRule> = {
 };
 
 /**
+ * Whether a brother has an email usable as their sign-in identity — a non-empty,
+ * non-whitespace string. Book authenticates through the Ghost bridge, which resolves
+ * a member by email, so a brother with **no** usable email can never sign in (Book
+ * deliberately tolerates email-less brothers — ~1/3 of the roster; C15/D20/D115).
+ * The single definition shared by the Ghost create/de-brother gates and the
+ * usable-admin count.
+ */
+export function hasUsableEmail(email: string | undefined): boolean {
+  return typeof email === "string" && email.trim() !== "";
+}
+
+/**
+ * Whether a profile is an admin who can **actually administer** — the quantity the
+ * last-admin invariant must protect (D128, corrected by OFC-241). A brother holds
+ * the `admin` role but cannot exercise it if they are **deceased**, **de-brothered**
+ * (sign-in denied, D115), or have **no usable email** (the Ghost bridge can't resolve
+ * them). Counting such nominal-only admins let the sole *usable* admin demote or
+ * delete themselves into a **zero-usable-admins org lockout** — the very failure the
+ * invariant exists to prevent (found in 5.5f live testing: a seeded *deceased* admin,
+ * hidden from the Directory, silently satisfied the count). `unlisted` is deliberately
+ * NOT disqualifying — an unlisted admin can still sign in and act.
+ */
+export function isUsableAdmin(
+  profile: Pick<Profile, "role" | "deceased" | "debrothered" | "email">,
+): boolean {
+  return (
+    profile.role === "admin" &&
+    !profile.deceased.isDeceased &&
+    !profile.debrothered.isDebrothered &&
+    hasUsableEmail(profile.email)
+  );
+}
+
+/**
  * The object-level write predicate: may a caller in `role`, whose own record is
  * `actorId`, write to the record `targetId`? Brothers may write only their own
  * record; managers and admins may write any (ENGINEERING-DESIGN §1.4; D106).

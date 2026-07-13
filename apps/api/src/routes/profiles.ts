@@ -5,6 +5,7 @@ import {
   type ValidationIssue,
   WRITE_RULE,
   canActOnProfile,
+  hasUsableEmail,
   normalizeEmail,
   normalizePhone,
   partitionWritableFields,
@@ -25,12 +26,7 @@ import {
 } from "../projection/projection.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { negotiateEncoding } from "./encoding.js";
-import {
-  GhostStepError,
-  computeGhostUpdateDiff,
-  hasUsableEmail,
-  pushGhostUpdate,
-} from "./ghost-push.js";
+import { GhostStepError, computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
 import type { RecordLock } from "./record-lock.js";
 import { replyWriteError, runRecordWrite } from "./record-write.js";
 import { traceId } from "./trace.js";
