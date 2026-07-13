@@ -293,6 +293,8 @@ export interface DeceasedFacts {
 export type StatusWriteOutcome =
   | { status: "ok"; profile: ProfileRecord; etag: string }
   | { status: "invalid"; issues: ValidationIssue[] }
+  /** `409` — refused: the target is the org's sole usable admin (D130). */
+  | { status: "last_admin" }
   /** `502` — the Ghost-first lifecycle step failed; Book is unchanged (N41). */
   | { status: "ghost_failed" };
 
@@ -347,6 +349,9 @@ export async function putDeceased(
     const body = await response.json().catch(() => ({}));
     return { status: "invalid", issues: (body.issues as ValidationIssue[]) ?? [] };
   }
+  if (response.status === 409) {
+    return { status: "last_admin" };
+  }
   throw await asError(response);
 }
 
@@ -375,6 +380,9 @@ export async function putDebrothered(
   }
   if (response.status === 502) {
     return { status: "ghost_failed" };
+  }
+  if (response.status === 409) {
+    return { status: "last_admin" };
   }
   throw await asError(response);
 }
@@ -405,16 +413,20 @@ export async function deleteProfile(
 
 /**
  * Change a brother's role (`PUT /api/profiles/:id/role`, admin only; API-SPEC §5;
- * D51/D106; re-pathed by OFC-139 now that `role` lives on the profile). A `409
- * last_admin` — the only remaining admin cannot be demoted — is surfaced as data
- * so the UI can explain it rather than throw. The Role control reads the *current*
- * role straight off the profile record it already holds (`record.role`), so no
- * separate role fetch is needed.
+ * D51/D106; re-pathed by OFC-139 now that `role` lives on the profile). Two refusals
+ * are surfaced as **data** so the UI can explain rather than throw: `409 last_admin`
+ * (demoting the sole usable admin) and `422` (the D130 promote-guard — a brother who
+ * can't sign in can't be made staff), whose server message is passed through. The
+ * Role control reads the *current* role off the record it already holds (`record.role`).
  */
 export async function changeRole(
   id: number,
   role: Role,
-): Promise<{ status: "ok"; role: Role } | { status: "last_admin" }> {
+): Promise<
+  | { status: "ok"; role: Role }
+  | { status: "last_admin" }
+  | { status: "ineligible"; message: string }
+> {
   const response = await fetch(`/api/profiles/${id}/role`, {
     method: "PUT",
     credentials: "same-origin",
@@ -426,6 +438,13 @@ export async function changeRole(
   }
   if (response.status === 409) {
     return { status: "last_admin" };
+  }
+  if (response.status === 422) {
+    const body = await response.json().catch(() => ({}));
+    return {
+      status: "ineligible",
+      message: (body.message as string | undefined) ?? "This brother can’t be given that role.",
+    };
   }
   throw await asError(response);
 }

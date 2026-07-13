@@ -23,7 +23,13 @@ export interface ProfileActions {
   /** `PUT …/debrothered` — raise/reverse de-brothering (admin). */
   setDebrothered: (debrothered: boolean) => Promise<StatusWriteOutcome>;
   /** `PUT /api/profiles/:id/role` — change role (admin). */
-  changeRole: (role: Role) => Promise<{ status: "ok"; role: Role } | { status: "last_admin" }>;
+  changeRole: (
+    role: Role,
+  ) => Promise<
+    | { status: "ok"; role: Role }
+    | { status: "last_admin" }
+    | { status: "ineligible"; message: string }
+  >;
   /** `DELETE /api/profiles/:id` — remove the brother (admin). */
   removeProfile: () => Promise<
     { status: "ok" } | { status: "ghost_failed" } | { status: "last_admin" }
@@ -221,6 +227,10 @@ function DebrotherControl({
     const outcome = await actions.setDebrothered(!debrothered);
     if (outcome.status === "ghost_failed") {
       setError("The newsletter system couldn’t be updated. Nothing changed — please try again.");
+    } else if (outcome.status === "last_admin") {
+      setError(
+        "This is the only administrator, so they can’t be de-brothered. Assign another administrator first.",
+      );
     }
   };
 
@@ -300,6 +310,11 @@ function RoleControl({ record, actions }: { record: ProfileRecord; actions: Prof
     setPending(null);
     if (outcome.status === "last_admin") {
       setMessage("This is the only administrator — their role can’t be changed.");
+      return;
+    }
+    if (outcome.status === "ineligible") {
+      // The D130 promote-guard: a brother who can't sign in can't be made staff.
+      setMessage(outcome.message);
       return;
     }
     setRole(outcome.role);
@@ -425,6 +440,7 @@ function MarkDeceasedDialog({
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const [phase, setPhase] = useState<"confirm" | "fields">(alreadyDeceased ? "fields" : "confirm");
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
+  const [formError, setFormError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const existing = record.deceased;
   const [dateOfDeath, setDateOfDeath] = useState(existing?.dateOfDeath ?? "");
@@ -454,6 +470,7 @@ function MarkDeceasedDialog({
   const submit = async () => {
     setBusy(true);
     setIssues([]);
+    setFormError(null);
     const facts: DeceasedFacts = {};
     if (dateOfDeath) facts.dateOfDeath = dateOfDeath;
     if (deathYear) facts.deathYear = Number(deathYear);
@@ -464,6 +481,13 @@ function MarkDeceasedDialog({
     setBusy(false);
     if (outcome.status === "invalid") {
       setIssues(outcome.issues);
+      return;
+    }
+    if (outcome.status === "last_admin") {
+      // The D130 last-admin guard: can't mark the sole usable admin deceased.
+      setFormError(
+        "This is the only administrator, so they can’t be marked deceased. Assign another administrator first.",
+      );
       return;
     }
     onClose();
@@ -545,6 +569,11 @@ function MarkDeceasedDialog({
               />
             </div>
           </div>
+          {formError && (
+            <p className="mt-4 text-[length:var(--text-body-sm)] text-destructive" role="alert">
+              {formError}
+            </p>
+          )}
           <div className="mt-6 flex justify-end gap-3">
             <DialogButton onClick={onClose}>Cancel</DialogButton>
             <DialogButton tone="primary" onClick={submit} disabled={busy}>

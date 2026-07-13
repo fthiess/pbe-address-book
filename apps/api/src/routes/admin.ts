@@ -216,15 +216,15 @@ function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
 
       // Promote-guard (OFC-241; the D129 hygiene half): a brother who can't sign in —
       // deceased, de-brothered, or with no usable email — can never exercise a role, so
-      // making them an administrator only creates a nominal, unusable admin. Reject the
-      // promotion at the source rather than let it dangle. (A no-op admin→admin is not a
-      // promotion, so `changed` gates this; cleaning up an *existing* nominal admin is
-      // OFC-242.)
-      if (changed && role === "admin" && !isRoleEligible(stored)) {
+      // making them **any staff role** (manager or admin) only creates a nominal,
+      // unusable staff member. Reject at the source rather than let it dangle. (A no-op
+      // reassignment is not a promotion, so `changed` gates this; you can always still
+      // demote them to `brother`. Cleaning up an *existing* nominal admin is OFC-242.)
+      if (changed && role !== "brother" && !isRoleEligible(stored)) {
         return reply.code(422).send({
           error: "validation_failed",
           message:
-            "This brother can’t sign in (deceased, de-brothered, or no email on file), so they can’t be made an administrator.",
+            "This brother can’t sign in (deceased, de-brothered, or no email on file), so they can’t be made a manager or administrator.",
         });
       }
 

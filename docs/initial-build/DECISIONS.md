@@ -1356,3 +1356,15 @@ D129 fixed the *count* (usable admins only) but wired it into only two actions (
 **Why:** the last-admin invariant protects a *property of the org* ("someone can always administer"), so it has to be enforced wherever that property could be violated — not just on the two actions that first motivated it. Enforcing it on only role/delete left mark-deceased, de-brother, and email-removal as open lockout paths (and a manager-reachable one at that). The promote-guard and the gate re-check close the two adjacent holes the same session surfaced: creating unusable admins, and a demotion failing to take effect on a live session. **(Forrest's call, 2026-07-13.)**
 
 *Extends D129 (same `isUsableAdmin`/`adminCount` machinery). Records to API-SPEC §3/§5 (409 last_admin on deceased/debrothered/patch; 422 promote-guard), ENGINEERING-DESIGN §2.3 (gate role-downgrade). Guarded by repro tests on each of the five paths, the promote-guard, and the gate downgrade/upgrade cases; OFC-239 closed by this, OFC-242 carries the auto-demote follow-up.*
+
+*Later updated by: N86 — the promote-guard covers **any** staff role (manager too, not just admin), and the last-admin/promote refusals are now surfaced in the mark-deceased/de-brother/role UIs (they were silently swallowed).*
+
+### N86 — 5.5f live-test remediation of D130: the promote-guard covers *any* staff role, and the last-admin/promote refusals are surfaced in the UI
+
+Two fixes from Forrest's re-test of the D130 guards, both merged as a follow-up:
+
+1. **Promote-guard now covers manager too, not just admin.** D130 scoped it to `role === "admin"`; a **manager** who can't sign in (deceased / de-brothered / emailless) is equally useless, so the guard is now `role !== "brother" && !isRoleEligible` — promoting an ineligible brother to **any** staff role is rejected `422`. (You can always still demote them to `brother`.)
+
+2. **The refusals now show in the UI.** The server was correctly refusing (`409 last_admin` on mark-deceased / de-brother / PATCH-email; `422` promote-guard), but three client controls **silently swallowed** it: `putDeceased`/`putDebrothered`/`changeRole` (api.ts) mapped only success/validation/ghost outcomes, so a `409`/`422` fell through to `throw`, which the control's handler didn't catch — the `await` rejected mid-handler and the confirm dialog just sat there ("nothing happens", not even a close). Fixed by mapping `409 → { status: "last_admin" }` and the promote `422 → { status: "ineligible", message }` (server message passed through) as **data**, and surfacing each: the mark-deceased dialog shows the error inline and **stays open**; de-brother shows it below the button; the Role control shows it as its status message. (Delete already did this — hence it was the one that worked in the first live test.) Guarded by e2e tests that mock the refusal and assert the message.
+
+*Extends D130. Records to API-SPEC §5 (422 promote-guard covers manager). (Forrest's live-test call, 2026-07-13.)*
