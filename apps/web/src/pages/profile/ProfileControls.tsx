@@ -298,7 +298,9 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
 function RoleControl({ record, actions }: { record: ProfileRecord; actions: ProfileActions }) {
   const [role, setRole] = useState<Role>(record.role ?? "brother");
   const [pending, setPending] = useState<Role | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  // Refusals (last-admin, promote-guard) render red like the other staff-control
+  // errors; a success confirmation stays muted.
+  const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
   const select = async (next: Role) => {
     if (next === role || pending) {
@@ -309,18 +311,22 @@ function RoleControl({ record, actions }: { record: ProfileRecord; actions: Prof
     const outcome = await actions.changeRole(next);
     setPending(null);
     if (outcome.status === "last_admin") {
-      setMessage("This is the only administrator — their role can’t be changed.");
+      setMessage({
+        text: "This is the only administrator — their role can’t be changed.",
+        isError: true,
+      });
       return;
     }
     if (outcome.status === "ineligible") {
       // The D130 promote-guard: a brother who can't sign in can't be made staff.
-      setMessage(outcome.message);
+      setMessage({ text: outcome.message, isError: true });
       return;
     }
     setRole(outcome.role);
-    setMessage(
-      `Role set to ${ROLE_OPTIONS.find((option) => option.value === outcome.role)?.label}.`,
-    );
+    setMessage({
+      text: `Role set to ${ROLE_OPTIONS.find((option) => option.value === outcome.role)?.label}.`,
+      isError: false,
+    });
   };
 
   return (
@@ -353,8 +359,13 @@ function RoleControl({ record, actions }: { record: ProfileRecord; actions: Prof
         })}
       </fieldset>
       {message && (
-        <output className="mt-2 block text-[length:var(--text-body-sm)] text-muted-foreground">
-          {message}
+        <output
+          className={cn(
+            "mt-2 block text-[length:var(--text-body-sm)]",
+            message.isError ? "text-destructive" : "text-muted-foreground",
+          )}
+        >
+          {message.text}
         </output>
       )}
     </ControlRow>
@@ -645,7 +656,11 @@ function ControlRow({
         <p className="text-[length:var(--text-label)] font-semibold">{label}</p>
         <p className="mt-0.5 text-[length:var(--text-body-sm)] text-muted-foreground">{help}</p>
       </div>
-      <div className="sm:justify-self-end">{children}</div>
+      {/* A right-aligned column so the control (button/segmented control) stays pinned to
+          the grid's right edge even when an error/status message appears below it —
+          otherwise the wide message grows this shrink-to-fit cell and slides the button
+          left (OFC-241 live-test). */}
+      <div className="sm:flex sm:flex-col sm:items-end sm:justify-self-end">{children}</div>
     </div>
   );
 }
