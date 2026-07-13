@@ -136,7 +136,7 @@ export function authorizePrivileged(
  * The optional denial-audit context for {@link requireEffectiveAdmin}: pass it to
  * record an `outcome:"denied"` entry when a valid non-admin session is refused
  * (OFC-190), mirroring {@link authorizePrivileged}'s per-record IDOR trail. Omit it
- * for read endpoints whose denials are not audited (e.g. `GET /api/users/:id/role`).
+ * for read endpoints whose denials are not audited.
  */
 export interface AdminDenialAudit {
   action: AuditAction;

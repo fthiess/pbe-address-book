@@ -28,6 +28,8 @@ import type { DirectoryProfile } from "../../lib/types.js";
 export type PresenceFilter = "" | "has" | "missing";
 export type BoolFilter = "" | "yes" | "no";
 export type VerificationFilter = "" | "verified" | "never";
+/** The Staff filter: unset, or "managers and administrators" (OFC-199). */
+export type StaffFilter = "" | "staffOnly";
 
 /** Every structured filter, in its URL-serialisable form (strings + string lists). */
 export interface DirectoryFilters {
@@ -43,6 +45,13 @@ export interface DirectoryFilters {
   stateProvince: string[];
   /** Substring (case-insensitive): City. */
   city: string;
+  /**
+   * All-brothers — filter to managers and administrators (OFC-199). Role is public
+   * (OFC-139), so unlike the staff-only filters below this is available to every
+   * role. A single "staff or not" toggle: with only ~6–8 staff, splitting managers
+   * from admins would add UI for no practical gain.
+   */
+  staff: StaffFilter;
   /** Staff-only — presence of an email / phone. */
   email: PresenceFilter;
   phone: PresenceFilter;
@@ -62,6 +71,7 @@ export const EMPTY_FILTERS: DirectoryFilters = {
   country: [],
   stateProvince: [],
   city: "",
+  staff: "",
   email: "",
   phone: "",
   allowNewsletterEmail: "",
@@ -99,6 +109,7 @@ export function countActiveFilters(filters: DirectoryFilters): number {
   if (filters.country.length) n++;
   if (filters.stateProvince.length) n++;
   if (filters.city.trim()) n++;
+  if (filters.staff) n++;
   if (filters.email) n++;
   if (filters.phone) n++;
   if (filters.allowNewsletterEmail) n++;
@@ -225,6 +236,12 @@ export function buildFilterPredicate(
   const city = filters.city.trim().toLocaleLowerCase();
   if (city !== "") {
     clauses.push((p) => (p.address?.city ?? "").toLocaleLowerCase().includes(city));
+  }
+
+  // Staff filter — all roles (role is public, OFC-139/OFC-199): keep only managers
+  // and administrators. Undefined role (a brother) never matches.
+  if (filters.staff === "staffOnly") {
+    clauses.push((p) => p.role === "manager" || p.role === "admin");
   }
 
   if (canUseStaffFilters(role)) {

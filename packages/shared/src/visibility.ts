@@ -37,8 +37,10 @@ import type { PrivacyFlags, Profile, Role } from "./types.js";
  * rules differ (`capabilities.ts`), and the whole-record hide they drive is the
  * projection's record-level omission, not a field-level one. (DECISIONS N10.)
  *
- * The `private` class of `VisibilityClass` (the `users` doc's `role`/`stars`)
- * has no `Profile` member and so never appears in this table.
+ * The `private` class of `VisibilityClass` (the `users` doc's `stars`) has no
+ * `Profile` member and so never appears in this table. `role` used to live there
+ * too, but moved onto the `Profile` (OFC-139) and is now classified `public`
+ * below — every brother may see who holds a staff role (OFC-199).
  */
 export type FieldVisibility =
   | { readonly cls: "public" }
@@ -82,6 +84,13 @@ export const FIELD_VISIBILITY: Record<keyof Profile, FieldVisibility> = {
   deceased: { cls: "public" },
   // Staff-only flag; the record it marks is hidden from brothers wholesale (D115).
   debrothered: { cls: "staff-internal" },
+
+  // --- Access ---
+  // The brother's Book role. Public: the staff roles (manager/admin) are official
+  // contact points, not secrets, so every brother may see who holds them (OFC-199,
+  // reversing OFC-139's staff-only proposal). Read-public; write stays locked to
+  // the change-role action (WRITE_RULE: protected).
+  role: { cls: "public" },
 
   // --- Photos ---
   hasHeadshot: { cls: "public" },

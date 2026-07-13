@@ -411,6 +411,11 @@ function assembleNewProfile(body: Record<string, unknown>, id: number, now: Date
     deceased: { isDeceased: false },
     debrothered: { isDebrothered: false },
     hasHeadshot: false,
+    // A new brother is a `brother` (role is protected — never settable via the body).
+    // Stamped here so the record enters the cache with a concrete role: the create
+    // path commits through `cache.applyCreate`, which (unlike `hydrateFromFirestore`)
+    // does not run the missing→brother hydration normalization (D128).
+    role: "brother",
     lastModified: now.toISOString(),
     newsletterConsentChangedAt: now.toISOString(),
   } as Profile;

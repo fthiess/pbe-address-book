@@ -14,7 +14,7 @@ import {
   type ProfileWrite,
   StaleWriteError,
 } from "../data/profiles.js";
-import { type AdminUserStore, LastAdminError, type RoleChangeResult } from "../data/users.js";
+import type { AdminUserStore } from "../data/users.js";
 import type {
   GhostCreateResult,
   GhostLifecycle,
@@ -185,52 +185,27 @@ export class InMemoryProfileStore implements ProfileStore {
 }
 
 /**
- * In-memory {@link AdminUserStore} double: models the `users` collection's roles
- * and stars enough to drive the Change-role invariant and the delete's reference
- * scrubs (N44/D98) without the emulator. Seed roles/stars, then assert against the
- * exposed maps. The real transactional store is proven in the emulator suite.
+ * In-memory {@link AdminUserStore} double: models the `users` collection's stars
+ * enough to drive the delete's reference scrubs and the orphan audit (D98/D99)
+ * without the emulator. Seed stars, then assert against the exposed maps. (Role
+ * change and the last-admin invariant left this store when `role` moved onto the
+ * profile — OFC-139; the invariant is now driven through the ProfileCache in the
+ * route tests.) The real store is proven in the emulator suite.
  */
 export class InMemoryAdminUserStore implements AdminUserStore {
-  readonly roles = new Map<number, Role>();
   readonly stars = new Map<number, Set<number>>();
   readonly deleted = new Set<number>();
 
-  /** Seed an existing `users` doc's role (absent → treated as `brother`, N44). */
-  seedRole(id: number, role: Role): void {
-    this.roles.set(id, role);
-  }
-
-  /** Seed a user's star list so a delete's `removeStarFromAll` scrub can be asserted. */
-  seedStars(id: number, ids: number[]): void {
+  /**
+   * Seed a `users` doc — its star list (default empty). An empty-stars entry is a
+   * real doc (created at first sign-in), so it still counts for {@link listUserIds},
+   * which is what the orphan-detection audit (D99) keys on.
+   */
+  seedStars(id: number, ids: number[] = []): void {
     this.stars.set(id, new Set(ids));
   }
 
-  async setRole(id: number, role: Role): Promise<RoleChangeResult> {
-    const before: Role = this.roles.get(id) ?? "brother";
-    if (before === "admin" && role !== "admin") {
-      const admins = [...this.roles.values()].filter((r) => r === "admin").length;
-      if (admins <= 1) {
-        throw new LastAdminError();
-      }
-    }
-    this.roles.set(id, role);
-    return { before };
-  }
-
-  async getRole(id: number): Promise<Role> {
-    return this.roles.get(id) ?? "brother";
-  }
-
-  async isLastAdmin(id: number): Promise<boolean> {
-    if (this.roles.get(id) !== "admin") {
-      return false;
-    }
-    const admins = [...this.roles.values()].filter((role) => role === "admin").length;
-    return admins <= 1;
-  }
-
   async deleteUser(id: number): Promise<void> {
-    this.roles.delete(id);
     this.stars.delete(id);
     this.deleted.add(id);
   }
@@ -242,10 +217,10 @@ export class InMemoryAdminUserStore implements AdminUserStore {
   }
 
   async listUserIds(): Promise<number[]> {
-    // A `users` doc exists if it has a role OR a star list — union both maps, so a
-    // stars-only (roleless) doc, a realistic partial-delete residue, is reported
-    // just as the Firestore store would, keeping the orphan-detection test honest.
-    return [...new Set([...this.roles.keys(), ...this.stars.keys()])];
+    // A `users` doc now holds only stars, so its presence is a `stars` key (an
+    // empty-stars doc still exists). `deleteUser` removes the key, so deleted docs
+    // are already excluded — this reports live user docs for the orphan audit (D99).
+    return [...this.stars.keys()];
   }
 }
 

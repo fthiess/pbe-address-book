@@ -27,6 +27,8 @@ describe("FIELD_VISIBILITY table", () => {
     // Spot-check a representative of each class against the schema's Visibility column.
     expect(FIELD_VISIBILITY.firstName).toEqual({ cls: "public" });
     expect(FIELD_VISIBILITY.deceased).toEqual({ cls: "public" });
+    // Role is public — every brother may see who holds a staff role (OFC-139/OFC-199).
+    expect(FIELD_VISIBILITY.role).toEqual({ cls: "public" });
     expect(FIELD_VISIBILITY.email).toEqual({ cls: "toggle", flag: "shareEmail" });
     expect(FIELD_VISIBILITY.phone).toEqual({ cls: "toggle", flag: "sharePhone" });
     expect(FIELD_VISIBILITY.spousePartnerName).toEqual({

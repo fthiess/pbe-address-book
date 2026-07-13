@@ -1,4 +1,4 @@
-import { type Role, formatCanonicalName, normalizeEmail } from "@pbe/shared";
+import { formatCanonicalName, normalizeEmail } from "@pbe/shared";
 import type { ProfileCache } from "../data/cache.js";
 import type { KeyResolver } from "./ghost-jwks.js";
 import { JWT_CLOCK_SKEW_SEC, verifyRsJwt } from "./jwt-verify.js";
@@ -34,8 +34,8 @@ export interface GhostProviderDeps {
   nonceStore: NonceService;
   /** The in-memory dataset, for email→profile resolution. */
   cache: ProfileCache;
-  /** Create-if-absent the caller's `users` doc and return their role (R20). */
-  ensureUser: (profileId: number) => Promise<{ role: Role }>;
+  /** Create-if-absent the caller's private `users` doc (stars); role is on the profile (OFC-139). */
+  ensureUser: (profileId: number) => Promise<{ stars: number[] }>;
   /** Session lifetime; defaults to the 4-hour cap. */
   sessionTtlMs?: number;
   /** Allowed signing algorithms; defaults to the asymmetric RS family (D104). */
@@ -111,8 +111,12 @@ export class GhostIdentityProvider implements IdentityProvider {
       throw new AuthError(401, "invalid_state", "missing or replayed state nonce");
     }
 
-    // 4. Establish the Book role (create-if-absent as brother).
-    const { role } = await this.deps.ensureUser(profile.id);
+    // 4. Establish the caller's Book role from the resolved profile (OFC-139): role
+    //    now lives on the profile, normalized to `brother` at hydration when the
+    //    document omits it, so the value here is always concrete. `ensureUser` still
+    //    runs to create-if-absent the private `users` doc that holds their stars (R20).
+    await this.deps.ensureUser(profile.id);
+    const role = profile.role;
 
     const identity: Identity = {
       subject: email,

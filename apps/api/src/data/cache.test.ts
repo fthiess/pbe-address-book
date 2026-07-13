@@ -16,6 +16,17 @@ describe("ProfileCache", () => {
     expect(() => cache.brotherPayload()).toThrow(/not been hydrated/);
   });
 
+  it("counts admins across the loaded dataset for the last-admin invariant (adminCount, OFC-139)", async () => {
+    const cache = new ProfileCache();
+    await cache.load([
+      makeProfile({ id: 5001, role: "admin" }),
+      makeProfile({ id: 5002, role: "manager" }),
+      makeProfile({ id: 5003, role: "brother" }),
+      makeProfile({ id: 5004, role: "admin" }),
+    ]);
+    expect(cache.adminCount()).toBe(2);
+  });
+
   it("builds a brother payload whose br/gzip/json all decode to the same body", async () => {
     const cache = new ProfileCache();
     await cache.load([makeProfile({ id: 5001 }), makeProfile({ id: 5002 })]);

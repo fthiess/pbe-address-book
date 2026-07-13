@@ -111,30 +111,24 @@ if (DRY_RUN) {
     `[dry-run] Would update profile #${profileId} ("${profile.firstName} ${profile.lastName}"): ` +
       `email=${email}, privacy.shareEmail=true, unlisted=false, deceased.isDeceased=false.`,
   );
-  console.log(
-    `[dry-run] Would grant admin: users/${profileId} merge { id: ${profileId}, role: "admin" }.`,
-  );
+  console.log(`[dry-run] Would grant admin: profiles/${profileId} update { role: "admin" }.`);
   console.log("[dry-run] No changes were made.");
   process.exit(0);
 }
 
 // Make the linked profile a clean, visible, contactable record for the tester:
-// a real email, the email share-toggle on, listed, and living (§3 field shape).
+// a real email, the email share-toggle on, listed, living, and admin so the tester
+// can exercise everything (§3 field shape). `role` now lives on the profile
+// (OFC-139), so the admin grant is a field on this same update — no `users` write.
+// The tester's private `users` doc (their stars) is left untouched: it is created
+// lazily on the first star, and `getStars` treats an absent doc as [].
 await profileRef.update({
   email,
   "privacy.shareEmail": true,
   unlisted: false,
   deceased: { isDeceased: false },
+  role: "admin",
 });
-// Grant the linked profile the admin role so the tester can exercise everything.
-// MERGE (not a full set) so the tester's existing `stars` survive — this script
-// runs on every deploy (the N18 autoseed), and a full set would wipe the star
-// list each time. An absent doc is created with just {id, role}; `getStars`
-// treats a missing `stars` field as [], and the first star write creates it.
-await db
-  .collection("users")
-  .doc(String(profileId))
-  .set({ id: profileId, role: "admin" }, { merge: true });
 
 console.log(
   `Linked ${email} → fake profile #${profileId} ("${profile.firstName} ${profile.lastName}") as admin in ${projectId}. Let the staging API cold-start (or redeploy) so it re-indexes the new email.`,

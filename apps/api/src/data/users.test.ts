@@ -10,7 +10,7 @@ import { addStar, removeStar } from "./users.js";
  * `NOT_FOUND` and never clobbers an existing doc on a transient error.
  */
 
-type Doc = { id: number; role: string; stars: number[] } | undefined;
+type Doc = { id: number; stars: number[] } | undefined;
 
 /** A minimal fake Firestore whose single `users` ref behaves as configured. */
 function fakeDb(opts: { updateError?: unknown; doc?: Doc }) {
@@ -31,33 +31,33 @@ function fakeDb(opts: { updateError?: unknown; doc?: Doc }) {
 
 describe("mutateStars error handling (OFC-98)", () => {
   it("re-throws a transient update() failure and never overwrites an existing doc", async () => {
-    // An admin's doc already exists; update() fails for a transient reason
-    // (14 = UNAVAILABLE). The fallback set() must NOT fire — that would reset the
-    // admin to role "brother" and wipe their stars.
+    // A doc already exists with stars; update() fails for a transient reason
+    // (14 = UNAVAILABLE). The fallback set() must NOT fire — that would wipe the
+    // existing star list (role no longer lives here since OFC-139).
     const { db, set } = fakeDb({
       updateError: { code: 14 },
-      doc: { id: 5902, role: "admin", stars: [5001, 5002] },
+      doc: { id: 5902, stars: [5001, 5002] },
     });
     await expect(addStar(db, 5902, 5305)).rejects.toEqual({ code: 14 });
     expect(set).not.toHaveBeenCalled();
   });
 
-  it("creates a minimal brother record only when the doc is genuinely absent (NOT_FOUND)", async () => {
+  it("creates a minimal record only when the doc is genuinely absent (NOT_FOUND)", async () => {
     // 5 = NOT_FOUND: update() on an absent doc. The fallback creates a fresh
-    // brother record carrying just the toggled star.
+    // record carrying just the toggled star (no role — that lives on the profile).
     const { db, set } = fakeDb({ updateError: { code: 5 } });
     expect(await addStar(db, 5904, 5012)).toEqual([5012]);
-    expect(set).toHaveBeenCalledWith({ id: 5904, role: "brother", stars: [5012] });
+    expect(set).toHaveBeenCalledWith({ id: 5904, stars: [5012] });
   });
 
-  it("creates an empty-star brother record when removing against an absent doc", async () => {
+  it("creates an empty-star record when removing against an absent doc", async () => {
     const { db, set } = fakeDb({ updateError: { code: 5 } });
     expect(await removeStar(db, 5905, 5012)).toEqual([]);
-    expect(set).toHaveBeenCalledWith({ id: 5905, role: "brother", stars: [] });
+    expect(set).toHaveBeenCalledWith({ id: 5905, stars: [] });
   });
 
   it("takes no fallback set() on the normal (update succeeds) path", async () => {
-    const { db, set, update } = fakeDb({ doc: { id: 5903, role: "manager", stars: [5012] } });
+    const { db, set, update } = fakeDb({ doc: { id: 5903, stars: [5012] } });
     await addStar(db, 5903, 5305);
     expect(update).toHaveBeenCalledOnce();
     expect(set).not.toHaveBeenCalled();

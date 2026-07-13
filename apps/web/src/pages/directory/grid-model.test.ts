@@ -3,6 +3,7 @@ import type { DirectoryProfile } from "../../lib/types.js";
 import {
   COLUMNS,
   type ColumnKey,
+  DEFAULT_DATA_KEYS,
   type SortDirection,
   compareCanonical,
   makeComparator,
@@ -54,6 +55,28 @@ describe("classYear column display", () => {
 
   it("shows the em-dash placeholder when the class year is unknown", () => {
     expect(COLUMNS.classYear.display(row({ id: 3, classYear: null }), "")).toBe("—");
+  });
+});
+
+describe("role column (OFC-199)", () => {
+  it("labels staff and shows an em-dash for ordinary brothers (and absent role)", () => {
+    expect(COLUMNS.role.display(row({ id: 1, role: "admin" }), "")).toBe("Administrator");
+    expect(COLUMNS.role.display(row({ id: 2, role: "manager" }), "")).toBe("Manager");
+    expect(COLUMNS.role.display(row({ id: 3, role: "brother" }), "")).toBe("—");
+    expect(COLUMNS.role.display(row({ id: 4 }), "")).toBe("—");
+  });
+
+  it("ranks admins above managers, with brothers (null) sorting last", () => {
+    expect(COLUMNS.role.sortValue(row({ id: 1, role: "admin" }))).toBe(2);
+    expect(COLUMNS.role.sortValue(row({ id: 2, role: "manager" }))).toBe(1);
+    expect(COLUMNS.role.sortValue(row({ id: 3, role: "brother" }))).toBeNull();
+  });
+
+  it("is off by default and selectable by every role (public field)", () => {
+    for (const role of ["brother", "manager", "admin"] as const) {
+      expect(selectableColumns(role).map((c) => c.key)).toContain("role");
+    }
+    expect(DEFAULT_DATA_KEYS).not.toContain("role");
   });
 });
 

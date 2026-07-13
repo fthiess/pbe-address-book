@@ -21,10 +21,11 @@ import {
 import { makeProfile } from "../test-support/make-profile.js";
 
 /**
- * The 4c-2 admin-only controls (API-SPEC §4/§5; DECISIONS N41/N44): `DELETE
+ * The 4c-2 admin-only controls (API-SPEC §4/§5; DECISIONS N41/D106): `DELETE
  * /api/profiles/{id}` (Ghost-first, reference-scrubbing) and `PUT
- * /api/users/{id}/role` (last-admin invariant, create-if-absent). Driven against
- * the in-memory doubles.
+ * /api/profiles/{id}/role` (re-pathed by OFC-139; the last-admin invariant now
+ * reads the ProfileCache's admin count, and `role` lives on the profile). Driven
+ * against the in-memory doubles.
  */
 
 const stubProvider: IdentityProvider = {
@@ -53,17 +54,21 @@ async function buildAdminServer(ghostLifecycle = new StubGhostLifecycle()) {
     // 5001: the delete target — has a headshot, a Ghost member, and is someone's Big Brother.
     makeProfile({
       id: 5001,
+      role: "manager",
       hasHeadshot: true,
       headshotVersion: "hv",
       ghostMemberId: "ghost-5001",
     }),
     // 5002: names 5001 as Big Brother (the inbound-reference scrub case).
     makeProfile({ id: 5002, bigBrotherId: 5001 }),
-    // 5010: an existing admin; 5011: a promotable brother (with a Ghost member).
-    makeProfile({ id: 5010 }),
+    // 5010: the sole admin (last-admin cases); 5011: a promotable brother (with a
+    // Ghost member); 5013: a manager (the role-change/revocation target). Role now
+    // lives on the profile (OFC-139).
+    makeProfile({ id: 5010, role: "admin" }),
     makeProfile({ id: 5011, ghostMemberId: "ghost-5011" }),
     // 5012: a Book-only brother — no email, so no Ghost member (C15/D20/D115).
     makeProfile({ id: 5012 }),
+    makeProfile({ id: 5013, role: "manager" }),
   ]);
   const sessionStore = new InMemorySessionStore();
   const store = new InMemoryProfileStore();
@@ -71,8 +76,6 @@ async function buildAdminServer(ghostLifecycle = new StubGhostLifecycle()) {
   imageStore.seed(headshotObjectKey(5001, "hv"), Buffer.from("h"));
   imageStore.seed(thumbnailObjectKey(5001, "hv"), Buffer.from("t"));
   const adminUsers = new InMemoryAdminUserStore();
-  adminUsers.seedRole(5001, "manager"); // the delete target has a users doc
-  adminUsers.seedRole(5010, "admin"); // the only admin (last-admin case)
   adminUsers.seedStars(5002, [5001]); // 5002 has starred the delete target
   const audited: Record<string, unknown>[] = [];
   const app = await buildServer({
@@ -208,7 +211,14 @@ describe("DELETE /api/profiles/:id", () => {
   });
 
   it("deletes a non-last admin normally (204) [OFC-134]", async () => {
-    ctx.adminUsers.seedRole(5011, "admin"); // now two admins exist
+    // Promote 5011 to admin via the role endpoint so 5010 is no longer the last one
+    // (role now lives on the profile, OFC-139) — now two admins exist.
+    await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5011/role",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+      payload: { role: "admin" },
+    });
     const response = await ctx.app.inject({
       method: "DELETE",
       url: "/api/profiles/5011",
@@ -295,7 +305,7 @@ describe("DELETE /api/profiles/:id", () => {
   });
 });
 
-describe("PUT /api/users/:id/role", () => {
+describe("PUT /api/profiles/:id/role", () => {
   let ctx: Ctx;
   beforeEach(async () => {
     ctx = await buildAdminServer();
@@ -307,23 +317,24 @@ describe("PUT /api/users/:id/role", () => {
   it("403s a manager (admin-only)", async () => {
     const response = await ctx.app.inject({
       method: "PUT",
-      url: "/api/users/5011/role",
+      url: "/api/profiles/5011/role",
       headers: { cookie: await ctx.cookieFor(9001, "manager") },
       payload: { role: "manager" },
     });
     expect(response.statusCode).toBe(403);
   });
 
-  it("promotes a never-signed-in brother (create-if-absent), audited before/after", async () => {
+  it("writes the role onto the profile, audited before/after", async () => {
     const response = await ctx.app.inject({
       method: "PUT",
-      url: "/api/users/5011/role",
+      url: "/api/profiles/5011/role",
       headers: { cookie: await ctx.cookieFor(5010, "admin") },
       payload: { role: "manager" },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ id: 5011, role: "manager" });
-    expect(ctx.adminUsers.roles.get(5011)).toBe("manager");
+    // Role is written onto the profile record in the cache (OFC-139), not a users doc.
+    expect(ctx.cache.getById(5011)?.role).toBe("manager");
     expect(ctx.audited.at(-1)).toMatchObject({
       action: "role.change",
       targetId: 5011,
@@ -332,22 +343,41 @@ describe("PUT /api/users/:id/role", () => {
     });
   });
 
-  it("409s demoting the only remaining admin (last-admin invariant)", async () => {
+  it("409s demoting the only remaining admin (last-admin invariant over the cache)", async () => {
     const response = await ctx.app.inject({
       method: "PUT",
-      url: "/api/users/5010/role",
+      url: "/api/profiles/5010/role",
       headers: { cookie: await ctx.cookieFor(5010, "admin") },
       payload: { role: "brother" },
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toEqual({ error: "last_admin" });
-    expect(ctx.adminUsers.roles.get(5010)).toBe("admin");
+    // The sole admin's role is unchanged in the cache.
+    expect(ctx.cache.getById(5010)?.role).toBe("admin");
   });
 
-  it("404s when no profile with that id exists (a missing users doc alone is not an error)", async () => {
+  it("allows demoting an admin once a second admin exists", async () => {
+    // Promote 5011 to admin, so 5010 is no longer the last one (two admins → one).
+    await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5011/role",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+      payload: { role: "admin" },
+    });
     const response = await ctx.app.inject({
       method: "PUT",
-      url: "/api/users/9999/role",
+      url: "/api/profiles/5010/role",
+      headers: { cookie: await ctx.cookieFor(5010, "admin") },
+      payload: { role: "brother" },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(ctx.cache.getById(5010)?.role).toBe("brother");
+  });
+
+  it("404s when no profile with that id exists", async () => {
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/9999/role",
       headers: { cookie: await ctx.cookieFor(5010, "admin") },
       payload: { role: "manager" },
     });
@@ -357,28 +387,27 @@ describe("PUT /api/users/:id/role", () => {
   it("422s an invalid role value", async () => {
     const response = await ctx.app.inject({
       method: "PUT",
-      url: "/api/users/5011/role",
+      url: "/api/profiles/5011/role",
       headers: { cookie: await ctx.cookieFor(5010, "admin") },
       payload: { role: "superuser" },
     });
     expect(response.statusCode).toBe(422);
   });
 
-  it("revokes the target's live sessions when the role changes, so a demoted admin loses power (OFC-147)", async () => {
-    // 5011 is a manager with two live sessions; demote them to brother.
-    ctx.adminUsers.seedRole(5011, "manager");
-    const s1 = await ctx.sessionStore.create(sessionFor(5011, "manager"));
-    const s2 = await ctx.sessionStore.create(sessionFor(5011, "manager"));
+  it("revokes the target's live sessions when the role changes, so a demoted manager loses power (OFC-147)", async () => {
+    // 5013 is a manager with two live sessions; demote them to brother.
+    const s1 = await ctx.sessionStore.create(sessionFor(5013, "manager"));
+    const s2 = await ctx.sessionStore.create(sessionFor(5013, "manager"));
     const response = await ctx.app.inject({
       method: "PUT",
-      url: "/api/users/5011/role",
+      url: "/api/profiles/5013/role",
       headers: { cookie: await ctx.cookieFor(5010, "admin") },
       payload: { role: "brother" },
     });
     expect(response.statusCode).toBe(200);
     expect(ctx.audited.at(-1)).toMatchObject({
       action: "role.change",
-      targetId: 5011,
+      targetId: 5013,
       fromRole: "manager",
       toRole: "brother",
       sessionsRevoked: 2,
@@ -389,18 +418,18 @@ describe("PUT /api/users/:id/role", () => {
   });
 
   it("revokes no sessions on a no-op role reassignment (same role) (OFC-147)", async () => {
-    ctx.adminUsers.seedRole(5011, "manager");
-    const s1 = await ctx.sessionStore.create(sessionFor(5011, "manager"));
+    const s1 = await ctx.sessionStore.create(sessionFor(5013, "manager"));
     const response = await ctx.app.inject({
       method: "PUT",
-      url: "/api/users/5011/role",
+      url: "/api/profiles/5013/role",
       headers: { cookie: await ctx.cookieFor(5010, "admin") },
       payload: { role: "manager" }, // unchanged
     });
     expect(response.statusCode).toBe(200);
     expect(ctx.audited.at(-1)).toMatchObject({ action: "role.change", sessionsRevoked: 0 });
-    // An unchanged role withdrew no trust, so the session stands.
-    expect((await ctx.sessionStore.get(s1))?.identity.profileId).toBe(5011);
+    // An unchanged role withdrew no trust, so the session stands, and the cache is untouched.
+    expect((await ctx.sessionStore.get(s1))?.identity.profileId).toBe(5013);
+    expect(ctx.cache.getById(5013)?.role).toBe("manager");
   });
 
   it("a transient revocation failure still completes the role change and audits it (sessionsRevoked: null) (OFC-146 review)", async () => {
@@ -413,17 +442,17 @@ describe("PUT /api/users/:id/role", () => {
       }
     }
     const cache = new ProfileCache();
-    await cache.load([makeProfile({ id: 5010 }), makeProfile({ id: 5011 })]);
+    await cache.load([
+      makeProfile({ id: 5010, role: "admin" }),
+      makeProfile({ id: 5011, role: "manager" }),
+    ]);
     const sessionStore = new ThrowingRevokeStore();
-    const adminUsers = new InMemoryAdminUserStore();
-    adminUsers.seedRole(5010, "admin");
-    adminUsers.seedRole(5011, "manager");
     const audited: Record<string, unknown>[] = [];
     const app = await buildServer({
       identityProvider: stubProvider,
       profileCache: cache,
       profileStore: new InMemoryProfileStore(),
-      adminUsers,
+      adminUsers: new InMemoryAdminUserStore(),
       bannerStore: new InMemoryBannerStore(),
       backupSource: new InMemoryBackupSource(),
       bugReportStore: new InMemoryBugReportStore(),
@@ -441,13 +470,13 @@ describe("PUT /api/users/:id/role", () => {
     const cookie = `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(5010, "admin"))}`;
     const response = await app.inject({
       method: "PUT",
-      url: "/api/users/5011/role",
+      url: "/api/profiles/5011/role",
       headers: { cookie },
       payload: { role: "brother" },
     });
     // The change succeeded despite revocation failing; the audit is preserved.
     expect(response.statusCode).toBe(200);
-    expect(adminUsers.roles.get(5011)).toBe("brother");
+    expect(cache.getById(5011)?.role).toBe("brother");
     expect(audited.at(-1)).toMatchObject({
       action: "role.change",
       targetId: 5011,
@@ -455,54 +484,5 @@ describe("PUT /api/users/:id/role", () => {
       sessionsRevoked: null,
     });
     await app.close();
-  });
-});
-
-describe("GET /api/users/:id/role", () => {
-  let ctx: Ctx;
-  beforeEach(async () => {
-    ctx = await buildAdminServer();
-  });
-  afterEach(async () => {
-    await ctx.app.close();
-  });
-
-  it("returns the target's current role to an admin", async () => {
-    // 5001 was seeded as a manager in the harness.
-    const response = await ctx.app.inject({
-      method: "GET",
-      url: "/api/users/5001/role",
-      headers: { cookie: await ctx.cookieFor(5010, "admin") },
-    });
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ id: 5001, role: "manager" });
-  });
-
-  it("returns brother for a never-signed-in brother (no users doc)", async () => {
-    const response = await ctx.app.inject({
-      method: "GET",
-      url: "/api/users/5011/role",
-      headers: { cookie: await ctx.cookieFor(5010, "admin") },
-    });
-    expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ id: 5011, role: "brother" });
-  });
-
-  it("403s a manager (admin-only)", async () => {
-    const response = await ctx.app.inject({
-      method: "GET",
-      url: "/api/users/5001/role",
-      headers: { cookie: await ctx.cookieFor(9001, "manager") },
-    });
-    expect(response.statusCode).toBe(403);
-  });
-
-  it("404s when no profile with that id exists", async () => {
-    const response = await ctx.app.inject({
-      method: "GET",
-      url: "/api/users/9999/role",
-      headers: { cookie: await ctx.cookieFor(5010, "admin") },
-    });
-    expect(response.statusCode).toBe(404);
   });
 });

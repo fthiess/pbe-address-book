@@ -9,11 +9,11 @@
 Book's persistent data spans **three Firestore collections** plus **image objects in Google Cloud Storage**:
 
 - **`profiles`** — one document per brother, holding the directory data shown to other brothers (subject to per-field visibility projection). This is the dataset the SPA bulk-downloads into browser memory on startup.
-- **`users`** — one document per brother account, holding *private per-user state* never shared with other brothers: the user's permission `role` and their personal `stars` list. Keyed by the same Constitution ID as the profile.
+- **`users`** — one document per brother account, holding *private per-user state* never shared with other brothers: the user's personal `stars` list. Keyed by the same Constitution ID as the profile. (The permission `role` formerly lived here; it moved onto the `Profile` as a public field — decision D128.)
 - **`majors`** — a small controlled-vocabulary collection, one document per MIT course code, used to validate and display the `majors` field on profiles.
 - **GCS image objects** — headshots and thumbnails (binaries don't belong in a document store, decision D8); see §7.
 
-Splitting `users` out of `profiles` keeps private state (role, stars) out of the bulk-download payload that goes to every brother, and keeps the server-side projection (decision D5) operating over directory data only.
+Splitting `users` out of `profiles` keeps the remaining private state (`stars`) out of the bulk-download payload that goes to every brother, and keeps the server-side projection (decision D5) operating over directory data only. (`role` is no longer private — it lives on the `Profile` as a public field, decision D128 — so only `stars` remains here.)
 
 Several small **operational collections** sit outside the directory model: **`config`**, holding app-level singletons (the admin-set system banner, decision D117); **`bugReports`**, holding user-submitted bug reports (decision D121); and **`sessions`** and **`authNonces`**, holding Book's server-side session records and single-use login nonces (decision D125) — each carrying an `expiresAt` field with a native Firestore **TTL** so they self-clean, and, critically, so a scale-to-zero cold start does **not** lose live sessions (ENGINEERING-DESIGN §2.3). None is part of the `GET /api/profiles` projection.
 
@@ -37,9 +37,15 @@ The `Profile` type below is the single shared TypeScript type that both the fron
 /** Constitution signature number: a unique, permanent, positive integer. */
 type BrotherId = number;
 
+/** Book permission level. Lives on the Profile (public read); stored optionally — an omitted value means 'brother' (decision D128). */
+type Role = 'brother' | 'manager' | 'admin';
+
 interface Profile {
   // --- Identity ---
   id: BrotherId;                       // primary key; also the Firestore document ID (as a string)
+
+  // --- Role (Book permission level; public read / protected write — see §9, decision D128) ---
+  role: Role;                          // 'brother' | 'manager' | 'admin'; REQUIRED in the domain type (always concrete in memory) but stored OPTIONALLY in Firestore — an omitted document is a 'brother', and the hydration boundary (normalizeHydratedProfile) normalizes missing/unrecognized → 'brother'. Settable only by the change-role action, never via PATCH.
 
   // --- Names ---
   firstName: string;                   // required
@@ -177,6 +183,7 @@ Required / default / visibility / validation for each field. The **Visibility** 
 | Field | Type | Required | Default | Visibility | Notes |
 |---|---|---|---|---|---|
 | `id` | `number` | yes | — | public | Positive integer, unique, immutable after creation. |
+| `role` | `Role` (`'brother'\|'manager'\|'admin'`) | domain: yes | `brother` (by omission) | public | Book permission level; stored **optionally** (an omitted document is a `brother`, normalized at hydration). Public read; **protected write** — set only by the change-role action, never via PATCH (decision D128). |
 | `firstName` | `string` | yes | — | public | Non-empty. |
 | `middleName` | `string?` | no | absent | public | |
 | `lastName` | `string` | yes | — | public | Non-empty. |
@@ -248,16 +255,13 @@ Each profile stores only its own `bigBrotherId` (the upward edge). The inverse r
 Private per-user state, keyed by the same Constitution ID as the profile. UI preferences (font size, dark mode, column choices) are **not** here — they live only in client-side **`localStorage`** (decision D30) and do not follow the user across devices in MVP.
 
 ```typescript
-type Role = 'brother' | 'manager' | 'admin';
-
-interface User {
+interface UserRecord {
   id: BrotherId;                       // = the brother's Constitution ID; also the document ID
-  role: Role;                          // default 'brother'
   stars: BrotherId[];                  // brother IDs this user has personally starred; default []
 }
 ```
 
-`stars` is writable only by the owning user, and a stars write is **scoped to the `stars` field exclusively** — never coercible into a `role` write on the shared `users` doc. `role` is writable only by an administrator (the **Change role** action — PRD §5.7.10), subject to a **server-enforced last-admin invariant**: the only remaining admin cannot be demoted (a direct API call must not be able to lock the org out of backup/restore, add/delete, role changes, and Ghost sync), and every role change is **audit-logged with before/after** (feeding the D101 forensic privileged-roster log). Both writes sit under the server-side **per-role write-field allowlist** — the write-side dual of the §9 read projection — plus the object-level predicate (`profileId == session.profileId OR role ∈ {manager, admin}`) that governs all writes; fields outside a role's allowlist are **rejected**, not silently dropped. Enforcement and the full capability matrix are in PRD §4 and ENGINEERING-DESIGN §1.4/§2 (decisions D19, D106).
+Since decision D128, `stars` is the **only** field this record holds: `role` moved onto the `Profile` (the `Role` type is now defined in §3.1). `stars` is writable only by the owning user, and a stars write is **scoped to the `stars` field exclusively**. The **Change role** action (PRD §5.7.10) now writes the profile, not this record — it is a **protected-field profile write** at `PUT /api/profiles/{id}/role`, admin-only, subject to a **last-admin invariant** now enforced against an in-memory `ProfileCache.adminCount()` rather than a `users where role == admin` query, and **audit-logged with before/after** (feeding the D101 forensic privileged-roster log). The stars write sits under the server-side **per-role write-field allowlist** — the write-side dual of the §9 read projection — plus the object-level predicate (`profileId == session.profileId OR role ∈ {manager, admin}`) that governs all writes; fields outside a role's allowlist are **rejected**, not silently dropped. Enforcement and the full capability matrix are in PRD §4 and ENGINEERING-DESIGN §1.4/§2 (decisions D19, D106, D128).
 
 ### 6.2 `majors`
 
@@ -368,7 +372,7 @@ Applied on write (server-authoritative; the client validates the same rules for 
 
 Every field carries a **visibility class** that the backend enforces by projecting each response down to the fields the requester may see (decision D5); the frontend never receives data the requester is not entitled to. Six classes:
 
-- **public** — visible to all authenticated brothers: identity, names, class year, majors, links, employer, Big Brother, deceased status (including the `birthYear`/`deathYear` shown only when deceased, decision D122), the headshot/thumbnail, and **verification status** (`lastVerifiedDate`, `verifiedBy` — OFC-207, amends D28: an accuracy signal and a public administrative act, not PII; the *right to mark verified* stays owner/manager/admin, enforced on the write side). (`spousePartnerName` is **not** public — it moved to the **toggle** class as third-party data, decision D93.)
+- **public** — visible to all authenticated brothers: identity, names, class year, majors, links, employer, Big Brother, deceased status (including the `birthYear`/`deathYear` shown only when deceased, decision D122), the headshot/thumbnail, **verification status** (`lastVerifiedDate`, `verifiedBy` — OFC-207, amends D28: an accuracy signal and a public administrative act, not PII; the *right to mark verified* stays owner/manager/admin, enforced on the write side), and the brother's **`role`** (decision D128, reversing OFC-139's staff-only plan: the staff roles are official contact points, not secret; the *right to change a role* stays admin-only, a **protected** write enforced on the write side — every authenticated brother may *see* who is staff, only an admin may *set* it). (`spousePartnerName` is **not** public — it moved to the **toggle** class as third-party data, decision D93.)
 - **toggle** — the protected contact *values*. Visible to the record's owner and to admins **always**; visible to other brothers **and to managers** only when the owner's corresponding share flag is `true`. (This is the Session-3 narrowing of decision D16: a field a brother has hidden is invisible to managers too — only admins, the override role, still see it. See decision D19.) The flags — the reachability toggles default `true`, the two **third-party-data** toggles default `false` / opt-in (decision D93):
   - `privacy.shareEmail` → `email`, `alternateEmail` (default `true`)
   - `privacy.sharePhone` → `phone` (default `true`)
@@ -376,7 +380,7 @@ Every field carries a **visibility class** that the backend enforces by projecti
   - `privacy.shareEmergency` → all `emergencyContacts` (default **`false`** — third-party data)
   - `privacy.shareSpousePartner` → `spousePartnerName` (default **`false`** — third-party data, decision D93)
 - **restricted** — the flags, preferences, and housekeeping metadata: the `privacy` flags themselves, `allowNewsletterEmail`, `allowShareWithMITAA`, and `lastModified`. Never visible to ordinary brothers; visible to the owner, managers, and admins, but **read-only for managers** — only the owner and admins may change a brother's consent and privacy settings, and `lastModified` is server-set, never directly edited. Keeping `allowNewsletterEmail` and `allowShareWithMITAA` here (rather than in `users`) lets managers and admins receive them in the bulk download and use them as search/filter/sort columns, while still hiding them from ordinary brothers. So a manager can *see* a brother's privacy choices without being able to *see through* an off-toggle to the protected value, or to *change* the brother's choices. (Verification — `lastVerifiedDate`/`verifiedBy` — was formerly restricted; it is now **public**, above, per OFC-207. The staff-only *verification filters* in the Directory — "not verified since," etc. — remain a manager/admin affordance regardless, since "filterable ⟺ visible" gates those controls by role, not by the field's read class.)
-- **private** — never part of the directory payload at all; lives in the `users` collection: the user's `role` and `stars`.
+- **private** — never part of the directory payload at all; lives in the `users` collection: the user's `stars`. (`role` was formerly private here; since decision D128 it is a **public** field on the `Profile`, above — only `stars` remains private.)
 - **staff-internal** — visible to, and read/write for, **managers and administrators only**; **not** visible to the owner or to peers. The sole member is `adminNote` — a free-text note for coordinating among staff and recording the history of manual changes, whose value depends on candor and therefore on the brother *not* seeing it. It is the first field the owner cannot see on their own profile; it lives in `profiles` (so it travels in the manager/admin bulk download) but is projected out for ordinary brothers and for the owner.
 - **system (internal)** — never sent to any client in any projection; used only by the backend and by admin tooling/backups. The sole member here is `ghostMemberId` (the Ghost Admin-API member id, used to address Book→Ghost updates, ENGINEERING-DESIGN §5.1). (`ghostMemberUuid` was removed from the schema — decision D81.)
 

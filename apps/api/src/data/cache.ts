@@ -147,6 +147,13 @@ function normalizeHydratedProfile(raw: Profile, log: (message: string) => void):
     privacy,
     unlisted: raw.unlisted === true,
     hasHeadshot: raw.hasHeadshot === true,
+    // `role` lives on the profile (OFC-139) but is stored optionally: a document
+    // that omits it is a `brother` (the initial load writes `role` only for the
+    // non-brothers). This is the single Firestore→Profile hydration boundary, so
+    // normalizing here guarantees every in-memory record carries a concrete role —
+    // no authorization path ever sees `undefined`. Any unrecognized stored value
+    // fails closed to `brother` (least privilege).
+    role: raw.role === "manager" || raw.role === "admin" ? raw.role : "brother",
   };
 }
 
@@ -334,6 +341,25 @@ export class ProfileCache {
    */
   allProfiles(): Profile[] {
     return this.orderedProfiles();
+  }
+
+  /**
+   * How many loaded records currently hold the `admin` role. Backs the last-admin
+   * invariant for the change-role and delete actions (D51/D106) now that `role`
+   * lives on the profile (OFC-139): the count is read straight from the
+   * authoritative in-memory dataset (D83) rather than a Firestore `users` query.
+   * Under the single-instance model this is consistent with the caller's `stored`
+   * record; the same narrow check-then-write race the delete path already accepts
+   * as negligible applies (two admins demoting the last two within one await gap).
+   */
+  adminCount(): number {
+    let count = 0;
+    for (const profile of this.byId.values()) {
+      if (profile.role === "admin") {
+        count++;
+      }
+    }
+    return count;
   }
 
   /** The record's current concurrency token (the `ETag`/`If-Match` value), or null. */

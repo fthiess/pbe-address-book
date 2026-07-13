@@ -1,6 +1,6 @@
 import type { Role, ValidationIssue } from "@pbe/shared";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
-import { type DeceasedFacts, type StatusWriteOutcome, getUserRole } from "../../lib/api.js";
+import type { DeceasedFacts, StatusWriteOutcome } from "../../lib/api.js";
 import type { ProfileRecord } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
@@ -22,7 +22,7 @@ export interface ProfileActions {
   setDeceased: (deceased: boolean, facts?: DeceasedFacts) => Promise<StatusWriteOutcome>;
   /** `PUT …/debrothered` — raise/reverse de-brothering (admin). */
   setDebrothered: (debrothered: boolean) => Promise<StatusWriteOutcome>;
-  /** `PUT /api/users/:id/role` — change role (admin). */
+  /** `PUT /api/profiles/:id/role` — change role (admin). */
   changeRole: (role: Role) => Promise<{ status: "ok"; role: Role } | { status: "last_admin" }>;
   /** `DELETE /api/profiles/:id` — remove the brother (admin). */
   removeProfile: () => Promise<
@@ -133,7 +133,7 @@ export function StaffControls({
         {isAdmin && (
           <>
             <DebrotherControl name={name} debrothered={debrothered} actions={actions} />
-            <RoleControl profileId={record.id} actions={actions} />
+            <RoleControl record={record} actions={actions} />
             <DeleteControl name={name} actions={actions} />
           </>
         )}
@@ -275,36 +275,20 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
 ];
 
 /**
- * Change role (admin only; D51/N44). A **segmented control** (Brother / Manager /
+ * Change role (admin only; D51/D106). A **segmented control** (Brother / Manager /
  * Administrator) with the brother's *current* role highlighted — the visual-design
  * spec for this control (`Profile.dc.html` "Administrator controls"). Selecting a
  * segment applies immediately (the design carries no separate Apply step; a role
- * change is reversible). The current role is fetched on mount via `GET
- * /api/users/:id/role`. A `409 last_admin` keeps the current role and explains.
- * Modeled on the masthead {@link FontSizeToggle} pattern (fieldset + `aria-pressed`).
+ * change is reversible). The current role is read straight off the profile record
+ * the page already holds (`record.role` — public since OFC-139, so no separate
+ * fetch), defaulting to `brother` when absent. A `409 last_admin` keeps the current
+ * role and explains. Modeled on the masthead {@link FontSizeToggle} pattern
+ * (fieldset + `aria-pressed`).
  */
-function RoleControl({ profileId, actions }: { profileId: number; actions: ProfileActions }) {
-  const [role, setRole] = useState<Role | null>(null);
+function RoleControl({ record, actions }: { record: ProfileRecord; actions: ProfileActions }) {
+  const [role, setRole] = useState<Role>(record.role ?? "brother");
   const [pending, setPending] = useState<Role | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getUserRole(profileId)
-      .then((current) => {
-        if (!cancelled) {
-          setRole(current);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMessage("Couldn’t load this brother’s role.");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [profileId]);
 
   const select = async (next: Role) => {
     if (next === role || pending) {
@@ -329,10 +313,7 @@ function RoleControl({ profileId, actions }: { profileId: number; actions: Profi
       label="Role"
       help="Controls what this brother can see and do. Takes effect immediately."
     >
-      <fieldset
-        className="m-0 inline-flex items-center gap-0.5 rounded-[var(--radius-lg)] border border-input bg-[var(--muted)] p-1 disabled:opacity-60"
-        disabled={role === null}
-      >
+      <fieldset className="m-0 inline-flex items-center gap-0.5 rounded-[var(--radius-lg)] border border-input bg-[var(--muted)] p-1 disabled:opacity-60">
         <legend className="sr-only">Role</legend>
         {ROLE_OPTIONS.map((option) => {
           const active = role === option.value;

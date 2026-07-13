@@ -104,6 +104,28 @@ describe("buildFilterPredicate — composition (D38)", () => {
   });
 });
 
+describe("buildFilterPredicate — Staff filter (all roles, OFC-199)", () => {
+  const rows = [
+    p({ id: 1, role: "brother" }),
+    p({ id: 2, role: "manager" }),
+    p({ id: 3, role: "admin" }),
+    p({ id: 4 }), // no role on the wire → treated as an ordinary brother
+  ];
+  const keptFor = (viewer: "brother" | "manager" | "admin") =>
+    rows
+      .filter(buildFilterPredicate({ ...EMPTY_FILTERS, staff: "staffOnly" }, viewer))
+      .map((r) => r.id);
+
+  it("keeps only managers and administrators", () => {
+    expect(keptFor("brother")).toEqual([2, 3]);
+  });
+
+  it("is available to every viewing role, not just staff (role is public, OFC-139)", () => {
+    expect(keptFor("manager")).toEqual([2, 3]);
+    expect(keptFor("admin")).toEqual([2, 3]);
+  });
+});
+
 describe("buildFilterPredicate — staff gating (filterable ⟺ visible)", () => {
   const withEmail = p({ id: 1, email: "a@example.test" });
   const noEmail = p({ id: 2 });
