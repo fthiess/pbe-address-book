@@ -96,7 +96,9 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
             {/* `truncate` (with the link's `min-w-0`) lets the wordmark shorten under
                 pressure rather than shoving the controls off a narrow screen — the
                 root of the OFC-210 masthead cutoff. */}
-            <span className="min-w-0 truncate text-base font-bold tracking-tight">PBE Address Book</span>
+            <span className="min-w-0 truncate text-base font-bold tracking-tight">
+              PBE Address Book
+            </span>
           </Link>
           {/* `shrink-0` keeps the control cluster at full size; the wordmark yields
               first. The font-size and theme toggles used to sit here but now live in
@@ -193,12 +195,19 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                     Clicking a toggle keeps the menu open (the auto-close ignores
                     clicks inside it). */}
                 <div className="mt-1 border-border border-t pt-2">
+                  {/* The visible labels are `aria-hidden`: each toggle is a `fieldset`
+                      with its own sr-only `<legend>` of the same words, so exposing
+                      the span too would make a screen reader announce it twice. */}
                   <div className="flex items-center justify-between gap-2 px-3 py-1">
-                    <span className="text-xs font-medium text-muted-foreground">Text size</span>
+                    <span aria-hidden="true" className="text-xs font-medium text-muted-foreground">
+                      Text size
+                    </span>
                     <FontSizeToggle />
                   </div>
                   <div className="flex items-center justify-between gap-2 px-3 py-1">
-                    <span className="text-xs font-medium text-muted-foreground">Theme</span>
+                    <span aria-hidden="true" className="text-xs font-medium text-muted-foreground">
+                      Theme
+                    </span>
                     <ThemeToggle />
                   </div>
                 </div>
