@@ -41,7 +41,7 @@ jobs:
       # Check out the exact commit CI validated (workflow_run defaults to the
       # branch tip, which may have moved). Falls back to the ref for dispatch.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
@@ -64,7 +64,7 @@ jobs:
       # @pbe/shared must compile before the SPA build (vite resolves the
       # workspace package to its built dist/).
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -83,7 +83,7 @@ jobs:
       # token into the ADC credential file statically, so the deploys must run
       # soon after this step — not behind a multi-minute build.
       - name: Authenticate to Google Cloud (keyless, WIF)
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@v3
         with:
           project_id: ${{ env.PROJECT_ID }}
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
@@ -93,8 +93,11 @@ jobs:
       # token exchange dies with "Premature close" (undici), so the WIF credential
       # never resolves. Node 20's HTTP stack handles it. The SPA was already built
       # on Node 24 above; firebase-tools has no native deps, so this is safe.
+      # NB: the `@v7` action pin (the action's OWN Node-24 runtime, bumped with all
+      # the others in OFC-62/N87) is orthogonal to `node-version: "20"` (the Node it
+      # INSTALLS for the run steps below). Keep the 20 — it's the load-bearing pin.
       - name: Use Node 20 for the Firebase CLI
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: "20"
 
@@ -136,7 +139,7 @@ jobs:
           fi
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@v3
 
       # Reconcile the image bucket's IAM + versioning + lifecycle on every deploy so
       # the live bucket can't drift from infra/provision-staging.sh. The deploy path
