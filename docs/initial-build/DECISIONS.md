@@ -1452,3 +1452,25 @@ The masthead packed two 3-button segmented pills (font size, theme) plus Report-
 **Why:** one change fixes both the overflow (fewer, narrower inline elements plus a yielding wordmark) and the visual clutter, and does it uniformly rather than forking mobile vs. desktop layout. The toggles keep working from inside the native `<details>` menu — the auto-close ignores clicks within it (`useDetailsAutoClose`), so adjusting size/theme doesn't dismiss the menu. This diverges from the delivered visual-design shell (toggles inline in the top bar); the divergence is deliberate and recorded here as the authoritative source. Amends **N24** (masthead font-size control is now menu-resident).
 
 *Records to `apps/web/src/components/AppShell.tsx` + `DECISIONS-INDEX.md` (UI shell) + `USER-MANUAL.md` §9. Verified by the browser check at 360/390/412/768/1280px (no cutoff; toggles operable from the menu) and the a11y pass.*
+
+### N92 — Mobile "Filters & options" fold: the Directory chrome collapses on a phone (OFC-211)
+
+On a phone the Directory's chrome — Name Search, the Starred-only / Include-deceased toggles, the column picker, the filter panel, and the staff action bar — stacked vertically and consumed more than half the screen before a single brother row appeared (OFC-211).
+
+**Decision (Forrest's call, 2026-07-14):** below the `md` breakpoint (`min-width: 768px`, the same line that already switches the grid to cards), keep the Directory heading, result count, and **Name Search** always visible, and fold everything else — the two view toggles, the column picker, the `FilterPanel`, and the staff `ActionBar` — into a single **"Filters & options"** disclosure, **closed by default** on every mount. Desktop is unchanged: at `md`+ the toggles and column picker sit beside the search and the filter panel + action bar render inline, exactly as before.
+
+Built as a `<button aria-expanded>` + conditionally-rendered region (mirroring the `FilterPanel` disclosure, D38) rather than a native `<details>` — for a state-driven chevron and to sidestep a nested-`group` collision with the ColumnPicker's own `group` chevron. The open state is **not persisted**, like the FilterPanel (the Directory remounts on a Back-navigation, so always-closed is the consistent return state); a summary badge counts the active folded options (typed filters + the two view toggles) so an applied narrowing is visible while the fold is closed. The reusable chrome elements are built once in `Directory` and placed in whichever width-branch renders, so filters/columns/export keep a single source of behaviour across both widths.
+
+**Why:** the ticket's goal is reclaiming vertical space for the actual data on a phone without disturbing the desktop layout. Keeping search always-visible — rather than folding it too (the ticket's literal suggestion) — preserves the primary tool one glance away while still collapsing the four bulky control blocks into one bar (Forrest's call among the fold-scope options).
+
+*Records to `apps/web/src/pages/Directory.tsx` + `DECISIONS-INDEX.md` (Directory behavior) + `e2e/directory.spec.ts` (mobile-fold coverage). Verified by the new mobile-viewport e2e (fold closed by default, search visible, opening reveals the controls, badge counts) + the a11y gate.*
+
+### N93 — Icon-only masthead controls keep their label in the a11y tree on mobile (`sr-only`, not `hidden`) — fixes a WCAG 4.1.2 gap surfaced by OFC-211's mobile axe pass
+
+Adding the first mobile-viewport axe pass (the OFC-211 fold test at 390px) surfaced two pre-existing **WCAG 4.1.2** violations no desktop axe test could catch: below `sm`, the **Report a bug** button collapses to its icon and the **avatar menu `<summary>`** collapses to just the avatar, and both labelled their text with `hidden sm:inline` — which removes the text from the accessibility tree, leaving the control with **no discernible name** on a phone.
+
+**Fix:** the responsive label now uses `sr-only sm:not-sr-only` instead of `hidden sm:inline` — visually identical (collapsed on a phone, a visible inline label from `sm` up) but the text stays in the accessibility tree at every width, so the button/summary always has a name.
+
+**Why / landmine:** `hidden` (`display:none`) drops content from *both* the visual and the accessibility tree; `sr-only` hides it visually while keeping it for assistive tech. Any control that becomes icon-only on a phone and whose only label is a text span must use `sr-only`, not `hidden`, or it fails 4.1.2 on the phones most of Book's audience uses. Guarded by the mobile-viewport axe pass added with N92.
+
+*Records to `apps/web/src/components/AppShell.tsx` + `ReportBug.tsx`. Found and fixed while building OFC-211 (PR stacked on the masthead PR); verified by the mobile-fold axe e2e.*

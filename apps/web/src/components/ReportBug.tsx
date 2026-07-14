@@ -42,7 +42,10 @@ export function ReportBug() {
         className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         <BugIcon />
-        <span className="hidden sm:inline">Report a bug</span>
+        {/* `sr-only` (not `hidden`) keeps the label in the accessibility tree on a
+            phone, where the button is icon-only, so it always has a discernible name
+            (WCAG 4.1.2). It becomes a visible inline label from `sm` up. */}
+        <span className="sr-only sm:not-sr-only">Report a bug</span>
       </button>
       {open && <ReportBugDialog onClose={close} />}
     </>

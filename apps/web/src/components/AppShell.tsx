@@ -129,7 +129,11 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
             <details ref={menuRef} className="relative">
               <summary className="flex cursor-pointer list-none items-center gap-2 rounded-full px-1 py-0.5 outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
                 <AvatarThumbnail profile={me.profile} name={name} size={34} />
-                <span className="hidden text-sm font-medium sm:inline">{name}</span>
+                {/* `sr-only` (not `hidden`) keeps the name in the accessibility tree
+                    on a phone, where it's visually collapsed — so the avatar menu
+                    summary always has a discernible name (WCAG 4.1.2). It becomes a
+                    visible inline label from `sm` up. */}
+                <span className="sr-only text-sm font-medium sm:not-sr-only">{name}</span>
               </summary>
               {/* z-30 to clear the Directory's sticky header cells (z-21), matching
                   the Columns dropdown precedent — a lower z draws under the grid. */}

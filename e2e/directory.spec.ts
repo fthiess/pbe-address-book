@@ -548,3 +548,47 @@ test.describe("signed-in directory", () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+/**
+ * The mobile "Filters & options" fold (OFC-211): on a narrow screen the search box
+ * stays visible while the filter/column/admin chrome collapses into one disclosure,
+ * closed by default, so the brother list gets the vertical space back.
+ */
+test.describe("Directory mobile fold (OFC-211)", () => {
+  test("folds the controls on a phone; search stays visible; the badge counts active options", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoDirectory(page);
+
+    // Search is always visible; the controls fold away, closed by default.
+    await expect(page.getByRole("searchbox", { name: /name search/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Filters & options/ })).toBeVisible();
+    await expect(page.getByLabel("Include deceased")).toHaveCount(0);
+
+    // Opening the fold reveals the quick toggles, the column picker, and the filters.
+    await page.getByRole("button", { name: /^Filters & options/ }).click();
+    await expect(page.getByLabel("Include deceased")).toBeVisible();
+    await expect(page.getByText("Columns", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeVisible();
+
+    // The summary badge counts active options even while the fold is collapsed.
+    await page.getByLabel("Include deceased").check();
+    await expect(page.getByRole("button", { name: /Filters & options.*1 active/ })).toBeVisible();
+
+    // The open fold — the new mobile-only UI — carries no a11y violations.
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+  });
+
+  test("keeps everything inline on a wide screen (no fold)", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await gotoDirectory(page);
+
+    // No "Filters & options" disclosure on desktop; the inner Filters panel and the
+    // Include-deceased toggle are inline and reachable without opening anything.
+    await expect(page.getByRole("button", { name: /Filters & options/ })).toHaveCount(0);
+    await expect(page.getByLabel("Include deceased")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeVisible();
+  });
+});
