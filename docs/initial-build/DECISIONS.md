@@ -1403,7 +1403,7 @@ The repo runs CodeQL (GitHub default setup — no committed workflow), but its a
 
 *Records to `packages/shared/validation.ts` (+ `validation.test.ts`, `index.ts`), `apps/web/src/pages/admin/ghostAuditFormat.ts` (+ test), `apps/web/src/pages/profile/{fields,ProfileEdit}.tsx`, `.github/workflows/ci.yml`; dismissals recorded in the repo's code-scanning UI with these reasons. Guarded by the new email + escaper tests and the green CI/CodeQL gate.*
 
-*Later updated by: the "promoted to a required status check" line got ahead of reality — `main` had **no branch protection at all**, so making CodeQL required means **creating** a protection ruleset from scratch (a policy decision: require PRs? require the Verify gate too? strict / admin-enforcement?). Deferred to **OFC-246** (Forrest's call). Also, the untrusted-checkout critical **re-raises under a new alert number** whenever the flagged `deploy-staging.yml` checkout line changes — it did (#1 → #19 after the N87 pin bump); re-dismiss with the same mitigation. Both still net to 0 open.*
+*Later updated by: the "promoted to a required status check" line got ahead of reality — `main` had **no branch protection at all**, so making CodeQL required means **creating** a protection ruleset from scratch (a policy decision: require PRs? require the Verify gate too? strict / admin-enforcement?). Deferred to **OFC-246** (Forrest's call). Also, the untrusted-checkout critical **re-raises under a new alert number** whenever the flagged `deploy-staging.yml` checkout line changes — it did (#1 → #19 after the N87 pin bump); re-dismiss with the same mitigation. Both still net to 0 open. **Now resolved — see N91**: branch protection was created on `main` 2026-07-14, with CodeQL and the Verify gate as required status checks (OFC-246).*
 
 ### N89 — Accept the `@opentelemetry/core` advisory as a documented dev-only residual (OFC-234)
 
@@ -1426,3 +1426,18 @@ Staging is meant to land in a known, repeatable configuration on every deploy �
 **Why:** "staging = a pure function of the deploy" must cover per-viewer state, not just profiles, or a test can be misled by stale stars. localStorage is genuinely unreachable from a deploy, so the honest split is a server-side fix for stars + a documented manual reset for columns — not a client hack that would degrade production to serve a staging convenience.
 
 *Records to `tools/fake-data/src/seed-staging.ts`, `CLAUDE.md` (staging landmine). Verified by the next staging deploy resetting the tester's stars (live-test).*
+
+### N91 — Branch protection created on `main`; CodeQL + Verify gate required, PRs required, admin bypass allowed (OFC-246)
+
+`main` had **no branch protection at all** (`GET …/branches/main/protection` → 404); the repo had been relying solely on the `workflow_run` deploy gate (deploy fires only on a green CI for a push to `main`). N88's "CodeQL is now a required status check" line got ahead of that reality, so OFC-246 split the policy decision off from the N88 triage. This note records the policy Forrest chose and the ruleset created.
+
+**Policy (Forrest's call, 2026-07-14):**
+
+- **Require a pull request before merging** to `main`, with **0 required approvals** — solo repo, so the PR-and-checks flow *is* the discipline, not a second reviewer.
+- **Required status checks, `strict` (branch must be up to date before merge):** the **Verify gate** (CI) and **CodeQL**. The exact contexts were taken from what actually reports-and-completes on a PR head — a docs-only PR was used as the probe first, so we never require a check that doesn't run on a given PR and silently deadlocks the merge. `Deploy to staging` is deliberately **not** required: it runs post-merge on the `main` push and never reports on a PR.
+- **Force-pushes and branch deletion disabled** on `main`.
+- **Admin bypass allowed** (`enforce_admins: false`): the PR-and-checks path is the default (a direct push must be *deliberately* bypassed), but the sole maintainer keeps an escape hatch if a required check ever hangs. The stricter `enforce_admins: true` was rejected as able to wedge a solo operator with no second admin to unblock them.
+
+**Why:** mechanically enforce the "never commit directly to `main`" gate and the clean-CodeQL-baseline goal N88 aimed at, without the deadlock and lock-out failure modes a naive "make CodeQL required" would carry. Branch protection is a GitHub-config action (not a git push), run under Forrest's explicit authorization this session (per the "config changes affecting merges are Forrest's" landmine).
+
+*Records to `docs/initial-build/DECISIONS.md` (this note) + `DECISIONS-INDEX.md`; the ruleset itself lives in GitHub branch-protection config, not a file in-tree. Resolves the N88 forward-trailer and OFC-246. Verified by `GET …/branches/main/protection` returning the configured ruleset.*

@@ -12,28 +12,11 @@ design, API spec) and the decision log
 ([`docs/initial-build/DECISIONS.md`](docs/initial-build/DECISIONS.md)) is
 authoritative for *why* anything is the way it is.
 
-> **Status (2026-07-06): Phases 0–4 complete; Phase 5 in progress.** The app is
-> feature-complete through the **Directory** (virtualized grid, name search with
-> phonetic + nickname matching, typed filters, stars, CSV export) and the
-> **Profile page** (view/edit in all four role projections, the headshot
-> pipeline, verification, the privileged admin actions, prev/next through the
-> directory set), riding the Phase-1/2 substrate: the Ghost auth bridge and
-> session gate, the full `Profile` schema with shared validation, the
-> server-side per-role projection (the single visibility-enforcement point),
-> optimistic concurrency, and the names-not-values audit stream. A cross-cutting
-> trust-boundary security pass (session revocation, CSP/security headers,
-> generic error bodies) landed after Phase 4. Of Phase 5, **5a-1** (the Admin
-> page: scaffolding, system banner, backup download) is done and live; **5a-2**
-> (the bug-report loop) and **5b** (the Book→Ghost write path, the
-> reconciliation audit, the Linter roster stub) remain, followed by the interim
-> **Phase 5.5** ticket-batch sessions (Linear tags `5.5a`–`5.5g`; DECISIONS
-> N59). Then: Phase 6 (help + manual), 7 (hardening/operations), 8
-> (migration & cutover). **Staging is live** at `pbe-book-staging.web.app`
-> (fake data only), auto-deployed from `main`.
->
-> The per-phase narrative this blockquote used to carry lives where it belongs:
-> the plan's phase sections record scope, and `DECISIONS.md`'s N-notes record
-> how each phase actually landed.
+**Project status & roadmap.** Development is tracked ticket by ticket in Linear
+(project *PBE-Book*, not publicly viewable). The phased roadmap lives in
+[`CODING-PROJECT-PLAN.md`](docs/initial-build/CODING-PROJECT-PLAN.md), and how
+each phase actually landed is recorded in the decision log's `N`-notes
+([`DECISIONS.md`](docs/initial-build/DECISIONS.md)).
 
 ## Layout
 
