@@ -3,6 +3,7 @@ import { type ReactNode, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useBanner } from "../auth/BannerContext.js";
 import { useSession } from "../auth/SessionContext.js";
+import { PBE_NEWS_URL } from "../lib/externalLinks.js";
 import type { Me } from "../lib/types.js";
 import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
 import { AvatarThumbnail } from "./AvatarThumbnail.js";
@@ -105,9 +106,10 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
               the avatar menu (D131) — a simpler bar that fits the phone. */}
           <div className="flex shrink-0 items-center gap-3">
             {/* The single top-bar entry point to the sibling newsletter (ASSETS.md;
-                OFC-243). Opens pbe400.org in a new tab, mirroring ReportBug's styling. */}
+                OFC-243). The URL is environment-specific (N94) — staging vs prod PBE
+                News — injected at build time. Opens in a new tab, mirroring ReportBug. */}
             <a
-              href="https://pbe400.org"
+              href={PBE_NEWS_URL}
               target="_blank"
               rel="noopener noreferrer"
               aria-label="PBE News (opens in a new tab)"
