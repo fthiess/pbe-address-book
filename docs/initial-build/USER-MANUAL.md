@@ -96,8 +96,8 @@ You can read PBE's full privacy notice at any time: there is a link to it in the
 
 Book is built to be comfortable to read and operate:
 
-- **Dark mode.** Switch between a light and a dark appearance, or let Book follow your device's setting.
-- **Font size.** Make the text larger in a few steps; the whole interface, including the help icons, grows with it.
+- **Dark mode.** Switch between a light and a dark appearance, or let Book follow your device's setting. The control is in the menu behind your profile icon at the top right.
+- **Font size.** Make the text larger in a few steps; the whole interface, including the help icons, grows with it. This control lives in the same profile menu.
 - **Keyboard.** Everything in Book can be operated from the keyboard, in a sensible order, without a mouse.
 - **Column widths.** In the Directory you can widen or narrow any data column by dragging the divider at its right edge — or, from the keyboard, by focusing the divider and using the arrow keys. **Double-click** the divider (or press **Enter** on it) to size the column automatically to its widest entry. Your column choices and widths are remembered.
 - **Screen readers.** Labels and help text are announced by screen readers, and the help bubbles read their contents aloud when opened.

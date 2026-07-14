@@ -522,6 +522,8 @@ test.describe("signed-in directory", () => {
 
   test("the theme toggle switches between light and dark", async ({ page }) => {
     await gotoDirectory(page);
+    // The theme toggle lives inside the avatar menu now (D131) — open it first.
+    await page.locator("summary").filter({ hasText: "Dev Admin" }).click();
     await page.getByRole("button", { name: "Dark theme" }).click();
     await expect(page.locator("html")).toHaveClass(/dark/);
     await page.getByRole("button", { name: "Light theme" }).click();

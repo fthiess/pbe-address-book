@@ -128,7 +128,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## UI shell & app-wide
 
-- **D30** (client prefs in localStorage) + **N15**; **D31** (three-bucket URL/state model) → **N79** (adds a fourth bucket: per-instance transient row selection) + **N80** (masthead clean-slate `reset` vs. place-preserving back-nav); **N21** (full-bleed shell); **N24** (masthead font-size control); **D117** → **N57** (admin-set system banner); **D119** (loading overlay); **N77** (client-rendered 404 for unknown URLs); **N78** (long-lived-tab new-version toast).
+- **D30** (client prefs in localStorage) + **N15**; **D31** (three-bucket URL/state model) → **N79** (adds a fourth bucket: per-instance transient row selection) + **N80** (masthead clean-slate `reset` vs. place-preserving back-nav); **N21** (full-bleed shell); **N24** → **D131** (masthead font-size **and** theme toggles now live in the avatar menu; PBE News top-bar link restored; wordmark truncates so the bar never clips — current); **D117** → **N57** (admin-set system banner); **D119** (loading overlay); **N77** (client-rendered 404 for unknown URLs); **N78** (long-lived-tab new-version toast).
 
 ## Admin surfaces
 
