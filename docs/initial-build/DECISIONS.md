@@ -1403,6 +1403,8 @@ The repo runs CodeQL (GitHub default setup — no committed workflow), but its a
 
 *Records to `packages/shared/validation.ts` (+ `validation.test.ts`, `index.ts`), `apps/web/src/pages/admin/ghostAuditFormat.ts` (+ test), `apps/web/src/pages/profile/{fields,ProfileEdit}.tsx`, `.github/workflows/ci.yml`; dismissals recorded in the repo's code-scanning UI with these reasons. Guarded by the new email + escaper tests and the green CI/CodeQL gate.*
 
+*Later updated by: the "promoted to a required status check" line got ahead of reality — `main` had **no branch protection at all**, so making CodeQL required means **creating** a protection ruleset from scratch (a policy decision: require PRs? require the Verify gate too? strict / admin-enforcement?). Deferred to **OFC-246** (Forrest's call). Also, the untrusted-checkout critical **re-raises under a new alert number** whenever the flagged `deploy-staging.yml` checkout line changes — it did (#1 → #19 after the N87 pin bump); re-dismiss with the same mitigation. Both still net to 0 open.*
+
 ### N89 — Accept the `@opentelemetry/core` advisory as a documented dev-only residual (OFC-234)
 
 `npm audit` reports a **moderate, dev-only** advisory — **GHSA-8988-4f7v-96qf** (`@opentelemetry/core` < 2.8.0, unbounded memory in W3C Baggage propagation), reached via `firebase-tools → @google-cloud/pubsub@5.3.1 → @opentelemetry/core@1.30.1` (three findings for the one package + two dependents). **Accepted as a residual, not fixed**, on this evidence gathered 2026-07-14:
@@ -1414,3 +1416,13 @@ The repo runs CodeQL (GitHub default setup — no committed workflow), but its a
 **Why:** the fix carries more risk (a broken dev/deploy CLI) than the advisory carries exposure (dev-only, not runtime-reachable, not Dependabot-flagged). Re-evaluate when `firebase-tools`/`pubsub` move onto `@opentelemetry/core` ≥ 2.8; the override becomes safe then. **(Forrest's call, 2026-07-14.)**
 
 *Records to `docs/initial-build/DECISIONS.md` only (no code change). Sibling of N88 (same security-hygiene batch, 5.5g). Ref N74's closing paragraph.*
+
+### N90 — Staging reseed wipes `users` (stars) too, for a deterministic deploy; column prefs are a documented localStorage residual (OFC-197)
+
+Staging is meant to land in a known, repeatable configuration on every deploy — its data a pure function of the deployed code (N18). But the reseed wiped only `profiles`, not the private `users` collection, so **stars** (per-viewer, `users/{id}.stars`, DATABASE-SCHEMA §6.1) survived across deploys and could skew test state (a brother starred under an earlier deploy stayed starred). **Fixed:** `seed-staging.ts` now wipes **both** `profiles` and `users` via a shared batched `wipeCollection` helper; `users` is recreated lazily, empty, on the tester's next sign-in / first star. Gated by the same `STAGING_AUTOSEED` toggle, so Phase-8 UAT (autoseed off) still preserves in-progress tester state.
+
+**Column preferences are a documented residual, not fixed (Option A — Forrest's call, 2026-07-14).** The column lens (visible columns, order, widths — D30/N15) persists in the **browser's localStorage** (`pbe.book.directory.columns.v1`), which no server-side reseed can reach, and a force-reload does *not* clear it. Rather than a build-flag hack to namespace/auto-reset the key — which would also wipe every real brother's saved columns on each production release (user-hostile) — the guidance is: reset columns **in-app** via the column picker's "Reset to default columns" (`ColumnPicker.tsx`, `lens.reset()`), or clear site data. The server-side stars wipe removes the part that could actually skew test *data*; columns are display-only.
+
+**Why:** "staging = a pure function of the deploy" must cover per-viewer state, not just profiles, or a test can be misled by stale stars. localStorage is genuinely unreachable from a deploy, so the honest split is a server-side fix for stars + a documented manual reset for columns — not a client hack that would degrade production to serve a staging convenience.
+
+*Records to `tools/fake-data/src/seed-staging.ts`, `CLAUDE.md` (staging landmine). Verified by the next staging deploy resetting the tester's stars (live-test).*
