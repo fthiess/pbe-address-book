@@ -40,5 +40,5 @@ Deferred work and bugs are Linear tickets (team Techgnosys, project PBE-Book, `O
 - The Firebase CLI deploy step is **pinned to Node 20** (google-auth-library STS dies under newer Node) — don't remove the pin (see `infra/README.md`).
 - `DevIdentityProvider` stays compiled out of the prod bundle (D108); the gate's `assert:no-dev-provider` enforces it.
 - Ghost integration is tested against self-hosted **ghost-staging** (`staging.pbe400.org`), never the live pbe400.org until production cutover. The Ghost auth-bridge theme files have a byte-identical mirror in `ghost-bridge/` — keep it in sync with the `pbe-news-ghost-theme` repo.
-- Staging **wipe-reseeds profiles on every deploy** (N18) — don't hand-edit staging data and expect it to survive; the tester link is re-applied automatically.
+- Staging **wipe-reseeds `profiles` *and* `users` (per-viewer stars) on every deploy** (N18, N90/OFC-197) — don't hand-edit staging data or stars and expect them to survive; the tester link is re-applied automatically. (Column preferences live in browser localStorage and are *not* reset by a deploy — clear them in-app via the column picker's "Reset to default columns", or clear site data.)
 - Book is the membership system-of-record: a brother may legitimately have **no email and no Ghost account** (~1/3 of records). Every Ghost operation must tolerate Ghost-less brothers.

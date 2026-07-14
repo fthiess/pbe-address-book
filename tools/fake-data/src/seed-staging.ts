@@ -20,6 +20,11 @@
  * whatever the collection happened to hold (the same self-containment the
  * emulator seed enjoys by starting from an empty database).
  *
+ * It also wipes the private `users` collection — per-viewer **stars** (§6.1) —
+ * so a deploy resets that state too and staging is a known, repeatable config
+ * (OFC-197). (Column preferences live in browser localStorage and can't be
+ * reset from here; see the OFC-197 note in DECISIONS/N90.)
+ *
  * Usage (from the repo root, after `gcloud auth application-default login`):
  *   GOOGLE_CLOUD_PROJECT=pbe-book-staging npm run seed:staging --workspace tools/fake-data
  *
@@ -34,7 +39,9 @@ function printHelp(): void {
   console.log(
     [
       "seed:staging — wipe and re-seed the STAGING Firestore `profiles` collection",
-      "               with the deterministic fake dataset (D72).",
+      "               with the deterministic fake dataset (D72); also wipes the",
+      "               `users` collection (per-viewer stars) for a deterministic",
+      "               deploy (OFC-197).",
       "",
       "Usage:",
       "  GOOGLE_CLOUD_PROJECT=<project>-staging \\",
@@ -84,17 +91,53 @@ const db = getFirestore();
 
 const BATCH_LIMIT = 450; // under Firestore's 500-writes-per-batch ceiling
 
-// Wipe the collection first so seeding is a clean replace, not a merge: any doc
-// left from an earlier seed (including one under a different id keyspace) is
-// removed, so a stale-schema record can never linger and crash hydration.
-const existing = await db.collection("profiles").get();
+/**
+ * Batched clean-wipe of a collection's top-level docs; returns the count removed.
+ * Seeding wipes both the `profiles` set AND the private `users` state (per-viewer
+ * stars, DATABASE-SCHEMA §6.1) so a staging deploy always lands in a known,
+ * repeatable configuration — no *starred* state carries over from the previous
+ * deploy (OFC-197). (`users` is recreated lazily, empty, on the tester's next
+ * sign-in / first star.) Column preferences live in the browser's localStorage,
+ * which no server-side reseed can reach — reset them in-app via the column
+ * picker's "Reset to default columns" or by clearing site data (OFC-197 / N90).
+ */
+async function wipeCollection(name: string): Promise<number> {
+  const snapshot = await db.collection(name).get();
+  if (snapshot.empty) {
+    return 0;
+  }
+  for (let start = 0; start < snapshot.size; start += BATCH_LIMIT) {
+    const batch = db.batch();
+    for (const doc of snapshot.docs.slice(start, start + BATCH_LIMIT)) {
+      batch.delete(doc.ref);
+    }
+    await batch.commit();
+    console.log(
+      `  …wiped ${Math.min(start + BATCH_LIMIT, snapshot.size)}/${snapshot.size} ${name}`,
+    );
+  }
+  return snapshot.size;
+}
+
 const profiles = generateProfiles();
 
 if (DRY_RUN) {
+  const [profileCount, userCount] = await Promise.all([
+    db
+      .collection("profiles")
+      .get()
+      .then((s) => s.size),
+    db
+      .collection("users")
+      .get()
+      .then((s) => s.size),
+  ]);
   const first = profiles[0]?.id;
   const last = profiles[profiles.length - 1]?.id;
   console.log(`[dry-run] Target project: ${projectId}`);
-  console.log(`[dry-run] Would delete ${existing.size} existing profile doc(s).`);
+  console.log(
+    `[dry-run] Would delete ${profileCount} existing profile doc(s) and ${userCount} user (stars) doc(s).`,
+  );
   console.log(
     `[dry-run] Would write ${profiles.length} generated profiles (ids ${first}–${last}).`,
   );
@@ -102,18 +145,16 @@ if (DRY_RUN) {
   process.exit(0);
 }
 
-if (!existing.empty) {
-  let removed = 0;
-  for (let start = 0; start < existing.size; start += BATCH_LIMIT) {
-    const batch = db.batch();
-    for (const doc of existing.docs.slice(start, start + BATCH_LIMIT)) {
-      batch.delete(doc.ref);
-    }
-    await batch.commit();
-    removed += Math.min(BATCH_LIMIT, existing.size - start);
-    console.log(`  …wiped ${removed}/${existing.size} existing`);
-  }
-  console.log(`Cleared ${existing.size} existing profile docs before seeding.`);
+// Clean-replace: wipe the profiles (a stale-schema record under a different id
+// keyspace would otherwise linger and crash hydration) AND the users/stars state
+// (so staging is deterministic per deploy — OFC-197).
+const wipedProfiles = await wipeCollection("profiles");
+if (wipedProfiles > 0) {
+  console.log(`Cleared ${wipedProfiles} existing profile docs before seeding.`);
+}
+const wipedUsers = await wipeCollection("users");
+if (wipedUsers > 0) {
+  console.log(`Cleared ${wipedUsers} existing user (stars) docs.`);
 }
 
 let written = 0;
