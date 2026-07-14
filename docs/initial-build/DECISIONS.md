@@ -1464,3 +1464,13 @@ Built as a `<button aria-expanded>` + conditionally-rendered region (mirroring t
 **Why:** the ticket's goal is reclaiming vertical space for the actual data on a phone without disturbing the desktop layout. Keeping search always-visible — rather than folding it too (the ticket's literal suggestion) — preserves the primary tool one glance away while still collapsing the four bulky control blocks into one bar (Forrest's call among the fold-scope options).
 
 *Records to `apps/web/src/pages/Directory.tsx` + `DECISIONS-INDEX.md` (Directory behavior) + `e2e/directory.spec.ts` (mobile-fold coverage). Verified by the new mobile-viewport e2e (fold closed by default, search visible, opening reveals the controls, badge counts) + the a11y gate.*
+
+### N93 — Icon-only masthead controls keep their label in the a11y tree on mobile (`sr-only`, not `hidden`) — fixes a WCAG 4.1.2 gap surfaced by OFC-211's mobile axe pass
+
+Adding the first mobile-viewport axe pass (the OFC-211 fold test at 390px) surfaced two pre-existing **WCAG 4.1.2** violations no desktop axe test could catch: below `sm`, the **Report a bug** button collapses to its icon and the **avatar menu `<summary>`** collapses to just the avatar, and both labelled their text with `hidden sm:inline` — which removes the text from the accessibility tree, leaving the control with **no discernible name** on a phone.
+
+**Fix:** the responsive label now uses `sr-only sm:not-sr-only` instead of `hidden sm:inline` — visually identical (collapsed on a phone, a visible inline label from `sm` up) but the text stays in the accessibility tree at every width, so the button/summary always has a name.
+
+**Why / landmine:** `hidden` (`display:none`) drops content from *both* the visual and the accessibility tree; `sr-only` hides it visually while keeping it for assistive tech. Any control that becomes icon-only on a phone and whose only label is a text span must use `sr-only`, not `hidden`, or it fails 4.1.2 on the phones most of Book's audience uses. Guarded by the mobile-viewport axe pass added with N92.
+
+*Records to `apps/web/src/components/AppShell.tsx` + `ReportBug.tsx`. Found and fixed while building OFC-211 (PR stacked on the masthead PR); verified by the mobile-fold axe e2e.*

@@ -575,6 +575,10 @@ test.describe("Directory mobile fold (OFC-211)", () => {
     // The summary badge counts active options even while the fold is collapsed.
     await page.getByLabel("Include deceased").check();
     await expect(page.getByRole("button", { name: /Filters & options.*1 active/ })).toBeVisible();
+
+    // The open fold — the new mobile-only UI — carries no a11y violations.
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
   });
 
   test("keeps everything inline on a wide screen (no fold)", async ({ page }) => {
