@@ -58,6 +58,7 @@ export {
 export {
   MAX_LINKS,
   MAX_EMERGENCY_CONTACTS,
+  MAX_EMAIL_LENGTH,
   normalizePhone,
   firstIssueByField,
   validateProfile,

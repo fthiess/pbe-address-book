@@ -1378,3 +1378,39 @@ GitHub runners are retiring the Node 20 action runtime, so every CI/deploy run a
 **Why:** pre-emptive maintenance — the forced-to-Node-24 shim will eventually stop, and clearing the annotation keeps the "new problem in this run" signal trustworthy. Kept the repo's existing floating-major pin convention (`@v7`, not a pinned SHA) rather than switching to SHA-pinning, which is a separate supply-chain-hardening decision not in scope here.
 
 *Records to `.github/workflows/ci.yml`, `.github/workflows/deploy-staging.yml`. Verified by a green CI run and a green staging deploy with no Node-20 annotation (OFC-62 acceptance criteria).*
+
+### N88 — Triage the CodeQL alerts on `main`: three fixes, five dismiss-with-reason (OFC-152)
+
+The repo runs CodeQL (GitHub default setup — no committed workflow), but its alerts had never been triaged; an unreviewed alert queue erodes the "new alert in this PR" signal. The ticket named six alerts open on 2026-07-04, but two more had accrued by the time this landed (**8 total**) — the newer ones are triaged the same way. Resolved all eight — three fixed in code, five dismissed with a documented reason:
+
+**Fixed**
+
+1. **`js/polynomial-redos` (high) — `packages/shared/validation.ts` `EMAIL_RE`.** The email regex `/^[^\s@]+@[^\s@]+\.[^\s@]+$/u` is ambiguous — `[^\s@]` also matches `.`, so `[^\s@]+\.[^\s@]+` backtracks quadratically on a long input whose tail defeats the anchoring `$`. The reachable vector is a `@`-terminated string (`a@` + `x.`×N + `@`): `isValidEmail` trims first, so a *trailing space* is stripped and harmless, but a trailing `@` survives and drives the blowup — **measured 4.7 s on one ~160 KB `email`/`alternateEmail` PATCH value**, which stalls the single Cloud Run instance (D83) for every other caller. **Fix:** a `MAX_EMAIL_LENGTH = 254` guard (RFC 5321 §4.5.3.1.3, the real address cap) *before* the regex — semantically correct (a longer string is not a valid address) and it bounds the regex to constant work. Zero change to the accept-set for valid-length addresses. Repro-first: a timing regression test on the `@`-terminated input (result unchanged either way — rejection — so timing is what proves it, and it uniquely catches a length-check-after-regex ordering regression) plus a 255-vs-254 boundary test that pins the guard against removal. `MAX_EMAIL_LENGTH` is exported and now caps the two web email inputs' `maxLength` off the one authoritative value (the review-finding consistency fix, matching the `MAX_LINKS` pattern).
+
+2. **`actions/missing-workflow-permissions` (medium) — `.github/workflows/ci.yml`.** The `verify` job declared no `permissions:` and inherited the workflow default token scope. Added `permissions: { contents: read }` (least privilege — the gate only reads the repo).
+
+3. **`js/incomplete-sanitization` (high) — `apps/web/src/pages/admin/ghostAuditFormat.ts` `cell()`.** The Ghost-audit Markdown-table escaper escaped pipes (`|` → `\|`) but never escaped **backslashes first**, so a value containing `\|` rendered as an escaped-backslash + a *live* pipe and broke the table row (and a bare `\b` silently vanished as a Markdown escape). Reachable via Ghost member names/emails (some self-signup) surfaced in the admin-downloaded `.md`. **Fix:** escape `\`→`\\` before `|`→`\|`, and flatten a lone CR too (`[\r\n]+`); repro test on `\|` and a bare backslash. (Not in the ticket's original six — accrued 2026-07-09 from the 5b-2 audit-formatter work; a real defect, so fixed, not dismissed.)
+
+**Dismissed (won't-fix, reason recorded)**
+
+4. **`actions/untrusted-checkout` (critical) — `deploy-staging.yml`.** The privileged deploy job (WIF `id-token: write`) checks out `workflow_run.head_sha`, but its **job-level `if` gates on `workflow_run.head_branch == 'main' && workflow_run.event == 'push'`**, and a public-fork PR is a `pull_request` event that can never push to `main` — so fork code never runs with deploy credentials. The whole job is gated (nothing runs before the `if`). Dismissed **won't-fix / mitigated**.
+
+5. **`js/insufficient-key-size` (high) — `ghost-provider.test.ts`.** A **test** deliberately generates a 1024-bit RSA key to reproduce Ghost's real 1024-bit member-JWT key (the regression that motivated verifying via Node `crypto`, not jose — N54). Not production key material. Dismissed **used-in-tests / by-design**.
+
+6–8. **`js/missing-rate-limiting` (high) ×3 — `headshot.ts` PUT and DELETE, and `admin.ts` `PUT …/role`.** All three routes carry `config: writeRateLimit()`; CodeQL doesn't model `@fastify/rate-limit`'s per-route `config`, so it reads them as unprotected. Dismissed **false-positive**. (The role-route one accrued 2026-07-13 from the 5.5f role work — same pattern.)
+
+**Why:** an alert queue is only useful if it's clean — a triaged baseline makes the next genuinely-new finding trustworthy. Fixed the three real (if low-severity) issues and recorded the reasoning for the five non-issues so a future session seeing a dismissed alert understands the call rather than re-litigating it. **CodeQL is now promoted to a required status check** on `main` so the clean baseline is enforced going forward (Forrest's call, 2026-07-14). Eight alerts open → **0 open**.
+
+*Records to `packages/shared/validation.ts` (+ `validation.test.ts`, `index.ts`), `apps/web/src/pages/admin/ghostAuditFormat.ts` (+ test), `apps/web/src/pages/profile/{fields,ProfileEdit}.tsx`, `.github/workflows/ci.yml`; dismissals recorded in the repo's code-scanning UI with these reasons. Guarded by the new email + escaper tests and the green CI/CodeQL gate.*
+
+### N89 — Accept the `@opentelemetry/core` advisory as a documented dev-only residual (OFC-234)
+
+`npm audit` reports a **moderate, dev-only** advisory — **GHSA-8988-4f7v-96qf** (`@opentelemetry/core` < 2.8.0, unbounded memory in W3C Baggage propagation), reached via `firebase-tools → @google-cloud/pubsub@5.3.1 → @opentelemetry/core@1.30.1` (three findings for the one package + two dependents). **Accepted as a residual, not fixed**, on this evidence gathered 2026-07-14:
+
+- **Not runtime-reachable.** `firebase-tools` is a root **devDependency** (emulators, deploy CLI); it is not in the `apps/api` or `apps/web` bundles. The vulnerable code runs only on the developer's / CI machine, never in the deployed service. Correspondingly, GitHub Dependabot did **not** raise it (only the uuid alert #7 was, N74).
+- **No clean upstream fix.** `firebase-tools@latest` (15.23.0) **is already the installed version** and still resolves `@opentelemetry/core@1.30.1` via `pubsub@5.3.1` — upstream has not moved off the 1.x line.
+- **An `overrides` pin to `^2.8.0` is unsafe here.** `pubsub@5.3.1` declares `@opentelemetry/core: ^1.30.1`; forcing the 2.x **major** would violate that range and risk breaking the Firebase CLI (emulators/deploy) at runtime — not worth it for a dev-only baggage-propagation advisory. `npm audit fix --force` "resolves" it only by **downgrading** `firebase-tools` 15 → 14 (a breaking major downgrade), also rejected.
+
+**Why:** the fix carries more risk (a broken dev/deploy CLI) than the advisory carries exposure (dev-only, not runtime-reachable, not Dependabot-flagged). Re-evaluate when `firebase-tools`/`pubsub` move onto `@opentelemetry/core` ≥ 2.8; the override becomes safe then. **(Forrest's call, 2026-07-14.)**
+
+*Records to `docs/initial-build/DECISIONS.md` only (no code change). Sibling of N88 (same security-hygiene batch, 5.5g). Ref N74's closing paragraph.*

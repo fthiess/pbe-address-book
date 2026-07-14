@@ -30,6 +30,11 @@ jobs:
   verify:
     name: Verify gate
     runs-on: ubuntu-latest
+    # Least-privilege token: the gate only reads the repo (checkout, npm). Declaring
+    # the scope explicitly stops the job inheriting the broader default token
+    # (CodeQL actions/missing-workflow-permissions, OFC-152).
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v7

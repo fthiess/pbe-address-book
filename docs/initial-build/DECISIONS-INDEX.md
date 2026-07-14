@@ -97,7 +97,8 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Security hardening
 
 - **D86** (rate limits), D107 → **N54** (security headers; CSP hashes CI-pinned), **D108** (DevIdentityProvider lockout, four layers), **D64** (Google-managed TLS), **N55** (generic 500 body; ungated sign-out), **D105** (threat posture) + **N56** (accepted residual risks).
-- Dependency/supply-chain hygiene: **N74** (transitive-dep advisory policy — assess reachability, prefer `overrides` when no patched parent version exists; the uuid CVE-2026-41907 fix, Dependabot #7). Open dev-only residual: OFC-234 (@opentelemetry/core via firebase-tools). Sibling: OFC-152 (CodeQL alert triage).
+- CodeQL baseline: **N88** (triaged all 8 `main` alerts → 0 open: fixed the `EMAIL_RE` polynomial-ReDoS via a 254-char cap, added `permissions: contents:read` to the CI gate, and escaped backslashes-before-pipes in the Ghost-audit Markdown escaper `cell()`; dismissed-with-reason the untrusted-checkout, test-RSA-key, and three `writeRateLimit`-config rate-limit false-positives; CodeQL now a required check, OFC-152).
+- Dependency/supply-chain hygiene: **N74** (transitive-dep advisory policy — assess reachability, prefer `overrides` when no patched parent version exists; the uuid CVE-2026-41907 fix, Dependabot #7) → **N89** (accept `@opentelemetry/core` as a documented dev-only residual — dev-only via firebase-tools, no clean upstream fix, an `overrides` pin would break pubsub's `^1.30.1`; revisit when upstream moves to otel ≥ 2.8; OFC-234).
 
 ## Logging & analytics
 
