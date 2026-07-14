@@ -24,7 +24,7 @@ The **Directory** is Book's home page: a searchable, sortable list of every brot
 
 **Searching by name.** The Name Search box near the top finds brothers by name. It is forgiving: it tolerates misspellings, matches names that *sound* alike, and knows common nicknames — so "Bill" finds "William" and "Tom" finds "Thomas" — letting you find a brother even if you aren't sure how his name is spelled or what he goes by formally. It searches names only — first, last, middle, and the mug (nickname) — not class years or majors; those you narrow with the filters instead.
 
-**Filtering.** The filter panel lets you narrow the list — by class year, major, city, state or province, country, and (for managers and admins) a few additional fields. Filters combine sensibly: choosing two majors shows brothers in *either*, while also setting a class-year range shows only brothers who match *both*. The class-year filter is more capable than it looks — it accepts single years, ranges, and lists together (for example, `1980-1989, 1992`); the page's own help explains this where you type.
+**Filtering.** The filter panel lets you narrow the list — by class year, major, city, state or province, country, and (for managers and admins) a few additional fields. Filters combine sensibly: choosing two majors shows brothers in *either*, while also setting a class-year range shows only brothers who match *both*. The class-year filter is more capable than it looks — it accepts single years, ranges, and lists together (for example, `1980-1989, 1992`); the page's own help explains this where you type. On a small phone screen the filters, the view options, and the column choices tuck behind a single **Filters & options** button so the list of brothers gets the room; tap it to open them (the Name Search box always stays in view).
 
 **Finding a manager or administrator.** A few brothers serve as Book's managers and administrators — the people to contact for help with Book, or to tell us a brother's information is out of date or that a brother has passed. The filter panel has a **Staff** setting that narrows the list to just those brothers. You can also add an optional **Role** column to the list: it shows "Manager" or "Administrator" beside those brothers and a small dash (—) for everyone else, so you can see at a glance who to reach. Both are open to every brother — staff are official points of contact, not a secret. (Book remembers your column choices, so the Role column stays off until you add it.)
 
@@ -96,8 +96,8 @@ You can read PBE's full privacy notice at any time: there is a link to it in the
 
 Book is built to be comfortable to read and operate:
 
-- **Dark mode.** Switch between a light and a dark appearance, or let Book follow your device's setting.
-- **Font size.** Make the text larger in a few steps; the whole interface, including the help icons, grows with it.
+- **Dark mode.** Switch between a light and a dark appearance, or let Book follow your device's setting. The control is in the menu behind your profile icon at the top right.
+- **Font size.** Make the text larger in a few steps; the whole interface, including the help icons, grows with it. This control lives in the same profile menu.
 - **Keyboard.** Everything in Book can be operated from the keyboard, in a sensible order, without a mouse.
 - **Column widths.** In the Directory you can widen or narrow any data column by dragging the divider at its right edge — or, from the keyboard, by focusing the divider and using the arrow keys. **Double-click** the divider (or press **Enter** on it) to size the column automatically to its widest entry. Your column choices and widths are remembered.
 - **Screen readers.** Labels and help text are announced by screen readers, and the help bubbles read their contents aloud when opened.
