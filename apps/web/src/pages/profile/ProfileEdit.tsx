@@ -1,4 +1,4 @@
-import { type Profile, type ValidationIssue, canWriteField } from "@pbe/shared";
+import { MAX_EMAIL_LENGTH, type Profile, type ValidationIssue, canWriteField } from "@pbe/shared";
 import { useCallback, useRef, useState } from "react";
 import { useBlocker } from "react-router-dom";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
@@ -349,6 +349,7 @@ export function ProfileEdit({
                     error={form.errorFor("email")}
                     inputMode="email"
                     autoComplete="email"
+                    maxLength={MAX_EMAIL_LENGTH}
                   />
                   <TextField
                     id="profile-alternateEmail"
@@ -359,6 +360,7 @@ export function ProfileEdit({
                     onBlur={() => form.touch("alternateEmail")}
                     error={form.errorFor("alternateEmail")}
                     inputMode="email"
+                    maxLength={MAX_EMAIL_LENGTH}
                     disabled={!emailPresent}
                     helper={
                       emailPresent

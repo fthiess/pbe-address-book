@@ -78,8 +78,10 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
 // reachable vector is a trailing `@` (`a@` + `x.`×N + `@`) — `.trim()` strips a
 // trailing space but not the `@` — measured ~4.7 s on one ~160 KB PATCH value,
 // which stalls the single Cloud Run instance (D83) for every other caller.
-// Bounding the input to 254 chars bounds the regex to constant work.
-const MAX_EMAIL_LENGTH = 254;
+// Bounding the input to 254 chars bounds the regex to constant work. Exported so
+// the web email inputs cap their `maxLength` off this one authoritative value
+// rather than a re-declared literal that could drift (as MAX_LINKS does, below).
+export const MAX_EMAIL_LENGTH = 254;
 const PHONE_ALLOWED_RE = /^\+?[0-9().\-\s]+$/u;
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/u;
 // US ZIP: five digits, optionally + four (ZIP+4). Only US postal codes are

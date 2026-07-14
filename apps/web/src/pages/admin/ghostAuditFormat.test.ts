@@ -63,6 +63,27 @@ describe("formatAuditReportMarkdown", () => {
     expect(md).toContain("A \\| B");
   });
 
+  it("escapes backslashes before pipes so `\\|` cannot break a table (OFC-152)", () => {
+    // A value containing a backslash then a pipe: without escaping the backslash
+    // first, `\|` renders as an escaped-backslash + a live pipe and breaks the row.
+    const md = formatAuditReportMarkdown({
+      generatedAt: GEN,
+      discrepancies: [
+        {
+          category: "fieldDrift",
+          profileId: 5247,
+          ghostMemberId: "g1",
+          field: "name",
+          bookValue: "A \\| B",
+          ghostValue: "C\\D",
+        },
+      ],
+    });
+    // `\|` → `\\\|` (escaped backslash + escaped pipe); a bare `\` → `\\`.
+    expect(md).toContain("A \\\\\\| B");
+    expect(md).toContain("C\\\\D");
+  });
+
   it("uses the singular for exactly one discrepancy", () => {
     const md = formatAuditReportMarkdown({
       generatedAt: GEN,

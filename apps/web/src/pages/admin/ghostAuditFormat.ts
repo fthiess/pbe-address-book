@@ -54,7 +54,16 @@ function cell(value: string | number | boolean | undefined): string {
   if (value === undefined) {
     return "";
   }
-  return String(value).replace(/\r?\n/g, " ").replace(/\|/g, "\\|");
+  // Order matters: escape backslashes BEFORE pipes. Pipe-escaping introduces
+  // backslashes (`|` → `\|`), so if we escaped `\` afterwards we'd corrupt those
+  // intended escapes. Without the backslash pass a value like `\|` would become
+  // `\\|` — a Markdown-escaped backslash followed by a *live* pipe — and break the
+  // cell (CodeQL js/incomplete-sanitization, OFC-152). Newlines (incl. a lone CR)
+  // collapse to a space so a value can't span rows.
+  return String(value)
+    .replace(/[\r\n]+/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|");
 }
 
 function table(headers: string[], rows: string[][]): string {

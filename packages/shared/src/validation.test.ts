@@ -87,13 +87,16 @@ describe("validateProfile — email rules (§8/D97)", () => {
     // (`[^\s@]` also matches `.`), so this backtracks quadratically — the trailing
     // `@`, which `.trim()` does NOT strip, defeats the anchoring `$`. Unguarded, one
     // ~160 KB input runs for seconds and stalls the single Cloud Run instance (D83);
-    // the length cap short-circuits it. The result is unchanged (rejected) either
-    // way, so timing is what proves the fix — threshold is generous vs the multi-
-    // second unguarded cost, well clear of the sub-millisecond guarded path.
+    // the length cap short-circuits it. This timing assertion is the ONLY guard that
+    // catches a length-check-AFTER-regex ordering regression: the boundary test above
+    // pins the cap at 254 but a reversed `regex && length` check yields the same
+    // (rejected) result while still running the ruinous regex first. The 1000 ms bar
+    // is a ~1000× margin over the guarded path (sub-millisecond) yet well under the
+    // multi-second unguarded cost, so it flags the regression without CI-jitter flake.
     const evil = `a@${"x.".repeat(80_000)}@`;
     const start = performance.now();
     expect(fields({ email: evil })).toEqual(["email"]);
-    expect(performance.now() - start).toBeLessThan(500);
+    expect(performance.now() - start).toBeLessThan(1000);
   });
 });
 

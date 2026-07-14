@@ -132,6 +132,7 @@ export function TextField({
   placeholder,
   mono = false,
   disabled = false,
+  maxLength,
 }: {
   id?: string;
   label: string;
@@ -146,6 +147,7 @@ export function TextField({
   placeholder?: string;
   mono?: boolean;
   disabled?: boolean;
+  maxLength?: number;
 }) {
   const fallbackId = useId();
   const id = providedId ?? fallbackId;
@@ -162,6 +164,7 @@ export function TextField({
           autoComplete={autoComplete}
           placeholder={placeholder}
           disabled={disabled}
+          maxLength={maxLength}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
