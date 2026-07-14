@@ -32,7 +32,7 @@ The tooling tickets (OFC-248, OFC-249) are ordinary Book sessions and can likewi
 
 ## 3. Environment and data policy
 
-**Platform: the existing staging environment** (`pbe-book-staging` + Ghost-staging at `staging.pbe400.org`). This resolves N64's deferred fork as its option (a), with one refinement the fork's framing missed: *code* deploys and *data* reseeds are separable, so "frozen" applies only to the data layer.
+**Platform: the existing staging environment** (`pbe-book-staging.web.app` + Ghost-staging at `staging.pbe400.org`). This resolves N64's deferred fork as its option (a), with one refinement the fork's framing missed: *code* deploys and *data* reseeds are separable, so "frozen" applies only to the data layer.
 
 - **During the UAT window, the repository variable `STAGING_AUTOSEED` is set to `false`.** Merges to `main` still auto-deploy code to staging — testers see fixes and improvements as soon as they land, which is the point of running UAT and remediation concurrently — but the reseed step is skipped, so tester links, role upgrades, profile edits, and photos survive every deploy. Regressions slipping through are an accepted risk on a test environment (Forrest's call, D132).
 - **A full manual reseed remains available at any time** and reproduces the complete UAT state in one pass: fake profiles → Ghost mirror → tester roster → photo corpus (§5–§6 give the pieces). The known cost: a mid-window reseed wipes testers' in-progress edits (accepted, D132). Use it for data-shape fixes or a deliberate clean slate.
@@ -42,7 +42,7 @@ The Ghost side: staging profiles get real `ghostMemberId`s via the existing `mir
 
 ## 4. Tester cohort and recruitment
 
-**Invited:** the PBE Board, the Active AC, the PBE News Correspondents, and the Class of '84 — roughly 30 brothers. **Expected volunteers: 10–15** (⅓–½ acceptance). Forrest emails the invitation (template: Appendix A); brothers volunteer by replying. Only volunteers are provisioned — no accounts are created for non-responders.
+**Invited:** roughly 30 brothers. **Expected volunteers: 10–15** (⅓–½ acceptance). Forrest emails the invitation (template: Appendix A); brothers volunteer by replying. Only volunteers are provisioned — no accounts are created for non-responders.
 
 The invitation states plainly the one privacy fact that matters: **volunteers' real names and email addresses will be visible to the other testers** inside the UAT environment (it is a fraternity directory; the cohort is all brothers). Everything else in the environment is fake, and anything a tester types into their own profile is theirs to choose — real or invented. No signed releases; the notice in the invitation suffices (Forrest's call, D132).
 
