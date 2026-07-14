@@ -289,7 +289,11 @@ test.describe("Directory 3c — follow-up fixes", () => {
     page,
   }) => {
     await gotoDirectory(page);
+    // The theme toggle moved into the avatar menu (D131) — open it, switch to dark,
+    // then close it before reaching for the Filters panel below.
+    await page.locator("summary").filter({ hasText: "Dev Admin" }).click();
     await page.getByRole("button", { name: "Dark theme" }).click();
+    await page.keyboard.press("Escape");
     await page.getByRole("button", { name: /^Filters/ }).click();
     const scheme = await page
       .getByLabel("Not verified since")

@@ -30,9 +30,11 @@ const MENU_ITEM =
 
 /**
  * The persistent app shell (Phase 1b; PRD §5): the masthead with the crest,
- * wordmark, role badge, and avatar menu; the always-rendered system-banner slot
- * (D117); the page body; and the persistent privacy footer (D116). Built with
- * semantic landmarks (`header`/`main`/`footer`) for the a11y gate (D79).
+ * wordmark, the PBE News link (OFC-243), role badge, and avatar menu; the
+ * always-rendered system-banner slot (D117); the page body; and the persistent
+ * privacy footer (D116). Built with semantic landmarks (`header`/`main`/`footer`)
+ * for the a11y gate (D79). The font-size and theme toggles live inside the avatar
+ * menu (D131), keeping the bar short enough to fit a phone without cutoff.
  *
  * The avatar menu also carries the "Profile" shortcut to one's own record and the
  * "View as" impersonation controls (N31): a step-**down** role switch an
@@ -88,14 +90,32 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
           <Link
             to="/"
             state={{ reset: true }}
-            className="flex items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex min-w-0 items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <img src="/crest.svg" alt="" aria-hidden="true" className="size-7" />
-            <span className="text-base font-bold tracking-tight">PBE Address Book</span>
+            <img src="/crest.svg" alt="" aria-hidden="true" className="size-7 shrink-0" />
+            {/* `truncate` (with the link's `min-w-0`) lets the wordmark shorten under
+                pressure rather than shoving the controls off a narrow screen — the
+                root of the OFC-210 masthead cutoff. */}
+            <span className="min-w-0 truncate text-base font-bold tracking-tight">
+              PBE Address Book
+            </span>
           </Link>
-          <div className="flex items-center gap-3">
-            <FontSizeToggle />
-            <ThemeToggle />
+          {/* `shrink-0` keeps the control cluster at full size; the wordmark yields
+              first. The font-size and theme toggles used to sit here but now live in
+              the avatar menu (D131) — a simpler bar that fits the phone. */}
+          <div className="flex shrink-0 items-center gap-3">
+            {/* The single top-bar entry point to the sibling newsletter (ASSETS.md;
+                OFC-243). Opens pbe400.org in a new tab, mirroring ReportBug's styling. */}
+            <a
+              href="https://pbe400.org"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="PBE News (opens in a new tab)"
+              className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              PBE News
+              <ExternalLinkIcon />
+            </a>
             <ReportBug />
             {me.impersonating ? (
               // A distinct outline pill (vs. the solid RoleBadge) so an admin can
@@ -169,6 +189,29 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                   </div>
                 )}
 
+                {/* Display settings (D131): the font-size and theme toggles moved
+                    here from the inline masthead — a set-once control belongs in the
+                    menu, and the leaner bar no longer overflows on a phone (OFC-210).
+                    Clicking a toggle keeps the menu open (the auto-close ignores
+                    clicks inside it). */}
+                <div className="mt-1 border-border border-t pt-2">
+                  {/* The visible labels are `aria-hidden`: each toggle is a `fieldset`
+                      with its own sr-only `<legend>` of the same words, so exposing
+                      the span too would make a screen reader announce it twice. */}
+                  <div className="flex items-center justify-between gap-2 px-3 py-1">
+                    <span aria-hidden="true" className="text-xs font-medium text-muted-foreground">
+                      Text size
+                    </span>
+                    <FontSizeToggle />
+                  </div>
+                  <div className="flex items-center justify-between gap-2 px-3 py-1">
+                    <span aria-hidden="true" className="text-xs font-medium text-muted-foreground">
+                      Theme
+                    </span>
+                    <ThemeToggle />
+                  </div>
+                </div>
+
                 <button
                   type="button"
                   onClick={() => void signOut()}
@@ -196,5 +239,24 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
           signed-in tab, so it never polls on the sign-in screen. */}
       <VersionToast />
     </div>
+  );
+}
+
+/** The outbound-link glyph on the PBE News masthead link (opens a new tab). */
+function ExternalLinkIcon() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+    </svg>
   );
 }
