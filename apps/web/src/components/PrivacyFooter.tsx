@@ -13,9 +13,9 @@ export function PrivacyFooter() {
   return (
     <footer className="border-t border-border bg-card px-4 py-5 text-center text-xs leading-relaxed text-muted-foreground">
       <p className="mx-auto max-w-2xl">
-        This is a private directory for living brothers of Phi Beta Epsilon. Contact details are
-        shown only to fellow brothers and only as each member has chosen to share them. Please keep
-        what you find here within the brotherhood.
+        This is a private directory for brothers of Phi Beta Epsilon. Contact details are shown only
+        to fellow brothers and only as each member has chosen to share them. Please keep what you
+        find here within the brotherhood.
       </p>
       <p className="mt-2">Version {APP_VERSION}</p>
     </footer>

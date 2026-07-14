@@ -39,6 +39,7 @@
 
   --destructive: #b42318; /* delete / cannot-be-undone */
   --destructive-foreground: #ffffff;
+  --destructive-border: #8f1c13; /* warning-banner hairline (darker than the red bg) */
 
   --border: #e2e5e7; /* card & divider borders (also #EDEFF0 hairline) */
   --border-hairline: #edeff0;
@@ -124,6 +125,7 @@
 
   --destructive: #e5635a; /* lightened from #B42318 for dark-mode contrast */
   --destructive-foreground: #1a0b0a;
+  --destructive-border: #c2554d; /* warning-banner hairline */
 
   --border: #243036;
   --border-hairline: #233038;
