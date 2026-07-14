@@ -31,6 +31,7 @@ Two standing sub-rules:
 - **Dependency upgrades are their own PR** — one dependency per change. Read the changelog, not the version number (semver is a promise the maintainer may not have kept), and review the lockfile diff like code.
 - **Grep the staged diff for secrets before every push** (`git diff --staged | grep -iE "password|secret|api_key|token"`) — these repos are public.
 - **Documentation is code.** Design docs, the decision log, API specs, and user docs are updated in the same PR as the code they describe. Append significant decisions to the decision log (`DECISIONS.md`) as they're made — following the decision-log conventions below — and propagate them to affected docs once, in place.
+- **Fix known tech debt now — don't bank it.** AI has made writing code cheap, which flips the economics: a known issue — including small or low-severity ones, and code-review findings — is cheapest to fix the moment it surfaces, while the context is loaded, and it only rots if deferred. So remediate it in the session where it's found. Defer only when the fix is genuinely big enough to need its own focus and plan — and then it follows the deferral rule below (a Linear ticket with the full details, resolved in a dedicated session shortly after).
 - Anything discovered but deliberately not done now — deferred features, uncertain items, rough edges — gets a Linear ticket before the session ends, not a TODO comment or a mental note. The PR description ends with a short **"Didn't touch (intentionally)"** list — adjacent issues noticed but left out of scope, each pointing at its ticket — so scope discipline is visible at review time.
 
 ## When something breaks
@@ -80,6 +81,7 @@ The gates erode through plausible-sounding exceptions, not open defiance. The us
 | "He answered my clarifying questions, so that's approval." | Approval is an unambiguous "go," nothing less. |
 | "CI is green and review is clean — merging." | Merging is Forrest's call, every time. In Book, a merge is a deploy. |
 | "I'll file the Linear ticket at close-out." | File it when discovered. Close-out verifies tickets exist; it doesn't remember them for you. |
+| "It's minor — I'll TODO it / leave it." | Minor known debt is cheapest to fix now, in context. Defer only if the fix needs its own PR — and then it's a ticket, not a TODO. |
 | "The fix is obvious — no need to reproduce first." | Obvious fixes are right most of the time; the rest cost hours. Repro test first. |
 | "Docs can follow in the next PR." | Documentation is code. Same PR. |
 | "This API is standard — I know it from memory." | Versions drift. Verify against the docs or flag it unverified. |
