@@ -70,6 +70,16 @@ export interface ValidationContext {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/u;
+// RFC 5321 §4.5.3.1.3 caps a full email address at 254 characters, so a longer
+// string is never a valid address. Enforcing the cap BEFORE running EMAIL_RE is
+// also the ReDoS guard (OFC-152, CodeQL js/polynomial-redos): EMAIL_RE's
+// `[^\s@]+\.[^\s@]+` is ambiguous because `[^\s@]` also matches `.`, so a long
+// dotted input whose tail defeats the anchoring `$` backtracks quadratically. The
+// reachable vector is a trailing `@` (`a@` + `x.`×N + `@`) — `.trim()` strips a
+// trailing space but not the `@` — measured ~4.7 s on one ~160 KB PATCH value,
+// which stalls the single Cloud Run instance (D83) for every other caller.
+// Bounding the input to 254 chars bounds the regex to constant work.
+const MAX_EMAIL_LENGTH = 254;
 const PHONE_ALLOWED_RE = /^\+?[0-9().\-\s]+$/u;
 const ISO_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/u;
 // US ZIP: five digits, optionally + four (ZIP+4). Only US postal codes are
@@ -106,7 +116,12 @@ function isNonEmpty(value: unknown): value is string {
 // site, so without this guard `.trim()`/regex would throw a TypeError and the
 // route would 500 instead of returning a clean 422 (OFC-89).
 function isValidEmail(value: unknown): boolean {
-  return typeof value === "string" && EMAIL_RE.test(value.trim());
+  if (typeof value !== "string") {
+    return false;
+  }
+  const email = value.trim();
+  // Length-cap before the regex — see MAX_EMAIL_LENGTH (RFC 5321 + ReDoS guard).
+  return email.length <= MAX_EMAIL_LENGTH && EMAIL_RE.test(email);
 }
 
 /** True if `value` is a US ZIP in NNNNN or NNNNN-NNNN form (non-strings rejected). */

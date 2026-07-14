@@ -69,6 +69,32 @@ describe("validateProfile — email rules (§8/D97)", () => {
   it("accepts an alternate email when a primary is present", () => {
     expect(fields({ email: "p@example.test", alternateEmail: "a@example.test" })).toEqual([]);
   });
+
+  it("rejects a well-formed email past the 254-char cap, accepts one at it (OFC-152)", () => {
+    // The length guard (RFC 5321 + ReDoS guard) rejects an otherwise well-formed
+    // address one char over the cap — without the guard EMAIL_RE would accept it,
+    // so this also pins the guard against removal.
+    const at255 = `${"a".repeat(242)}@example.test`;
+    expect(at255.length).toBe(255);
+    expect(fields({ email: at255 })).toEqual(["email"]);
+    const at254 = `${"a".repeat(241)}@example.test`;
+    expect(at254.length).toBe(254);
+    expect(fields({ email: at254 })).toEqual([]);
+  });
+
+  it("defuses the EMAIL_RE ReDoS on a long ambiguous input (OFC-152)", () => {
+    // `a@` + `x.`×N + a trailing `@`: EMAIL_RE's `[^\s@]+\.[^\s@]+` is ambiguous
+    // (`[^\s@]` also matches `.`), so this backtracks quadratically — the trailing
+    // `@`, which `.trim()` does NOT strip, defeats the anchoring `$`. Unguarded, one
+    // ~160 KB input runs for seconds and stalls the single Cloud Run instance (D83);
+    // the length cap short-circuits it. The result is unchanged (rejected) either
+    // way, so timing is what proves the fix — threshold is generous vs the multi-
+    // second unguarded cost, well clear of the sub-millisecond guarded path.
+    const evil = `a@${"x.".repeat(80_000)}@`;
+    const start = performance.now();
+    expect(fields({ email: evil })).toEqual(["email"]);
+    expect(performance.now() - start).toBeLessThan(500);
+  });
 });
 
 describe("validateProfile — address (§8/D37)", () => {
