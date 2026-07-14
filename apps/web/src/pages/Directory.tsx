@@ -85,7 +85,7 @@ export function Directory() {
   const stars = useStars(myStars);
   const [starredOnly, setStarredOnly] = useHistoryFlag("directoryStarredOnly");
   const wide = useMediaQuery("(min-width: 768px)");
-  // The mobile "Filters & options" fold (OFC-211). Starts closed on every mount —
+  // The mobile "Options" fold (OFC-211). Starts closed on every mount —
   // like the FilterPanel (deliberately not persisted), so a Back-navigation to the
   // Directory always returns a compact, folded view; the header badge still signals
   // when options are active while it's closed.
@@ -264,7 +264,7 @@ export function Directory() {
   const help = getHelpEntry("directory.search");
   const staff = canSelectRows(role);
 
-  // The badge on the collapsed mobile "Filters & options" fold: how many of the
+  // The badge on the collapsed mobile "Options" fold: how many of the
   // folded controls are currently narrowing the view — typed filters plus the two
   // view toggles — so the brother knows something is applied without opening it.
   const activeOptionCount = filters.activeCount + (starredOnly ? 1 : 0) + (includeDeceased ? 1 : 0);
@@ -364,7 +364,7 @@ export function Directory() {
           </div>
 
           {/* On desktop the quick toggles + Columns picker sit beside the search;
-              on a phone they move into the "Filters & options" fold below (OFC-211). */}
+              on a phone they move into the "Options" fold below (OFC-211). */}
           {wide && (
             <>
               {quickToggles}
@@ -396,7 +396,7 @@ export function Directory() {
             >
               <span className="flex items-center gap-2">
                 <FoldChevron open={optionsOpen} />
-                Filters &amp; options
+                Options
                 {activeOptionCount > 0 && (
                   <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
                     {activeOptionCount} active
@@ -485,7 +485,7 @@ function countLabel(shown: number, total: number): string {
   return shown === total ? `${total} ${word}` : `${shown} of ${total} ${word}`;
 }
 
-/** The disclosure chevron on the mobile "Filters & options" fold (mirrors FilterPanel). */
+/** The disclosure chevron on the mobile "Options" fold (mirrors FilterPanel). */
 function FoldChevron({ open }: { open: boolean }) {
   return (
     <svg

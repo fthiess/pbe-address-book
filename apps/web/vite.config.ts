@@ -61,9 +61,16 @@ const DEV_API = process.env.BOOK_API_ORIGIN ?? "http://127.0.0.1:8787";
 // SHA); locally it falls back to the git commit.
 const APP_VERSION = process.env.BOOK_APP_VERSION ?? gitVersion();
 
+// The sibling newsletter's URL, injected at build time (OFC-243/N94). A deploy sets
+// `BOOK_PBE_NEWS_URL` to the environment's PBE News site (staging.env points it at
+// staging.pbe400.org); it defaults to the production site, so a prod build needs no
+// override and never accidentally links to staging.
+const PBE_NEWS_URL = process.env.BOOK_PBE_NEWS_URL ?? "https://pbe400.org";
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
+    __PBE_NEWS_URL__: JSON.stringify(PBE_NEWS_URL),
   },
   plugins: [react(), tailwindcss(), versionJsonPlugin(APP_VERSION)],
   resolve: {

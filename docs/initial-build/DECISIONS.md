@@ -1453,11 +1453,11 @@ The masthead packed two 3-button segmented pills (font size, theme) plus Report-
 
 *Records to `apps/web/src/components/AppShell.tsx` + `DECISIONS-INDEX.md` (UI shell) + `USER-MANUAL.md` §9. Verified by the browser check at 360/390/412/768/1280px (no cutoff; toggles operable from the menu) and the a11y pass.*
 
-### N92 — Mobile "Filters & options" fold: the Directory chrome collapses on a phone (OFC-211)
+### N92 — Mobile "Options" fold: the Directory chrome collapses on a phone (OFC-211)
 
 On a phone the Directory's chrome — Name Search, the Starred-only / Include-deceased toggles, the column picker, the filter panel, and the staff action bar — stacked vertically and consumed more than half the screen before a single brother row appeared (OFC-211).
 
-**Decision (Forrest's call, 2026-07-14):** below the `md` breakpoint (`min-width: 768px`, the same line that already switches the grid to cards), keep the Directory heading, result count, and **Name Search** always visible, and fold everything else — the two view toggles, the column picker, the `FilterPanel`, and the staff `ActionBar` — into a single **"Filters & options"** disclosure, **closed by default** on every mount. Desktop is unchanged: at `md`+ the toggles and column picker sit beside the search and the filter panel + action bar render inline, exactly as before.
+**Decision (Forrest's call, 2026-07-14):** below the `md` breakpoint (`min-width: 768px`, the same line that already switches the grid to cards), keep the Directory heading, result count, and **Name Search** always visible, and fold everything else — the two view toggles, the column picker, the `FilterPanel`, and the staff `ActionBar` — into a single **"Options"** disclosure, **closed by default** on every mount. (Labelled **"Options"**, not "Filters & options": live-testing found that the longer label read as a promise of filter fields directly inside, when in fact the nested `FilterPanel` keeps its own "Filters" toggle — two filter-named disclosures confused the reader.) Desktop is unchanged: at `md`+ the toggles and column picker sit beside the search and the filter panel + action bar render inline, exactly as before.
 
 Built as a `<button aria-expanded>` + conditionally-rendered region (mirroring the `FilterPanel` disclosure, D38) rather than a native `<details>` — for a state-driven chevron and to sidestep a nested-`group` collision with the ColumnPicker's own `group` chevron. The open state is **not persisted**, like the FilterPanel (the Directory remounts on a Back-navigation, so always-closed is the consistent return state); a summary badge counts the active folded options (typed filters + the two view toggles) so an applied narrowing is visible while the fold is closed. The reusable chrome elements are built once in `Directory` and placed in whichever width-branch renders, so filters/columns/export keep a single source of behaviour across both widths.
 
@@ -1474,3 +1474,15 @@ Adding the first mobile-viewport axe pass (the OFC-211 fold test at 390px) surfa
 **Why / landmine:** `hidden` (`display:none`) drops content from *both* the visual and the accessibility tree; `sr-only` hides it visually while keeping it for assistive tech. Any control that becomes icon-only on a phone and whose only label is a text span must use `sr-only`, not `hidden`, or it fails 4.1.2 on the phones most of Book's audience uses. Guarded by the mobile-viewport axe pass added with N92.
 
 *Records to `apps/web/src/components/AppShell.tsx` + `ReportBug.tsx`. Found and fixed while building OFC-211 (PR stacked on the masthead PR); verified by the mobile-fold axe e2e.*
+
+### N94 — The masthead PBE News link is environment-specific (build-time `BOOK_PBE_NEWS_URL`); warning-banner rule given real contrast (OFC-243 / OFC-240 live-test)
+
+Live-testing the OFC-243 link found it hardcoded to production `pbe400.org` — so on staging it jumped to the live newsletter instead of ghost-staging. The masthead link must point at the PBE News site **for the environment the SPA was built for**.
+
+**Fix (mirrors the `BOOK_APP_VERSION` build-stamp pattern):** `vite.config` reads `process.env.BOOK_PBE_NEWS_URL` and injects it via `define` as `__PBE_NEWS_URL__`; `apps/web/src/lib/externalLinks.ts` exposes it with a guarded fallback (→ `pbe400.org` for dev / tests, where the global is undefined). The value **defaults to production**, and each environment's deploy overrides it: `infra/environments/staging.env` sets `BOOK_PBE_NEWS_URL=https://staging.pbe400.org`, which the deploy workflow appends to `$GITHUB_ENV` before the SPA build (so `process.env` carries it). A future `prod.env` sets the pbe400.org value (or omits it — the default is already prod), so a prod build can never accidentally link to staging.
+
+**Also (OFC-240 live-test):** the first warning-banner hairline was too close in colour to the saturated red fill to be seen; `--destructive-border` moved to a distinctly darker red (`#6a0f07` light / `#7d271e` dark) for real contrast against the fill.
+
+**Why:** an environment-specific external URL belongs in the same per-environment build config as the other staging/prod values (the `*.env` files, OFC-84), defaulting to the safe production value — not hardcoded in a component. And a rule you can't see isn't a rule: the warning banner's frame has to read against its own fill.
+
+*Records to `apps/web/vite.config.ts`, `apps/web/src/lib/externalLinks.ts`, `apps/web/src/components/AppShell.tsx`, `apps/web/src/vite-env.d.ts`, `infra/environments/staging.env`, and the `--destructive-border` tokens (both copies). Live-test remediation of the 5.5h batch; verified on staging.*
