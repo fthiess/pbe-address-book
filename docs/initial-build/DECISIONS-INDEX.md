@@ -118,7 +118,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Testing & environments
 
 - **D65** (Vitest + emulator; Playwright; committed fake-data generator) + **N23** (planted name collision) + **N4** (fixed dev ids).
-- Staging/UAT: D72 → **D108** + **N18** (staging wipe-reseeds every deploy) + **N64** (UAT on test data, non-production); backup-verification staging per D102; **N82** (docs-only merges skip the post-merge CI re-run → no deploy; PR gate unfiltered); **N90** (reseed wipes `users`/stars too, deterministic deploy; column prefs are a localStorage residual reset in-app, OFC-197).
+- Staging/UAT: D72 → **D108** + **N18** (staging wipe-reseeds every deploy) + N64 (UAT on test data, non-production) → **D132** (UAT = its own Phase 7.7 on staging in a frozen-autoseed window — code deploys continue, data survives; real-named testers via a private-GCS roster + `seed:staging-testers`, blank-beyond-identity profiles; UAT photo corpus; real magic-link flow required — email fix OFC-252; theme integration split off as Phase 7.6; plan `UAT-PLAN.md`, cutover items parked in the `CUTOVER-PLAN.md` stub); backup-verification staging per D102; **N82** (docs-only merges skip the post-merge CI re-run → no deploy; PR gate unfiltered); **N90** (reseed wipes `users`/stars too, deterministic deploy; column prefs are a localStorage residual reset in-app, OFC-197).
 - CI/deploy action pins: **N87** (all `uses:` bumped to latest Node-24 majors, OFC-62; the Firebase-CLI step's `@v7` action pin is orthogonal to its load-bearing `node-version: "20"` install — don't collapse them).
 
 ## Accessibility & help
@@ -137,7 +137,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Process & scope
 
-- **D1** (doc homes), **D11** (MVP line; → D27, D60); re-plans **N30** (Phase 4), **N39** (4c split), **N59** (Phase 5.5 batches), **N67** (5b split), **N62** (Phase 7.5).
+- **D1** (doc homes), **D11** (MVP line; → D27, D60); re-plans **N30** (Phase 4), **N39** (4c split), **N59** (Phase 5.5 batches), **N67** (5b split), **N62** (Phase 7.5), **D132** (UAT → Phase 7.7 + theme-integration Phase 7.6; `UAT-PLAN.md` + `CUTOVER-PLAN.md` stub).
 - Licensing: **D127** (repo is MIT — code only; PBE names, marks + brand-artwork files reserved to Phi Beta Epsilon Corporation).
 
 ---

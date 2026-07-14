@@ -25,6 +25,8 @@ A build folder such as `initial-build/` contains that build's delivered document
 - **`USER-MANUAL.md`** — the end-user reference, whose per-control help section is the single source for Book's in-page help.
 - **`DECISIONS.md`** — the ADR-style decision log (the "why"); shared across builds and referenced by later feature designs. *(Graduated from the planning vault at the Session-6c close-out.)*
 - **`PRE-LAUNCH-TOOLS.md`** — the inventory of one-time migration utilities and external operational tools. *(Graduated from the planning vault at the Session-6c close-out.)*
+- **`UAT-PLAN.md`** — the Phase 7.7 user-acceptance-testing plan: platform and data policy, tester provisioning, execution process, and exit criteria. *(Added 2026-07-14, DECISIONS D132.)*
+- **`CUTOVER-PLAN.md`** — the production cutover plan; a stub accumulating cutover-scope items until it is written at Phase 8 planning. *(Added 2026-07-14, DECISIONS D132.)*
 - **`visual-design/`** — a set of files containing the detailed visual design of the product, including design tokens, as concrete values — this is the load-bearing artifact. The light + dark sets mapped to the named shadcn/Tailwind CSS variables, the brand accent values, color palette, the type scale, and the spacing / radius / elevation scales.
 - **`history/`** — origin and narrative documents, not referenced by the engineering docs:
   - **`SEED.md`** — the original implementation seed notes the project started from, preserved for historical value.
