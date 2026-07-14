@@ -2,7 +2,7 @@ import { getHelpEntry } from "@pbe/help-content";
 import type { NameRecord } from "@pbe/name-search";
 import { resolveCanonicalNames } from "@pbe/shared";
 import { parseAsBoolean, useQueryState } from "nuqs";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { ClearButton } from "../components/ClearButton.js";
@@ -85,6 +85,12 @@ export function Directory() {
   const stars = useStars(myStars);
   const [starredOnly, setStarredOnly] = useHistoryFlag("directoryStarredOnly");
   const wide = useMediaQuery("(min-width: 768px)");
+  // The mobile "Filters & options" fold (OFC-211). Starts closed on every mount —
+  // like the FilterPanel (deliberately not persisted), so a Back-navigation to the
+  // Directory always returns a compact, folded view; the header badge still signals
+  // when options are active while it's closed.
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const optionsRegionId = useId();
 
   // Row selection persists across search/filter/sort/navigation (N79/OFC-196), so
   // it lives in a context above the route rather than local state — no view-key
@@ -258,6 +264,57 @@ export function Directory() {
   const help = getHelpEntry("directory.search");
   const staff = canSelectRows(role);
 
+  // The badge on the collapsed mobile "Filters & options" fold: how many of the
+  // folded controls are currently narrowing the view — typed filters plus the two
+  // view toggles — so the brother knows something is applied without opening it.
+  const activeOptionCount = filters.activeCount + (starredOnly ? 1 : 0) + (includeDeceased ? 1 : 0);
+
+  // The chrome pieces below the search box are the same elements whether shown
+  // inline (desktop) or inside the mobile fold (OFC-211) — build them once and
+  // place them in the branch that renders this width.
+  const quickToggles = (
+    <div className="flex items-center gap-4 pb-2">
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={starredOnly}
+          onChange={(e) => setStarredOnly(e.target.checked)}
+          className="size-4 rounded border-input accent-[var(--brand-gold)]"
+        />
+        Starred only
+      </label>
+      <label className="flex items-center gap-2 text-sm">
+        <input
+          type="checkbox"
+          checked={includeDeceased}
+          onChange={(e) => void setIncludeDeceased(e.target.checked)}
+          className="size-4 rounded border-input accent-[var(--brand-gold)]"
+        />
+        Include deceased
+      </label>
+    </div>
+  );
+  const columnPicker = <ColumnPicker lens={lens} />;
+  const filterPanel = (
+    <FilterPanel
+      filters={filters.filters}
+      setFilter={filters.setFilter}
+      options={filterOptions}
+      role={role}
+      activeCount={filters.activeCount}
+      onReset={onReset}
+    />
+  );
+  const actionBar = staff ? (
+    <ActionBar
+      role={role}
+      viewRows={rows}
+      selectedRows={selectedRows}
+      selectedCount={selection.count}
+      onClear={clearSelection}
+    />
+  ) : null;
+
   if (error) {
     return (
       <p className="max-w-2xl rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
@@ -306,48 +363,57 @@ export function Directory() {
             </p>
           </div>
 
-          <div className="flex items-center gap-4 pb-2">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={starredOnly}
-                onChange={(e) => setStarredOnly(e.target.checked)}
-                className="size-4 rounded border-input accent-[var(--brand-gold)]"
-              />
-              Starred only
-            </label>
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={includeDeceased}
-                onChange={(e) => void setIncludeDeceased(e.target.checked)}
-                className="size-4 rounded border-input accent-[var(--brand-gold)]"
-              />
-              Include deceased
-            </label>
-          </div>
-
-          <ColumnPicker lens={lens} />
+          {/* On desktop the quick toggles + Columns picker sit beside the search;
+              on a phone they move into the "Filters & options" fold below (OFC-211). */}
+          {wide && (
+            <>
+              {quickToggles}
+              {columnPicker}
+            </>
+          )}
         </div>
       </div>
 
-      <FilterPanel
-        filters={filters.filters}
-        setFilter={filters.setFilter}
-        options={filterOptions}
-        role={role}
-        activeCount={filters.activeCount}
-        onReset={onReset}
-      />
-
-      {staff && (
-        <ActionBar
-          role={role}
-          viewRows={rows}
-          selectedRows={selectedRows}
-          selectedCount={selection.count}
-          onClear={clearSelection}
-        />
+      {/* Desktop shows the filter panel + action bar inline; a phone folds them
+          (together with the quick toggles + Columns picker) into one disclosure,
+          closed by default, so the brother list gets the vertical space (OFC-211).
+          Built as a button + region (mirroring the FilterPanel disclosure, D38) for
+          reliable keyboard + AT behaviour under the a11y gate (D79). */}
+      {wide ? (
+        <>
+          {filterPanel}
+          {actionBar}
+        </>
+      ) : (
+        <div className="mb-4">
+          <h2>
+            <button
+              type="button"
+              aria-expanded={optionsOpen}
+              aria-controls={optionsRegionId}
+              onClick={() => setOptionsOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-3 text-left text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span className="flex items-center gap-2">
+                <FoldChevron open={optionsOpen} />
+                Filters &amp; options
+                {activeOptionCount > 0 && (
+                  <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
+                    {activeOptionCount} active
+                  </span>
+                )}
+              </span>
+            </button>
+          </h2>
+          {optionsOpen && (
+            <div id={optionsRegionId} className="mt-3 flex flex-col gap-3">
+              {quickToggles}
+              {columnPicker}
+              {filterPanel}
+              {actionBar}
+            </div>
+          )}
+        </div>
       )}
 
       {profiles && rows.length === 0 ? (
@@ -417,4 +483,24 @@ function EmptyState({
 function countLabel(shown: number, total: number): string {
   const word = total === 1 ? "brother" : "brothers";
   return shown === total ? `${total} ${word}` : `${shown} of ${total} ${word}`;
+}
+
+/** The disclosure chevron on the mobile "Filters & options" fold (mirrors FilterPanel). */
+function FoldChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={open ? "rotate-90 transition-transform" : "transition-transform"}
+    >
+      <path d="M6 4l4 4-4 4" />
+    </svg>
+  );
 }
