@@ -170,6 +170,7 @@ function IdentityHeader({
             starred={stars.isStarred(record.id)}
             name={name}
             onToggle={() => stars.toggle(record.id)}
+            prominent
           />
         </div>
         {record.mugName && (
