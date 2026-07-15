@@ -77,7 +77,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 - Frame: **D54** (one composite system), **D55** (single-master, Book authoritative; the read-only-into-Book invariant restored by N69).
 - Push path: D96 → **N65** (Ghost-first-gated update; prior-email alias dropped); pushed field set per **N66** + **N68**; write ordering/compensation **D98**; lifecycle seam N41 → **N67** (5b split, roster stub).
 - Email↔Ghost-record invariant (a brother has a Ghost member iff living + not-de-brothered + usable email — the `shouldHaveGhostMember` predicate): **D133** (auto-create on the PATCH that adds the email) → **N96** (implemented: PATCH create/delete/update lifecycle; email removed from the create surface — `POST` 422s it, a create is Book-only; a Ghost-member collision is rejected on `email` not linked — Option B; de-brother-reverse gate unified on the predicate) + **D134** (mark-deceased now deletes the member and un-mark re-creates it — amends D80; audit exempts a deceased brother like a de-brothered one).
-- Newsletter flag & audit: ~~D103~~ (bidirectional write-back — reverted) → **N69** (alignment audit fully read-only; bounce report a separate CSV; one generic outage screen).
+- Newsletter flag & audit: ~~D103~~ (bidirectional write-back — reverted) → **N69** (alignment audit fully read-only; bounce report a separate CSV; one generic outage screen); event-fetch bound **N97** (audit/bounce member-events fetched with a 24-month `created_at` NQL bound, not the whole append-only history — OFC-231; a bigger page `limit` is foreclosed by Ghost 6.0, OFC-217).
 - Ghost-less brothers always tolerated: **N72**.
 
 ## Linter roster
