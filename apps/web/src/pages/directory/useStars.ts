@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { addStar as apiAddStar, removeStar as apiRemoveStar } from "../../lib/api.js";
 
 /**
@@ -83,5 +83,9 @@ export function useStarsState(initial: readonly number[]): Stars {
     );
   }, []);
 
-  return { isStarred, toggle, set: stars };
+  // Memoized so the value identity changes only when the set does. As a context
+  // value (StarsProvider) a fresh object each render would re-render every star
+  // consumer — the whole virtualized grid — on any unrelated shell re-render
+  // (a banner poll, an own-headshot update). Mirrors SelectionContext's memo.
+  return useMemo(() => ({ isStarred, toggle, set: stars }), [isStarred, toggle, stars]);
 }
