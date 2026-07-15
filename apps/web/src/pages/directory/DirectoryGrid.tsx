@@ -424,6 +424,11 @@ function HeaderCell({
       className={cn(
         "h-11 border-b border-border bg-secondary px-3 text-xs font-semibold text-secondary-foreground",
         column.align === "end" ? "text-right" : "text-left",
+        // A subtle vertical rule after the staff Select column separates it from the
+        // universal Star so the two small adjacent controls read as distinct, not one
+        // cluster to misclick (OFC-64). The centered controls leave whitespace on
+        // either side of the rule, which supplies the breathing room.
+        column.key === "select" && "border-r border-border",
       )}
       style={style}
     >
@@ -710,7 +715,13 @@ function Cell({
 
   if (column.key === "select") {
     return (
-      <td aria-colindex={colIndex} className={controlCell} style={frozenStyle(left, false)}>
+      <td
+        aria-colindex={colIndex}
+        // The vertical rule that separates Select from the adjacent Star (OFC-64);
+        // matches the header's divider so the column reads as one framed control.
+        className={cn(controlCell, "border-r border-border")}
+        style={frozenStyle(left, false)}
+      >
         {selection && (
           <SelectCheckbox
             checked={selection.isSelected(profile.id)}

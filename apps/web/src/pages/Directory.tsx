@@ -18,6 +18,7 @@ import { DirectoryCards } from "./directory/DirectoryCards.js";
 import { DirectoryGrid } from "./directory/DirectoryGrid.js";
 import { FilterPanel } from "./directory/FilterPanel.js";
 import { useSelection } from "./directory/SelectionContext.js";
+import { useStars } from "./directory/StarsContext.js";
 import {
   autoFitWidth,
   extraWidthFor,
@@ -37,10 +38,7 @@ import { useNameSearch } from "./directory/search/useNameSearch.js";
 import { useColumnLens } from "./directory/useColumnLens.js";
 import { useDirectoryFilters } from "./directory/useDirectoryFilters.js";
 import { useDirectorySort } from "./directory/useDirectorySort.js";
-import { useStars } from "./directory/useStars.js";
 import { clearDirectoryStashes } from "./profile/directory-stash.js";
-
-const NO_STARS: readonly number[] = [];
 
 /**
  * The Directory — Book's home page and primary workspace (PRD §5.6). Phase 3a
@@ -57,7 +55,6 @@ export function Directory() {
   const { state } = useSession();
   const role = state.status === "authenticated" ? state.me.role : "brother";
   const myId = state.status === "authenticated" ? state.me.profileId : null;
-  const myStars = state.status === "authenticated" ? state.me.stars : NO_STARS;
   const location = useLocation();
 
   const [profiles, setProfiles] = useState<DirectoryProfile[] | null>(null);
@@ -82,7 +79,7 @@ export function Directory() {
   const lens = useColumnLens(role);
   const sort = useDirectorySort();
   const filters = useDirectoryFilters(role);
-  const stars = useStars(myStars);
+  const stars = useStars();
   const [starredOnly, setStarredOnly] = useHistoryFlag("directoryStarredOnly");
   const wide = useMediaQuery("(min-width: 768px)");
   // The mobile "Options" fold (OFC-211). Starts closed on every mount —

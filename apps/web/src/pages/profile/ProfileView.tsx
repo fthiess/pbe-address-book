@@ -4,6 +4,8 @@ import { Link } from "react-router-dom";
 import { Avatar } from "../../components/Avatar.js";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
+import { StarButton } from "../directory/RowControls.js";
+import { useStars } from "../directory/StarsContext.js";
 import { BOX, Thumbnail } from "../directory/thumbnail.js";
 import { DirectoryNav } from "./DirectoryNav.js";
 import { type ProfileActions, StaffControls, VerifyControl } from "./ProfileControls.js";
@@ -106,11 +108,14 @@ export function ProfileView({
           ) : (
             // Verification is public (OFC-207): a brother viewing another brother
             // still sees the accuracy signal, without the staff-only record status.
-            <div className="border-t border-border-hairline py-6">
+            // Rendered in the two-up Row (single column) so the "Verified" badge is
+            // the width of an Identity field, not full-bleed — collapsing to full
+            // width below md like every other field (OFC-235).
+            <Row>
               <Section title="Record status">
                 <VerificationReadout record={record} names={names} />
               </Section>
-            </div>
+            </Row>
           )}
         </div>
       </div>
@@ -141,19 +146,31 @@ function IdentityHeader({
   deceased: boolean;
 }) {
   const lifespan = deceased && record.deceased ? lifespanLine(record.deceased) : null;
+  const stars = useStars();
   return (
     <header className="flex flex-wrap items-start gap-5 px-6 pt-6 sm:px-8">
       <ProfileHeadshot record={record} name={name} responsive />
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-          <h1 className="text-[length:var(--text-h1)] font-bold leading-tight tracking-tight">
-            {record.firstName} {record.lastName}
-          </h1>
-          {record.classYear != null && (
-            <span className="text-[length:var(--text-h3)] font-semibold text-muted-foreground">
-              {formatClassYear(record.classYear)}
-            </span>
-          )}
+        {/* Name + class year stay baseline-aligned together; the personal Star
+            toggle sits to their right, centered against the name line (OFC-256).
+            The star mirrors the Directory's — same shared set, same optimistic
+            toggle — so it reflects here and there without a reload. */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+            <h1 className="text-[length:var(--text-h1)] font-bold leading-tight tracking-tight">
+              {record.firstName} {record.lastName}
+            </h1>
+            {record.classYear != null && (
+              <span className="text-[length:var(--text-h3)] font-semibold text-muted-foreground">
+                {formatClassYear(record.classYear)}
+              </span>
+            )}
+          </div>
+          <StarButton
+            starred={stars.isStarred(record.id)}
+            name={name}
+            onToggle={() => stars.toggle(record.id)}
+          />
         </div>
         {record.mugName && (
           <p className="mt-0.5 text-[length:var(--text-body)] italic text-muted-foreground">

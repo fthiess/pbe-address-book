@@ -16,6 +16,7 @@ import { NotFoundPage } from "./pages/NotFoundPage.js";
 import { ProfileContainer, ProfileEditRoute, ProfileViewRoute } from "./pages/Profile.js";
 import { SignIn } from "./pages/SignIn.js";
 import { SelectionProvider } from "./pages/directory/SelectionContext.js";
+import { StarsProvider } from "./pages/directory/StarsContext.js";
 
 /**
  * The root layout. nuqs's URL-state adapter reads the router's location, so it
@@ -59,16 +60,20 @@ function GateLayout() {
   if (state.status === "error") {
     return <MaintenanceOutage onRetry={() => void refresh()} />;
   }
-  // SelectionProvider wraps the shell (so the masthead's clean-slate reset can clear
-  // the selection) and lives on this layout route, which stays mounted across
-  // child navigations — so the row selection survives the Directory's remount
-  // (N79/OFC-196). It sits inside the gate, so a sign-out unmounts and clears it.
+  // SelectionProvider and StarsProvider wrap the shell (so the masthead's clean-slate
+  // reset can clear the selection, and so the star set is shared by the Directory and
+  // the Profile page — OFC-256) and live on this layout route, which stays mounted
+  // across child navigations — so both survive the Directory's remount (N79/OFC-196).
+  // They sit inside the gate, so a sign-out unmounts and clears them. StarsProvider
+  // seeds from the session's own stars, now that `state` is known authenticated.
   return (
     <BannerProvider>
       <SelectionProvider>
-        <AppShell me={state.me}>
-          <Outlet />
-        </AppShell>
+        <StarsProvider initial={state.me.stars}>
+          <AppShell me={state.me}>
+            <Outlet />
+          </AppShell>
+        </StarsProvider>
       </SelectionProvider>
     </BannerProvider>
   );

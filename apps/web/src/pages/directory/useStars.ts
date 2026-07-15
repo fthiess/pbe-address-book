@@ -30,7 +30,14 @@ export interface Stars {
   set: ReadonlySet<number>;
 }
 
-export function useStars(initial: readonly number[]): Stars {
+/**
+ * The optimistic star-set implementation hook. Hosted once by {@link StarsProvider}
+ * (mounted on the authenticated shell) so the Directory and the Profile page share
+ * one in-session set — a star toggled on a Profile reflects on the Directory, and
+ * vice versa, without a reload (OFC-256). Components consume it through the
+ * provider's `useStars()`, not by calling this directly.
+ */
+export function useStarsState(initial: readonly number[]): Stars {
   const [stars, setStars] = useState<Set<number>>(() => new Set(initial));
   const starsRef = useRef(stars);
   starsRef.current = stars;
