@@ -75,7 +75,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Ghost sync
 
 - Frame: **D54** (one composite system), **D55** (single-master, Book authoritative; the read-only-into-Book invariant restored by N69).
-- Push path: D96 → **N65** (Ghost-first-gated update; prior-email alias dropped); pushed field set per **N66** + **N68**; write ordering/compensation **D98**; lifecycle seam N41 → **N67** (5b split, roster stub).
+- Push path: D96 → **N65** (Ghost-first-gated update; prior-email alias dropped); pushed field set per **N66** + **N68**; write ordering/compensation **D98**; lifecycle seam N41 → **N67** (5b split, roster stub); **D133** (a Ghost-less brother who gains an email gets his Ghost member auto-created on that PATCH — the email↔Ghost-record invariant; OFC-232, lands in 5.5i).
 - Newsletter flag & audit: ~~D103~~ (bidirectional write-back — reverted) → **N69** (alignment audit fully read-only; bounce report a separate CSV; one generic outage screen).
 - Ghost-less brothers always tolerated: **N72**.
 
@@ -137,7 +137,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Process & scope
 
-- **D1** (doc homes), **D11** (MVP line; → D27, D60); re-plans **N30** (Phase 4), **N39** (4c split), **N59** (Phase 5.5 batches), **N67** (5b split), **N62** (Phase 7.5), **D132** (UAT → Phase 7.7 + theme-integration Phase 7.6; `UAT-PLAN.md` + `CUTOVER-PLAN.md` stub).
+- **D1** (doc homes), **D11** (MVP line; → D27, D60); re-plans **N30** (Phase 4), **N39** (4c split), **N59** (Phase 5.5 batches), **N67** (5b split), **N62** (Phase 7.5), **D132** (UAT → Phase 7.7 + theme-integration Phase 7.6; `UAT-PLAN.md` + `CUTOVER-PLAN.md` stub), **N95** (second Todo triage: sessions 5.5i–5.5l appended, order 5.5k→l→i→j; the rest of the backlog scheduled onto Phases 6–8 by Linear label; pre-session ruling D133).
 - Licensing: **D127** (repo is MIT — code only; PBE names, marks + brand-artwork files reserved to Phi Beta Epsilon Corporation).
 
 ---
