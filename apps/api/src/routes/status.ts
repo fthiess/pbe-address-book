@@ -204,6 +204,8 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
       // reverse folds the re-created member's fresh id into the reinstating write.
       interface DeceasedPrepared {
         current: Profile;
+        /** The raise write, built and validated once in `prepare` (undefined on a reverse). */
+        raise?: { set: Partial<Profile>; remove: (keyof Profile)[] };
         created?: GhostCreateResult;
       }
       let outcome: {
@@ -216,18 +218,22 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
         outcome = await runRecordWrite<DeceasedPrepared, typeof outcome>(recordLock, id, {
           prepare: () => {
             const current = currentOr404(cache, id);
-            if (raising) {
-              // Validate the candidate; surface only deceased-field issues (the endpoint
-              // writes nothing else, so an unrelated legacy value must not block it).
-              const built = buildDeceasedRaise(body as DeceasedBody, current, now);
-              const issues = validateProfile({ ...current, ...built.set } as Profile, {
-                currentYear: now.getUTCFullYear(),
-              }).issues.filter((issue) => issue.field.startsWith("deceased"));
-              if (issues.length > 0) {
-                throw new WriteValidationError(issues);
-              }
+            if (!raising) {
+              return { current };
             }
-            return { current };
+            // Build the raise write **once** here and validate its candidate — the same
+            // built result is written in `commit`, so there is no rebuild and no chance
+            // of prepare-validated diverging from commit-written. Surface only
+            // deceased-field issues (the endpoint writes nothing else, so an unrelated
+            // legacy value must not block it).
+            const raise = buildDeceasedRaise(body as DeceasedBody, current, now);
+            const issues = validateProfile({ ...current, ...raise.set } as Profile, {
+              currentYear: now.getUTCFullYear(),
+            }).issues.filter((issue) => issue.field.startsWith("deceased"));
+            if (issues.length > 0) {
+              throw new WriteValidationError(issues);
+            }
+            return { current, raise };
           },
           ghostStep: async (p) => {
             try {
@@ -253,9 +259,10 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
             }
           },
           commit: async (p) => {
-            const { set, remove } = raising
-              ? buildDeceasedRaise(body as DeceasedBody, p.current, now)
-              : buildDeceasedClear(p.current, now, p.created?.ghostMemberId);
+            // Reuse the raise built in `prepare`; a reverse builds its clear here (it
+            // needs the fresh `ghostMemberId` the ghostStep just minted).
+            const { set, remove } =
+              p.raise ?? buildDeceasedClear(p.current, now, p.created?.ghostMemberId);
             const { token, next } = await commitStatusWrite(
               store,
               cache,
