@@ -1,0 +1,181 @@
+<svg viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">PBE Address Book — how it works</title>
+  <desc id="desc">Architecture overview: the member's browser runs the Book app, signs in through pbe400.org (Ghost), and talks through a single Firebase Hosting front door to the Book server on Google Cloud Run, which reads and writes the member database (Firestore) and the private photo library (Cloud Storage).</desc>
+
+  <style>
+    text { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #14181b; }
+    .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 0.09em; fill: #3a434b; }
+    .card-title { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+    .card-title-sm { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
+    .card-title-xs { font-size: 19px; font-weight: 700; }
+    .card-sub { font-size: 15px; fill: #3a434b; }
+    .panel-title { font-size: 16.5px; font-weight: 650; }
+    .body { font-size: 15px; fill: #1c2126; }
+    .body-muted { font-size: 15px; fill: #3a434b; }
+    .lane-label { font-size: 18px; font-weight: 700; }
+    .lane-sub { font-size: 15px; fill: #3a434b; }
+    .chip-num { font-size: 15px; font-weight: 700; fill: #ffffff; }
+    .flow-note { font-size: 14px; fill: #3a434b; }
+    .group-label { font-size: 14px; font-weight: 700; letter-spacing: 0.08em; fill: #3a434b; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #3a434b; }
+  </style>
+
+  <defs>
+    <filter id="cardShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="15" flood-color="#14181b" flood-opacity="0.08"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#007194"/>
+    </marker>
+    <marker id="arrowGold" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ad8736"/>
+    </marker>
+  </defs>
+
+  <!-- canvas -->
+  <rect width="1600" height="900" fill="#eef0f1"/>
+
+  <!-- eyebrow -->
+  <text class="eyebrow" x="60" y="85">PBE ADDRESS BOOK · HOW IT WORKS</text>
+
+  <!-- ===================== GOOGLE CLOUD group ===================== -->
+  <rect x="710" y="110" width="830" height="740" rx="24" fill="#e0e6ea" stroke="#808a92" stroke-width="1.5"/>
+  <text class="group-label" x="1510" y="147" text-anchor="end">GOOGLE CLOUD</text>
+
+  <!-- ===================== Front door (wall) ===================== -->
+  <text class="card-title-sm" x="820" y="198" text-anchor="middle">The front door</text>
+  <text class="card-sub" x="820" y="221" text-anchor="middle">Firebase Hosting</text>
+  <rect x="776" y="236" width="88" height="388" rx="16" fill="#cfe6ee" stroke="#4b8ba0" stroke-width="2"/>
+  <!-- door openings where private traffic passes through -->
+  <rect x="768" y="414" width="104" height="32" rx="16" fill="#e0e6ea" stroke="#4b8ba0" stroke-width="2"/>
+  <rect x="768" y="514" width="104" height="32" rx="16" fill="#e0e6ea" stroke="#4b8ba0" stroke-width="2"/>
+  <text class="body-muted" x="820" y="654" text-anchor="middle">One address for everything.</text>
+  <text class="body-muted" x="820" y="676" text-anchor="middle">The app is handed out here;</text>
+  <text class="body-muted" x="820" y="698" text-anchor="middle">private data passes through,</text>
+  <text class="body-muted" x="820" y="720" text-anchor="middle">never stored.</text>
+  <text class="mono" x="820" y="756" text-anchor="middle">rewrites /api/* and /img/*</text>
+  <text class="mono" x="820" y="776" text-anchor="middle">cookies: only __session</text>
+
+  <!-- ===================== lanes ===================== -->
+  <!-- Lane A: the app itself — served AT the door -->
+  <line x1="776" y1="300" x2="462" y2="300" stroke="#007194" stroke-width="3" marker-end="url(#arrow)"/>
+  <circle cx="776" cy="300" r="5" fill="#007194"/>
+  <!-- Lane B: the whole directory — server through the door to the browser -->
+  <line x1="1000" y1="430" x2="462" y2="430" stroke="#007194" stroke-width="3" marker-end="url(#arrow)"/>
+  <circle cx="1000" cy="430" r="5" fill="#007194"/>
+  <!-- Lane C: photos and edits — both directions -->
+  <line x1="462" y1="530" x2="994" y2="530" stroke="#007194" stroke-width="3" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+
+  <!-- lane labels -->
+  <circle cx="476" cy="271" r="14" fill="#007194"/>
+  <text class="chip-num" x="476" y="276" text-anchor="middle">2</text>
+  <text class="lane-label" x="500" y="277">The app itself</text>
+  <text class="lane-sub" x="462" y="326">cached near you — loads fast</text>
+  <text class="mono" x="462" y="348">hashed assets · immutable cache</text>
+
+  <circle cx="476" cy="401" r="14" fill="#007194"/>
+  <text class="chip-num" x="476" y="406" text-anchor="middle">3</text>
+  <text class="lane-label" x="500" y="407">The whole directory</text>
+  <text class="lane-sub" x="462" y="456">one compressed download</text>
+  <text class="mono" x="462" y="478">GET /api/profiles · no-store</text>
+
+  <circle cx="476" cy="501" r="14" fill="#007194"/>
+  <text class="chip-num" x="476" y="506" text-anchor="middle">4</text>
+  <text class="lane-label" x="500" y="507">Photos &amp; edits</text>
+  <text class="lane-sub" x="462" y="556">as you browse — saved instantly</text>
+  <text class="mono" x="462" y="578">/img/* behind the session cookie</text>
+  <text class="mono" x="462" y="598">edits: PATCH + If-Match (ETag)</text>
+
+  <!-- ===================== Your browser ===================== -->
+  <rect x="50" y="170" width="400" height="400" rx="18" fill="#ffffff" stroke="#808a92" stroke-width="1.5" filter="url(#cardShadow)"/>
+  <g stroke="#007194" stroke-width="2.2" fill="none">
+    <rect x="84" y="199" width="34" height="28" rx="4"/>
+    <line x1="84" y1="209" x2="118" y2="209"/>
+    <circle cx="90.5" cy="204" r="0.9" fill="#007194"/>
+    <circle cx="96" cy="204" r="0.9" fill="#007194"/>
+  </g>
+  <text class="card-title" x="132" y="223">Your browser</text>
+  <text class="card-sub" x="84" y="259">The Book app runs right here</text>
+
+  <rect x="80" y="282" width="340" height="132" rx="12" fill="#eef0f1" stroke="#a8b1b8" stroke-width="1.25"/>
+  <text class="panel-title" x="100" y="313">The directory, in memory</text>
+  <text class="body" x="100" y="339">Arrives once — every search is instant.</text>
+  <text class="body" x="100" y="361">Never saved to disk; it vanishes when</text>
+  <text class="body" x="100" y="383">the tab closes.</text>
+
+  <rect x="80" y="428" width="340" height="112" rx="12" fill="#eef0f1" stroke="#a8b1b8" stroke-width="1.25"/>
+  <text class="panel-title" x="100" y="459">Session cookie</text>
+  <text class="body" x="100" y="485">Proof that you're signed in, sent with</text>
+  <text class="body" x="100" y="507">every request.</text>
+  <text class="mono" x="84" y="560">localStorage: column prefs only — never PII</text>
+
+  <!-- ===================== sign-in flow to Ghost ===================== -->
+  <line x1="250" y1="576" x2="250" y2="654" stroke="#ad8736" stroke-width="3" marker-start="url(#arrowGold)" marker-end="url(#arrowGold)"/>
+  <circle cx="286" cy="611" r="14" fill="#ad8736"/>
+  <text class="chip-num" x="286" y="616" text-anchor="middle">1</text>
+  <text class="lane-label" x="309" y="608">Sign in</text>
+  <text class="lane-sub" x="309" y="632">a link arrives by email</text>
+  <text class="mono" x="470" y="700">/book/ relay → Ghost JWT,</text>
+  <text class="mono" x="470" y="722">sent in the URL fragment;</text>
+  <text class="mono" x="470" y="744">verified RS512 via Ghost JWKS;</text>
+  <text class="mono" x="470" y="766">Book then sets __session</text>
+
+  <!-- ===================== Ghost / pbe400.org ===================== -->
+  <rect x="50" y="660" width="400" height="180" rx="18" fill="#fbf7ec" stroke="#ad8736" stroke-width="1.5" filter="url(#cardShadow)"/>
+  <g stroke="#ad8736" stroke-width="2.2" fill="none">
+    <rect x="84" y="692" width="34" height="24" rx="4"/>
+    <path d="M84,696 L101,708 L118,696"/>
+  </g>
+  <text class="card-title-sm" x="132" y="713">pbe400.org — the newsletter</text>
+  <text class="body" x="84" y="750">Where you sign in: a link arrives in your</text>
+  <text class="body" x="84" y="772">email — no passwords. Ghost, the newsletter</text>
+  <text class="body" x="84" y="794">platform, then vouches for you to the Book.</text>
+  <text class="mono" x="84" y="818">+ membership sync via Ghost Admin API</text>
+
+  <!-- ===================== The Book server ===================== -->
+  <rect x="1000" y="250" width="490" height="320" rx="18" fill="#ffffff" stroke="#808a92" stroke-width="1.5" filter="url(#cardShadow)"/>
+  <g stroke="#007194" stroke-width="2.2" fill="none">
+    <rect x="1034" y="282" width="34" height="13" rx="3"/>
+    <rect x="1034" y="299" width="34" height="13" rx="3"/>
+    <circle cx="1041" cy="288.5" r="1" fill="#007194"/>
+    <circle cx="1041" cy="305.5" r="1" fill="#007194"/>
+  </g>
+  <text class="card-title" x="1082" y="306">The Book server</text>
+  <text class="card-sub" x="1034" y="342">Google Cloud Run</text>
+  <circle cx="1042" cy="380" r="3.5" fill="#007194"/>
+  <text class="body" x="1058" y="386">Sleeps until someone visits — wakes in a blink</text>
+  <circle cx="1042" cy="414" r="3.5" fill="#007194"/>
+  <text class="body" x="1058" y="420">Checks your cookie on every request</text>
+  <circle cx="1042" cy="448" r="3.5" fill="#007194"/>
+  <text class="body" x="1058" y="454">Sends each member only what they may see</text>
+  <text class="mono" x="1034" y="492">Fastify · max-instances = 1 · scale-to-zero</text>
+  <text class="mono" x="1034" y="514">in-memory dataset · brotli-11 precompressed</text>
+  <text class="mono" x="1034" y="536">per-role projection = the one privacy gate</text>
+
+  <!-- ===================== storage arrows ===================== -->
+  <line x1="1117" y1="576" x2="1117" y2="634" stroke="#007194" stroke-width="3" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="flow-note" x="1133" y="610">reads &amp; saves</text>
+  <line x1="1378" y1="576" x2="1378" y2="634" stroke="#007194" stroke-width="3" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+  <text class="flow-note" x="1394" y="610">photos</text>
+
+  <!-- ===================== Member database ===================== -->
+  <rect x="1000" y="640" width="235" height="170" rx="18" fill="#ffffff" stroke="#808a92" stroke-width="1.5" filter="url(#cardShadow)"/>
+  <g stroke="#007194" stroke-width="2.2" fill="none">
+    <ellipse cx="1052" cy="678" rx="17" ry="6.5"/>
+    <path d="M1035,678 v23 a17,6.5 0 0 0 34,0 v-23"/>
+  </g>
+  <text class="card-title-xs" x="1034" y="744">Member database</text>
+  <text class="card-sub" x="1034" y="768" style="font-size:14px">Firestore —</text>
+  <text class="card-sub" x="1034" y="788" style="font-size:14px">the system of record</text>
+
+  <!-- ===================== Photo library ===================== -->
+  <rect x="1255" y="640" width="235" height="170" rx="18" fill="#ffffff" stroke="#808a92" stroke-width="1.5" filter="url(#cardShadow)"/>
+  <g stroke="#007194" stroke-width="2.2" fill="none">
+    <rect x="1289" y="668" width="34" height="27" rx="4"/>
+    <circle cx="1299" cy="676.5" r="2.7"/>
+    <path d="M1289,691 l10,-9 l7,6 l7,-6 l10,8"/>
+  </g>
+  <text class="card-title-xs" x="1289" y="744">Photo library</text>
+  <text class="card-sub" x="1289" y="768" style="font-size:14px">Cloud Storage — private</text>
+  <text class="card-sub" x="1289" y="788" style="font-size:14px">photos + cold-start snapshot</text>
+</svg>
