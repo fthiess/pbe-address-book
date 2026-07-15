@@ -114,7 +114,13 @@ test.describe("5.5c app shell + session (OFC-202/193/63/192)", () => {
   }) => {
     // The owner-admin edits their own record; the session lapses so the Save PATCH
     // 401s. D109: the in-progress form must survive with an honest message — the
-    // edit-form write opts out of the app-wide bounce (Option A).
+    // edit-form write opts out of the app-wide bounce (Option A). The full seamless
+    // re-auth-and-resume (5.5j/OFC-236) is exercised in app-shell-session-5.5j; here we
+    // block the popup so the fallback path is deterministic and assert the same core
+    // invariant this test has always guarded: form kept, message shown, not bounced.
+    await page.addInitScript(() => {
+      window.open = () => null;
+    });
     await page.route("**/api/me", (route) => route.fulfill({ json: meDoc(null) }));
     await page.route("**/api/profiles", (route) =>
       route.fulfill({ json: { profiles: [ownProfile], majors: [] } }),
@@ -132,9 +138,7 @@ test.describe("5.5c app shell + session (OFC-202/193/63/192)", () => {
     await page.getByRole("button", { name: "Save changes" }).click();
 
     // Still on the edit form, with the honest expired message — NOT bounced.
-    await expect(
-      page.getByText("Your session has expired. Please sign in again to save your changes."),
-    ).toBeVisible();
+    await expect(page.getByText("Your session expired.", { exact: false })).toBeVisible();
     await expect(page).toHaveURL(/\/edit$/);
     await expect(page.getByLabel("First name")).toHaveValue("Devin");
     await expect(page.getByRole("button", { name: "Sign in" })).toHaveCount(0);

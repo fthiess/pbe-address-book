@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSession } from "../auth/SessionContext.js";
+import {
+  REAUTH_FAILED,
+  REAUTH_SUCCESS,
+  REAUTH_WINDOW_NAME,
+  useSession,
+} from "../auth/SessionContext.js";
 import { ApiError, completeSignIn } from "../lib/api.js";
 
 /** API-SPEC §2 denial codes → reassuring, actionable copy. */
@@ -38,17 +43,42 @@ export function AuthCallback() {
     // Strip the fragment before anything else — it carries the bearer token.
     window.history.replaceState(null, "", window.location.pathname);
 
+    // Popup mode (OFC-236/D109): this callback is running inside the child window the
+    // session layer opened to re-auth a mid-edit lapse. Instead of navigating a fresh
+    // app in, it hands the restored session back to the opener (the untouched editor
+    // tab) via a same-origin postMessage and closes — the cookie set by
+    // `completeSignIn` is already shared across the tabs on this origin. The distinct
+    // window name (never set on a normal top-level sign-in) is the reliable marker.
+    const opener = window.opener as Window | null;
+    const isReauthPopup = window.name === REAUTH_WINDOW_NAME && opener != null;
+    const post = (type: string) => opener?.postMessage({ type }, window.location.origin);
+
     if (!token || !state) {
+      if (isReauthPopup) {
+        post(REAUTH_FAILED);
+        window.close();
+        return;
+      }
       setMessage("This sign-in link is missing information. Please start again.");
       return;
     }
 
     completeSignIn(token, state)
       .then(async () => {
+        if (isReauthPopup) {
+          post(REAUTH_SUCCESS);
+          window.close();
+          return;
+        }
         await refresh();
         navigate("/", { replace: true });
       })
       .catch((error) => {
+        if (isReauthPopup) {
+          post(REAUTH_FAILED);
+          window.close();
+          return;
+        }
         const code = error instanceof ApiError ? error.code : undefined;
         setMessage(
           (code && DENIAL_MESSAGE[code]) ??

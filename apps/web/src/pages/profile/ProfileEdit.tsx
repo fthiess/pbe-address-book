@@ -161,9 +161,14 @@ export function ProfileEdit({
           } else if (result.status === "reload") {
             setBanner("This page is out of date. Please reload it, then make your changes again.");
           } else if (result.status === "expired") {
-            // Session lapsed mid-edit (D109): keep the form exactly as left and tell
-            // the user how to recover, rather than the misleading generic failure.
-            setBanner("Your session has expired. Please sign in again to save your changes.");
+            // Session lapsed mid-edit AND the child-window re-auth didn't complete —
+            // the popup was blocked (a slow save round-trip can outrun the browser's
+            // user-gesture window) or the brother dismissed it (D109/OFC-236). The form
+            // is untouched; clicking Save again re-fires inside a fresh gesture, so the
+            // sign-in window reopens reliably. (Copy for live-test eyeball.)
+            setBanner(
+              "Your session expired. Click Save again to sign in, or sign in on another tab.",
+            );
           } else {
             setBanner("We couldn't save your changes just now. Please try again.");
           }
