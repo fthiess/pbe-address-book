@@ -18,6 +18,38 @@ authoritative for *why* anything is the way it is.
 each phase actually landed is recorded in the decision log's `N`-notes
 ([`DECISIONS.md`](docs/initial-build/DECISIONS.md)).
 
+## Architecture
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/architecture/book-arch-readme-dark.svg">
+  <img alt="Architecture overview: the member's browser holds the directory in memory and a session cookie; sign-in bridges through the Ghost newsletter site (pbe400.org); Firebase Hosting is the single front door, serving the app shell from its edge cache and passing private data straight through to a single-instance Cloud Run server, which enforces per-role projection and reads and writes Firestore (member database) and a private Cloud Storage bucket (photo library)." src="docs/architecture/book-arch-readme-light.svg" width="100%">
+</picture>
+
+Four flows, keyed to the numbers in the diagram:
+
+1. **Sign in** rides the Ghost newsletter site: a magic-link email, then the
+   `/book/` relay hands a short-lived Ghost JWT to Book's `/auth/callback` in
+   the URL fragment; Book verifies it (RS512, against Ghost's JWKS) and sets
+   its own `__session` cookie (D20/D104).
+2. **The app itself** is content-hashed static assets served from Firebase
+   Hosting's edge cache (`Cache-Control: immutable`); only the app shell is
+   ever edge-cached (D73).
+3. **The whole directory** arrives as one brotli-compressed
+   `GET /api/profiles`, projected per role on the server — the single
+   privacy-enforcement point — and served `no-store`: member data lives only
+   in tab memory, never on disk (D82/D84/D95).
+4. **Photos & edits**: images are app-served from a private bucket behind the
+   session cookie (`/img/*` — deliberately no CDN in front of member data,
+   D126); edits write through to Firestore with optimistic concurrency
+   (`If-Match`, D25).
+
+Firebase Hosting is the single origin — `/api/*` and `/img/*` rewrite to a
+deliberately single-instance, scale-to-zero Cloud Run service (D83) that
+hydrates its in-memory dataset from a GCS snapshot on cold start (D85). The
+full picture is [`ENGINEERING-DESIGN.md`](docs/initial-build/ENGINEERING-DESIGN.md)
+§1; the diagram sources (plus plain-English slide variants) live in
+[`docs/architecture/`](docs/architecture/README.md).
+
 ## Layout
 
 | Path | Contents |

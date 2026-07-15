@@ -8,6 +8,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 - Foundations: **D2** (custom app, no framework), **D3** (TypeScript end-to-end, Biome), **D4** + **D6** (SPA bulk-download of the full permitted set), **D10** (React + Vite; Node on Cloud Run; Firebase Hosting), **D29** (shadcn/ui; TanStack Table/Virtual).
 - Runtime shape: **D83** (single Cloud Run instance, scale-to-zero — the one in-memory cache is authoritative).
+- Overview diagrams: **N100** (`docs/architecture/` — token-palette SVGs, slide + annotated README pairs in light/dark; README `<picture>` embed).
 
 ## Read path, caching & performance
 
