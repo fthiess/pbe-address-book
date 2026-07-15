@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { addStar as apiAddStar, removeStar as apiRemoveStar } from "../../lib/api.js";
 
 /**
@@ -30,7 +30,14 @@ export interface Stars {
   set: ReadonlySet<number>;
 }
 
-export function useStars(initial: readonly number[]): Stars {
+/**
+ * The optimistic star-set implementation hook. Hosted once by {@link StarsProvider}
+ * (mounted on the authenticated shell) so the Directory and the Profile page share
+ * one in-session set — a star toggled on a Profile reflects on the Directory, and
+ * vice versa, without a reload (OFC-256). Components consume it through the
+ * provider's `useStars()`, not by calling this directly.
+ */
+export function useStarsState(initial: readonly number[]): Stars {
   const [stars, setStars] = useState<Set<number>>(() => new Set(initial));
   const starsRef = useRef(stars);
   starsRef.current = stars;
@@ -76,5 +83,9 @@ export function useStars(initial: readonly number[]): Stars {
     );
   }, []);
 
-  return { isStarred, toggle, set: stars };
+  // Memoized so the value identity changes only when the set does. As a context
+  // value (StarsProvider) a fresh object each render would re-render every star
+  // consumer — the whole virtualized grid — on any unrelated shell re-render
+  // (a banner poll, an own-headshot update). Mirrors SelectionContext's memo.
+  return useMemo(() => ({ isStarred, toggle, set: stars }), [isStarred, toggle, stars]);
 }
