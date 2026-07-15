@@ -53,16 +53,17 @@ export function planGhostAudit(input: GhostAuditInput): GhostAuditReport {
   for (const member of members) {
     ghostById.set(member.id, member);
   }
-  // The Ghost member ids Book *legitimately* references — from non-de-brothered
-  // profiles only. A de-brothered profile's Ghost member is expected to be deleted
-  // (D115), so if a stale `ghostMemberId` on one still resolves to a live member,
-  // that member is a leftover that SHOULD surface as `unmatchedGhostMember` (a failed
-  // Ghost delete) — excluding de-brothered ids here is what lets it (OFC review).
+  // The Ghost member ids Book *legitimately* references — from profiles expected to
+  // have a member only. A de-brothered (D115) OR deceased (D80, as amended by
+  // OFC-232) profile is expected to have NO Ghost member, so if a stale
+  // `ghostMemberId` on one still resolves to a live member, that member is a leftover
+  // that SHOULD surface as `unmatchedGhostMember` (a failed Ghost delete) — excluding
+  // those ids here is what lets it (OFC review).
   const referencedGhostIds = new Set<string>();
   const profileIds = new Set<number>();
   for (const profile of profiles) {
     profileIds.add(profile.id);
-    if (profile.ghostMemberId && !profile.debrothered.isDebrothered) {
+    if (profile.ghostMemberId && !expectsNoGhostMember(profile)) {
       referencedGhostIds.add(profile.ghostMemberId);
     }
   }
@@ -71,9 +72,12 @@ export function planGhostAudit(input: GhostAuditInput): GhostAuditReport {
   const discrepancies: Discrepancy[] = [];
 
   for (const profile of profiles) {
-    // A de-brothered profile is *expected* to have no Ghost member (D115): its
-    // Ghost account was deleted. Skip every Ghost comparison for it.
-    if (profile.debrothered.isDebrothered) {
+    // A de-brothered (D115) or deceased (D80, as amended by OFC-232) profile is
+    // *expected* to have no Ghost member: its account was deleted (or never made).
+    // Skip every Ghost comparison for it — a deceased brother who has an email in
+    // Book is therefore NOT flagged as missing, and any still-live member was already
+    // excluded from `referencedGhostIds` above so it surfaces as `unmatchedGhostMember`.
+    if (expectsNoGhostMember(profile)) {
       continue;
     }
 
@@ -172,6 +176,19 @@ export function planGhostAudit(input: GhostAuditInput): GhostAuditReport {
   }
 
   return { generatedAt, discrepancies };
+}
+
+/**
+ * Whether a profile is *expected* to have no Ghost member, so any member (present or
+ * lingering) is a discrepancy rather than the norm: a de-brothered brother (D115) or
+ * a deceased brother (D80, as amended by OFC-232) — both have their Ghost member
+ * deleted and are never re-created while in that state. This is the audit-side twin
+ * of `@pbe/shared`'s `shouldHaveGhostMember` (which additionally requires a usable
+ * email); here the email is handled separately (a living, email-less brother is the
+ * C15/D20 no-member-expected case, distinct from these status exemptions).
+ */
+function expectsNoGhostMember(profile: Profile): boolean {
+  return profile.debrothered.isDebrothered || profile.deceased.isDeceased;
 }
 
 /**

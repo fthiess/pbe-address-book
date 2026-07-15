@@ -19,6 +19,22 @@ import { SignJWT } from "jose";
  * and a read path must never drift on how they authenticate to the same Ghost.
  */
 
+/**
+ * Thrown by {@link GhostAdminHttp.request} on any non-2xx response, carrying the
+ * HTTP `status` so a caller can branch on it — e.g. `createMember` distinguishing a
+ * `422` duplicate-email rejection (a permanent collision) from a `5xx` outage (a
+ * transient failure). The `message` is Ghost's error text, for the server log only.
+ */
+export class GhostHttpError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "GhostHttpError";
+  }
+}
+
 /** Split and validate a Ghost Admin API key `{id}:{secret}` (secret is hex). */
 export function parseAdminKey(adminApiKey: string): { keyId: string; secret: Buffer } {
   const [keyId, secret] = adminApiKey.split(":");
@@ -92,7 +108,10 @@ export class GhostAdminHttp {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     if (!response.ok) {
-      throw new Error(`Ghost ${method} ${path} → ${response.status}: ${await safeError(response)}`);
+      throw new GhostHttpError(
+        response.status,
+        `Ghost ${method} ${path} → ${response.status}: ${await safeError(response)}`,
+      );
     }
     const text = await response.text();
     return text ? (JSON.parse(text) as unknown) : undefined;

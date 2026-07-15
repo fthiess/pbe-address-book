@@ -140,6 +140,26 @@ export function isRoleEligible(
 }
 
 /**
+ * Whether a brother **should have a Ghost member** — the email↔Ghost-record
+ * invariant (D133; OFC-232): a living, non-de-brothered brother has a Ghost member
+ * exactly when he has a usable email, and never otherwise. Deceased brothers (D80)
+ * and de-brothered brothers (D115) are always Ghost-less; an email-less brother is
+ * Book-only (~1/3 of the roster; C15/D20). The Ghost create/delete lifecycle on the
+ * PATCH and mark-deceased paths is gated on this predicate.
+ *
+ * It coincides with {@link isRoleEligible} because both reduce to the same question
+ * — *can this brother use the Ghost bridge to sign in* — so it delegates to it. The
+ * two are deliberately kept as separate names: they answer distinct questions (one
+ * about holding a working role, one about Ghost membership) and could diverge if
+ * either concept gains a condition the other lacks.
+ */
+export function shouldHaveGhostMember(
+  profile: Pick<Profile, "deceased" | "debrothered" | "email">,
+): boolean {
+  return isRoleEligible(profile);
+}
+
+/**
  * Whether a profile is an admin who can **actually administer** — the quantity the
  * last-admin invariant must protect (D128, corrected by OFC-241): the `admin` role
  * held by a {@link isRoleEligible} brother. Counting nominal-only admins (deceased /

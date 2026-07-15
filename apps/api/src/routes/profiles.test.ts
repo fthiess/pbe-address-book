@@ -960,7 +960,10 @@ describe("PATCH /api/profiles/:id — Ghost-first-gated push (N65)", () => {
     await app.close();
   });
 
-  it("skips the push (and still commits) for a profile with no ghostMemberId", async () => {
+  it("creates the member (no update) when a Ghost-less brother's email changes (drift heal, OFC-232)", async () => {
+    // A living brother with an email but — drift — no ghostMemberId. Changing the email
+    // is an email change on a Ghost-less-but-eligible brother, so the lifecycle CREATES
+    // the member rather than pushing an update to a nonexistent one.
     const ghost = new RecordingGhostLifecycle();
     const { app, cache, cookieAs, etagOf } = await buildWriteServer(
       [makeProfile({ id: 5001, email: "old@example.test" })], // no ghostMemberId
@@ -978,20 +981,151 @@ describe("PATCH /api/profiles/:id — Ghost-first-gated push (N65)", () => {
 
     expect(response.statusCode).toBe(200);
     expect(ghost.updated).toHaveLength(0);
+    expect(ghost.created).toEqual([5001]);
     expect(cache.getById(5001)?.email).toBe("new@example.test");
+    expect(cache.getById(5001)?.ghostMemberId).toBe("recreated-5001");
+    await app.close();
+  });
+});
+
+describe("PATCH /api/profiles/:id — email↔Ghost lifecycle (OFC-232/D133)", () => {
+  it("mints the Ghost member when an email is added to a living Ghost-less brother", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer(
+      // A Book-only brother: no email, so no Ghost member (the ~1/3-of-roster case).
+      [makeProfile({ id: 5001, email: undefined })],
+      ghost,
+    );
+    const cookie = await cookieAs(9001, "admin");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: "newly@example.test" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    // The Ghost member is created (Ghost-first) and its fresh id folded into Book.
+    expect(ghost.created).toEqual([5001]);
+    expect(cache.getById(5001)?.ghostMemberId).toBe("recreated-5001");
+    await app.close();
+  });
+
+  it("deletes the Ghost member and drops the id when the email is cleared", async () => {
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer(
+      [makeProfile({ id: 5001, email: "e@example.test", ghostMemberId: "gm-1" })],
+      ghost,
+    );
+    const cookie = await cookieAs(9001, "admin");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: null }, // the OFC-107 clear sentinel
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ghost.deleted).toEqual([5001]);
+    const stored = cache.getById(5001);
+    expect(stored?.email).toBeUndefined();
+    expect(stored?.ghostMemberId).toBeUndefined();
+    await app.close();
+  });
+
+  it("422s on email when the added email collides with an existing Ghost member (Option B)", async () => {
+    // Ghost rejects the create with a duplicate-email error; Book rejects the save with
+    // a 422 on `email` (a permanent collision, not a retryable outage) and writes nothing.
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer(
+      [makeProfile({ id: 5001, email: undefined })],
+      new FailingGhostLifecycle("duplicate"),
+    );
+    const cookie = await cookieAs(9001, "admin");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: "dup@example.test" },
+    });
+
+    expect(response.statusCode).toBe(422);
+    expect(response.json().issues).toMatchObject([{ field: "email" }]);
+    // Book untouched — no email committed, still Ghost-less.
+    expect(cache.getById(5001)?.email).toBeUndefined();
+    expect(cache.getById(5001)?.ghostMemberId).toBeUndefined();
+    await app.close();
+  });
+
+  it("502s (Book untouched) when the Ghost create fails on an email add", async () => {
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer(
+      [makeProfile({ id: 5001, email: undefined })],
+      new FailingGhostLifecycle("create"),
+    );
+    const cookie = await cookieAs(9001, "admin");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: "added@example.test" },
+    });
+
+    expect(response.statusCode).toBe(502);
+    expect(response.json()).toMatchObject({ error: "ghost_create_failed" });
+    expect(cache.getById(5001)?.email).toBeUndefined();
+    await app.close();
+  });
+
+  it("does not create a Ghost member when an email is added to a DECEASED brother", async () => {
+    // A deceased brother stays Ghost-less regardless (the invariant, D80/D133). Email is
+    // editable via PATCH, but adding it must not mint a member.
+    const ghost = new RecordingGhostLifecycle();
+    const { app, cache, cookieAs, etagOf } = await buildWriteServer(
+      [
+        makeProfile({
+          id: 5001,
+          email: undefined,
+          deceased: { isDeceased: true, deathYear: 2020 },
+        }),
+      ],
+      ghost,
+    );
+    const cookie = await cookieAs(9001, "admin");
+    const etag = await etagOf(5001, cookie);
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/profiles/5001",
+      headers: { cookie, "if-match": etag },
+      payload: { email: "added@example.test" },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(ghost.created).toHaveLength(0);
+    expect(cache.getById(5001)?.ghostMemberId).toBeUndefined();
     await app.close();
   });
 });
 
 describe("POST /api/profiles (Add Brother — OFC-201)", () => {
-  /** A complete admin-entered create body for a brand-new brother (#6001). */
+  /**
+   * The admin-entered create body for a brand-new brother (#6001) — the essentials
+   * only. **No email** (OFC-232): a create is Book-only, and the server `422`s a body
+   * carrying one, so it is never in the happy-path body.
+   */
   function newBrotherBody(overrides: Record<string, unknown> = {}) {
     return {
       id: 6001,
       firstName: "New",
       lastName: "Brother",
       classYear: 2000,
-      email: "new.brother@example.test",
       privacy: {
         shareEmail: true,
         sharePhone: true,
@@ -1005,7 +1139,7 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     };
   }
 
-  it("creates a brother for an admin (201 + ETag), inserting it into the cache", async () => {
+  it("creates a Book-only brother for an admin (201 + ETag), no Ghost member (OFC-232)", async () => {
     const ghost = new RecordingGhostLifecycle();
     const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })], ghost);
     const cookie = await cookieAs(9001, "admin");
@@ -1022,9 +1156,11 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     expect(response.json()).toMatchObject({ id: 6001, firstName: "New", lastName: "Brother" });
     const stored = cache.getById(6001);
     expect(stored?.firstName).toBe("New");
-    // Ghost-first: the member is created and its fresh id folded into the record.
-    expect(ghost.created).toEqual([6001]);
-    expect(stored?.ghostMemberId).toBe("recreated-6001");
+    // The create never touches Ghost — a new brother is Book-only; the Ghost member is
+    // minted later, on the profile-edit PATCH that adds the email (D133).
+    expect(ghost.created).toHaveLength(0);
+    expect(stored?.ghostMemberId).toBeUndefined();
+    expect(stored?.email).toBeUndefined();
     // New-brother status defaults are server-forced.
     expect(stored?.hasHeadshot).toBe(false);
     expect(stored?.deceased.isDeceased).toBe(false);
@@ -1040,12 +1176,13 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
     const cookie = await cookieAs(9001, "admin");
 
-    // Exactly the minimal body the essentials form sends — no privacy, no consent flags.
+    // Exactly the minimal body the essentials form sends — no email, no privacy, no
+    // consent flags.
     const response = await app.inject({
       method: "POST",
       url: "/api/profiles",
       headers: { cookie },
-      payload: { id: 6002, firstName: "Min", lastName: "Imal", classYear: 1995, email: "m@x.test" },
+      payload: { id: 6002, firstName: "Min", lastName: "Imal", classYear: 1995 },
     });
 
     expect(response.statusCode).toBe(201);
@@ -1122,27 +1259,7 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     await app.close();
   });
 
-  it("aborts clean with 502 when the Ghost-first create fails (nothing written)", async () => {
-    const { app, cache, cookieAs } = await buildWriteServer(
-      [makeProfile({ id: 5001 })],
-      new FailingGhostLifecycle("create"),
-    );
-    const cookie = await cookieAs(9001, "admin");
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/api/profiles",
-      headers: { cookie },
-      payload: newBrotherBody(),
-    });
-
-    expect(response.statusCode).toBe(502);
-    expect(response.json()).toEqual({ error: "ghost_create_failed" });
-    expect(cache.getById(6001)).toBeNull();
-    await app.close();
-  });
-
-  it("creates a Book-only record (no Ghost member) when the brother has no email", async () => {
+  it("422s an email in the create body (email belongs on the edit page — OFC-232)", async () => {
     const ghost = new RecordingGhostLifecycle();
     const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })], ghost);
     const cookie = await cookieAs(9001, "admin");
@@ -1151,11 +1268,33 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
       method: "POST",
       url: "/api/profiles",
       headers: { cookie },
-      payload: newBrotherBody({ email: undefined }),
+      payload: newBrotherBody({ email: "new.brother@example.test" }),
+    });
+
+    // Rejected, not silently dropped — so a stale client can't believe it enrolled the
+    // brother in Ghost. Nothing is created, and Ghost is never touched.
+    expect(response.statusCode).toBe(422);
+    expect(response.json().issues).toMatchObject([{ field: "email" }]);
+    expect(cache.getById(6001)).toBeNull();
+    expect(ghost.created).toHaveLength(0);
+    await app.close();
+  });
+
+  it("ignores a blank/whitespace email in the create body (created Book-only)", async () => {
+    const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(9001, "admin");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/profiles",
+      headers: { cookie },
+      // A blank email is not a "usable" email — it is ignored, not a 422, and stored
+      // as no email at all (never an empty string that would later confuse the audit).
+      payload: newBrotherBody({ email: "   " }),
     });
 
     expect(response.statusCode).toBe(201);
-    expect(ghost.created).toHaveLength(0); // no email → no Ghost member
+    expect(cache.getById(6001)?.email).toBeUndefined();
     expect(cache.getById(6001)?.ghostMemberId).toBeUndefined();
     await app.close();
   });
@@ -1183,8 +1322,9 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     expect(stored?.deceased.isDeceased).toBe(false);
     expect(stored?.lastVerifiedDate).toBeUndefined();
     expect(stored?.verifiedBy).toBeUndefined();
-    // The Ghost id is server-set from the create result, not the body.
-    expect(stored?.ghostMemberId).toBe("recreated-6001");
+    // A create is Book-only and `ghostMemberId` is protected — the attacker-supplied
+    // value is dropped and none is set (OFC-232).
+    expect(stored?.ghostMemberId).toBeUndefined();
     await app.close();
   });
 
@@ -1208,13 +1348,13 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     await app.close();
   });
 
-  it("serializes a same-id create race: one 201, one 409, exactly one Ghost create", async () => {
+  it("serializes a same-id create race: one 201, one 409", async () => {
     const ghost = new RecordingGhostLifecycle();
     const { app, cache, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })], ghost);
     const cookie = await cookieAs(9001, "admin");
 
-    // Two concurrent creates for the same id. The in-lock existence re-check must
-    // let exactly one commit and abort the other *before* it mints a Ghost member.
+    // Two concurrent creates for the same id. The in-lock existence re-check plus the
+    // atomic `store.create` must let exactly one commit and reject the other 409.
     const [a, b] = await Promise.all([
       app.inject({
         method: "POST",
@@ -1231,7 +1371,7 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     ]);
 
     expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
-    expect(ghost.created).toEqual([6001]); // the Ghost member is minted exactly once
+    expect(ghost.created).toHaveLength(0); // a create never touches Ghost (Book-only)
     expect(cache.getById(6001)).not.toBeNull();
     await app.close();
   });

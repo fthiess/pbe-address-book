@@ -11,13 +11,14 @@ const BACK_CLASS =
 
 /**
  * The **Add Brother** page (`/brother/new`; OFC-201) — the small first step of the
- * two-step create (DECISIONS N71). It collects only the **identity essentials**
- * every new brother needs to exist and to be joined to Ghost — the Constitution
- * signer number, name, class year, and email — then `POST`s them (which creates the
- * Ghost member and the record server-side) and hands the admin straight to the
- * **regular profile edit page** to fill in everything else at their leisure. There
- * is deliberately no bespoke create form: once the record exists, editing it is the
- * ordinary edit path, nothing new to maintain.
+ * two-step create (DECISIONS N71). It collects only the **mandatory identity
+ * essentials** every new brother needs to exist — the Constitution signer number,
+ * name, and class year — then `POST`s them (creating a **Book-only** record) and
+ * hands the admin straight to the **regular profile edit page** to fill in
+ * everything else at their leisure. **Email is deliberately not here** (OFC-232): it
+ * is an optional field, so it belongs on the edit page, where adding it is what
+ * mints the brother's Ghost member (magic-link sign-in + PBE News; D133). There is
+ * no bespoke create form: once the record exists, editing it is the ordinary path.
  *
  * Admin-only. The server enforces admin on `POST /api/profiles`; this route guard
  * is UX (a non-admin — or an admin "viewing as" a lower role, N31 — is redirected).
@@ -31,7 +32,6 @@ export function NewProfile() {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [classYearText, setClassYearText] = useState("");
-  const [email, setEmail] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [banner, setBanner] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -55,12 +55,11 @@ export function NewProfile() {
     });
 
   /**
-   * Validate the essentials. The name / class-year / email-format rules come from
-   * the **shared** validator (D50) so they cannot drift from the server's; the one
-   * extra rule is a positive-integer id. **Email is optional** (OFC-201 follow-up):
-   * Book is the membership record, not gated on having an email — a brother with no
-   * email is created Book-only, with no Ghost record (C15/D20). When an email *is*
-   * entered it must be well-formed (the shared validator checks that).
+   * Validate the essentials. The name / class-year rules come from the **shared**
+   * validator (D50) so they cannot drift from the server's; the one extra rule is a
+   * positive-integer id. **Email is not collected here** (OFC-232): it is an optional
+   * field added later on the profile edit page, where it mints the Ghost member
+   * (D133); the create body carries none and the server rejects one.
    */
   function validate(): Record<string, string> {
     const currentYear = new Date().getUTCFullYear();
@@ -70,7 +69,6 @@ export function NewProfile() {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       classYear,
-      email: email.trim() || undefined,
     } as unknown as Profile;
 
     const found = firstIssueByField(
@@ -106,9 +104,8 @@ export function NewProfile() {
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         classYear: Number(classYearText.trim()),
-        // Omit email entirely when blank so the server creates a Book-only record
-        // (no Ghost member) rather than storing an empty string.
-        ...(email.trim() ? { email: email.trim() } : {}),
+        // No email: the create is Book-only (OFC-232). The admin adds an email on the
+        // edit page next, which is what mints the Ghost member (D133).
       });
       if (outcome.status === "ok") {
         // Hand straight off to the regular edit page for the optional rest, replacing
@@ -153,10 +150,11 @@ export function NewProfile() {
       <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">Add Brother</h1>
         <p className="mt-2 max-w-prose text-[length:var(--text-body)] text-muted-foreground">
-          Enter the essentials to create the brother. The signer number, name, and class year are
-          required; <strong>email is optional</strong> — add it if you have one. Once the record is
-          created, you'll be taken to the full profile page to optionally add other details —
-          address, telephone, photo, privacy preferences, and more.
+          Enter the essentials to create the brother — the signer number, name, and class year are
+          all required. Once the record is created, you'll be taken to the full profile page to add
+          any other details: <strong>email</strong>, address, telephone, photo, privacy preferences,
+          and more. (Adding an email there is what sets up the brother's sign-in and PBE News
+          subscription.)
         </p>
       </header>
 
@@ -227,20 +225,6 @@ export function NewProfile() {
             mono
             placeholder="YYYY"
             helper="A 4-digit year."
-          />
-          <TextField
-            id="new-email"
-            label="Email (optional)"
-            type="email"
-            value={email}
-            onChange={(v) => {
-              setEmail(v);
-              clearError("email");
-            }}
-            error={errors.email}
-            inputMode="email"
-            autoComplete="off"
-            helper="If provided, sets up the brother's sign-in and PBE News subscription. Leave blank for a brother with no email."
           />
         </Section>
 

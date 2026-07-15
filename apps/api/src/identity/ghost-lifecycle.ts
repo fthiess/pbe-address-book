@@ -31,6 +31,27 @@ export interface GhostCreateResult {
 }
 
 /**
+ * Thrown by {@link GhostLifecycle.createMember} when Ghost rejects the create
+ * because a member with that email **already exists** (Ghost returns `422`
+ * ValidationError, verified against the Admin API docs). This is distinct from a
+ * generic Ghost outage: it is a permanent collision an admin must resolve, not a
+ * transient failure a retry fixes. The write path maps it to a `422` field issue on
+ * `email` (OFC-232, Forrest's Option B: reject the collision, don't auto-link) —
+ * separate from the `502 ghost_create_failed` every other create failure yields.
+ *
+ * At production launch this cannot occur in normal operation: the ~70 historical
+ * unidentified Ghost addresses are purged from both Book and Ghost before cutover
+ * (the mystery-email project), so a collision means something is wrong — exactly the
+ * error worth catching loudly.
+ */
+export class GhostDuplicateEmailError extends Error {
+  constructor(readonly email: string) {
+    super(`Ghost already has a member with the email ${email}`);
+    this.name = "GhostDuplicateEmailError";
+  }
+}
+
+/**
  * The Ghost member-lifecycle seam (DECISIONS N41/N65). Every Book write that
  * touches a Ghost-synced field is **Ghost-first-gated**: the Ghost step runs
  * *before* Book mutates its own state and, on failure, **throws** so the endpoint

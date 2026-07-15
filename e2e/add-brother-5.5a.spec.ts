@@ -103,13 +103,12 @@ async function gotoNew(
   return { posted: () => posted };
 }
 
-/** Fill the four text essentials with a valid new brother. */
+/** Fill the three mandatory essentials with a valid new brother (no email — OFC-232). */
 async function fillEssentials(page: Page) {
   await page.fill("#new-constitutionId", String(NEW_ID));
   await page.fill("#new-firstName", "Fred");
   await page.fill("#new-lastName", "Newman");
   await page.fill("#new-classYear", "2001");
-  await page.fill("#new-email", "fred.newman@example.test");
 }
 
 test.describe("Add Brother essentials (5.5a)", () => {
@@ -119,37 +118,24 @@ test.describe("Add Brother essentials (5.5a)", () => {
     await expect(page.getByRole("heading", { name: "Add Brother" })).toHaveCount(0);
   });
 
-  test("shows the essentials + two-step note (email optional) and passes an axe scan", async ({
+  test("shows the mandatory essentials + two-step note (no email field) and passes an axe scan", async ({
     page,
   }) => {
     await gotoNew(page, "admin");
     await expect(page.getByRole("heading", { name: "Add Brother" })).toBeVisible();
-    await expect(page.getByText("email is optional")).toBeVisible();
-    await expect(
-      page.getByText(/full profile page to optionally add other details/i),
-    ).toBeVisible();
+    // Email is NOT collected here (OFC-232) — no email input, and the copy tells the
+    // admin it (and the Ghost sign-in it sets up) is added on the profile page.
+    await expect(page.locator("#new-email")).toHaveCount(0);
+    await expect(page.getByText(/all required/i)).toBeVisible();
+    await expect(page.getByText(/full profile page to add any other details/i)).toBeVisible();
 
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
   });
 
-  test("creates a Book-only brother when email is left blank", async ({ page }) => {
-    const mocks = await gotoNew(page, "admin");
-    await page.fill("#new-constitutionId", String(NEW_ID));
-    await page.fill("#new-firstName", "Fred");
-    await page.fill("#new-lastName", "Newman");
-    await page.fill("#new-classYear", "2001");
-    // Email deliberately left blank — Book-only brother, no Ghost record.
-    await page.getByRole("button", { name: "Create brother" }).click();
-
-    await expect(page).toHaveURL(new RegExp(`/brother/${NEW_ID}/edit$`));
-    // The POST carried the essentials with no `email` key at all.
-    const posted = mocks.posted();
-    expect(posted).toMatchObject({ id: NEW_ID, firstName: "Fred", lastName: "Newman" });
-    expect(posted && "email" in posted).toBe(false);
-  });
-
-  test("creates a brother and hands off to the edit page", async ({ page }) => {
+  test("creates a Book-only brother (no email on the create) and hands off to the edit page", async ({
+    page,
+  }) => {
     const mocks = await gotoNew(page, "admin");
     await fillEssentials(page);
     await page.getByRole("button", { name: "Create brother" }).click();
@@ -158,14 +144,16 @@ test.describe("Add Brother essentials (5.5a)", () => {
     await expect(page).toHaveURL(new RegExp(`/brother/${NEW_ID}/edit$`));
     await expect(page.getByText("Editing")).toBeVisible();
 
-    // The POST carried exactly the essentials the admin entered.
-    expect(mocks.posted()).toMatchObject({
+    // The POST carried exactly the mandatory essentials — and no `email` key at all
+    // (the create is Book-only; email is added later on the edit page — OFC-232).
+    const posted = mocks.posted();
+    expect(posted).toMatchObject({
       id: NEW_ID,
       firstName: "Fred",
       lastName: "Newman",
       classYear: 2001,
-      email: "fred.newman@example.test",
     });
+    expect(posted && "email" in posted).toBe(false);
   });
 
   test("blocks an empty submit with inline errors and makes no create call", async ({ page }) => {
@@ -214,7 +202,6 @@ test.describe("Add Brother essentials (5.5a)", () => {
     await page.fill("#new-firstName", "Fred");
     await page.fill("#new-lastName", "Newman");
     await page.fill("#new-classYear", "2001");
-    await page.fill("#new-email", "fred.newman@example.test");
     await page.getByRole("button", { name: "Create brother" }).click();
     await expect(page).toHaveURL(new RegExp(`/brother/${NEW_ID}/edit$`));
 
