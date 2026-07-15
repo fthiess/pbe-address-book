@@ -1507,3 +1507,30 @@ UAT was originally a Phase-8 activity with its platform deliberately undecided (
 - **Out of scope, parked in the `CUTOVER-PLAN.md` stub:** the manual production deploy workflow (OFC-253) and everything else cutover — nothing in UAT needs a production environment to exist.
 
 Records to `UAT-PLAN.md` (new), `CUTOVER-PLAN.md` (new stub), `CODING-PROJECT-PLAN.md` §7/§8/§9, and the N64 trailer. Tickets: OFC-248–OFC-253.
+
+## Backlog triage & scheduling (2026-07-14, the ticket-scheduling session)
+
+### D133 — A Ghost-less brother who gains an email gets his Ghost member auto-created on that PATCH: the email↔Ghost-record invariant (Forrest's call; the OFC-232 pre-session ruling)
+
+OFC-232's open design fork — auto-create the Ghost member on the PATCH that first adds an email to a Ghost-less brother, vs. an explicit "Enable sign-in / add to PBE News" affordance — is ruled **auto-create on the PATCH**.
+
+**Why:** Forrest holds a standing invariant that **a Book record with an email always has a corresponding Ghost record, and vice versa — never a lingering email-but-Ghost-less state.** An explicit affordance permits exactly that state (an admin adds the email but never clicks the second control); the automatic trigger makes the invariant structural. The legibility/typo argument for the explicit affordance loses to the invariant: a mistyped email is corrected by a follow-up edit (the ordinary Ghost-first-gated update path), whereas a silently missing Ghost record is invisible until a brother can't sign in.
+
+The edge cases stay with the 5.5i session's design pass, resolved *under the invariant*: **deceased** (D80) and **de-brothered** (D115) brothers are excluded from auto-create; an email added and removed in the same edit nets no creation; an email colliding with an existing Ghost member resolves via the D20 unidentified-address handling (link vs. reject — settle in-session); creation honors `allowNewsletterEmail` at that moment, uses `send_email=false`, and follows the Ghost-first-gated write ordering (D98).
+
+*Records to OFC-232 and `CODING-PROJECT-PLAN.md` §Phase 5.5 (session 5.5i). Implementation lands in 5.5i, which appends its own N-entry.*
+
+### N95 — Second Todo-backlog triage: sessions 5.5i–5.5l appended; the remaining backlog scheduled onto Phases 6–8 by Linear label
+
+With 5.5a–5.5h all closed, Forrest promoted the surviving backlog to Todo under a pre-launch tech-debt discipline — *"if something will ever be worth fixing, we should do it now"* — and this session scheduled all 23 open Todo tickets (22 PBE-Book + OFC-191 from PBE-Ghost). Nothing was cancelled; three tickets were deliberately *sequenced* rather than deferred (see 7.5 below). The placements:
+
+- **New 5.5 batches** (same code-locality discipline as N59): **5.5i** OFC-232 + OFC-231 (`apps/api/src/identity/`; pre-session ruling D133), **5.5j** OFC-236 + OFC-153 (the SPA 401-recovery seam; Opus-class, elevated effort), **5.5k** OFC-235 + OFC-64 + OFC-120 (small client-side polish), **5.5l** OFC-217 (Ghost 6.0 breaking-change investigation; findings only). **Order: 5.5k → 5.5l → 5.5i → 5.5j** (quick wins first — Forrest's call).
+- **Phase 6:** OFC-244 (About page — user-guidance surface, authored alongside the manual; Forrest's call over batching it into 5.5k).
+- **Phase 7:** OFC-212 + OFC-209 → session 7b (ops); OFC-228 → 7c (test infrastructure; splits off as 7d if 7c runs long).
+- **Phase 7.5:** OFC-179 (*is* the unified store), OFC-68, OFC-119 — sequenced here because both build derived structures on the unified store; building them earlier would be re-done. OFC-179 is blocked-by OFC-212 (the plan's stated precondition, now a Linear relation).
+- **Phase 7.6:** OFC-191 joins OFC-250/OFC-251 (same repo, same staging-only deploy, same cutover theme-diff artifact).
+- **Phase 7.7 / 8:** unchanged (OFC-248/249/252; OFC-229/253) — already placed by D132.
+
+**Linear conventions set here:** phase/session labels (`5.5i`–`5.5l`, `6`, `7b`, `7c`, `7.5`, `8`, joining the existing `7.6`/`7.7`) are the session index — one label pulls up a session's tickets; each scheduled ticket carries a triage comment with the reasoning; the served-purpose `5.5a`–`5.5h` labels were stripped from their (all-closed) tickets and retired.
+
+*Records to `CODING-PROJECT-PLAN.md` (§Phase 5.5 batches 5.5i–5.5l, §Phase 6, §Phase 7 sessions, §Phase 7.5, §Phase 7.6, the phase-summary table) and the Linear tickets named above.*
