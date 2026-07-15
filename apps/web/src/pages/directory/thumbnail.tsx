@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { Avatar } from "../../components/Avatar.js";
 import { DebrotheredMark } from "../../components/DebrotheredMark.js";
 import { MourningBand } from "../../components/MourningBand.js";
+import { useReauthSignal } from "../../lib/reauthSignal.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 
 /**
@@ -53,10 +54,13 @@ export function Thumbnail({
 }) {
   const [failed, setFailed] = useState(false);
   const url = thumbnailUrl(profile);
-  // Re-arm on URL change (OFC-128) so a re-uploaded thumbnail loads after a
-  // transient error instead of sticking on the avatar fallback.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reset keyed on `url` change is the intent; the body reads no deps.
-  useEffect(() => setFailed(false), [url]);
+  const reauthNonce = useReauthSignal();
+  // Re-arm on URL change (OFC-128) so a re-uploaded thumbnail loads after a transient
+  // error instead of sticking on the avatar fallback — and on a completed re-auth
+  // (OFC-236/D109), so a thumbnail whose `/img/*` fetch 401'd during a session lapse
+  // reloads under the restored cookie rather than staying an avatar.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset keyed on `url`/re-auth change is the intent; the body reads no deps.
+  useEffect(() => setFailed(false), [url, reauthNonce]);
   const deceased = profile.deceased?.isDeceased === true;
   const debrothered = profile.debrothered?.isDebrothered === true;
   // The accessible name folds in the memorial status, matching §5.5's alt-text rule.

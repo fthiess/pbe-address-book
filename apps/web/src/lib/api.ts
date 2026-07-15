@@ -73,6 +73,39 @@ async function asError(response: Response, options?: AsErrorOptions): Promise<Ap
   return new ApiError(response.status, code);
 }
 
+/**
+ * The session layer's non-destructive re-auth callback (OFC-236, D109). On a mid-
+ * session 401 from a **recovery-participating** call, the session layer opens the
+ * child-window re-auth and resolves `true` once the session is restored (so the call
+ * can be retried transparently) or `false` if it wasn't (the popup was blocked, the
+ * user dismissed it, or there was no live session to restore — a first-load 401).
+ * Registered by {@link SessionProvider}; unset in tests/teardown (then no retry).
+ */
+let requestReauth: (() => Promise<boolean>) | null = null;
+
+/** Register (or clear, with `null`) the app-wide re-auth callback (OFC-236). */
+export function setReauthHandler(handler: (() => Promise<boolean>) | null): void {
+  requestReauth = handler;
+}
+
+/**
+ * `fetch`, but a mid-session 401 gets **one** transparent re-auth-and-retry (D109,
+ * OFC-236). If the session layer's re-auth succeeds, the request is re-sent once with
+ * the freshly-restored cookie; otherwise the original 401 response is returned
+ * unchanged so the caller's normal handling runs (the edit writes keep their in-
+ * progress form; a read then bounces to sign-in). The retry re-uses `init` verbatim,
+ * so its `body` must be re-readable — every participating call sends a string or a
+ * `Blob`, both of which are (a one-shot `ReadableStream` body would not be).
+ */
+async function fetchWithReauth(input: RequestInfo, init?: RequestInit): Promise<Response> {
+  const response = await fetch(input, init);
+  if (response.status !== 401 || !requestReauth) {
+    return response;
+  }
+  const restored = await requestReauth();
+  return restored ? fetch(input, init) : response;
+}
+
 /** The caller's own state + full record. Throws `ApiError(401)` when signed out. */
 export async function fetchMe(signal?: AbortSignal): Promise<Me> {
   const response = await fetch("/api/me", { credentials: "same-origin", signal });
@@ -84,7 +117,11 @@ export async function fetchMe(signal?: AbortSignal): Promise<Me> {
 
 /** The bulk directory download (brother-role projection). */
 export async function fetchProfiles(signal?: AbortSignal): Promise<ProfilesResponse> {
-  const response = await fetch("/api/profiles", { credentials: "same-origin", signal });
+  // A mid-session lapse here recovers seamlessly (OFC-153): re-auth in a child window
+  // and re-fetch in place rather than bounce + full reload + re-download the whole
+  // roster over a slow link. On a failed re-auth the 401 falls through to the
+  // (non-silent) bounce below.
+  const response = await fetchWithReauth("/api/profiles", { credentials: "same-origin", signal });
   if (!response.ok) {
     throw await asError(response);
   }
@@ -105,7 +142,10 @@ export interface FetchedProfile {
  * hidden record gets `404` (the directory hide's single-record consequence).
  */
 export async function fetchProfile(id: number, signal?: AbortSignal): Promise<FetchedProfile> {
-  const response = await fetch(`/api/profiles/${id}`, { credentials: "same-origin", signal });
+  const response = await fetchWithReauth(`/api/profiles/${id}`, {
+    credentials: "same-origin",
+    signal,
+  });
   if (!response.ok) {
     throw await asError(response);
   }
@@ -141,7 +181,11 @@ export async function patchProfile(
   patch: Partial<Profile>,
   etag: string,
 ): Promise<PatchOutcome> {
-  const response = await fetch(`/api/profiles/${id}`, {
+  // A mid-edit 401 gets one transparent child-window re-auth + retry (D109/OFC-236),
+  // re-sending the **original** `If-Match` so a genuine concurrent edit still surfaces
+  // as `412` for D25 reconcile. If re-auth doesn't happen (popup blocked/dismissed),
+  // the 401 falls through to the silent `asError` below and the editor keeps the form.
+  const response = await fetchWithReauth(`/api/profiles/${id}`, {
     method: "PATCH",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json", "If-Match": etag },
@@ -199,7 +243,11 @@ export type CreateOutcome =
  * response is the created, projected record with its initial `ETag`.
  */
 export async function createProfile(profile: Partial<Profile>): Promise<CreateOutcome> {
-  const response = await fetch("/api/profiles", {
+  // Add-Brother is an in-progress form too: a 401 gets the same re-auth + retry
+  // (D109/OFC-236). A create has no `If-Match` — a 401 means the write never landed,
+  // so re-POSTing after re-auth is safe. On a failed re-auth the 401 falls through to
+  // the silent `asError` and NewProfile keeps the entered essentials.
+  const response = await fetchWithReauth("/api/profiles", {
     method: "POST",
     credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
@@ -260,7 +308,9 @@ async function headshotResult(response: Response): Promise<HeadshotWriteResult> 
  * is the raw image bytes, not multipart.
  */
 export async function putHeadshot(id: number, blob: Blob): Promise<HeadshotWriteResult> {
-  const response = await fetch(`/api/profiles/${id}/headshot`, {
+  // The staged crop survives a mid-edit lapse (D109): a 401 re-auths and retries with
+  // the same `Blob` (re-readable), so a re-authed photo save just succeeds (OFC-236).
+  const response = await fetchWithReauth(`/api/profiles/${id}/headshot`, {
     method: "PUT",
     credentials: "same-origin",
     headers: { "Content-Type": blob.type || "image/jpeg" },
@@ -271,7 +321,7 @@ export async function putHeadshot(id: number, blob: Blob): Promise<HeadshotWrite
 
 /** Remove a brother's headshot (`DELETE /api/profiles/:id/headshot`). */
 export async function deleteHeadshot(id: number): Promise<HeadshotWriteResult> {
-  const response = await fetch(`/api/profiles/${id}/headshot`, {
+  const response = await fetchWithReauth(`/api/profiles/${id}/headshot`, {
     method: "DELETE",
     credentials: "same-origin",
   });

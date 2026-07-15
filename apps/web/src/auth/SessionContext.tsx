@@ -14,8 +14,11 @@ import {
   signOut as apiSignOut,
   stopImpersonating as apiStopImpersonating,
   fetchMe,
+  setReauthHandler,
   setUnauthorizedHandler,
+  startSignIn,
 } from "../lib/api.js";
+import { bumpReauthSignal } from "../lib/reauthSignal.js";
 import type { Me } from "../lib/types.js";
 import { clearRoster } from "../lib/useRoster.js";
 
@@ -44,6 +47,101 @@ export type SessionState =
 const REFRESH_RETRY_DELAY_MS = 1500;
 
 const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * How long to wait for the re-auth child window before giving up. A still-valid Ghost
+ * session re-bounces silently in a second or two (the common case — only Book's
+ * session hit its 4-hour cap); the long ceiling covers the rare case where the Ghost
+ * session also lapsed and the brother completes a magic-link sign-in in the popup.
+ */
+const REAUTH_TIMEOUT_MS = 3 * 60_000;
+
+/** The unique window name that marks the re-auth popup (read by AuthCallback). */
+export const REAUTH_WINDOW_NAME = "pbe-reauth";
+/** The typed messages `/auth/callback` posts back to the opener (OFC-236). */
+export const REAUTH_SUCCESS = "pbe-reauth-success";
+export const REAUTH_FAILED = "pbe-reauth-failed";
+
+/**
+ * The D109 non-destructive re-auth (OFC-236). Opens a **child window** (not an iframe
+ * — D107's `frame-ancestors` forecloses framing) to the Ghost bridge; the bridge
+ * hands the fresh token to Book's own `/auth/callback`, which — seeing it has an
+ * opener — re-establishes the `__session` cookie, posts a typed message back, and
+ * closes (AuthCallback popup mode). The editor tab never navigates, so its in-memory
+ * form is untouched and nothing lands on disk (D95). Resolves:
+ *   - `true`  on the success message (or if the window closes and a `/api/me` probe
+ *              now succeeds — the message was missed);
+ *   - `false` if the popup is blocked, is dismissed without signing in, or times out —
+ *              the caller then keeps the form and shows the "sign in on another tab"
+ *              affordance (the popup fires after the Save round-trip, so a slow link
+ *              can outrun the browser's user-gesture window and block it).
+ */
+async function runReauth(): Promise<boolean> {
+  // Open the child window **first**, synchronously, before the `startSignIn` round-trip
+  // — the popup already fires after the Save's fetch, so spending the network latency of
+  // `startSignIn` before `window.open` would eat more of the browser's transient-user-
+  // activation budget and get the popup blocked on exactly the slow links this audience
+  // skews toward. Open a blank window now, then navigate it once the relay URL is minted.
+  let popup: Window | null;
+  try {
+    popup = window.open("", REAUTH_WINDOW_NAME, "width=480,height=680");
+  } catch {
+    return false;
+  }
+  if (!popup) {
+    return false;
+  }
+  const child = popup;
+  try {
+    const { signInUrl } = await startSignIn();
+    child.location.href = signInUrl;
+  } catch {
+    child.close();
+    return false;
+  }
+  return new Promise<boolean>((resolve) => {
+    let settled = false;
+    let pollId = 0;
+    let timeoutId = 0;
+    const finish = (ok: boolean) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      window.removeEventListener("message", onMessage);
+      window.clearInterval(pollId);
+      window.clearTimeout(timeoutId);
+      resolve(ok);
+    };
+    const onMessage = (event: MessageEvent) => {
+      // Same-origin only: the message comes from our own `/auth/callback` (D104).
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      if (event.data?.type === REAUTH_SUCCESS) {
+        finish(true);
+      } else if (event.data?.type === REAUTH_FAILED) {
+        finish(false);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    // Fallback signal: the window closed without a message (dismissed, or the message
+    // was missed). Probe the session with a **raw** fetch — NOT `fetchMe`, whose 401
+    // would fire the app-wide bounce (`onUnauthorized`) and destroy the very edit form
+    // this recovery exists to preserve. A plain `res.ok` tells a completed re-auth from
+    // a giving-up with no side effects.
+    pollId = window.setInterval(() => {
+      if (child.closed) {
+        window.clearInterval(pollId);
+        fetch("/api/me", { credentials: "same-origin" }).then(
+          (res) => finish(res.ok),
+          () => finish(false),
+        );
+      }
+    }, 500);
+    timeoutId = window.setTimeout(() => finish(false), REAUTH_TIMEOUT_MS);
+  });
+}
 
 interface SessionContextValue {
   state: SessionState;
@@ -96,6 +194,43 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setUnauthorizedHandler(handleUnauthorized);
     return () => setUnauthorizedHandler(null);
   }, [handleUnauthorized]);
+
+  // The D109 non-destructive re-auth coordinator (OFC-236). A recovery-participating
+  // call (the edit-form writes and the directory reads) that gets a mid-session 401
+  // awaits this; on success it retries transparently. Deduped to a **single** popup so
+  // concurrent 401s — a held Save, the roster read, and the images that failed with it
+  // — all ride one re-auth. Gated on *was-authenticated*: a first-load 401 (handled by
+  // `refresh`) must never spawn a popup, so it resolves `false` and the caller bounces.
+  const reauthInFlight = useRef<Promise<boolean> | null>(null);
+  const requestReauth = useCallback((): Promise<boolean> => {
+    if (statusRef.current !== "authenticated") {
+      return Promise.resolve(false);
+    }
+    if (reauthInFlight.current) {
+      return reauthInFlight.current;
+    }
+    const attempt = runReauth().then((ok) => {
+      if (ok) {
+        // Re-arm the images that 401'd during the lapse so they reload (R18/D109).
+        bumpReauthSignal();
+      }
+      return ok;
+    });
+    reauthInFlight.current = attempt;
+    void attempt.finally(() => {
+      // Identity-guard the clear so a settling attempt can't null out a newer in-flight
+      // one that replaced it in a close microtask race.
+      if (reauthInFlight.current === attempt) {
+        reauthInFlight.current = null;
+      }
+    });
+    return attempt;
+  }, []);
+
+  useEffect(() => {
+    setReauthHandler(requestReauth);
+    return () => setReauthHandler(null);
+  }, [requestReauth]);
 
   const refresh = useCallback(async () => {
     setState({ status: "loading" });

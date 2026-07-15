@@ -2,7 +2,7 @@ import { type Profile, firstIssueByField, validateProfile } from "@pbe/shared";
 import { useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
-import { createProfile } from "../lib/api.js";
+import { ApiError, createProfile } from "../lib/api.js";
 import { Section, TextField } from "./profile/fields.js";
 
 /** Shared styling for the "← Directory" affordance, matching the Admin page. */
@@ -129,8 +129,15 @@ export function NewProfile() {
       } else if (outcome.status === "forbidden") {
         setBanner("Only administrators may add a brother.");
       }
-    } catch {
-      setBanner("We couldn't add this brother just now. Please try again.");
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 401) {
+        // Session lapsed mid-add and the child-window re-auth didn't complete (D109/
+        // OFC-236). The entered essentials are untouched; clicking Add again re-fires
+        // inside a fresh gesture, so the sign-in window reopens reliably.
+        setBanner("Your session expired. Click Add again to sign in, or sign in on another tab.");
+      } else {
+        setBanner("We couldn't add this brother just now. Please try again.");
+      }
     } finally {
       setSaving(false);
     }
