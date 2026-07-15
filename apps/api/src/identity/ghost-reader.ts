@@ -79,16 +79,51 @@ export interface GhostNewsletterEmail {
  * from the same {@link GhostAdminConfig} as the write client (the `newsletterId` is
  * unused here and may be omitted).
  */
+/**
+ * How far back the audit/bounce reader fetches member events (OFC-231). Ghost's
+ * member-event feed is **append-only**, so an unbounded `type:…` fetch grows without
+ * limit as the years pass — eventually hundreds of paginated round-trips on a
+ * synchronous admin request, risking a multi-second-to-timeout latency and a Cloud
+ * Run `502` on the very report meant to diagnose Ghost health. Bounding it is safe:
+ * the alignment audit needs only the **latest** newsletter event per member (and the
+ * newsletter timestamp is advisory anyway — N69), and bounces matter only for
+ * **recent** sends (PBE News is bi-annual). Two years spans ~4 newsletter sends, so
+ * a 24-month window keeps every useful event while capping the fetch. (A larger page
+ * `limit` is *not* an alternative — Ghost 6.0 caps `limit` at 100; OFC-217.)
+ */
+const EVENT_LOOKBACK_MONTHS = 24;
+
 export class GhostAdminReader implements GhostReader {
   private readonly http: GhostAdminHttp;
+  /** Injectable clock for the event-fetch cutoff; defaults to the wall clock. */
+  private readonly now: () => number;
 
-  constructor(config: Omit<GhostAdminConfig, "newsletterId"> & { newsletterId?: string }) {
+  constructor(
+    config: Omit<GhostAdminConfig, "newsletterId"> & {
+      newsletterId?: string;
+      /** Test seam for {@link EVENT_LOOKBACK_MONTHS}'s cutoff; defaults to `Date.now`. */
+      now?: () => number;
+    },
+  ) {
     this.http = new GhostAdminHttp({
       apiUrl: config.apiUrl,
       adminApiKey: config.adminApiKey,
       acceptVersion: config.acceptVersion,
       fetchImpl: config.fetchImpl,
     });
+    this.now = config.now ?? (() => Date.now());
+  }
+
+  /**
+   * The lower `created_at` bound for the event fetch — `YYYY-MM-DD`,
+   * {@link EVENT_LOOKBACK_MONTHS} before now (UTC). **Day** granularity is ample for a
+   * multi-year advisory window and sidesteps time-of-day / timezone ambiguity in the
+   * NQL date literal (Ghost parses a bare `'YYYY-MM-DD'` unambiguously).
+   */
+  private eventCutoff(): string {
+    const cutoff = new Date(this.now());
+    cutoff.setUTCMonth(cutoff.getUTCMonth() - EVENT_LOOKBACK_MONTHS);
+    return cutoff.toISOString().slice(0, 10);
   }
 
   async listMembers(): Promise<GhostMemberRecord[]> {
@@ -120,8 +155,10 @@ export class GhostAdminReader implements GhostReader {
   }
 
   async listNewsletterEvents(): Promise<GhostNewsletterEvent[]> {
+    // Bounded to the last EVENT_LOOKBACK_MONTHS (OFC-231): the `+` is NQL's AND, so
+    // this is "newsletter events created after the cutoff".
     const rows = await this.http.getAll("/members/events/", "events", {
-      filter: "type:newsletter_event",
+      filter: `type:newsletter_event+created_at:>'${this.eventCutoff()}'`,
     });
     const events: GhostNewsletterEvent[] = [];
     for (const row of rows) {
@@ -140,8 +177,10 @@ export class GhostAdminReader implements GhostReader {
   }
 
   async listBounceEvents(): Promise<GhostBounceEvent[]> {
+    // Bounded to the last EVENT_LOOKBACK_MONTHS (OFC-231): bounces matter only for
+    // recent sends, so old failure events are dropped rather than paginated forever.
     const rows = await this.http.getAll("/members/events/", "events", {
-      filter: "type:email_failed_event",
+      filter: `type:email_failed_event+created_at:>'${this.eventCutoff()}'`,
     });
     return rows.map((row) => {
       const data = (row as Record<string, unknown>).data as Record<string, unknown> | undefined;

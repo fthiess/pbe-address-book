@@ -8,6 +8,9 @@ import { GhostAdminReader } from "./ghost-reader.js";
 
 const KEY = "640b1b4b7c9f4e2a8d3c1f0a:aabbccdd";
 const API = "https://staging.example.test/ghost/api/admin";
+/** A fixed clock so the event-fetch cutoff (OFC-231, 24 months back) is deterministic. */
+const FIXED_NOW = Date.parse("2026-07-15T12:00:00.000Z");
+const CUTOFF = "2024-07-15"; // 24 months before FIXED_NOW (UTC, day granularity)
 
 /** Build a fetch double from a `path?query` → JSON-body map (status 200). */
 function fetchFrom(routes: Record<string, unknown>, on403: string[] = []): typeof fetch {
@@ -30,7 +33,7 @@ function fetchFrom(routes: Record<string, unknown>, on403: string[] = []): typeo
 }
 
 function reader(fetchImpl: typeof fetch) {
-  return new GhostAdminReader({ apiUrl: API, adminApiKey: KEY, fetchImpl });
+  return new GhostAdminReader({ apiUrl: API, adminApiKey: KEY, fetchImpl, now: () => FIXED_NOW });
 }
 
 describe("GhostAdminReader.listMembers", () => {
@@ -109,7 +112,7 @@ describe("GhostAdminReader.listNewsletterEvents", () => {
   it("extracts memberId/subscribed/at and drops malformed rows", async () => {
     const r = reader(
       fetchFrom({
-        "/members/events/?type:newsletter_event": {
+        [`/members/events/?type:newsletter_event+created_at:>'${CUTOFF}'`]: {
           events: [
             {
               type: "newsletter_event",
@@ -131,7 +134,7 @@ describe("GhostAdminReader.listBounceEvents", () => {
   it("extracts member/email ids and prefers failed_at over created_at", async () => {
     const r = reader(
       fetchFrom({
-        "/members/events/?type:email_failed_event": {
+        [`/members/events/?type:email_failed_event+created_at:>'${CUTOFF}'`]: {
           events: [
             {
               type: "email_failed_event",
@@ -150,6 +153,45 @@ describe("GhostAdminReader.listBounceEvents", () => {
     expect(await r.listBounceEvents()).toEqual([
       { memberId: "m1", emailId: "e1", at: "2026-06-01T00:00:00.000Z" },
     ]);
+  });
+});
+
+describe("event-fetch date bound (OFC-231)", () => {
+  /** A fetch double that records the decoded `filter` query of every request. */
+  function capturing(filters: string[]): typeof fetch {
+    return (async (url: string | URL | Request) => {
+      const f = new URL(String(url)).searchParams.get("filter");
+      if (f) {
+        filters.push(f);
+      }
+      return new Response(JSON.stringify({ events: [], meta: { pagination: { next: null } } }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+  }
+
+  it("bounds both event fetches to the last 24 months via an NQL created_at filter", async () => {
+    const filters: string[] = [];
+    const r = reader(capturing(filters));
+    await r.listNewsletterEvents();
+    await r.listBounceEvents();
+    // The `+` is NQL's AND: each fetch is "events of this type created after the cutoff".
+    expect(filters).toEqual([
+      `type:newsletter_event+created_at:>'${CUTOFF}'`,
+      `type:email_failed_event+created_at:>'${CUTOFF}'`,
+    ]);
+  });
+
+  it("recomputes the cutoff from the injected clock (24 calendar months back, UTC)", async () => {
+    const filters: string[] = [];
+    const r = new GhostAdminReader({
+      apiUrl: API,
+      adminApiKey: KEY,
+      fetchImpl: capturing(filters),
+      now: () => Date.parse("2026-03-15T00:00:00.000Z"),
+    });
+    await r.listNewsletterEvents();
+    expect(filters[0]).toContain("created_at:>'2024-03-15'");
   });
 });
 
