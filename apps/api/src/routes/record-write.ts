@@ -1,6 +1,7 @@
 import type { ValidationIssue } from "@pbe/shared";
 import type { FastifyReply } from "fastify";
 import { MissingProfileError, StaleWriteError } from "../data/profiles.js";
+import { GhostDuplicateEmailError } from "../identity/ghost-lifecycle.js";
 import { GhostStepError } from "./ghost-push.js";
 import type { RecordLock } from "./record-lock.js";
 
@@ -61,12 +62,26 @@ export class WriteValidationError extends Error {
 
 /**
  * Map a write-path error to its HTTP reply, identically for every record-write
- * handler (OFC-226): a Ghost-step failure → `502 { error: code }` (Book untouched,
- * N65); a stale `If-Match` / precondition → `412`; a vanished record → `404`; a
- * validation failure → `422` with the field issues. Anything else is rethrown so
- * the server error handler genericizes it (OFC-149).
+ * handler (OFC-226): an email colliding with an existing Ghost member → `422` on
+ * `email` (OFC-232, Option B — a permanent collision, not a retryable outage); a
+ * Ghost-step failure → `502 { error: code }` (Book untouched, N65); a stale
+ * `If-Match` / precondition → `412`; a vanished record → `404`; a validation
+ * failure → `422` with the field issues. Anything else is rethrown so the server
+ * error handler genericizes it (OFC-149).
  */
 export function replyWriteError(error: unknown, reply: FastifyReply): FastifyReply {
+  if (error instanceof GhostDuplicateEmailError) {
+    return reply.code(422).send({
+      error: "validation_failed",
+      issues: [
+        {
+          field: "email",
+          message:
+            "This email address already exists in PBE News (Ghost) under an account not linked to Book. An administrator must reconcile it before it can be added here.",
+        },
+      ],
+    });
+  }
   if (error instanceof GhostStepError) {
     return reply.code(502).send({ error: error.code });
   }

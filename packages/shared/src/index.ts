@@ -84,6 +84,7 @@ export {
   isRoleEligible,
   isUsableAdmin,
   partitionWritableFields,
+  shouldHaveGhostMember,
 } from "./capabilities.js";
 export { profilesToCsv, neutralizeCsvCell, formatCsvCell } from "./csv.js";
 export {

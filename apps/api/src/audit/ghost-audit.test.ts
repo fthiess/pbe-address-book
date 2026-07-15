@@ -152,6 +152,42 @@ describe("planGhostAudit", () => {
     expect(report.discrepancies).toEqual([]);
   });
 
+  it("does NOT flag a deceased brother who has an email but no Ghost member (OFC-232)", () => {
+    // A deceased brother is expected to be Ghost-less (his member was deleted at
+    // mark-time), even though he still has an email in Book — so it is not a gap.
+    const report = run({
+      profiles: [
+        makeProfile({
+          ghostMemberId: undefined,
+          email: "james.smyth@example.test",
+          deceased: { isDeceased: true, deathYear: 2020 },
+        }),
+      ],
+      members: [],
+    });
+    expect(report.discrepancies).toEqual([]);
+  });
+
+  it("surfaces a deceased brother's STILL-LIVE Ghost member as unmatched (a lingering member)", () => {
+    // Mark-deceased deletes the Ghost member; if that failed (or a legacy record marked
+    // under the old code retained one), the member lingers. Its id must not count as
+    // legitimately referenced, so the leftover surfaces (OFC-232), exactly as for a
+    // de-brothered brother.
+    const report = run({
+      profiles: [
+        makeProfile({ ghostMemberId: "g1", deceased: { isDeceased: true, deathYear: 2020 } }),
+      ],
+      members: [member({ id: "g1", email: "late.brother@example.test" })],
+    });
+    expect(report.discrepancies).toEqual([
+      {
+        category: "unmatchedGhostMember",
+        ghostMemberId: "g1",
+        ghostValue: "late.brother@example.test",
+      },
+    ]);
+  });
+
   it("surfaces a de-brothered profile's STILL-LIVE Ghost member as unmatched (failed delete)", () => {
     // A de-brother is supposed to delete the Ghost member; if that failed, the member
     // lingers. Its id must NOT be treated as legitimately referenced, so the leftover

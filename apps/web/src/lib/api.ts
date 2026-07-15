@@ -191,9 +191,11 @@ export type CreateOutcome =
   | { status: "forbidden" };
 
 /**
- * Create a brother (`POST /api/profiles`, admin-only — OFC-201). The whole record
- * is sent (the admin-supplied Constitution `id` plus the entered fields); the
- * server sets the housekeeping and status fields and mints the Ghost member. The
+ * Create a brother (`POST /api/profiles`, admin-only — OFC-201). The essentials are
+ * sent (the admin-supplied Constitution `id`, name, and class year); the server sets
+ * the housekeeping and status fields. The record is created **Book-only** — email is
+ * not a create field (OFC-232), so no Ghost member is minted here; the admin adds an
+ * email on the edit page next, which is what enrolls the brother in Ghost (D133). The
  * response is the created, projected record with its initial `ETag`.
  */
 export async function createProfile(profile: Partial<Profile>): Promise<CreateOutcome> {

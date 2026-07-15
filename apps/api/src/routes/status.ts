@@ -2,7 +2,7 @@ import {
   type DeceasedInfo,
   type Profile,
   type Role,
-  hasUsableEmail,
+  shouldHaveGhostMember,
   validateProfile,
 } from "@pbe/shared";
 import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from "fastify";
@@ -13,7 +13,7 @@ import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecy
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
 import { writeRateLimit } from "../security/rate-limit.js";
-import { GhostStepError, computeConsentDiff, pushGhostUpdate } from "./ghost-push.js";
+import { GhostStepError } from "./ghost-push.js";
 import {
   MissingProfileError,
   authorizePrivileged,
@@ -137,9 +137,19 @@ function registerVerify(app: FastifyInstance, deps: StatusRouteDeps): void {
  * `PUT /api/profiles/{id}/deceased` — raise, edit, or clear the deceased state
  * (manager/admin; API-SPEC §3, N40). PUT semantics: the body's five D122 fields
  * **replace** the deceased block (an omitted field is cleared), so a re-PUT is
- * how staff correct a typo'd obituary link. Raising for the first time performs
- * the D80 Book-side coordination; a re-PUT on an already-deceased record only
- * edits the facts (no re-snapshot, no re-force). Reversing restores the snapshot.
+ * how staff correct a typo'd obituary link.
+ *
+ * **Ghost lifecycle (OFC-232, amends D80):** a deceased brother has **no Ghost
+ * member** (the email↔Ghost invariant, D133) — the same posture as de-brothering
+ * (D115). So the first raise **deletes** the Ghost member (Ghost-first) and drops
+ * the `ghostMemberId`; a reverse **re-creates** it when the brother is once again
+ * Ghost-eligible (living + non-de-brothered + usable email), folding in the fresh
+ * id. The D80 Book-side coordination is unchanged — the first raise still snapshots
+ * consent/verification and forces `allowNewsletterEmail` off, and the reverse
+ * restores that snapshot — and the re-created member is created with the **restored**
+ * newsletter consent so Ghost and Book agree from the first moment. A re-PUT on an
+ * already-deceased record only edits the facts (no member, no re-snapshot, no
+ * re-force).
  */
 function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
   const { cache, gate, store, audit, clock, ghostLifecycle, recordLock } = deps;
@@ -185,11 +195,17 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
 
       const now = clock();
       // The whole write runs under the shared per-record lock (N65; OFC-220/221/226):
-      // the consent SNAPSHOT and the pushed diff are built inside the lock from a FRESH
-      // read (`currentOr404`), so a PATCH that changed consent before this task acquired
-      // the lock is reflected — otherwise a later reverse would restore a stale snapshot
-      // and re-subscribe a brother who had unsubscribed (OFC-221). Ghost push precedes
-      // the Book commit; a Ghost failure aborts clean (502, Book untouched).
+      // the consent SNAPSHOT is built inside the lock from a FRESH read
+      // (`currentOr404`), so a PATCH that changed consent before this task acquired the
+      // lock is reflected — otherwise a later reverse would restore a stale snapshot
+      // and re-subscribe a brother who had unsubscribed (OFC-221). Ghost-first: the
+      // member delete (raise) / re-create (reverse) runs before any Book write, and a
+      // failure aborts clean (502, Book untouched). A raise re-creates NOTHING; a
+      // reverse folds the re-created member's fresh id into the reinstating write.
+      interface DeceasedPrepared {
+        current: Profile;
+        created?: GhostCreateResult;
+      }
       let outcome: {
         token: string;
         next: Profile;
@@ -197,15 +213,13 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
         remove: (keyof Profile)[];
       };
       try {
-        outcome = await runRecordWrite(recordLock, id, {
+        outcome = await runRecordWrite<DeceasedPrepared, typeof outcome>(recordLock, id, {
           prepare: () => {
             const current = currentOr404(cache, id);
-            const built = raising
-              ? buildDeceasedRaise(body as DeceasedBody, current, now)
-              : buildDeceasedClear(current, now);
             if (raising) {
               // Validate the candidate; surface only deceased-field issues (the endpoint
               // writes nothing else, so an unrelated legacy value must not block it).
+              const built = buildDeceasedRaise(body as DeceasedBody, current, now);
               const issues = validateProfile({ ...current, ...built.set } as Profile, {
                 currentYear: now.getUTCFullYear(),
               }).issues.filter((issue) => issue.field.startsWith("deceased"));
@@ -213,25 +227,44 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
                 throw new WriteValidationError(issues);
               }
             }
-            return {
-              current,
-              set: built.set,
-              remove: built.remove,
-              consentDiff: computeConsentDiff(current, built.set),
-            };
+            return { current };
           },
-          ghostStep: (p) =>
-            pushGhostUpdate(ghostLifecycle, p.current, p.consentDiff).then(() => undefined),
+          ghostStep: async (p) => {
+            try {
+              if (raising) {
+                // First raise deletes the Ghost member — a deceased brother has none
+                // (OFC-232/D133), mirroring the de-brother raise (D115). A re-PUT edit
+                // of an already-deceased record, or a Book-only brother, has no member.
+                if (p.current.ghostMemberId) {
+                  await ghostLifecycle.deleteMember(p.current);
+                }
+              } else if (isGhostEligibleAfterReverse(p.current)) {
+                // Reverse re-creates the member for a brother who is Ghost-eligible once
+                // living again — created with the RESTORED newsletter consent (the
+                // snapshot value the commit writes), so Ghost and Book agree from the
+                // first moment rather than the forced-off state `p.current` still holds.
+                p.created = await ghostLifecycle.createMember(profileForDeceasedReverse(p.current));
+              }
+            } catch (cause) {
+              throw new GhostStepError(
+                raising ? "ghost_delete_failed" : "ghost_create_failed",
+                cause,
+              );
+            }
+          },
           commit: async (p) => {
+            const { set, remove } = raising
+              ? buildDeceasedRaise(body as DeceasedBody, p.current, now)
+              : buildDeceasedClear(p.current, now, p.created?.ghostMemberId);
             const { token, next } = await commitStatusWrite(
               store,
               cache,
               id,
               p.current,
-              p.set,
-              p.remove,
+              set,
+              remove,
             );
-            return { token, next, set: p.set, remove: p.remove };
+            return { token, next, set, remove };
           },
         });
       } catch (error) {
@@ -333,10 +366,13 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
                 if (p.current.ghostMemberId) {
                   await ghostLifecycle.deleteMember(p.current);
                 }
-              } else if (hasUsableEmail(p.current.email)) {
-                // Re-create a member only for a brother who has an email (the Ghost
-                // identity key), mirroring the create path (same `hasUsableEmail`
-                // predicate): an email-less brother is reinstated Book-only, no Ghost.
+              } else if (
+                shouldHaveGhostMember({ ...p.current, debrothered: { isDebrothered: false } })
+              ) {
+                // Re-create a member only for a brother who SHOULD have one once
+                // reinstated (D133; OFC-232): living, with a usable email (he is being
+                // un-de-brothered, so debrothered is forced false here). An email-less —
+                // or also-deceased — brother is reinstated Book-only, no Ghost.
                 p.created = await ghostLifecycle.createMember(p.current);
               }
             } catch (cause) {
@@ -414,9 +450,13 @@ interface DeceasedBody {
  * On the *first* raise (`stored` not yet deceased) this also performs the D80
  * coordination: capture the consent/verification snapshot, force the newsletter
  * flag off, and stamp `newsletterConsentChangedAt` if newsletter consent
- * actually changed. Verification is **frozen**, not cleared (D48) — left as-is,
+ * actually changed — **and drop the `ghostMemberId`** (OFC-232), since the Ghost
+ * member was just deleted Ghost-first, mirroring the de-brother raise (OFC-222):
+ * leaving the id would point a later pushed-field PATCH (and the reconcile) at a
+ * nonexistent member. Verification is **frozen**, not cleared (D48) — left as-is,
  * captured in the snapshot for a faithful restore. A re-PUT on an already-deceased
- * record edits only the facts (the snapshot and consent are untouched).
+ * record edits only the facts (the snapshot, consent, and id are untouched — there
+ * is no member).
  */
 function buildDeceasedRaise(
   body: DeceasedBody,
@@ -440,28 +480,63 @@ function buildDeceasedRaise(
     if (stored.allowNewsletterEmail) {
       set.newsletterConsentChangedAt = now.toISOString();
     }
+    // The Ghost member was just deleted (Ghost-first, OFC-232) — drop the now-dangling
+    // id. The reverse re-mints a fresh one.
+    if (stored.ghostMemberId) {
+      remove.push("ghostMemberId");
+    }
   }
   return { set, remove };
 }
 
 /**
  * Build the write for **reversing** a deceased mark (D49/D80): restore the
- * snapshotted consent + verification, clear the deceased block, and drop the
- * snapshot. `newsletterConsentChangedAt` is re-stamped only if newsletter consent
- * actually changes on restore.
+ * snapshotted consent + verification, clear the deceased block, drop the snapshot,
+ * and record the **fresh `ghostMemberId`** the re-created Ghost member received
+ * (OFC-232) — a re-created member gets a new id, so the stale one must not survive.
+ * `ghostMemberId` is omitted (leaving the record Book-only) when the brother is
+ * reinstated without an email, so no member was created. `newsletterConsentChangedAt`
+ * is re-stamped only if newsletter consent actually changes on restore.
  */
 function buildDeceasedClear(
   stored: Profile,
   now: Date,
+  ghostMemberId: string | undefined,
 ): { set: Partial<Profile>; remove: (keyof Profile)[] } {
   const set: Partial<Profile> = {
     deceased: { isDeceased: false },
     lastModified: now.toISOString(),
   };
   const remove: (keyof Profile)[] = [];
+  if (ghostMemberId !== undefined) {
+    set.ghostMemberId = ghostMemberId;
+  }
   restoreConsentSnapshot(stored.deceasedConsentSnapshot, stored, set, remove, now);
   remove.push("deceasedConsentSnapshot");
   return { set, remove };
+}
+
+/**
+ * Whether a brother becomes Ghost-eligible once his deceased mark is cleared — not
+ * de-brothered, with a usable email (D133; OFC-232). Evaluated against the
+ * post-reverse state (deceased forced false), so the reverse re-creates a member
+ * exactly when the invariant says he should have one.
+ */
+function isGhostEligibleAfterReverse(stored: Profile): boolean {
+  return shouldHaveGhostMember({ ...stored, deceased: { isDeceased: false } });
+}
+
+/**
+ * The profile view used to re-create the Ghost member on a deceased reverse: the
+ * stored record with `allowNewsletterEmail` set to the value the reverse will
+ * **restore** (the snapshot, or the current value if there is no snapshot), never
+ * the forced-off state mark-deceased left behind. Creating the member with the
+ * restored consent keeps Ghost and Book in agreement from the first moment.
+ */
+function profileForDeceasedReverse(stored: Profile): Profile {
+  const restored =
+    stored.deceasedConsentSnapshot?.allowNewsletterEmail ?? stored.allowNewsletterEmail;
+  return { ...stored, allowNewsletterEmail: restored };
 }
 
 // --- De-brother state builders ----------------------------------------------

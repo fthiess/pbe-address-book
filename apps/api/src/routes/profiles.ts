@@ -15,7 +15,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandl
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import { ProfileExistsError, type ProfileStore, StaleWriteError } from "../data/profiles.js";
-import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecycle.js";
+import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import { effectiveRole } from "../identity/types.js";
 import {
   type ProjectedProfile,
@@ -26,7 +26,7 @@ import {
 } from "../projection/projection.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
 import { negotiateEncoding } from "./encoding.js";
-import { GhostStepError, computeGhostUpdateDiff, pushGhostUpdate } from "./ghost-push.js";
+import { type EmailLifecycleResult, runEmailGhostLifecycle } from "./ghost-push.js";
 import type { RecordLock } from "./record-lock.js";
 import { replyWriteError, runRecordWrite } from "./record-write.js";
 import { traceId } from "./trace.js";
@@ -176,31 +176,37 @@ function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteD
 
 /**
  * `POST /api/profiles` — create a brother in one atomic write (API-SPEC §3;
- * OFC-201). The Add-Brother path, admin-only. The full guard sequence:
+ * OFC-201). The Add-Brother path, admin-only. It creates a **Book-only** record and
+ * never touches Ghost: email is not a create field (OFC-232), so a new brother is
+ * always Ghost-less, and the Ghost member is minted later — on the profile-edit
+ * `PATCH` that first adds the email (D133). Concentrating all Ghost create/delete
+ * logic on the one PATCH surface keeps the email↔Ghost invariant in a single place.
+ * The full guard sequence:
  *
  *  1. **Admin only** — a non-admin is `403`ed and audited before any work.
  *  2. The body must be an object carrying a valid, positive Constitution **`id`**
  *     — the caller supplies it (it is the physical signature number, never
  *     auto-assigned); an invalid or missing id is a `422` on `id`.
- *  3. **Conflict** — an id already in the dataset is `409`; the atomic Firestore
+ *  3. **No email on create** — an email in the body is `422`ed on `email` (not
+ *     silently dropped): the create surface is essentials-only, and rejecting keeps
+ *     a stale client from believing it enrolled the brother in Ghost (OFC-232).
+ *  4. **Conflict** — an id already in the dataset is `409`; the atomic Firestore
  *     `create()` is the authoritative backstop for the same race.
- *  4. The candidate record is assembled **server-side**: the admin-settable fields
- *     from the body, the server-managed housekeeping (`lastModified`,
- *     `newsletterConsentChangedAt`), the safe status defaults (`deceased`/
- *     `debrothered` off, `hasHeadshot: false`), and a **well-formed `privacy`
- *     block** — so the one un-hydrated insert path can never seed a malformed
- *     record the projection would later crash on.
- *  5. **Validation** — the shared module in create mode (`requireRequired`) plus
- *     the dataset-level structural checks (email uniqueness, big-brother existence
- *     / no cycle), `422` on failure.
- *  6. The **Ghost-first-gated** create (`createMember` mints the member and
- *     returns the fresh `ghostMemberId`, folded into the write; a failure aborts
- *     clean with `502 ghost_create_failed`, Book untouched — N65), then the atomic
- *     Firestore `create`, the cache insert (read-your-writes), and the
- *     `profile.create` audit entry (names, never values). `201` + `ETag`.
+ *  5. The candidate record is assembled **server-side**: the admin-settable fields
+ *     from the body (email excluded), the server-managed housekeeping
+ *     (`lastModified`, `newsletterConsentChangedAt`), the safe status defaults
+ *     (`deceased`/`debrothered` off, `hasHeadshot: false`), and a **well-formed
+ *     `privacy` block** — so the one un-hydrated insert path can never seed a
+ *     malformed record the projection would later crash on.
+ *  6. **Validation** — the shared module in create mode (`requireRequired`) plus
+ *     the dataset-level structural checks (big-brother existence / no cycle), `422`
+ *     on failure.
+ *  7. The atomic Firestore `create` (under the per-record lock, with an in-lock
+ *     existence re-check for the create race), the cache insert (read-your-writes),
+ *     and the `profile.create` audit entry (names, never values). `201` + `ETag`.
  */
 function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
-  const { cache, gate, store, audit, clock, ghostLifecycle, recordLock } = deps;
+  const { cache, gate, store, audit, clock, recordLock } = deps;
 
   app.post(
     "/api/profiles",
@@ -242,7 +248,26 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
       }
       const id = rawId;
 
-      // 3. Conflict — a fast in-memory pre-check (the atomic `store.create` below is
+      // 3. Email is not a create field (OFC-232). A new brother is always created
+      //    Book-only; the Ghost member is minted later, on the profile-edit PATCH that
+      //    first adds the email (D133). Reject an email in the body rather than drop it
+      //    silently, so a stale client can't believe it enrolled the brother in Ghost —
+      //    and the email↔Ghost invariant is never even briefly violated by a Book record
+      //    carrying an email with no member.
+      const rawEmail = (body as { email?: unknown }).email;
+      if (hasUsableEmail(typeof rawEmail === "string" ? rawEmail : undefined)) {
+        return reply.code(422).send({
+          error: "validation_failed",
+          issues: [
+            {
+              field: "email",
+              message: "Add the email on the profile page after creating the brother, not here.",
+            },
+          ],
+        });
+      }
+
+      // 4. Conflict — a fast in-memory pre-check (the atomic `store.create` below is
       //    the authoritative backstop for the create race).
       if (cache.getById(id) !== null) {
         audit.record(
@@ -261,11 +286,12 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
         });
       }
 
-      // 4. Assemble the candidate server-side (admin body ⊕ server-managed fields).
+      // 5. Assemble the candidate server-side (admin body ⊕ server-managed fields;
+      //    email excluded — step 3 already rejected it).
       const candidate = assembleNewProfile(body as Record<string, unknown>, id, now);
       canonicalizePhones(candidate);
 
-      // 5. Validation — shared rules (required fields on) + dataset structural checks.
+      // 6. Validation — shared rules (required fields on) + dataset structural checks.
       const issues = [
         ...validateProfile(candidate, { currentYear: now.getUTCFullYear(), requireRequired: true })
           .issues,
@@ -275,51 +301,24 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
         return reply.code(422).send({ error: "validation_failed", issues });
       }
 
-      // 6. Ghost-first create → atomic Firestore create → cache insert → audit, under
-      //    the shared per-record lock (N65) keyed by the new id. `createMember` mints
-      //    the Ghost member first and its returned id is folded into the stored record;
-      //    a Ghost failure aborts clean (502, nothing written). The Firestore `create`
-      //    fails `409` if the id was taken between the pre-check and the write.
-      interface CreatePrepared {
-        created?: GhostCreateResult;
-      }
+      // 7. Atomic Firestore create → cache insert → audit, under the shared per-record
+      //    lock keyed by the new id. The create is Book-only (no Ghost step — a new
+      //    brother has no email, so no member; D133). The in-lock existence re-check
+      //    mirrors the PATCH path's If-Match preflight: the outside-the-lock conflict
+      //    check can pass for a second same-id create whose sibling hasn't committed
+      //    yet, and `store.create` is the authoritative `409` backstop for that race.
       let token: string;
-      let stored: Profile = candidate;
       try {
-        token = await runRecordWrite<CreatePrepared, string>(recordLock, id, {
-          // Re-check existence **inside the lock**, mirroring the PATCH path's in-lock
-          // If-Match preflight (OFC review): the outside-the-lock conflict check can
-          // pass for a second same-id create whose sibling has not yet committed, and
-          // without this the doomed create would still mint a Ghost member in the
-          // ghostStep below before `store.create` rejected it (a `409` that orphans a
-          // real Ghost member). Aborting here — before any Ghost call — closes that.
+        token = await runRecordWrite<Record<string, never>, string>(recordLock, id, {
           prepare: () => {
             if (cache.getById(id) !== null) {
               throw new ProfileExistsError();
             }
             return {};
           },
-          ghostStep: async (p) => {
-            // A Ghost member is email-keyed (the magic-link identity), so a new
-            // brother with no usable email is created **Book-only** — no member, no
-            // `ghostMemberId` — exactly as the PATCH path treats a record without one;
-            // the reconciliation audit reports it as `missingGhostMember` (D99). With
-            // an email, create the member first and fold its fresh id into the write.
-            if (!hasUsableEmail(candidate.email)) {
-              return;
-            }
-            try {
-              p.created = await ghostLifecycle.createMember(candidate);
-            } catch (cause) {
-              throw new GhostStepError("ghost_create_failed", cause);
-            }
-          },
-          commit: async (p) => {
-            stored = p.created
-              ? { ...candidate, ghostMemberId: p.created.ghostMemberId }
-              : candidate;
-            const t = await store.create(id, stored);
-            await cache.applyCreate(stored, t);
+          commit: async () => {
+            const t = await store.create(id, candidate);
+            await cache.applyCreate(candidate, t);
             return t;
           },
         });
@@ -337,7 +336,7 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
         { action: "profile.create", actorId: actor.profileId, targetId: id, outcome: "ok", trace },
         now.toISOString(),
       );
-      return sendRecord(reply.code(201), stored, role, false, token);
+      return sendRecord(reply.code(201), candidate, role, false, token);
     },
   );
 }
@@ -357,14 +356,17 @@ const DEFAULT_PRIVACY: PrivacyFlags = {
 
 /**
  * Build a well-formed new `Profile` from the admin's create body (OFC-201). The
- * body's **admin-settable** fields (everything not `protected` in `WRITE_RULE`)
- * are taken as-is; the server owns the rest — the immutable `id`, the housekeeping
- * stamps, the status flags (`deceased`/`debrothered` off, `hasHeadshot: false`),
- * and a complete `privacy` block (schema defaults overlaid by the client's
- * booleans). Building the required sub-objects here — rather than trusting the
- * body — is what keeps this one un-hydrated insert from seeding a record the
- * projection later hard-dereferences into a 500 (the guarantee `normalizeHydrated
- * Profile` gives the Firestore-hydrated path).
+ * body's **admin-settable** fields (everything not `protected` in `WRITE_RULE`,
+ * **except `email`**) are taken as-is; the server owns the rest — the immutable
+ * `id`, the housekeeping stamps, the status flags (`deceased`/`debrothered` off,
+ * `hasHeadshot: false`), and a complete `privacy` block (schema defaults overlaid by
+ * the client's booleans). **`email` is never set on create** (OFC-232) — a new
+ * brother is Book-only and gains his Ghost member later, on the PATCH that adds the
+ * email (D133); the route also `422`s a body carrying one, so this strip is the
+ * belt to that suspenders. Building the required sub-objects here — rather than
+ * trusting the body — is what keeps this one un-hydrated insert from seeding a
+ * record the projection later hard-dereferences into a 500 (the guarantee
+ * `normalizeHydratedProfile` gives the Firestore-hydrated path).
  */
 function assembleNewProfile(body: Record<string, unknown>, id: number, now: Date): Profile {
   const settable: Partial<Profile> = {};
@@ -375,8 +377,14 @@ function assembleNewProfile(body: Record<string, unknown>, id: number, now: Date
     // would resolve up the prototype chain to a function — passing a bare
     // `!== undefined`/`!== "protected"` test — and get copied in and stored as a junk
     // field (and could shadow a method on the record object). Only genuine own,
-    // non-`protected` `Profile` fields are settable.
-    if (key !== "id" && Object.hasOwn(WRITE_RULE, key) && WRITE_RULE[field] !== "protected") {
+    // non-`protected` `Profile` fields are settable — and never `email`, which is
+    // added later via the PATCH Ghost-create path (OFC-232).
+    if (
+      key !== "id" &&
+      key !== "email" &&
+      Object.hasOwn(WRITE_RULE, key) &&
+      WRITE_RULE[field] !== "protected"
+    ) {
       (settable as Record<string, unknown>)[key] = value;
     }
   }
@@ -612,32 +620,58 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
         return reply.code(409).send({ error: "last_admin" });
       }
 
-      // 7. Ghost-first-gated push → conditional write → cache read-your-writes →
+      // 7. Ghost-first email lifecycle → conditional write → cache read-your-writes →
       //    audit, all under the shared per-record lock (N65; OFC-220/226) so no
-      //    concurrent token-advancing write can commit between the Ghost push and
+      //    concurrent token-advancing write can commit between the Ghost step and
       //    the Firestore write.
+      interface PatchPrepared {
+        ghost: EmailLifecycleResult;
+      }
       let token: string;
+      // The record we actually commit — `next`, plus the `ghostMemberId` the Ghost
+      // lifecycle minted (create) or dropped (delete); unchanged on update/no-op.
+      let committedNext = next;
       try {
-        token = await runRecordWrite(recordLock, id, {
+        token = await runRecordWrite<PatchPrepared, string>(recordLock, id, {
           // Preflight the If-Match INSIDE the lock: if the record already moved
           // past the caller's token, the write is doomed to 412 — abort now, before
-          // an ultimately-pointless Ghost push (N65). (The conditional write below
-          // is the authoritative check; this only spares a wasted Ghost call.)
+          // an ultimately-pointless Ghost call (N65). (The conditional write below
+          // is the authoritative check; this only spares a wasted Ghost round-trip.)
           prepare: () => {
             const currentToken = cache.concurrencyToken(id);
             if (currentToken !== undefined && currentToken !== ifMatch) {
               throw new StaleWriteError();
             }
+            return { ghost: {} };
           },
-          // Push any changed pushed field before committing; a clear failure throws
-          // GhostStepError → 502, Book untouched.
-          ghostStep: () =>
-            pushGhostUpdate(ghostLifecycle, stored, computeGhostUpdateDiff(next, changedSet)).then(
-              () => undefined,
-            ),
-          commit: async () => {
-            const t = await store.update(id, { set, remove, precondition: ifMatch });
-            await cache.applyUpdate(next, t);
+          // The email↔Ghost-record lifecycle (D133; OFC-232): create the member when
+          // the email is added to an eligible Ghost-less brother, delete it when the
+          // email is cleared, else push any changed pushed field to the existing
+          // member. A Ghost failure throws → 502, Book untouched; a duplicate-email
+          // collision throws → 422 on `email` (Option B).
+          ghostStep: async (p) => {
+            p.ghost = await runEmailGhostLifecycle(ghostLifecycle, stored, next, changedSet);
+          },
+          commit: async (p) => {
+            // Fold the lifecycle's `ghostMemberId` change into the write. It is a
+            // server-managed field (never client-writable), so it rides `set`/`remove`
+            // here exactly as the create and de-brother paths fold theirs.
+            const finalSet: Partial<Profile> = { ...set };
+            const finalRemove = [...remove];
+            if (p.ghost.ghostMemberIdSet) {
+              finalSet.ghostMemberId = p.ghost.ghostMemberIdSet;
+              committedNext = { ...next, ghostMemberId: p.ghost.ghostMemberIdSet };
+            } else if (p.ghost.dropGhostMemberId) {
+              finalRemove.push("ghostMemberId");
+              const { ghostMemberId: _dropped, ...rest } = next;
+              committedNext = rest as Profile;
+            }
+            const t = await store.update(id, {
+              set: finalSet,
+              remove: finalRemove,
+              precondition: ifMatch,
+            });
+            await cache.applyUpdate(committedNext, t);
             return t;
           },
         });
@@ -656,7 +690,7 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
         now.toISOString(),
       );
 
-      return sendRecord(reply, next, role, isOwner, token);
+      return sendRecord(reply, committedNext, role, isOwner, token);
     },
   );
 }

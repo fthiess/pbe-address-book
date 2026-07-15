@@ -42,7 +42,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 - Consent toggles & copy: D45 → **D89** (MITAA opt-in) → **D93** (third-party data defaults off) → **D113** (consequence-copy model) → **N68**.
 - Posture: **D77** (no CCPA machinery) + **D116** (persistent footer privacy notice).
-- PII egress: **D95** (`no-store` PII endpoints; sign-out control), **D88** (Mixpanel identity drops name), **D80** (mark-deceased consent snapshot; narrowed by N68).
+- PII egress: **D95** (`no-store` PII endpoints; sign-out control), **D88** (Mixpanel identity drops name), **D80** (mark-deceased consent snapshot; narrowed by N68; Ghost member now deleted/re-created rather than left subscribed-off — **D134**).
 
 ## Verification
 
@@ -75,7 +75,8 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Ghost sync
 
 - Frame: **D54** (one composite system), **D55** (single-master, Book authoritative; the read-only-into-Book invariant restored by N69).
-- Push path: D96 → **N65** (Ghost-first-gated update; prior-email alias dropped); pushed field set per **N66** + **N68**; write ordering/compensation **D98**; lifecycle seam N41 → **N67** (5b split, roster stub); **D133** (a Ghost-less brother who gains an email gets his Ghost member auto-created on that PATCH — the email↔Ghost-record invariant; OFC-232, lands in 5.5i).
+- Push path: D96 → **N65** (Ghost-first-gated update; prior-email alias dropped); pushed field set per **N66** + **N68**; write ordering/compensation **D98**; lifecycle seam N41 → **N67** (5b split, roster stub).
+- Email↔Ghost-record invariant (a brother has a Ghost member iff living + not-de-brothered + usable email — the `shouldHaveGhostMember` predicate): **D133** (auto-create on the PATCH that adds the email) → **N96** (implemented: PATCH create/delete/update lifecycle; email removed from the create surface — `POST` 422s it, a create is Book-only; a Ghost-member collision is rejected on `email` not linked — Option B; de-brother-reverse gate unified on the predicate) + **D134** (mark-deceased now deletes the member and un-mark re-creates it — amends D80; audit exempts a deceased brother like a de-brothered one).
 - Newsletter flag & audit: ~~D103~~ (bidirectional write-back — reverted) → **N69** (alignment audit fully read-only; bounce report a separate CSV; one generic outage screen).
 - Ghost-less brothers always tolerated: **N72**.
 
@@ -92,7 +93,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 - Surface: **D24** (as amended by D82/D95/D112/D126).
 - Concurrency: **D25** (optimistic, on updateTime) → N13 → **N46** (quoted ETag; If-Match normalized); structural write checks **N12**.
-- Endpoints: **N28** (`POST /api/exports`), **N40** (`PUT …/deceased`), **N44**; create flow N71 → **N72** (two-step create; email optional); single-record read `no-store` on all branches **N75**.
+- Endpoints: **N28** (`POST /api/exports`), **N40** (`PUT …/deceased`), **N44**; create flow N71 → N72 → **N96** (create is Book-only — email removed from `POST /api/profiles`, which 422s one; the Ghost member is minted later on the email-adding PATCH); single-record read `no-store` on all branches **N75**.
 
 ## Security hardening
 

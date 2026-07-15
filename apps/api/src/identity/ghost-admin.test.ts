@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeProfile } from "../test-support/make-profile.js";
 import { GhostAdminLifecycle } from "./ghost-admin.js";
+import { GhostDuplicateEmailError } from "./ghost-lifecycle.js";
 
 /** A secret in hex (the Ghost Admin key secret is hex-encoded). */
 const KEY = "640b1b4b7c9f4e2a8d3c1f0a:0011223344556677889900aabbccddeeff";
@@ -98,6 +99,27 @@ describe("GhostAdminLifecycle", () => {
     // Subscribed → newsletters relation. The comment-reply pref is not pushed (N66).
     expect(member.newsletters).toEqual([{ id: "nl-1" }]);
     expect(member).not.toHaveProperty("enable_comment_notifications");
+  });
+
+  it("maps a 422 create rejection to GhostDuplicateEmailError (the collision path, OFC-232)", async () => {
+    // Ghost answers a duplicate-email create with 422 ValidationError; createMember
+    // surfaces it as a typed collision so the write path can 422 on `email` (Option B),
+    // distinct from a generic outage that would 502.
+    const { impl } = fakeFetch({
+      status: 422,
+      body: { errors: [{ type: "ValidationError", message: "Member already exists." }] },
+    });
+    const client = new GhostAdminLifecycle({
+      apiUrl: API_URL,
+      adminApiKey: KEY,
+      newsletterId: "nl-1",
+      fetchImpl: impl,
+    });
+    const error = await client
+      .createMember(makeProfile({ id: 5001, email: "dup@example.test" }))
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(GhostDuplicateEmailError);
+    expect((error as GhostDuplicateEmailError).email).toBe("dup@example.test");
   });
 
   it("maps an unsubscribe to an empty newsletters array", async () => {

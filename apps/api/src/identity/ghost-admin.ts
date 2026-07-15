@@ -1,6 +1,11 @@
 import { type Profile, formatCanonicalName } from "@pbe/shared";
-import { GhostAdminHttp } from "./ghost-admin-http.js";
-import type { GhostCreateResult, GhostLifecycle, GhostMemberDiff } from "./ghost-lifecycle.js";
+import { GhostAdminHttp, GhostHttpError } from "./ghost-admin-http.js";
+import {
+  type GhostCreateResult,
+  GhostDuplicateEmailError,
+  type GhostLifecycle,
+  type GhostMemberDiff,
+} from "./ghost-lifecycle.js";
 
 /**
  * The real Ghost Admin-API client behind the {@link GhostLifecycle} seam (Phase
@@ -67,9 +72,21 @@ export class GhostAdminLifecycle implements GhostLifecycle {
     });
     // `send_email=false` suppresses Ghost's signup email — the brother simply
     // becomes able to magic-link in (D96).
-    const body = await this.http.request("POST", "/members/?send_email=false", {
-      members: [member],
-    });
+    let body: unknown;
+    try {
+      body = await this.http.request("POST", "/members/?send_email=false", {
+        members: [member],
+      });
+    } catch (cause) {
+      // Ghost answers a duplicate-email create with `422 ValidationError`. Surface it
+      // as a typed collision so the write path can reject with a specific `422` on
+      // `email` (OFC-232, Option B) rather than a generic `502` (which would wrongly
+      // invite a retry). Every other failure propagates unchanged → `ghost_create_failed`.
+      if (cause instanceof GhostHttpError && cause.status === 422) {
+        throw new GhostDuplicateEmailError(profile.email ?? "");
+      }
+      throw cause;
+    }
     const id = extractMemberId(body);
     if (!id) {
       throw new Error("Ghost create returned no member id");

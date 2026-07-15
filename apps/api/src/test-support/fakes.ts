@@ -15,10 +15,11 @@ import {
   StaleWriteError,
 } from "../data/profiles.js";
 import type { AdminUserStore } from "../data/users.js";
-import type {
-  GhostCreateResult,
-  GhostLifecycle,
-  GhostMemberDiff,
+import {
+  type GhostCreateResult,
+  GhostDuplicateEmailError,
+  type GhostLifecycle,
+  type GhostMemberDiff,
 } from "../identity/ghost-lifecycle.js";
 import type {
   GhostBounceEvent,
@@ -234,6 +235,10 @@ export class InMemoryAdminUserStore implements AdminUserStore {
 export class RecordingGhostLifecycle implements GhostLifecycle {
   readonly deleted: number[] = [];
   readonly created: number[] = [];
+  /** The full profile each `createMember` was handed — lets a test assert the member
+   *  is created with the right newsletter consent (e.g. the RESTORED value on a
+   *  deceased/de-brother reverse, not a forced-off one — OFC-232). */
+  readonly createdProfiles: Profile[] = [];
   readonly updated: { id: number; ghostMemberId?: string; diff: GhostMemberDiff }[] = [];
 
   async deleteMember(profile: Profile): Promise<void> {
@@ -242,6 +247,7 @@ export class RecordingGhostLifecycle implements GhostLifecycle {
 
   async createMember(profile: Profile): Promise<GhostCreateResult> {
     this.created.push(profile.id);
+    this.createdProfiles.push(profile);
     return { ghostMemberId: `recreated-${profile.id}` };
   }
 
@@ -256,7 +262,9 @@ export class RecordingGhostLifecycle implements GhostLifecycle {
  * Firestore, GCS, and the cache untouched.
  */
 export class FailingGhostLifecycle implements GhostLifecycle {
-  constructor(private readonly mode: "delete" | "create" | "update" | "both" = "both") {}
+  constructor(
+    private readonly mode: "delete" | "create" | "update" | "both" | "duplicate" = "both",
+  ) {}
 
   async deleteMember(): Promise<void> {
     if (this.mode === "delete" || this.mode === "both") {
@@ -265,6 +273,11 @@ export class FailingGhostLifecycle implements GhostLifecycle {
   }
 
   async createMember(profile: Profile): Promise<GhostCreateResult> {
+    // `duplicate` models Ghost rejecting the create because the email already exists
+    // (the collision path, OFC-232) — a typed error distinct from a generic outage.
+    if (this.mode === "duplicate") {
+      throw new GhostDuplicateEmailError(profile.email ?? "");
+    }
     if (this.mode === "create" || this.mode === "both") {
       throw new Error("ghost create failed");
     }

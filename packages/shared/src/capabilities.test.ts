@@ -12,6 +12,7 @@ import {
   isRoleEligible,
   isUsableAdmin,
   partitionWritableFields,
+  shouldHaveGhostMember,
 } from "./capabilities.js";
 import type { PrivacyFlags, Profile, Role } from "./types.js";
 
@@ -95,6 +96,21 @@ describe("hasUsableEmail / isUsableAdmin — the last-admin invariant's usable-a
     expect(isRoleEligible({ ...eligible, deceased: { isDeceased: true } })).toBe(false);
     expect(isRoleEligible({ ...eligible, debrothered: { isDebrothered: true } })).toBe(false);
     expect(isRoleEligible({ ...eligible, email: undefined })).toBe(false);
+  });
+
+  it("shouldHaveGhostMember is the email↔Ghost invariant: living + not-de-brothered + usable email (D133)", () => {
+    const eligible = {
+      deceased: { isDeceased: false },
+      debrothered: { isDebrothered: false },
+      email: "x@y.test",
+    };
+    expect(shouldHaveGhostMember(eligible)).toBe(true);
+    expect(shouldHaveGhostMember({ ...eligible, email: undefined })).toBe(false); // Book-only
+    expect(shouldHaveGhostMember({ ...eligible, email: "   " })).toBe(false); // not usable
+    expect(shouldHaveGhostMember({ ...eligible, deceased: { isDeceased: true } })).toBe(false);
+    expect(shouldHaveGhostMember({ ...eligible, debrothered: { isDebrothered: true } })).toBe(
+      false,
+    );
   });
 
   it("isRoleDowngrade is true only for a strictly lower role (backs the gate re-check, OFC-239)", () => {
