@@ -22,6 +22,7 @@ export function StarButton({
   name,
   onToggle,
   fill = false,
+  prominent = false,
 }: {
   starred: boolean;
   /** The brother's name, woven into the accessible label for context. */
@@ -29,6 +30,12 @@ export function StarButton({
   onToggle: () => void;
   /** Fill the parent cell (the grid) vs. keep an intrinsic 32px size (the card). */
   fill?: boolean;
+  /**
+   * A larger star for the Profile header (OFC-256): the glyph is sized to the
+   * class-year type (`--text-h3`, 21px) sitting beside it, in a roomier 40px target
+   * — the Directory/card 18px star is too small next to the profile's larger name.
+   */
+  prominent?: boolean;
 }) {
   return (
     <button
@@ -40,20 +47,20 @@ export function StarButton({
         onToggle();
       }}
       className={`flex items-center justify-center rounded outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
-        fill ? "size-full" : "size-8"
+        fill ? "size-full" : prominent ? "size-10" : "size-8"
       }`}
     >
-      <StarIcon filled={starred} />
+      <StarIcon filled={starred} size={prominent ? 22 : 18} />
     </button>
   );
 }
 
 /** A gold five-point star — solid when starred, hollow outline when not (D32). */
-function StarIcon({ filled }: { filled: boolean }) {
+function StarIcon({ filled, size = 18 }: { filled: boolean; size?: number }) {
   return (
     <svg
-      width="18"
-      height="18"
+      width={size}
+      height={size}
       viewBox="0 0 24 24"
       aria-hidden="true"
       fill={filled ? "var(--brand-gold)" : "none"}
