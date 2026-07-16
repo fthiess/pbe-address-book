@@ -2,6 +2,7 @@ import type { NameRecord } from "@pbe/name-search";
 import { Lock, Search } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Combobox, type ComboboxOption } from "../../components/Combobox.js";
+import { ControlHelp } from "../../components/ControlHelp.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { useNameSearch } from "../directory/search/useNameSearch.js";
 import { RelationshipChip } from "./RelationshipChip.js";
@@ -46,7 +47,10 @@ export function RelationshipsEditor({
   return (
     <Section title="Relationships">
       <div>
-        <p className={`mb-1 block ${FIELD_LABEL_CLASS}`}>Big Brother</p>
+        <div className="mb-1 flex items-center gap-1.5">
+          <p className={`block ${FIELD_LABEL_CLASS}`}>Big Brother</p>
+          <ControlHelp entryKey="profile.bigBrother" />
+        </div>
         {rosterError ? (
           <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
             The brotherhood list couldn't load, so the Big Brother picker is unavailable right now.

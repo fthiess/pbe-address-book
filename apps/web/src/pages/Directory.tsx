@@ -7,6 +7,7 @@ import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useSta
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { ClearButton } from "../components/ClearButton.js";
+import { ControlHelp } from "../components/ControlHelp.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
 import { fetchProfiles } from "../lib/api.js";
 import type { DirectoryProfile } from "../lib/types.js";
@@ -337,9 +338,12 @@ export function Directory() {
 
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-full sm:w-72">
-            <label htmlFor="directory-search" className="mb-1 block text-xs font-medium">
-              {help?.label ?? "Name Search"}
-            </label>
+            <div className="mb-1 flex items-center gap-1.5">
+              <label htmlFor="directory-search" className="block text-xs font-medium">
+                {help?.label ?? "Name Search"}
+              </label>
+              <ControlHelp entryKey="directory.search" />
+            </div>
             <div className="relative">
               <input
                 id="directory-search"

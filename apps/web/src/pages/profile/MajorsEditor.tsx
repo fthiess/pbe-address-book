@@ -5,6 +5,7 @@ import { MAJORS, compareCourseCodes, courseName } from "@pbe/shared";
 import { Plus } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useId } from "react";
 import { Combobox } from "../../components/Combobox.js";
+import { ControlHelp } from "../../components/ControlHelp.js";
 import { cn } from "../../lib/utils.js";
 import { type ChipFamily, courseFamily, familyStyle } from "../directory/Chips.js";
 import { FIELD_LABEL_CLASS } from "./fields.js";
@@ -61,9 +62,12 @@ export function MajorsEditor({
 
   return (
     <div>
-      <p id={helpId} className={cn("mb-1 block", FIELD_LABEL_CLASS)}>
-        Courses
-      </p>
+      <div className="mb-1 flex items-center gap-1.5">
+        <p id={helpId} className={cn("block", FIELD_LABEL_CLASS)}>
+          Courses
+        </p>
+        <ControlHelp entryKey="profile.majors" />
+      </div>
       <div
         className={cn(
           "flex min-h-12 flex-wrap items-center gap-2 rounded-[var(--radius-md)] border border-input bg-background p-2",

@@ -1,7 +1,9 @@
+import { getHelpEntry } from "@pbe/help-content";
 import { MAX_EMAIL_LENGTH, type Profile, type ValidationIssue, canWriteField } from "@pbe/shared";
 import { TriangleAlert } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useBlocker } from "react-router-dom";
+import { ControlHelp } from "../../components/ControlHelp.js";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { AddressEditor } from "./AddressEditor.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
@@ -10,7 +12,7 @@ import { type HeadshotChange, HeadshotEditor } from "./HeadshotEditor.js";
 import { MajorsEditor } from "./MajorsEditor.js";
 import { RelationshipsEditor } from "./RelationshipsEditor.js";
 import { EmergencyContactsEditor, LinksEditor } from "./RepeatableEditors.js";
-import { CONSENT_COPY, PRIVACY_COPY } from "./consent.js";
+import { SWITCH_KEYS } from "./consent.js";
 import { canonicalName } from "./display.js";
 import {
   FIELD_LABEL_CLASS,
@@ -305,7 +307,7 @@ export function ProfileEdit({
                     onChange={(v) => form.setText("fullLegalName", v)}
                     onBlur={() => form.touch("fullLegalName")}
                     error={form.errorFor("fullLegalName")}
-                    helper="Including suffixes (Jr., III) and any compound names."
+                    helpKey="profile.fullLegalName"
                   />
                   <TextField
                     id="profile-classYear"
@@ -317,7 +319,7 @@ export function ProfileEdit({
                     inputMode="numeric"
                     mono
                     placeholder="YYYY"
-                    helper="A 4-digit year, or “unknown”."
+                    helpKey="profile.classYear"
                   />
                   <TextField
                     id="profile-mugName"
@@ -326,7 +328,7 @@ export function ProfileEdit({
                     onChange={(v) => form.setText("mugName", v)}
                     onBlur={() => form.touch("mugName")}
                     error={form.errorFor("mugName")}
-                    helper="The nickname printed on your PBE mug."
+                    helpKey="profile.mugName"
                   />
                   <LockedField
                     label="Constitution signer number"
@@ -356,6 +358,7 @@ export function ProfileEdit({
                     inputMode="email"
                     autoComplete="email"
                     maxLength={MAX_EMAIL_LENGTH}
+                    helpKey="profile.email"
                   />
                   <TextField
                     id="profile-alternateEmail"
@@ -368,9 +371,12 @@ export function ProfileEdit({
                     inputMode="email"
                     maxLength={MAX_EMAIL_LENGTH}
                     disabled={!emailPresent}
+                    // The primary-present helper is the registry's single source (D53);
+                    // the disabled-state instruction stays inline (it's a UI state, not
+                    // manual reference material).
                     helper={
                       emailPresent
-                        ? "Optional — a second address we can reach you at."
+                        ? getHelpEntry("profile.alternateEmail")?.helperText
                         : "Add a primary email first to set an alternate."
                     }
                   />
@@ -416,7 +422,7 @@ export function ProfileEdit({
                     touch={form.touch}
                   />
                   <ConsentSwitch
-                    copy={PRIVACY_COPY.shareEmergency}
+                    entryKey={SWITCH_KEYS.shareEmergency}
                     value={form.draft.privacy?.shareEmergency ?? false}
                     onChange={(v) => form.setPrivacy("shareEmergency", v)}
                     locked={consentLocked}
@@ -452,7 +458,10 @@ export function ProfileEdit({
                     autoComplete="organization-title"
                   />
                   <div>
-                    <p className={`mb-1 block ${FIELD_LABEL_CLASS}`}>Links</p>
+                    <div className="mb-1 flex items-center gap-1.5">
+                      <p className={`block ${FIELD_LABEL_CLASS}`}>Links</p>
+                      <ControlHelp entryKey="profile.links" />
+                    </div>
                     <LinksEditor
                       links={form.draft.links}
                       onChange={form.setLinks}
@@ -476,7 +485,7 @@ export function ProfileEdit({
                       />
                       <div className="mt-2">
                         <ConsentSwitch
-                          copy={PRIVACY_COPY.shareSpousePartner}
+                          entryKey={SWITCH_KEYS.shareSpousePartner}
                           value={form.draft.privacy?.shareSpousePartner ?? false}
                           onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
                           locked={consentLocked}
@@ -518,19 +527,19 @@ export function ProfileEdit({
                   switch track and ? button lines up down the column (N35). */}
               <div className="space-y-3 rounded-[var(--radius-lg)] border border-transparent p-3">
                 <ConsentSwitch
-                  copy={PRIVACY_COPY.shareEmail}
+                  entryKey={SWITCH_KEYS.shareEmail}
                   value={form.draft.privacy?.shareEmail ?? false}
                   onChange={(v) => form.setPrivacy("shareEmail", v)}
                   locked={consentLocked}
                 />
                 <ConsentSwitch
-                  copy={PRIVACY_COPY.shareAddress}
+                  entryKey={SWITCH_KEYS.shareAddress}
                   value={form.draft.privacy?.shareAddress ?? false}
                   onChange={(v) => form.setPrivacy("shareAddress", v)}
                   locked={consentLocked}
                 />
                 <ConsentSwitch
-                  copy={PRIVACY_COPY.sharePhone}
+                  entryKey={SWITCH_KEYS.sharePhone}
                   value={form.draft.privacy?.sharePhone ?? false}
                   onChange={(v) => form.setPrivacy("sharePhone", v)}
                   locked={consentLocked}
@@ -539,7 +548,7 @@ export function ProfileEdit({
 
               <Subgroup title="Sharing beyond the brotherhood" warn>
                 <ConsentSwitch
-                  copy={CONSENT_COPY.allowShareWithMITAA}
+                  entryKey={SWITCH_KEYS.allowShareWithMITAA}
                   value={form.draft.allowShareWithMITAA ?? false}
                   onChange={(v) => form.setBool("allowShareWithMITAA", v)}
                   locked={consentLocked}
@@ -548,7 +557,7 @@ export function ProfileEdit({
 
               <Subgroup title="Emails from PBE News">
                 <ConsentSwitch
-                  copy={CONSENT_COPY.allowNewsletterEmail}
+                  entryKey={SWITCH_KEYS.allowNewsletterEmail}
                   value={form.draft.allowNewsletterEmail ?? false}
                   onChange={(v) => form.setBool("allowNewsletterEmail", v)}
                   locked={consentLocked}
@@ -559,7 +568,7 @@ export function ProfileEdit({
                 {/* Presented positively as "Listed" (on = listed); the stored
                     field is `unlisted`, so the value and change are inverted (N35). */}
                 <ConsentSwitch
-                  copy={CONSENT_COPY.listed}
+                  entryKey={SWITCH_KEYS.listed}
                   value={!(form.draft.unlisted ?? false)}
                   onChange={(v) => form.setBool("unlisted", !v)}
                   locked={consentLocked}
@@ -569,9 +578,13 @@ export function ProfileEdit({
 
             <Section title="Record status">
               {form.draft.lastVerifiedDate ? (
-                <ReadField label="Verification">Verified {form.draft.lastVerifiedDate}.</ReadField>
+                <ReadField label="Verification" helpKey="profile.verification">
+                  Verified {form.draft.lastVerifiedDate}.
+                </ReadField>
               ) : (
-                <ReadField label="Verification">Not verified.</ReadField>
+                <ReadField label="Verification" helpKey="profile.verification">
+                  Not verified.
+                </ReadField>
               )}
               <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
                 {viewer.isOwner
@@ -586,7 +599,7 @@ export function ProfileEdit({
                   onChange={(v) => form.setText("adminNote", v)}
                   onBlur={() => form.touch("adminNote")}
                   error={form.errorFor("adminNote")}
-                  helper="Visible to managers and administrators only — never to the brother."
+                  helpKey="profile.adminNote"
                 />
               )}
             </Section>

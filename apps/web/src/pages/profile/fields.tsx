@@ -1,5 +1,7 @@
+import { getHelpEntry } from "@pbe/help-content";
 import { Lock } from "lucide-react";
 import { type ReactNode, useId } from "react";
+import { ControlHelp } from "../../components/ControlHelp.js";
 import { cn } from "../../lib/utils.js";
 
 /**
@@ -52,10 +54,17 @@ export function Section({
 }
 
 /** A view-mode label/value read-out (e.g. EMAIL · rbrown@mit.edu). */
-export function ReadField({ label, children }: { label: string; children: ReactNode }) {
+export function ReadField({
+  label,
+  children,
+  helpKey,
+}: { label: string; children: ReactNode; helpKey?: string }) {
   return (
     <div>
-      <p className={FIELD_LABEL_CLASS}>{label}</p>
+      <div className="flex items-center gap-1.5">
+        <p className={FIELD_LABEL_CLASS}>{label}</p>
+        {helpKey && <ControlHelp entryKey={helpKey} />}
+      </div>
       <div className="mt-0.5 text-[length:var(--text-body-lg)] text-foreground">{children}</div>
     </div>
   );
@@ -78,33 +87,45 @@ export function PrivateMarker({ label }: { label: string }) {
   );
 }
 
-/** Shared input/label/helper/error markup for the text-like edit fields. */
+/**
+ * Shared input/label/helper/error markup for the text-like edit fields. When
+ * `helpKey` is given, the helper text defaults to that registry entry's
+ * `helperText` (a call-site `helper` still wins, for dynamic cases) and the `?`
+ * toggle-tip renders beside the label iff the entry carries one (Phase 6b / D53).
+ */
 function FieldShell({
   id,
   label,
   helper,
   error,
+  helpKey,
   children,
 }: {
   id: string;
   label: string;
   helper?: string;
   error?: string;
+  helpKey?: string;
   children: (describedBy: string | undefined) => ReactNode;
 }) {
+  const resolvedHelper = helper ?? (helpKey ? getHelpEntry(helpKey)?.helperText : undefined);
   const helperId = `${id}-help`;
   const errorId = `${id}-error`;
   const describedBy =
-    [error ? errorId : null, helper ? helperId : null].filter(Boolean).join(" ") || undefined;
+    [error ? errorId : null, resolvedHelper ? helperId : null].filter(Boolean).join(" ") ||
+    undefined;
   return (
     <div>
-      <label htmlFor={id} className={cn("mb-1 block", FIELD_LABEL_CLASS)}>
-        {label}
-      </label>
+      <div className="mb-1 flex items-center gap-1.5">
+        <label htmlFor={id} className={cn("block", FIELD_LABEL_CLASS)}>
+          {label}
+        </label>
+        {helpKey && <ControlHelp entryKey={helpKey} />}
+      </div>
       {children(describedBy)}
-      {helper && !error && (
+      {resolvedHelper && !error && (
         <p id={helperId} className="mt-1 text-[length:var(--text-body-sm)] text-muted-foreground">
-          {helper}
+          {resolvedHelper}
         </p>
       )}
       {error && (
@@ -127,6 +148,7 @@ export function TextField({
   onBlur,
   error,
   helper,
+  helpKey,
   type = "text",
   inputMode,
   autoComplete,
@@ -142,6 +164,7 @@ export function TextField({
   onBlur?: () => void;
   error?: string;
   helper?: string;
+  helpKey?: string;
   type?: string;
   inputMode?: "text" | "email" | "tel" | "numeric";
   autoComplete?: string;
@@ -153,7 +176,7 @@ export function TextField({
   const fallbackId = useId();
   const id = providedId ?? fallbackId;
   return (
-    <FieldShell id={id} label={label} helper={helper} error={error}>
+    <FieldShell id={id} label={label} helper={helper} error={error} helpKey={helpKey}>
       {(describedBy) => (
         <input
           id={id}
@@ -227,6 +250,7 @@ export function TextAreaField({
   onBlur,
   error,
   helper,
+  helpKey,
   rows = 3,
 }: {
   id?: string;
@@ -236,12 +260,13 @@ export function TextAreaField({
   onBlur?: () => void;
   error?: string;
   helper?: string;
+  helpKey?: string;
   rows?: number;
 }) {
   const fallbackId = useId();
   const id = providedId ?? fallbackId;
   return (
-    <FieldShell id={id} label={label} helper={helper} error={error}>
+    <FieldShell id={id} label={label} helper={helper} error={error} helpKey={helpKey}>
       {(describedBy) => (
         <textarea
           id={id}

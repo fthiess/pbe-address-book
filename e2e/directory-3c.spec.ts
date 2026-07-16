@@ -173,7 +173,7 @@ test.describe("Directory 3c — selection, export, auto-fit (admin)", () => {
     });
 
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /Export CSV/ }).click();
+    await page.getByRole("button", { name: /^Export CSV/ }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/^pbe-directory-\d{4}-\d{2}-\d{2}\.csv$/);
     await expect.poll(() => pinged).toBe(true);
@@ -217,10 +217,10 @@ test.describe("Directory 3c — role gating", () => {
     await expect(page.getByRole("button", { name: /^Star Aaron Adams/ })).toBeVisible();
     // ...but the staff-only surfaces are not.
     await expect(page.getByRole("checkbox", { name: /select all brothers/i })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Export CSV/ })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /^Export CSV/ })).toHaveCount(0);
     await page.getByRole("button", { name: /^Filters/ }).click();
     await expect(page.getByLabel("Class Year")).toBeVisible();
-    await expect(page.getByLabel("Verification")).toHaveCount(0);
+    await expect(page.getByLabel("Verification", { exact: true })).toHaveCount(0);
   });
 });
 
@@ -264,7 +264,7 @@ test.describe("Directory 3c — follow-up fixes", () => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: /^Filters/ }).click();
     await expect(page.getByText(/Membership upkeep/i)).toBeVisible();
-    await expect(page.getByLabel("Verification")).toBeVisible();
+    await expect(page.getByLabel("Verification", { exact: true })).toBeVisible();
   });
 
   test("the Photo column has no resize separator (fixed width)", async ({ page }) => {
@@ -296,7 +296,7 @@ test.describe("Directory 3c — follow-up fixes", () => {
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: /^Filters/ }).click();
     const scheme = await page
-      .getByLabel("Not verified since")
+      .getByLabel("Not verified since", { exact: true })
       .evaluate((el) => getComputedStyle(el).colorScheme);
     expect(scheme).toBe("dark");
   });
@@ -344,7 +344,7 @@ test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
 
     // Export while Aaron is still filtered out: the CSV must include him anyway.
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /Export CSV/ }).click();
+    await page.getByRole("button", { name: /^Export CSV/ }).click();
     const csv = readFileSync(await (await downloadPromise).path(), "utf8");
     expect(csv).toContain("Adams"); // the off-view pick
     expect(csv).toContain("Webster"); // the visible pick
