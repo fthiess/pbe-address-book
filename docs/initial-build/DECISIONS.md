@@ -1645,3 +1645,17 @@ Phase 6b delivers the above-baseline help layer the WCAG split (D111) deferred o
 **Landmines.** (1) `@pbe/help-content` builds to `dist/` (`tsc -b`) — rebuild it after editing the registry or the web typecheck/tests see stale types (the gate rebuilds libs first, so CI is fine). (2) A switch entry MUST carry `whenOn`/`whenOff`; `switchCopy` throws otherwise, and a new switch that forgets them fails the `consent.test.ts` drift check. (3) The `?` trigger's accessible name is `Help: <label>` (fields) or `Help: What changes if you flip "<label>"` (switches) — e2e selects on these.
 
 *Records to `CODING-PROJECT-PLAN §Phase 6` (6b done; 6c remains) and the registry doc-comment; extends D53/D111/D113/D45; partially pre-empts OFC-254. Log-tail order: N101 → N102.*
+
+### N103 — 6b live-test polish: the switch `?` drops the counterfactual (keeps only static context); Email/Courses copy; Export `?` binding
+
+Forrest's staging live-test of N102 (2026-07-16). Changes, all his calls:
+
+**The switch `?` no longer carries the counterfactual (amends D113).** D113's model put each switch's inline active consequence on the page and the *counterfactual* ("what flips if you change this") one tap away in the `?`. In practice the counterfactual read as redundant with the inline consequence for the per-field switches — the inline text already implies its own negation — so the counterfactual is **removed from the `?` entirely**. A switch's `?` now shows **only its optional static `toggleTip`**, exactly as a field's does, so `ConsentSwitch` renders the same `ControlHelp` the fields use (the bespoke counterfactual popover and the `counterfactual()` helper are deleted). Net effect: the five per-field share switches (email/address/phone/emergency/spouse) **and** the newsletter switch now have **no `?`**; only **MITAA** and **Listed** keep one, showing just their standing context. The panel intro shrank from "Each switch shows what's true now; the `?` says what changes if you flip it." to **"Each switch shows what's true now."** The inline active consequence (D45/D113's primary transparency) is untouched — this trims only the redundant second layer.
+
+**Copy.** The **Email** tip was reworded to point brothers at the switches instead of enumerating effects: clearing the field makes login impossible (D134) and, "If you just want to unsubscribe from PBE News or hide your email address, turn off the appropriate privacy switch under 'Privacy & consent', below." **Courses**: "substantial work toward a degree" (dropped "study").
+
+**Verification tip — deliberately unchanged.** Forrest asked to add "Verification expires after 1 year"; checking the code showed verification **does not auto-expire** — the only mechanism is D48's **two-year staleness *nudge*** (`TWO_YEARS_MS` in `ProfileControls.tsx`), a banner inviting re-confirmation, not an expiry. Rather than ship inaccurate copy or build an expiry mechanism, **Forrest's call was to leave the tip as-is** (no expiry sentence).
+
+**Directory.** The **Export CSV** `?` is now wrapped with its button in one tight `inline-flex` (gap-1.5) inside a `gap-3` bar, so the tip visibly binds to Export and is clearly separated from Add Brother (it had sat equidistant between them).
+
+*Records to the registry doc-comment; amends D113 (counterfactual dropped from the `?`) and N102; leaves D48's staleness horizon authoritative for verification. Log-tail order: N102 → N103.*

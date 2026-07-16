@@ -56,16 +56,20 @@ export function ActionBar({
   };
 
   return (
-    <div className="mb-3 flex flex-wrap items-center gap-2">
-      <button
-        type="button"
-        onClick={onExport}
-        disabled={!hasSelection && viewRows.length === 0}
-        className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        Export CSV{hasSelection ? ` (${selectedCount} selected)` : ""}
-      </button>
-      <ControlHelp entryKey="directory.export" />
+    <div className="mb-3 flex flex-wrap items-center gap-3">
+      {/* Export + its ? are one tight unit (gap-1.5) so the tip clearly belongs to
+          Export; the parent gap-3 sets it apart from Clear / Add Brother. */}
+      <div className="inline-flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onExport}
+          disabled={!hasSelection && viewRows.length === 0}
+          className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          Export CSV{hasSelection ? ` (${selectedCount} selected)` : ""}
+        </button>
+        <ControlHelp entryKey="directory.export" />
+      </div>
 
       {hasSelection && (
         <button

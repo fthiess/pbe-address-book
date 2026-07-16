@@ -319,19 +319,21 @@ test.describe("profile — edit mode", () => {
     await expect(tip).toHaveCount(0);
   });
 
-  test("a consent switch's ? shows the counterfactual plus its richer context", async ({
+  test("a consent switch's ? shows only its static context, and per-field switches have none (N103)", async ({
     page,
   }) => {
     await mockProfile(page, { meDoc: me("brother", 5247), record: ownerRecord() });
     await gotoEdit(page);
 
-    // MITAA is off in the fixture, so the inline text is the "off" consequence and
-    // the ? carries the "on" counterfactual — plus the authored richer context.
-    await page.getByRole("button", { name: /Help: What changes.*MIT Alumni Association/ }).click();
-    await expect(page.getByText("May be shared with the MIT Alumni Association.")).toBeVisible();
+    // MITAA carries a static toggleTip; its ? shows that context…
+    await page.getByRole("button", { name: "Help: Share with the MIT Alumni Association" }).click();
     await expect(
       page.getByText(/help maintain their alum\.mit\.edu alumni directory/),
     ).toBeVisible();
+    // …and the (removed) counterfactual "on" consequence appears nowhere — MITAA is off.
+    await expect(page.getByText("May be shared with the MIT Alumni Association.")).toHaveCount(0);
+    // A per-field share switch now has no ? at all.
+    await expect(page.getByRole("button", { name: /Help: Share email/ })).toHaveCount(0);
   });
 
   test("the edit form with a ? tip open has no accessibility violations", async ({ page }) => {
