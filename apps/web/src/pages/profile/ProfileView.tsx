@@ -478,7 +478,12 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
               className={
                 line.on
                   ? "mt-1.5 size-2 shrink-0 rounded-full bg-[var(--success)]"
-                  : "mt-1.5 size-2 shrink-0 rounded-full border border-[var(--track)]"
+                  : // The hollow "off" ring borrows --muted-foreground (the same
+                    // colour as its label text beside it) rather than --track, which
+                    // on the white light-mode card fell to ~1.5:1 — near-invisible.
+                    // --muted-foreground is the calibrated visible-muted tone in both
+                    // themes, so this reads clearly in light and dark alike.
+                    "mt-1.5 size-2 shrink-0 rounded-full border border-[var(--muted-foreground)]"
               }
             />
             <span className={line.on ? "text-foreground" : "text-muted-foreground"}>
