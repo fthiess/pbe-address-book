@@ -1,6 +1,7 @@
 import { getHelpEntry } from "@pbe/help-content";
 import type { NameRecord } from "@pbe/name-search";
 import { resolveCanonicalNames } from "@pbe/shared";
+import { ChevronRight } from "lucide-react";
 import { parseAsBoolean, useQueryState } from "nuqs";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -485,19 +486,11 @@ function countLabel(shown: number, total: number): string {
 /** The disclosure chevron on the mobile "Options" fold (mirrors FilterPanel). */
 function FoldChevron({ open }: { open: boolean }) {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
+    <ChevronRight
+      size={14}
+      strokeWidth={1.6}
       aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
       className={open ? "rotate-90 transition-transform" : "transition-transform"}
-    >
-      <path d="M6 4l4 4-4 4" />
-    </svg>
+    />
   );
 }

@@ -2,6 +2,7 @@ import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } f
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { MAJORS, compareCourseCodes, courseName } from "@pbe/shared";
+import { Plus } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useId } from "react";
 import { Combobox } from "../../components/Combobox.js";
 import { cn } from "../../lib/utils.js";
@@ -93,7 +94,7 @@ export function MajorsEditor({
             placeholder="Add a course…"
             emptyMessage="No more courses to add."
             describedBy={error ? errorId : helpId}
-            adornment={<PlusIcon />}
+            adornment={<Plus size={14} strokeWidth={1.6} aria-hidden="true" />}
           />
         </div>
       </div>
@@ -197,23 +198,5 @@ function MajorChip({
         <span aria-hidden="true">×</span>
       </button>
     </li>
-  );
-}
-
-function PlusIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 14 14"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-    >
-      <line x1="7" y1="2.5" x2="7" y2="11.5" />
-      <line x1="2.5" y1="7" x2="11.5" y2="7" />
-    </svg>
   );
 }

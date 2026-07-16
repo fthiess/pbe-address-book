@@ -1,3 +1,4 @@
+import { Columns3 } from "lucide-react";
 import { useId, useRef } from "react";
 import { useDetailsAutoClose } from "../../lib/useDetailsAutoClose.js";
 import type { ColumnGroup } from "./grid-model.js";
@@ -32,7 +33,7 @@ export function ColumnPicker({ lens }: { lens: ColumnLens }) {
   return (
     <details ref={ref} className="group relative">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
-        <ColumnsIcon />
+        <Columns3 size={15} strokeWidth={1.4} aria-hidden="true" />
         Columns
       </summary>
       <div
@@ -82,23 +83,5 @@ export function ColumnPicker({ lens }: { lens: ColumnLens }) {
         </div>
       </div>
     </details>
-  );
-}
-
-function ColumnsIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 15 15"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-    >
-      <rect x="1.5" y="2" width="12" height="11" rx="1.5" />
-      <line x1="5.8" y1="2" x2="5.8" y2="13" />
-      <line x1="9.6" y1="2" x2="9.6" y2="13" />
-    </svg>
   );
 }

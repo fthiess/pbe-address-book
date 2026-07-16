@@ -1,3 +1,4 @@
+import { Star } from "lucide-react";
 import type { MouseEvent } from "react";
 
 /**
@@ -58,19 +59,16 @@ export function StarButton({
 /** A gold five-point star — solid when starred, hollow outline when not (D32). */
 function StarIcon({ filled, size = 18 }: { filled: boolean; size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
+    <Star
+      size={size}
       aria-hidden="true"
+      strokeWidth={1.6}
+      // Brand-gold fill + stroke when starred; hollow with the muted outline when
+      // not — colour is never the sole signal, the aria-pressed label carries it.
       fill={filled ? "var(--brand-gold)" : "none"}
-      stroke={filled ? "var(--brand-gold)" : "currentColor"}
-      strokeWidth="1.6"
-      strokeLinejoin="round"
+      color={filled ? "var(--brand-gold)" : undefined}
       className={filled ? undefined : "text-muted-foreground"}
-    >
-      <path d="M12 2.6l2.7 5.8 6.3.6-4.8 4.2 1.4 6.2L12 16.9 6.4 19.4l1.4-6.2L3 9l6.3-.6z" />
-    </svg>
+    />
   );
 }
 
