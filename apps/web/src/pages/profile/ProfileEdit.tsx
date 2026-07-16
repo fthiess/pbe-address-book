@@ -1,4 +1,5 @@
 import { MAX_EMAIL_LENGTH, type Profile, type ValidationIssue, canWriteField } from "@pbe/shared";
+import { TriangleAlert } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useBlocker } from "react-router-dom";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
@@ -637,7 +638,7 @@ function Subgroup({
             : "mb-2 text-[length:var(--text-label-up)] font-bold uppercase tracking-wide text-muted-foreground"
         }
       >
-        {warn && <span aria-hidden="true">⚠</span>}
+        {warn && <TriangleAlert size={13} aria-hidden="true" />}
         {title}
       </p>
       <div className="space-y-3">{children}</div>
