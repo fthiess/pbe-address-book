@@ -125,8 +125,9 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Accessibility & help
 
-- A11y: D32 → D67 (three verification layers) → **D79** (WCAG 2.2 AA, CI-gated) → **D111** (help split along the WCAG line).
+- A11y: D32 → D67 (three verification layers) → **D79** (WCAG 2.2 AA, CI-gated) → **D111** (help split along the WCAG line). Automated axe covers text contrast (1.4.3) but **not 1.4.11 non-text contrast** of custom indicators — **OFC-261** (Phase 7/7c) adds a token-pairing contrast matrix + a manual state-indicator check (N101, the consent-off-ring miss).
 - Help model: **D53** (layered, embedded, toggle-tips) → **D111**; consent-copy pattern **D113**.
+- Icons: **N101** — `lucide-react` is the app icon set (one-sweep 6a adoption); every icon a monochrome Lucide glyph inheriting `currentColor` + `aria-hidden` (no emoji/multicolour icons); `DebrotheredMark` and the Avatar silhouette kept bespoke.
 
 ## UI shell & app-wide
 
