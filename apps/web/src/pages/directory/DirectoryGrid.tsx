@@ -16,6 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import type { HighlightRange } from "@pbe/name-search";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { GripVertical } from "lucide-react";
 import {
   type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -445,7 +446,7 @@ function HeaderCell({
             {...attributes}
             {...listeners}
           >
-            <GripIcon />
+            <GripVertical size={14} aria-hidden="true" />
           </button>
         )}
         {selectAll ? (
@@ -566,19 +567,6 @@ function ResizeHandle({
       onKeyDown={onKeyDown}
       className="absolute inset-y-0 right-0 w-2 cursor-col-resize touch-none select-none outline-none after:absolute after:inset-y-1 after:right-[3px] after:w-px after:bg-border hover:after:bg-foreground/40 focus-visible:after:bg-ring focus-visible:after:w-0.5"
     />
-  );
-}
-
-function GripIcon() {
-  return (
-    <svg width="10" height="14" viewBox="0 0 10 14" aria-hidden="true" fill="currentColor">
-      <circle cx="2.5" cy="3" r="1.2" />
-      <circle cx="7.5" cy="3" r="1.2" />
-      <circle cx="2.5" cy="7" r="1.2" />
-      <circle cx="7.5" cy="7" r="1.2" />
-      <circle cx="2.5" cy="11" r="1.2" />
-      <circle cx="7.5" cy="11" r="1.2" />
-    </svg>
   );
 }
 

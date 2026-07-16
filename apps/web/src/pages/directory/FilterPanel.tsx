@@ -1,4 +1,5 @@
 import type { Role } from "@pbe/shared";
+import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { ClearButton } from "../../components/ClearButton.js";
 import {
@@ -507,19 +508,11 @@ function VerificationSelect({
 
 function Chevron({ open }: { open: boolean }) {
   return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 16 16"
+    <ChevronRight
+      size={14}
+      strokeWidth={1.6}
       aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.6"
-      strokeLinecap="round"
-      strokeLinejoin="round"
       className={open ? "rotate-90 transition-transform" : "transition-transform"}
-    >
-      <path d="M6 4l4 4-4 4" />
-    </svg>
+    />
   );
 }

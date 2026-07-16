@@ -1,4 +1,5 @@
 import type { NameRecord } from "@pbe/name-search";
+import { Search } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Combobox, type ComboboxOption } from "../../components/Combobox.js";
 import type { DirectoryProfile } from "../../lib/types.js";
@@ -183,24 +184,7 @@ function BigBrotherPicker({
       placeholder="Search by name…"
       emptyMessage="No matching brother."
       describedBy={describedBy}
-      adornment={<SearchIcon />}
+      adornment={<Search size={15} strokeWidth={1.5} aria-hidden="true" />}
     />
-  );
-}
-
-function SearchIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 15 15"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-    >
-      <circle cx="6.5" cy="6.5" r="4.5" />
-      <line x1="10" y1="10" x2="13.5" y2="13.5" strokeLinecap="round" />
-    </svg>
   );
 }

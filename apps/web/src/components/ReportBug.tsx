@@ -1,4 +1,5 @@
 import { MAX_BUG_REPORT_DESCRIPTION } from "@pbe/shared";
+import { Bug } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { fileBugReport } from "../lib/api.js";
@@ -41,11 +42,13 @@ export function ReportBug() {
         onClick={() => setOpen(true)}
         className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <BugIcon />
         {/* `sr-only` (not `hidden`) keeps the label in the accessibility tree on a
             phone, where the button is icon-only, so it always has a discernible name
-            (WCAG 4.1.2). It becomes a visible inline label from `sm` up. */}
+            (WCAG 4.1.2). It becomes a visible inline label from `sm` up. The bug glyph
+            trails the label — mirroring the neighbouring "PBE News ↗" link's trailing
+            external-link icon, so the two masthead links read consistently. */}
         <span className="sr-only sm:not-sr-only">Report a bug</span>
+        <Bug size={15} aria-hidden="true" />
       </button>
       {open && <ReportBugDialog onClose={close} />}
     </>
@@ -192,25 +195,5 @@ function ReportBugDialog({ onClose }: { onClose: () => void }) {
         </div>
       )}
     </ModalDialog>
-  );
-}
-
-function BugIcon() {
-  return (
-    <svg
-      width="15"
-      height="15"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M8 6a4 4 0 0 1 8 0M3 12h3M18 12h3M4.5 7.5l2 1.5M19.5 7.5l-2 1.5M4.5 17.5l2-1.5M19.5 17.5l-2-1.5" />
-      <rect x="8" y="6" width="8" height="12" rx="4" />
-      <path d="M12 10v6" />
-    </svg>
   );
 }

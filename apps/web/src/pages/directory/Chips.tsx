@@ -1,4 +1,5 @@
 import { courseLabel, courseName } from "@pbe/shared";
+import { EyeOff } from "lucide-react";
 
 /**
  * The Directory's small chips and status badges (visual-design `COMPONENTS.md`).
@@ -69,7 +70,7 @@ export function UnlistedBadge() {
       className="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[length:var(--text-micro)] font-bold uppercase tracking-wide"
       style={familyStyle("slate")}
     >
-      <EyeOffIcon />
+      <EyeOff size={11} strokeWidth={1.4} aria-hidden="true" />
       Unlisted
     </span>
   );
@@ -105,24 +106,5 @@ export function InMemoriamBadge() {
     >
       In Memoriam
     </span>
-  );
-}
-
-function EyeOffIcon() {
-  return (
-    <svg
-      width="11"
-      height="11"
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.4"
-      strokeLinecap="round"
-    >
-      <path d="M2 2l12 12" />
-      <path d="M6.5 6.6a2 2 0 002.8 2.8" />
-      <path d="M8 3.5c3.2 0 5.6 2.4 6.5 4.5-.4.9-1 1.8-1.9 2.5M3.4 4.4C2.3 5.2 1.4 6.3 1 7.5c.9 2.1 3.3 4.5 7 4.5.9 0 1.7-.1 2.4-.4" />
-    </svg>
   );
 }

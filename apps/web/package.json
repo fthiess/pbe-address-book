@@ -21,6 +21,7 @@
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.14.4",
     "clsx": "^2.1.1",
+    "lucide-react": "^1.24.0",
     "nuqs": "^2.8.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
