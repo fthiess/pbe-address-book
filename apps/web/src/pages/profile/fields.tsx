@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { cn } from "../../lib/utils.js";
 
@@ -40,8 +41,8 @@ export function Section({
       >
         {title}
         {locked && (
-          <span aria-hidden="true" title="Read-only">
-            🔒
+          <span aria-hidden="true" title="Read-only" className="inline-flex items-center">
+            <Lock size={13} />
           </span>
         )}
       </h2>
@@ -70,7 +71,7 @@ export function PrivateMarker({ label }: { label: string }) {
     <div>
       <p className={FIELD_LABEL_CLASS}>{label}</p>
       <p className="mt-1 flex items-center gap-1.5 rounded-lg border border-border bg-muted px-3 py-2 text-[length:var(--text-body-sm)] text-muted-foreground">
-        <span aria-hidden="true">🔒</span>
+        <Lock size={14} aria-hidden="true" />
         This field is private — visible to the owner and administrators only.
       </p>
     </div>
@@ -280,7 +281,7 @@ export function LockedField({
         id={id}
         className="flex items-center gap-2 rounded-[var(--radius-md)] border border-border bg-muted px-3 py-2.5 text-[length:var(--text-body-lg)] text-muted-foreground"
       >
-        <span aria-hidden="true">🔒</span>
+        <Lock size={16} aria-hidden="true" />
         <span>{value}</span>
         {note && <span className="text-[length:var(--text-body-sm)]">— {note}</span>}
       </div>

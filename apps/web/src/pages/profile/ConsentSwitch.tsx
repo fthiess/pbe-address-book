@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { useId } from "react";
 import { cn } from "../../lib/utils.js";
 import { HelpTip } from "./HelpTip.js";
@@ -60,9 +61,11 @@ export function ConsentSwitch({
           )}
         >
           {locked && (
-            <span aria-hidden="true" className="mr-1 text-muted-foreground">
-              🔒
-            </span>
+            <Lock
+              size={14}
+              aria-hidden="true"
+              className="mr-1 inline align-[-0.15em] text-muted-foreground"
+            />
           )}
           {inline}
           <span className="sr-only"> — {copy.label}</span>

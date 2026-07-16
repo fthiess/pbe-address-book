@@ -1,5 +1,5 @@
 import type { NameRecord } from "@pbe/name-search";
-import { Search } from "lucide-react";
+import { Lock, Search } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { Combobox, type ComboboxOption } from "../../components/Combobox.js";
 import type { DirectoryProfile } from "../../lib/types.js";
@@ -84,8 +84,12 @@ export function RelationshipsEditor({
         <div>
           <p className={`flex items-center gap-1.5 ${FIELD_LABEL_CLASS}`}>
             Little Brothers
-            <span aria-hidden="true" title="Set in each brother's own profile">
-              🔒
+            <span
+              aria-hidden="true"
+              title="Set in each brother's own profile"
+              className="inline-flex items-center"
+            >
+              <Lock size={13} />
             </span>
           </p>
           <ul className="mt-1 flex flex-wrap gap-1.5">
