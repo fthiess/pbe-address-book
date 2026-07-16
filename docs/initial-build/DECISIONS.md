@@ -1626,11 +1626,11 @@ Phase 6a, the foundation for Phase 6's `CircleHelp` toggle-tips (which need a Lu
 
 *Records to `CODING-PROJECT-PLAN §Phase 6` (6a done; 6b/6c remain); establishes the Lucide icon convention; cites D32/D74/D79/D111; files OFC-261. Log-tail order: N100 → N101.*
 
-## Phase 6b (2026-07-16, the in-context help enrichment)
+## Phase 6b-1 (2026-07-16, the in-context help enrichment) — renamed from "6b" on 2026-07-16 when Forrest chose to add more help sessions (6b-2, …) before 6c
 
 ### N102 — The `CircleHelp` toggle-tips wired across every page; the privacy/consent switch copy and the admin-card descriptions folded into the help-content registry; the interim `HelpTip` retired
 
-Phase 6b delivers the above-baseline help layer the WCAG split (D111) deferred out of Phases 3–5: the richer `?` "what is this / how do I use it" explanations, provided **only where a control isn't self-evident** (the plan's Phase 6 discipline — most controls keep just a label and, where needed, a helper line). The member-facing copy was reviewed by Forrest before wiring, via a CSV round-trip (per-control coverage list + draft copy → his edits → the registry).
+Phase 6b-1 (originally "6b") delivers the above-baseline help layer the WCAG split (D111) deferred out of Phases 3–5: the richer `?` "what is this / how do I use it" explanations, provided **only where a control isn't self-evident** (the plan's Phase 6 discipline — most controls keep just a label and, where needed, a helper line). The member-facing copy was reviewed by Forrest before wiring, via a CSV round-trip (per-control coverage list + draft copy → his edits → the registry).
 
 **The toggle-tip component.** `HelpToggleTip` (`apps/web/src/components/HelpToggleTip.tsx`) is the app's one help affordance: a click/tap-toggle Radix Popover (the 4b-1 headless landing, N36) triggered by the Lucide `CircleHelp` glyph (6a enabled it). Radix supplies keyboard operability, focus management, and Escape / outside-click dismissal; the trigger carries an accessible name (`Help: <label>`) and a 24px target (WCAG 2.2 AA 2.5.8). A toggle-tip, **not** a hover tooltip — it never depends on a pointer the 60+ audience may not hover with. `ControlHelp` (`components/ControlHelp.tsx`) is the registry-driven drop-in: it looks an entry up by id and renders the tip **iff** a `toggleTip` is authored, so a call site can wire it unconditionally. The interim native-`<details>` `HelpTip` is deleted (`useDetailsAutoClose` stays — the avatar menu and Columns picker still use it).
 
@@ -1644,9 +1644,9 @@ Phase 6b delivers the above-baseline help layer the WCAG split (D111) deferred o
 
 **Landmines.** (1) `@pbe/help-content` builds to `dist/` (`tsc -b`) — rebuild it after editing the registry or the web typecheck/tests see stale types (the gate rebuilds libs first, so CI is fine). (2) A switch entry MUST carry `whenOn`/`whenOff`; `switchCopy` throws otherwise, and a new switch that forgets them fails the `consent.test.ts` drift check. (3) The `?` trigger's accessible name is `Help: <label>` (fields) or `Help: What changes if you flip "<label>"` (switches) — e2e selects on these.
 
-*Records to `CODING-PROJECT-PLAN §Phase 6` (6b done; 6c remains) and the registry doc-comment; extends D53/D111/D113/D45; partially pre-empts OFC-254. Log-tail order: N101 → N102.*
+*Records to `CODING-PROJECT-PLAN §Phase 6` (6b-1 done; 6c remains) and the registry doc-comment; extends D53/D111/D113/D45; partially pre-empts OFC-254. Log-tail order: N101 → N102.*
 
-### N103 — 6b live-test polish: the switch `?` drops the counterfactual (keeps only static context); Email/Courses copy; Export `?` binding
+### N103 — 6b-1 live-test polish: the switch `?` drops the counterfactual (keeps only static context); Email/Courses copy; Export `?` binding
 
 Forrest's staging live-test of N102 (2026-07-16). Changes, all his calls:
 
