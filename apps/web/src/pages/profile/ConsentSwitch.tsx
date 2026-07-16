@@ -1,17 +1,21 @@
 import { Lock } from "lucide-react";
 import { useId } from "react";
-import { HelpToggleTip } from "../../components/HelpToggleTip.js";
+import { ControlHelp } from "../../components/ControlHelp.js";
 import { cn } from "../../lib/utils.js";
-import { activeConsequence, counterfactual, switchCopy } from "./consent.js";
+import { activeConsequence, switchCopy } from "./consent.js";
 
 /**
  * A privacy/consent switch (§5.7.3; COMPONENTS.md "Switch"). `role="switch"` with
- * `aria-checked`, a 42×24 track + 20px knob, the **active-side consequence inline**
- * and the **counterfactual in the `?` tip** (D113). Meaning never rides on colour
- * alone — the knob position, the on/off label weight, and the consequence *text*
- * all carry it (D32). The copy is resolved from the shared help-content registry by
- * `entryKey` (Phase 6b / D53); a switch entry may also carry a `toggleTip` with
- * richer context, shown beneath the counterfactual in the same popover.
+ * `aria-checked`, a 42×24 track + 20px knob, and the **active-side consequence
+ * inline** (D113). Meaning never rides on colour alone — the knob position, the
+ * on/off label weight, and the consequence *text* all carry it (D32). The copy is
+ * resolved from the shared help-content registry by `entryKey` (D53).
+ *
+ * A switch's `?` shows only the entry's static `toggleTip` (richer context) and so
+ * appears only where one is authored — MITAA and Listed today (Phase 6b live-test,
+ * N103): the earlier counterfactual-in-`?` was redundant with the inline consequence
+ * for the per-field switches, so it was dropped and the `?` unified onto the same
+ * `ControlHelp` the fields use.
  *
  * `locked` renders the manager's read-only view of the restricted block (§5.7.2):
  * the value is shown with a lock affordance and is non-interactive.
@@ -75,16 +79,7 @@ export function ConsentSwitch({
         </p>
       </div>
 
-      {!locked && (
-        <HelpToggleTip title={`What changes if you flip “${copy.label}”`}>
-          <p>{counterfactual(copy, value)}</p>
-          {copy.toggleTip && (
-            <p className="mt-2 border-t border-border pt-2 text-muted-foreground">
-              {copy.toggleTip}
-            </p>
-          )}
-        </HelpToggleTip>
-      )}
+      {!locked && <ControlHelp entryKey={entryKey} />}
     </div>
   );
 }

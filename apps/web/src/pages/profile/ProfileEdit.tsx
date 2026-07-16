@@ -519,8 +519,7 @@ export function ProfileEdit({
           <EditRow>
             <Section title="Privacy &amp; consent" locked={consentLocked}>
               <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
-                Each switch shows what's true now; the <strong>?</strong> says what changes if you
-                flip it.
+                Each switch shows what's true now.
               </p>
               {/* The primary per-field switches carry the same box insets (border +
                   p-3) as the boxed subgroups below — transparent here — so every

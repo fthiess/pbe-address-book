@@ -12,8 +12,9 @@ import type { HelpContent, HelpEntry } from "./types.js";
  * Toggle-tips are provided **only where a control isn't self-evident** (the plan's
  * Phase 6 discipline) — most controls carry a label and, where needed, a helper
  * line, and nothing more. Switch entries carry `whenOn`/`whenOff` (the inline
- * consequence and the `?` counterfactual, D45/D113); a switch may also carry a
- * `toggleTip` for richer context shown beneath the counterfactual.
+ * active consequence the switch states, D45/D113); a switch's `?` shows only its
+ * optional static `toggleTip` (MITAA and Listed today) — the earlier
+ * counterfactual-in-`?` was dropped as redundant with the inline consequence (N103).
  */
 export const helpContent: HelpContent = {
   // ── Directory ────────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@ export const helpContent: HelpContent = {
     key: "profile.email",
     label: "Email",
     toggleTip:
-      "This is the email address that PBE News and your Address Book login links are sent to. Clearing this field will make it impossible for you to log in, will make it hard for other brothers to contact you, and will unsubscribe you from PBE News. If you just want to unsubscribe from PBE News, turn off the “Emails from PBE News” switch on this page, below.",
+      "This is the email address that PBE News and Address Book login links are sent to. Clearing this field will make it impossible for you to log in. If you just want to unsubscribe from PBE News or hide your email address, turn off the appropriate privacy switch under “Privacy & consent”, below.",
   },
   "profile.alternateEmail": {
     key: "profile.alternateEmail",
@@ -101,7 +102,7 @@ export const helpContent: HelpContent = {
   "profile.majors": {
     key: "profile.majors",
     label: "Courses",
-    toggleTip: "These are the MIT courses in which you did substantial study work toward a degree.",
+    toggleTip: "These are the MIT courses in which you did substantial work toward a degree.",
   },
   "profile.bigBrother": {
     key: "profile.bigBrother",

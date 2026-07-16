@@ -2,16 +2,15 @@ import { getHelpEntry } from "@pbe/help-content";
 
 /**
  * The privacy & consent switch copy (§5.7.3, D45/D113). Each switch **states its
- * currently-true consequence inline** and puts the **counterfactual one tap away**
- * in the `?` toggle-tip — the transparent nudge that makes any opt-out an informed,
- * considered act (after Thaler & Sunstein). `whenOn`/`whenOff` are the two
- * consequence sentences; the component shows the one matching the live value inline
- * and the other in the `?` popover.
+ * currently-true consequence inline** — `whenOn`/`whenOff` are the two consequence
+ * sentences and the component shows the one matching the live value. (The earlier
+ * counterfactual-in-`?` was dropped as redundant with the inline consequence — N103;
+ * a switch's `?` now carries only its optional static `toggleTip`.)
  *
  * Phase 6b folded this copy out of a local module and into the shared help-content
  * registry (D53/D111), so the in-page help and the assembled USER-MANUAL share one
  * source. This module now just resolves a switch's registry entry and computes the
- * active / counterfactual sides from it.
+ * active consequence from it.
  *
  * Copy accuracy note: the off-state of a *toggle* field hides it from **other
  * brothers and managers** — only administrators (and the owner) see through an off
@@ -28,7 +27,7 @@ export interface SwitchCopy {
   whenOn: string;
   /** Consequence shown when the underlying boolean is `false`. */
   whenOff: string;
-  /** Optional richer context shown beneath the counterfactual in the `?`. */
+  /** Optional richer context shown in the `?` (the switch's only tip content, N103). */
   toggleTip?: string;
 }
 
@@ -68,12 +67,4 @@ export function activeConsequence(
   value: boolean,
 ): string {
   return value ? copy.whenOn : copy.whenOff;
-}
-
-/** The opposite-side (counterfactual) consequence — what flipping it would do. */
-export function counterfactual(
-  copy: Pick<SwitchCopy, "whenOn" | "whenOff">,
-  value: boolean,
-): string {
-  return value ? copy.whenOff : copy.whenOn;
 }
