@@ -182,7 +182,7 @@ By this phase the **AA-baseline help — persistent labels and any instructions 
 
 **Gate:** the toggle-tips render from the shared source and are screen-reader-announced on open; the manual assembly reproduces the help content faithfully; a11y checks pass on the help affordances.
 
-**Sessions (1–2):** 6a — wiring the enriched toggle-tips across every page from the help-content module; if the manual's assembly step and the completion of its narrative sections don't fit in the same session, they become 6b.
+**Sessions (3, resplit at the 2026-07-16 planning discussion — Forrest's call):** **6a — DONE (2026-07-16; DECISIONS N101):** the `lucide-react` icon-set adoption in one sweep (a dependency PR of its own, and the prerequisite for the `CircleHelp` toggle-tip glyph), plus two live-test polish fixes folded in (the last emoji-as-icons → Lucide `Lock`/`TriangleAlert`; the consent-off-ring light-mode contrast). **6b — the help enrichment:** the Radix-Popover `CircleHelp` toggle-tip component, folding the interim `consent.ts` copy + Profile helper texts into the help-content registry (authoring the `toggleTip` bodies), and wiring the tips across every page where a control isn't self-evident. **6c — the manual + About:** the `USER-MANUAL` §10 assembly step from the registry (D53), the narrative completion (with screenshots — Forrest's call), and the About page (OFC-244). *(This resplit supersedes the original "6a = toggle-tip wiring" cut; the Lucide sweep was pulled forward as 6a because a new dependency travels in its own PR and everything downstream reuses its glyphs.)*
 
 ### Phase 7 — Hardening and operations
 
