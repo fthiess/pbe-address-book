@@ -1,3 +1,4 @@
+import { getHelpEntry } from "@pbe/help-content";
 import { useState } from "react";
 import { ApiError, fetchGhostAudit } from "../../lib/api.js";
 import { saveBlob } from "../../lib/utils.js";
@@ -12,6 +13,7 @@ import { formatAuditReportMarkdown } from "./ghostAuditFormat.js";
  * so, so an admin knows it changes nothing and each difference is resolved by hand.
  */
 export function GhostAuditCard() {
+  const help = getHelpEntry("admin.ghostAudit");
   const [status, setStatus] = useState<"idle" | "working" | "done" | "error" | "unconfigured">(
     "idle",
   );
@@ -38,8 +40,8 @@ export function GhostAuditCard() {
   return (
     <AdminCard
       icon={<SyncIcon />}
-      title="Book / Ghost alignment audit"
-      description="Compares Book against the PBE News membership on Ghost and downloads a report of any differences. It only reports — it never changes Book — so resolve each difference by hand."
+      title={help?.label ?? "Book / Ghost alignment audit"}
+      description={help?.helperText}
       action={
         <button
           type="button"

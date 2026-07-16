@@ -304,4 +304,42 @@ test.describe("profile — edit mode", () => {
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
   });
+
+  // ── Phase 6b: the CircleHelp ? toggle-tips ────────────────────────────────
+  test("a field's ? toggle-tip opens with its help text and closes on Escape", async ({ page }) => {
+    await mockProfile(page, { meDoc: me("brother", 5247), record: ownerRecord() });
+    await gotoEdit(page);
+
+    const trigger = page.getByRole("button", { name: "Help: Full name" });
+    await trigger.click();
+    const tip = page.getByText(/as it should appear in a formal listing/);
+    await expect(tip).toBeVisible();
+    // A toggle-tip, not a hover tooltip: Escape (Radix) dismisses and unmounts it.
+    await page.keyboard.press("Escape");
+    await expect(tip).toHaveCount(0);
+  });
+
+  test("a consent switch's ? shows the counterfactual plus its richer context", async ({
+    page,
+  }) => {
+    await mockProfile(page, { meDoc: me("brother", 5247), record: ownerRecord() });
+    await gotoEdit(page);
+
+    // MITAA is off in the fixture, so the inline text is the "off" consequence and
+    // the ? carries the "on" counterfactual — plus the authored richer context.
+    await page.getByRole("button", { name: /Help: What changes.*MIT Alumni Association/ }).click();
+    await expect(page.getByText("May be shared with the MIT Alumni Association.")).toBeVisible();
+    await expect(
+      page.getByText(/help maintain their alum\.mit\.edu alumni directory/),
+    ).toBeVisible();
+  });
+
+  test("the edit form with a ? tip open has no accessibility violations", async ({ page }) => {
+    await mockProfile(page, { meDoc: me("brother", 5247), record: ownerRecord() });
+    await gotoEdit(page);
+    await page.getByRole("button", { name: "Help: Full name" }).click();
+    await expect(page.getByText(/as it should appear in a formal listing/)).toBeVisible();
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+  });
 });

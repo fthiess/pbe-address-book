@@ -2,6 +2,7 @@ import type { Role } from "@pbe/shared";
 import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { ClearButton } from "../../components/ClearButton.js";
+import { ControlHelp } from "../../components/ControlHelp.js";
 import {
   type BoolFilter,
   type DirectoryFilters,
@@ -157,6 +158,7 @@ export function FilterPanel({
                   label="Not verified since"
                   value={filters.verifiedBefore}
                   onChange={(v) => setFilter("verifiedBefore", v)}
+                  helpKey="directory.filter.verifiedBefore"
                 />
               </div>
             </div>
@@ -183,11 +185,14 @@ function Field({
   label,
   htmlFor,
   onClear,
+  helpKey,
   children,
 }: {
   label: string;
   htmlFor?: string;
   onClear?: () => void;
+  /** Registry id for an optional `?` toggle-tip beside the label (Phase 6b). */
+  helpKey?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -195,9 +200,12 @@ function Field({
       {/* min-h reserves the clear button's height so the row never shifts when
           the "×" appears or disappears. */}
       <div className="flex min-h-6 items-center justify-between">
-        <label htmlFor={htmlFor} className="text-xs font-medium">
-          {label}
-        </label>
+        <div className="flex items-center gap-1.5">
+          <label htmlFor={htmlFor} className="text-xs font-medium">
+            {label}
+          </label>
+          {helpKey && <ControlHelp entryKey={helpKey} />}
+        </div>
         {onClear && <ClearButton label={label} onClick={onClear} />}
       </div>
       {children}
@@ -279,14 +287,21 @@ function DateFilter({
   label,
   value,
   onChange,
+  helpKey,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
+  helpKey?: string;
 }) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id} onClear={value ? () => onChange("") : undefined}>
+    <Field
+      label={label}
+      htmlFor={id}
+      helpKey={helpKey}
+      onClear={value ? () => onChange("") : undefined}
+    >
       <input
         id={id}
         type="date"
@@ -416,7 +431,12 @@ function StaffSelect({
 }) {
   const id = useId();
   return (
-    <Field label="Staff" htmlFor={id} onClear={value ? () => onChange("") : undefined}>
+    <Field
+      label="Staff"
+      htmlFor={id}
+      helpKey="directory.filter.staff"
+      onClear={value ? () => onChange("") : undefined}
+    >
       <select
         id={id}
         value={value}
@@ -491,7 +511,12 @@ function VerificationSelect({
 }) {
   const id = useId();
   return (
-    <Field label="Verification" htmlFor={id} onClear={value ? () => onChange("") : undefined}>
+    <Field
+      label="Verification"
+      htmlFor={id}
+      helpKey="directory.filter.verification"
+      onClear={value ? () => onChange("") : undefined}
+    >
       <select
         id={id}
         value={value}

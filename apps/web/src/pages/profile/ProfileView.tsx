@@ -10,7 +10,7 @@ import { BOX, Thumbnail } from "../directory/thumbnail.js";
 import { DirectoryNav } from "./DirectoryNav.js";
 import { type ProfileActions, StaffControls, VerifyControl } from "./ProfileControls.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
-import { CONSENT_COPY, PRIVACY_COPY, activeConsequence } from "./consent.js";
+import { SWITCH_KEYS, activeConsequence, switchCopy } from "./consent.js";
 import type { DirectoryNav as DirectoryNavModel, StepDirection } from "./directory-nav.js";
 import {
   addressLines,
@@ -439,33 +439,39 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
   if (record.privacy) {
     lines.push({
       on: record.privacy.shareEmail,
-      text: activeConsequence(PRIVACY_COPY.shareEmail, record.privacy.shareEmail),
+      text: activeConsequence(switchCopy(SWITCH_KEYS.shareEmail), record.privacy.shareEmail),
     });
     lines.push({
       on: record.privacy.sharePhone,
-      text: activeConsequence(PRIVACY_COPY.sharePhone, record.privacy.sharePhone),
+      text: activeConsequence(switchCopy(SWITCH_KEYS.sharePhone), record.privacy.sharePhone),
     });
     lines.push({
       on: record.privacy.shareAddress,
-      text: activeConsequence(PRIVACY_COPY.shareAddress, record.privacy.shareAddress),
+      text: activeConsequence(switchCopy(SWITCH_KEYS.shareAddress), record.privacy.shareAddress),
     });
   }
   if (record.allowNewsletterEmail !== undefined) {
     lines.push({
       on: record.allowNewsletterEmail,
-      text: activeConsequence(CONSENT_COPY.allowNewsletterEmail, record.allowNewsletterEmail),
+      text: activeConsequence(
+        switchCopy(SWITCH_KEYS.allowNewsletterEmail),
+        record.allowNewsletterEmail,
+      ),
     });
   }
   if (record.allowShareWithMITAA !== undefined) {
     lines.push({
       on: record.allowShareWithMITAA,
-      text: activeConsequence(CONSENT_COPY.allowShareWithMITAA, record.allowShareWithMITAA),
+      text: activeConsequence(
+        switchCopy(SWITCH_KEYS.allowShareWithMITAA),
+        record.allowShareWithMITAA,
+      ),
     });
   }
   if (record.unlisted) {
     // Shown in the positive "Listed" framing (N35); an unlisted record is the
     // off-state — a hollow marker with the "you don't appear" consequence.
-    lines.push({ on: false, text: activeConsequence(CONSENT_COPY.listed, false) });
+    lines.push({ on: false, text: activeConsequence(switchCopy(SWITCH_KEYS.listed), false) });
   }
 
   return (

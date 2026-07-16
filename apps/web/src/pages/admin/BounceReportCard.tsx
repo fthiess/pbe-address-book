@@ -1,3 +1,4 @@
+import { getHelpEntry } from "@pbe/help-content";
 import { useState } from "react";
 import { ApiError, fetchBounceReport } from "../../lib/api.js";
 import { saveBlob } from "../../lib/utils.js";
@@ -11,6 +12,7 @@ import { formatBounceReportCsv } from "./bounceReportFormat.js";
  * in the UI (D120: no per-user banner, no directory/profile indicator, no panel).
  */
 export function BounceReportCard() {
+  const help = getHelpEntry("admin.bounceReport");
   const [status, setStatus] = useState<"idle" | "working" | "done" | "error" | "unconfigured">(
     "idle",
   );
@@ -46,8 +48,8 @@ export function BounceReportCard() {
   return (
     <AdminCard
       icon={<MailWarningIcon />}
-      title="Email bounce report"
-      description="Downloads a spreadsheet (CSV) of brothers whose PBE News emails have bounced, so their addresses can be checked and updated."
+      title={help?.label ?? "Email bounce report"}
+      description={help?.helperText}
       action={
         <button
           type="button"

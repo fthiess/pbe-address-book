@@ -1,5 +1,6 @@
 import { type Role, profilesToCsv } from "@pbe/shared";
 import { Link } from "react-router-dom";
+import { ControlHelp } from "../../components/ControlHelp.js";
 import { notifyExport } from "../../lib/api.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { saveBlob } from "../../lib/utils.js";
@@ -64,6 +65,7 @@ export function ActionBar({
       >
         Export CSV{hasSelection ? ` (${selectedCount} selected)` : ""}
       </button>
+      <ControlHelp entryKey="directory.export" />
 
       {hasSelection && (
         <button

@@ -1,3 +1,4 @@
+import { getHelpEntry } from "@pbe/help-content";
 import type { AdminBugReport } from "@pbe/shared";
 import { useEffect, useMemo, useState } from "react";
 import { deleteBugReport, fetchBugReports, markBugReportsReviewed } from "../../lib/api.js";
@@ -22,6 +23,7 @@ const FILTERS: { key: Filter; label: string }[] = [
  * visit and quiet on the next.
  */
 export function BugReportsCard() {
+  const help = getHelpEntry("admin.bugReports");
   const [reports, setReports] = useState<AdminBugReport[]>([]);
   const [load, setLoad] = useState<LoadState>("loading");
   const [filter, setFilter] = useState<Filter>("new");
@@ -92,9 +94,9 @@ export function BugReportsCard() {
   return (
     <AdminCard
       icon={<BugIcon />}
-      title="Bug reports"
+      title={help?.label ?? "Bug reports"}
       badge={counts.new > 0 ? <NewCountBadge count={counts.new} /> : undefined}
-      description="Reports members file with the “Report a bug” control appear here. Copy any worth keeping into your bug tracker, then delete them — Book only holds them so you can read them."
+      description={help?.helperText}
     >
       {load === "loading" && (
         <output className="mt-4 block text-[length:var(--text-body-sm)] text-muted-foreground">

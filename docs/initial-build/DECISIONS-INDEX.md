@@ -41,7 +41,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Privacy & consent
 
-- Consent toggles & copy: D45 → **D89** (MITAA opt-in) → **D93** (third-party data defaults off) → **D113** (consequence-copy model) → **N68**.
+- Consent toggles & copy: D45 → **D89** (MITAA opt-in) → **D93** (third-party data defaults off) → **D113** (consequence-copy model) → **N68** → **N102** (switch copy — label/whenOn/whenOff — folded off `consent.ts` into the help-content registry, Option A; `ConsentSwitch` takes an `entryKey`; MITAA/Listed gain a richer `toggleTip` beneath the counterfactual — current).
 - Posture: **D77** (no CCPA machinery) + **D116** (persistent footer privacy notice).
 - PII egress: **D95** (`no-store` PII endpoints; sign-out control), **D88** (Mixpanel identity drops name), **D80** (mark-deceased consent snapshot; narrowed by N68; Ghost member now deleted/re-created rather than left subscribed-off — **D134**).
 
@@ -126,7 +126,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Accessibility & help
 
 - A11y: D32 → D67 (three verification layers) → **D79** (WCAG 2.2 AA, CI-gated) → **D111** (help split along the WCAG line). Automated axe covers text contrast (1.4.3) but **not 1.4.11 non-text contrast** of custom indicators — **OFC-261** (Phase 7/7c) adds a token-pairing contrast matrix + a manual state-indicator check (N101, the consent-off-ring miss).
-- Help model: **D53** (layered, embedded, toggle-tips) → **D111**; consent-copy pattern **D113**.
+- Help model: **D53** (layered, embedded, toggle-tips) → **D111** → **N102** (the `CircleHelp` toggle-tips wired across every page via `HelpToggleTip`/`ControlHelp` — Radix Popover, D111's above-baseline layer; registry is the single source read by the UI and the 6c manual; interim `<details>` `HelpTip` retired — current); consent-copy pattern **D113**.
 - Icons: **N101** — `lucide-react` is the app icon set (one-sweep 6a adoption); every icon a monochrome Lucide glyph inheriting `currentColor` + `aria-hidden` (no emoji/multicolour icons); `DebrotheredMark` and the Avatar silhouette kept bespoke.
 
 ## UI shell & app-wide
