@@ -168,9 +168,10 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
   major: {
     key: "major",
     // MIT "majors" are called **courses** — the column is headed "Course"
-    // (the underlying field stays `majors`). The cell renders the primary
-    // course as a colour-coded chip (see CourseChip); this string is the
-    // sort/export value.
+    // (the underlying field stays `majors`). The visible cell renders ALL of a
+    // brother's courses as chips (DirectoryGrid/DirectoryCards, D136/OFC-269);
+    // this string is only the primary course, used as the sort/export value
+    // (sort stays keyed on the primary — D33).
     label: "Course",
     group: "default",
     width: 120,

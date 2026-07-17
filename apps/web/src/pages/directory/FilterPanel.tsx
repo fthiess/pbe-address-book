@@ -1,8 +1,9 @@
-import type { Role } from "@pbe/shared";
+import { type Role, courseName } from "@pbe/shared";
 import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { ClearButton } from "../../components/ClearButton.js";
 import { ControlHelp } from "../../components/ControlHelp.js";
+import { CourseChip } from "./Chips.js";
 import {
   type BoolFilter,
   type DirectoryFilters,
@@ -102,6 +103,20 @@ export function FilterPanel({
               options={options.major}
               selected={filters.major}
               onChange={(v) => setFilter("major", v, "push")}
+              // OFC-265: render each option as the same course chip used across
+              // Book, followed by the course name — visual consistency with the
+              // grid/cards/profile. The chip's aria-label already carries
+              // "Course <code>, <name>", so the visible name is aria-hidden to
+              // avoid a doubled screen-reader announcement.
+              renderOption={(option) => {
+                const name = courseName(option.value);
+                return (
+                  <>
+                    <CourseChip code={option.value} />
+                    {name && <span aria-hidden="true">{name}</span>}
+                  </>
+                );
+              }}
             />
             <MultiSelectFilter
               label="Country"
@@ -141,7 +156,7 @@ export function FilterPanel({
                   onChange={(v) => setFilter("phone", v, "push")}
                 />
                 <BoolSelect
-                  label="Newsletter"
+                  label="Subscribed to PBE News"
                   value={filters.allowNewsletterEmail}
                   onChange={(v) => setFilter("allowNewsletterEmail", v, "push")}
                 />
@@ -361,11 +376,14 @@ function MultiSelectFilter({
   options,
   selected,
   onChange,
+  renderOption,
 }: {
   label: string;
   options: FilterOption[];
   selected: string[];
   onChange: (value: string[]) => void;
+  /** Optional custom row content; defaults to the option's text label. */
+  renderOption?: (option: FilterOption) => React.ReactNode;
 }) {
   const selectedSet = new Set(selected);
   const toggle = (value: string) => {
@@ -406,7 +424,7 @@ function MultiSelectFilter({
                   onChange={() => toggle(option.value)}
                   className="size-4 rounded border-input accent-[var(--brand-gold)]"
                 />
-                {option.label}
+                {renderOption ? renderOption(option) : option.label}
               </label>
             ))
           )}
@@ -444,7 +462,7 @@ function StaffSelect({
         className={inputClass}
       >
         <option value="">Any</option>
-        <option value="staffOnly">Managers and Administrators</option>
+        <option value="staffOnly">PBE Address Book Managers and Administrators</option>
       </select>
     </Field>
   );
