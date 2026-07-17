@@ -60,6 +60,26 @@ export function CourseChip({ code }: { code: string }) {
 }
 
 /**
+ * A brother's full course list rendered as chips on a single line, in their
+ * chosen order (primary first). Chips keep their full size (`shrink-0`); the
+ * caller's cell clips the overflow at its edge — no wrapping and no row-height
+ * change, exactly like a too-narrow text column (OFC-269, amends D33's
+ * primary-course-only Directory display). Renders nothing when the list is empty
+ * (the caller shows its own em-dash placeholder).
+ */
+export function CourseChips({ codes }: { codes: readonly string[] }) {
+  return (
+    <span className="flex items-center gap-1">
+      {codes.map((code) => (
+        <span key={code} className="shrink-0">
+          <CourseChip code={code} />
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
  * The manager/administrator **UNLISTED** badge (D124): a solid slate pill with an
  * eye-off glyph, marking a record the owner has hidden from peers. Present-but-
  * private — distinct from the de-brothered strike-through.

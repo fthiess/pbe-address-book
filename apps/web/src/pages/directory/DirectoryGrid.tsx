@@ -33,7 +33,7 @@ import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import type { DirectoryNavState } from "../profile/directory-nav.js";
 import { entryNavState, newStashId, putDirectoryStash } from "../profile/directory-stash.js";
-import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
+import { CourseChips, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { Selection } from "./SelectionContext.js";
 import type { ColumnKey, GridColumn } from "./grid-model.js";
@@ -277,12 +277,21 @@ export function DirectoryGrid({
           aria-rowcount={rows.length + 1}
           aria-colcount={columns.length}
           className="border-separate border-spacing-0 text-sm"
-          style={{ tableLayout: "fixed", width: totalWidth }}
+          // width:100% lets the table fill a container wider than its columns so the
+          // header fill (the trailing spacer column below, OFC-262) can reach the
+          // right edge; min-width keeps the real column widths and the horizontal
+          // scroll when the columns overflow — the spacer then collapses to zero.
+          style={{ tableLayout: "fixed", width: "100%", minWidth: totalWidth }}
         >
           <colgroup>
             {columns.map((column) => (
               <col key={column.key} style={{ width: effWidth(column.key) }} />
             ))}
+            {/* OFC-262: the spacer column absorbs any width beyond the last real
+                column (auto width under table-layout:fixed), giving the header
+                its fill; it has no body cells, so the body's empty strip keeps
+                the general grid background. */}
+            <col />
           </colgroup>
           <thead>
             <tr aria-rowindex={1}>
@@ -309,6 +318,15 @@ export function DirectoryGrid({
                   />
                 ))}
               </SortableContext>
+              {/* OFC-262: presentational filler that carries the header background
+                  (matching HeaderCell's height/border/fill) across the empty space
+                  to the right of the last column; stays sticky on vertical scroll.
+                  aria-hidden so it never joins the table's column semantics. */}
+              <th
+                aria-hidden="true"
+                className="h-11 border-b border-border bg-secondary"
+                style={{ position: "sticky", top: 0, zIndex: 20 }}
+              />
             </tr>
           </thead>
           <tbody>
@@ -795,10 +813,14 @@ function Cell({
   }
 
   if (column.key === "major") {
-    const code = profile.majors?.[0];
+    const codes = profile.majors ?? [];
     return (
       <td aria-colindex={colIndex} className={common}>
-        {code ? <CourseChip code={code} /> : <span className="text-muted-foreground">—</span>}
+        {codes.length > 0 ? (
+          <CourseChips codes={codes} />
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
       </td>
     );
   }
