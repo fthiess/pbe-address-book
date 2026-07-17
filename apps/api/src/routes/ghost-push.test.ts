@@ -113,6 +113,25 @@ describe("pushGhostUpdate (the Ghost-first gate, N65)", () => {
     }).catch((e) => e);
     expect(err).toBeInstanceOf(GhostStepError);
   });
+
+  it("propagates a duplicate-email collision unchanged, not wrapped as GhostStepError (OFC-276)", async () => {
+    // An email-change collision must reach the route as GhostDuplicateEmailError (→ 422
+    // on `email`, Option B), distinct from a transient outage's 502 ghost_update_failed.
+    const ghost: GhostLifecycle = {
+      async deleteMember() {},
+      async createMember() {
+        return { ghostMemberId: "x" };
+      },
+      async updateMember() {
+        throw new GhostDuplicateEmailError("dup@example.test");
+      },
+    };
+    const err = await pushGhostUpdate(ghost, makeProfile({ id: 5001, ghostMemberId: "gm-1" }), {
+      email: "dup@example.test",
+    }).catch((e) => e);
+    expect(err).toBeInstanceOf(GhostDuplicateEmailError);
+    expect(err).not.toBeInstanceOf(GhostStepError);
+  });
 });
 
 describe("runEmailGhostLifecycle (the email↔Ghost lifecycle, D133/OFC-232)", () => {
@@ -206,6 +225,27 @@ describe("runEmailGhostLifecycle (the email↔Ghost lifecycle, D133/OFC-232)", (
     };
     const stored = makeProfile({ id: 5001, email: undefined });
     const next = makeProfile({ id: 5001, email: "dup@example.test" });
+    await expect(
+      runEmailGhostLifecycle(ghost, stored, next, changed("email")),
+    ).rejects.toBeInstanceOf(GhostDuplicateEmailError);
+  });
+
+  it("propagates a duplicate-email collision on an email CHANGE (update branch → 422, OFC-276)", async () => {
+    // A brother who HAS a member changes his email to one another member already holds:
+    // this rides the UPDATE branch (a single PUT carrying the new email), not create.
+    // The collision must surface as GhostDuplicateEmailError (→ 422 on `email`), the
+    // same as the create path — not a generic 502 ghost_update_failed.
+    const ghost: GhostLifecycle = {
+      async deleteMember() {},
+      async createMember(): Promise<GhostCreateResult> {
+        return { ghostMemberId: "x" };
+      },
+      async updateMember() {
+        throw new GhostDuplicateEmailError("dup@example.test");
+      },
+    };
+    const stored = makeProfile({ id: 5001, email: "old@example.test", ghostMemberId: "gm-1" });
+    const next = makeProfile({ id: 5001, email: "dup@example.test", ghostMemberId: "gm-1" });
     await expect(
       runEmailGhostLifecycle(ghost, stored, next, changed("email")),
     ).rejects.toBeInstanceOf(GhostDuplicateEmailError);

@@ -154,8 +154,11 @@ describe("GhostAdminLifecycle", () => {
     expect(call.url).toBe(`${API_URL}/members/m9/`);
   });
 
-  it("throws on a non-2xx Ghost response (so the caller aborts clean)", async () => {
-    const { impl } = fakeFetch({ status: 422, body: { errors: [{ message: "bad email" }] } });
+  it("throws the raw GhostHttpError on a non-email 422 update (generic abort, not a collision)", async () => {
+    // A 422 on an update that carries no email is not a duplicate-email condition —
+    // it must propagate as the raw transport error (→ 502 ghost_update_failed), never
+    // be mislabelled a collision. Only an email-carrying 422 maps to a duplicate (below).
+    const { impl } = fakeFetch({ status: 422, body: { errors: [{ message: "bad name" }] } });
     const client = new GhostAdminLifecycle({
       apiUrl: API_URL,
       adminApiKey: KEY,
@@ -163,8 +166,40 @@ describe("GhostAdminLifecycle", () => {
       fetchImpl: impl,
     });
     await expect(
-      client.updateMember(makeProfile({ id: 5001, ghostMemberId: "m1" }), { email: "bad" }),
+      client.updateMember(makeProfile({ id: 5001, ghostMemberId: "m1" }), { name: "X '84" }),
     ).rejects.toThrow(/422/);
+  });
+
+  it("maps a 422 on an email-carrying update to GhostDuplicateEmailError (OFC-276)", async () => {
+    // Setting a member's email to one another member already holds is rejected by
+    // Ghost's PUT with the same 422 ValidationError create gets ("Member already
+    // exists…", property `email`) — verified against ghost-staging 2026-07-17. Surface
+    // it as the typed collision so an email *change* that collides 422s on `email`
+    // (Option B), symmetric with createMember, rather than a generic 502.
+    const { impl } = fakeFetch({
+      status: 422,
+      body: {
+        errors: [
+          {
+            type: "ValidationError",
+            message: "Validation error, cannot edit member.",
+            context: "Member already exists. Attempting to edit member with existing email address",
+            property: "email",
+          },
+        ],
+      },
+    });
+    const client = new GhostAdminLifecycle({
+      apiUrl: API_URL,
+      adminApiKey: KEY,
+      newsletterId: "nl-1",
+      fetchImpl: impl,
+    });
+    const error = await client
+      .updateMember(makeProfile({ id: 5001, ghostMemberId: "m1" }), { email: "dup@example.test" })
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(GhostDuplicateEmailError);
+    expect((error as GhostDuplicateEmailError).email).toBe("dup@example.test");
   });
 
   it("rejects a malformed admin key", () => {
