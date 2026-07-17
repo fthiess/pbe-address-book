@@ -1,5 +1,6 @@
 import { courseLabel, courseName } from "@pbe/shared";
 import { EyeOff } from "lucide-react";
+import { cn } from "../../lib/utils.js";
 
 /**
  * The Directory's small chips and status badges (visual-design `COMPONENTS.md`).
@@ -49,7 +50,9 @@ export function CourseChip({ code }: { code: string }) {
   const name = courseName(code);
   return (
     <span
-      className="inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums"
+      // shrink-0 + whitespace-nowrap: a chip keeps its full size and its code
+      // never wraps, even in a tight flex row beside a long course name (OFC-265).
+      className="inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-semibold tabular-nums"
       style={familyStyle(courseFamily(code))}
       title={courseLabel(code)}
       aria-label={name ? `Course ${code}, ${name}` : `Course ${code}`}
@@ -74,10 +77,36 @@ export function CourseChips({ codes }: { codes: readonly string[] }) {
   return (
     <span className="flex items-center gap-1">
       {codes.map((code) => (
-        <span key={code} className="shrink-0">
-          <CourseChip code={code} />
-        </span>
+        <CourseChip key={code} code={code} />
       ))}
+    </span>
+  );
+}
+
+/**
+ * A course chip beside its full name, laid out so a *column* of these aligns
+ * every name to the same x regardless of chip width: the chip sits in a fixed-
+ * width slot, and a long name wraps beneath itself while the chip stays put at
+ * the top (`items-start`). The chip's aria-label already carries
+ * "Course <code>, <name>", so the visible name is `aria-hidden` to avoid a
+ * doubled screen-reader announcement. Shared by the Directory Course filter and
+ * the Profile course picker so the two read identically (OFC-265, N108).
+ */
+export function CourseChipName({ code, muted }: { code: string; muted?: boolean }) {
+  const name = courseName(code);
+  return (
+    <span className="flex min-w-0 items-start gap-2">
+      {/* Chip slot sized to the widest course code so every name starts at the
+          same x. min-width (not a fixed width) so a hypothetically wider code
+          grows the slot rather than overflowing it into the name. */}
+      <span className="flex min-w-11 shrink-0">
+        <CourseChip code={code} />
+      </span>
+      {name ? (
+        <span className={cn("min-w-0", muted && "text-muted-foreground")} aria-hidden="true">
+          {name}
+        </span>
+      ) : null}
     </span>
   );
 }

@@ -120,6 +120,9 @@ test.describe("profile 4b-1 — majors chip editor", () => {
 
     // Add Mathematics (Course 18) via the typeahead.
     await page.getByRole("combobox", { name: "Add a course" }).fill("Math");
+    // The picker option shows the shared course chip (OFC-265/N108), matching the
+    // Directory filter — the chip carries the "code — name" title.
+    await expect(page.getByTitle("18 — Mathematics")).toBeVisible();
     await page.getByRole("option", { name: /Course 18/ }).click();
     await expect(page.getByRole("button", { name: /Remove Course 18/ })).toBeVisible();
 
