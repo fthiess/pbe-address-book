@@ -1660,6 +1660,22 @@ Forrest's staging live-test of N102 (2026-07-16). Changes, all his calls:
 
 *Records to the registry doc-comment; amends D113 (counterfactual dropped from the `?`) and N102; leaves D48's staleness horizon authoritative for verification. Log-tail order: N102 → N103.*
 
+### N104 — The column-lens "foreign shared link" test compares `cols` to the saved value, not mere URL presence (fixes OFC-263; refines D30/D31)
+
+**Bug (OFC-263, High).** After using "View as" impersonation, "Reset to default columns" stopped working: an admin who customised columns, impersonated a brother, then stopped, found Reset had no effect — and further column edits misbehaved for the rest of the session.
+
+**Root cause.** The column lens (D30/D31, N15) persists to localStorage *and* mirrors to the URL (`?cols=`), and it withholds edits from localStorage when the view arrived via a *foreign* shared link, so opening someone else's link and tweaking a column can't clobber your saved setup (OFC-101). But `useColumnLens` decided "foreign shared link" purely by **whether the URL carried `cols` at mount** (`fromSharedLink = cols != null`). "View as" start/stop does a **hard reload** (N31 — so the directory re-downloads at the new projection), and a hard reload preserves the user's *own* URL, including the `?cols=` that `apply()` had reflected there. So after the reload the user's own view was misread as a foreign link, `fromSharedLink` latched true, and from then on edits and Reset only rewrote the URL while localStorage kept the stale custom lens — `reset()`'s `setCols(null)` then fell back to that stale saved value, so Reset appeared to do nothing.
+
+**Decision (Forrest's call, Option A — "the more elegant approach").** Decide "foreign" by **comparing the incoming `cols` against the persisted localStorage value**, not by URL presence: `fromSharedLink = cols != null && cols !== loadSavedRaw()`. `apply()` writes the URL and localStorage from the *same* serialisation, in lock-step, so the user's own view always satisfies `cols === saved` after any reload — including the impersonation reload — while a genuine shared link (a lens the recipient never saved) differs and stays transient. This encodes the actual OFC-101 invariant ("a lens I never saved must not clobber my default") directly, rather than the URL-presence proxy that the reload defeated. The comparison is on the **raw serialised strings**, before role-parsing, so a saved staff-only column (filtered out of a brother's *displayed* lens) can't make the own view look foreign. Bonus: it also fixes the latent sibling case where bookmarking your own reflected view read as foreign.
+
+Rejected — a reload-detection approach (`PerformanceNavigationTiming` + a sessionStorage breadcrumb): a proxy signal with more moving parts that still left the bookmark case broken. Rejected — "don't persist edits while impersonating": it diverges the URL from localStorage and so re-breaks the own-vs-foreign test after impersonation (would need extra URL-clearing machinery) — worse than the disease.
+
+**Known residual (deferred, OFC-274, Low).** Because own-view edits now persist again, editing columns *while impersonating* a lower role persists that role's filtered lens, silently dropping any saved staff-only columns from the default. Narrow trigger (deliberate column edit while in View-as with a staff-only column saved); a correct guard needs its own design pass (see OFC-274), so it's out of scope here to keep the fix to one root cause.
+
+Guarded by `e2e/columns-impersonate-6b-2.spec.ts`: the 8-step repro (customise → View as → stop → Reset restores the default) and an OFC-101 regression guard (a foreign `?cols=` link's edits never touch the recipient's saved default). Change is `apps/web/src/pages/directory/useColumnLens.ts` only.
+
+*Refines D30/D31 (the URL/localStorage lens model); does not change the persisted format or the URL grammar. Log-tail order: N103 → N104.*
+
 ### D135 — Clearing a set email is gated behind a client-side confirmation; the sole-usable-admin case stays a server hard-block (OFC-272)
 
 Removing a brother's email address silently locks them out of both the Address Book and PBE News — the Ghost bridge resolves sign-in by email (`hasUsableEmail`; C15/D20/D115), so an email-less brother can never authenticate. It is the second-most-destructive profile edit after outright deletion, yet the edit form saved it with no more friction than fixing a typo. **Forrest's call: gate it.** A Save that removes a previously-usable email now raises an "are you sure — this locks *name* out" confirmation — the same accessible `ConfirmDialog` (destructive tone) the Delete-brother / De-brother controls use, different copy — on all three edit paths (self, manager, admin).
@@ -1667,11 +1683,11 @@ Removing a brother's email address silently locks them out of both the Address B
 **Two design forks, both Forrest's call:**
 
 - **No new server-side guard for the general case.** The confirmation is a UX affordance, not an invariant: a brother *may* legitimately remove their email (Book deliberately tolerates email-less brothers, ~1/3 of the roster — C15/D115). The only genuine server invariant is the last-admin one, which already exists (D129/D130), so the general email-clear stays a soft, confirmable client warning with no matching hard block.
-- **The confirmation composes *in front of* the existing sole-usable-admin hard block.** `profiles.ts` already refuses (`409 last_admin`) a PATCH that would strip the sole usable admin's email (D130). The client cannot know "sole usable admin" ahead of a save (it is server-resident cache state — D128/D83), so the warning fires for that admin too; on confirm the server's 409 is the backstop — now surfaced with a specific message instead of the generic banner (N104). Warning for everyone, hard block preserved for the last admin.
+- **The confirmation composes *in front of* the existing sole-usable-admin hard block.** `profiles.ts` already refuses (`409 last_admin`) a PATCH that would strip the sole usable admin's email (D130). The client cannot know "sole usable admin" ahead of a save (it is server-resident cache state — D128/D83), so the warning fires for that admin too; on confirm the server's 409 is the backstop — now surfaced with a specific message instead of the generic banner (N105). Warning for everyone, hard block preserved for the last admin.
 
-*Continues the write-side chain D106 → D128 → D129 → D130 → N86; implemented in N104. Log-tail order: N103 → D135 → N104.*
+*Continues the write-side chain D106 → D128 → D129 → D130 → N86; implemented in N105. Log-tail order: N104 → D135 → N105.*
 
-### N104 — 6b-3 implementation: the email-clear guard predicate, and the PATCH `409 last_admin` finally mapped on the client (closes N86's gap on this path)
+### N105 — 6b-3 implementation: the email-clear guard predicate, and the PATCH `409 last_admin` finally mapped on the client (closes N86's gap on this path)
 
 Implements D135 (OFC-272).
 
@@ -1681,4 +1697,4 @@ Implements D135 (OFC-272).
 
 **Tests.** `patch.test.ts` covers the predicate (clear / whitespace / change / untouched / never-had / redacted / empty-patch); a new `profile-email-guard-6b3.spec.ts` e2e drives the dialog on self / manager / admin, asserts the PATCH is withheld until confirm and that Keep-editing sends nothing, covers the 409 banner, and gates the open dialog on WCAG 2.2 AA (D79).
 
-*Implements D135; extends N86 (its last-admin-surfacing thread now covers the PATCH-email path). Log-tail order: D135 → N104.*
+*Implements D135; extends N86 (its last-admin-surfacing thread now covers the PATCH-email path). Log-tail order: D135 → N105.*
