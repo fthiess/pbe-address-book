@@ -78,10 +78,12 @@ export class GhostStepError extends Error {
  * Perform the Ghost-first-gated push (N65): if `diff` is non-empty **and** the
  * profile has a `ghostMemberId`, push it to Ghost; a Ghost failure throws
  * {@link GhostStepError} (`ghost_update_failed`) so the caller aborts the save with
- * `502` and Book stays untouched. An empty diff (no pushed field changed) or a
- * profile with no `ghostMemberId` (nothing to update — e.g. a de-brothered record,
- * or a fake-data staging profile) is a no-op that never contacts Ghost. Returns
- * whether a push was actually made.
+ * `502` and Book stays untouched. The one exception is a duplicate-email collision
+ * on an email change: it propagates as {@link GhostDuplicateEmailError} (→ `422` on
+ * `email`, Option B), symmetric with the create path (OFC-276). An empty diff (no
+ * pushed field changed) or a profile with no `ghostMemberId` (nothing to update —
+ * e.g. a de-brothered record, or a fake-data staging profile) is a no-op that never
+ * contacts Ghost. Returns whether a push was actually made.
  */
 export async function pushGhostUpdate(
   ghostLifecycle: GhostLifecycle,
@@ -95,6 +97,13 @@ export async function pushGhostUpdate(
     await ghostLifecycle.updateMember(profile, diff);
     return true;
   } catch (cause) {
+    // A duplicate-email collision on an email *change* is a permanent, admin-resolvable
+    // condition — let it propagate so the route maps it to a `422` on `email` (Option B,
+    // OFC-232/OFC-276), distinct from a transient outage's `502 ghost_update_failed`.
+    // Mirrors the create branch in `runEmailGhostLifecycle`.
+    if (cause instanceof GhostDuplicateEmailError) {
+      throw cause;
+    }
     throw new GhostStepError("ghost_update_failed", cause);
   }
 }
@@ -178,7 +187,9 @@ export async function runEmailGhostLifecycle(
   }
 
   // UPDATE — an existing member gets any changed pushed field (N65). No-op if the
-  // brother is Book-only both before and after (nothing to push).
+  // brother is Book-only both before and after (nothing to push). An email *change*
+  // that collides with another member's address propagates as GhostDuplicateEmailError
+  // (→ 422 on `email`), the same as the create branch above (OFC-276).
   if (hadMember && shouldHave) {
     await pushGhostUpdate(ghostLifecycle, stored, computeGhostUpdateDiff(next, changed));
   }

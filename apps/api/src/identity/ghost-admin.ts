@@ -99,9 +99,24 @@ export class GhostAdminLifecycle implements GhostLifecycle {
       throw new Error("updateMember called without a ghostMemberId");
     }
     const member = this.memberFields(diff);
-    await this.http.request("PUT", `/members/${encodeURIComponent(profile.ghostMemberId)}/`, {
-      members: [member],
-    });
+    try {
+      await this.http.request("PUT", `/members/${encodeURIComponent(profile.ghostMemberId)}/`, {
+        members: [member],
+      });
+    } catch (cause) {
+      // A member PUT that changes `email` to an address another member already holds is
+      // rejected by Ghost with the same `422 ValidationError` a duplicate create gets
+      // ("Member already exists…", property `email`) — verified against ghost-staging
+      // 2026-07-17 (OFC-276). Surface it as the typed collision `createMember` raises so
+      // an email *change* that collides rejects with a `422` on `email` (OFC-232, Option
+      // B) rather than a generic `502` that would wrongly invite a retry. Guarded on the
+      // diff actually carrying an email: a 422 on a name/newsletter-only update is not a
+      // duplicate-email condition and must stay a generic failure. All else propagates.
+      if (cause instanceof GhostHttpError && cause.status === 422 && diff.email !== undefined) {
+        throw new GhostDuplicateEmailError(diff.email);
+      }
+      throw cause;
+    }
   }
 
   async deleteMember(profile: Profile): Promise<void> {

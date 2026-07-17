@@ -31,13 +31,15 @@ export interface GhostCreateResult {
 }
 
 /**
- * Thrown by {@link GhostLifecycle.createMember} when Ghost rejects the create
- * because a member with that email **already exists** (Ghost returns `422`
- * ValidationError, verified against the Admin API docs). This is distinct from a
- * generic Ghost outage: it is a permanent collision an admin must resolve, not a
- * transient failure a retry fixes. The write path maps it to a `422` field issue on
- * `email` (OFC-232, Forrest's Option B: reject the collision, don't auto-link) —
- * separate from the `502 ghost_create_failed` every other create failure yields.
+ * Thrown by {@link GhostLifecycle.createMember} — and by {@link GhostLifecycle.updateMember}
+ * when the diff carries an email — when Ghost rejects the write because a member with
+ * that email **already exists** (Ghost returns `422` ValidationError on both the create
+ * and the PUT; the PUT shape verified against ghost-staging 2026-07-17, OFC-276). This
+ * is distinct from a generic Ghost outage: it is a permanent collision an admin must
+ * resolve, not a transient failure a retry fixes. The write path maps it to a `422`
+ * field issue on `email` (OFC-232, Forrest's Option B: reject the collision, don't
+ * auto-link) — separate from the `502 ghost_create_failed` / `ghost_update_failed`
+ * every other failure yields.
  *
  * At production launch this cannot occur in normal operation: the ~70 historical
  * unidentified Ghost addresses are purged from both Book and Ghost before cutover
@@ -92,8 +94,10 @@ export interface GhostLifecycle {
    * Push a changed-field `diff` to the existing Ghost member for `profile`
    * (addressed by `profile.ghostMemberId`), the Ghost-first step of a `PATCH` or
    * `PUT …/deceased` that changed a pushed field (N65). Resolves on success;
-   * **throws** so the save fails `502 ghost_update_failed` with Book untouched.
-   * The caller guarantees `diff` is non-empty and `profile.ghostMemberId` is set.
+   * **throws** so the save fails `502 ghost_update_failed` with Book untouched — except
+   * a duplicate-email collision on an email change, which throws
+   * {@link GhostDuplicateEmailError} (→ `422` on `email`, Option B; OFC-276). The caller
+   * guarantees `diff` is non-empty and `profile.ghostMemberId` is set.
    */
   updateMember(profile: Profile, diff: GhostMemberDiff): Promise<void>;
 }
