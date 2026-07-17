@@ -167,7 +167,12 @@ export type PatchOutcome =
   | { status: "forbidden"; fields?: string[] }
   /** `428` — the record loaded without a usable concurrency token; the page must
    * be reloaded before a conditional write can be made (OFC-115). */
-  | { status: "reload" };
+  | { status: "reload" }
+  /** `409 last_admin` — the edit would strip the sole usable admin's usable email,
+   * leaving the Address Book with no one able to manage it. The server refuses it
+   * (the last-admin invariant, D129/N86); the client surfaces a specific message
+   * rather than the opaque generic error the fall-through would raise (OFC-272). */
+  | { status: "last_admin" };
 
 /**
  * Save a set of changed fields to one profile (`PATCH /api/profiles/:id`). The
@@ -214,6 +219,20 @@ export async function patchProfile(
   if (response.status === 403) {
     const body = await response.json().catch(() => ({}));
     return { status: "forbidden", fields: body.fields as string[] | undefined };
+  }
+  // 409 last_admin: the edit would clear the sole usable admin's email, so the
+  // server refuses it (profiles.ts last-admin invariant, D129/N86). Surface it as a
+  // typed outcome so the editor can explain *why*, not the generic banner (OFC-272).
+  // Any other 409 stays unexpected and falls through to the throw below — read the
+  // body off a clone so that fall-through's `asError` can still read the original.
+  if (response.status === 409) {
+    const body = await response
+      .clone()
+      .json()
+      .catch(() => ({}));
+    if ((body as { error?: string }).error === "last_admin") {
+      return { status: "last_admin" };
+    }
   }
   // Edit-form Save: a mid-edit 401 must not yank the user off their in-progress
   // form to the sign-in screen (D109) — surface it as an `expired` SubmitResult the

@@ -1,6 +1,7 @@
+import type { Profile } from "@pbe/shared";
 import { describe, expect, it } from "vitest";
 import type { ProfileRecord } from "../../lib/types.js";
-import { buildPatch, isDirty, valuesEqual } from "./patch.js";
+import { buildPatch, isDirty, valuesEqual, wouldClearUsableEmail } from "./patch.js";
 
 /** A minimal owner record to diff against (only the fields the tests touch). */
 function record(overrides: Partial<ProfileRecord> = {}): ProfileRecord {
@@ -120,6 +121,57 @@ describe("buildPatch", () => {
     const draft = record({ bigBrotherId: null } as Partial<ProfileRecord>);
     const patch = buildPatch(original, draft, "brother", true);
     expect(patch).toHaveProperty("bigBrotherId", null);
+  });
+});
+
+describe("wouldClearUsableEmail (OFC-272 guard predicate)", () => {
+  it("fires when a set email is cleared (the null-sentinel patch a real Save sends)", () => {
+    const original = record({ email: "james@example.test" });
+    const patch = buildPatch(original, record({ email: undefined }), "brother", true);
+    // Sanity: this is exactly the cleared-email patch buildPatch produces.
+    expect(patch).toHaveProperty("email", null);
+    expect(wouldClearUsableEmail(original, patch)).toBe(true);
+  });
+
+  it("fires when the email is replaced by a whitespace-only value (not sign-in usable)", () => {
+    const original = record({ email: "james@example.test" });
+    expect(wouldClearUsableEmail(original, { email: "   " } as Partial<Profile>)).toBe(true);
+  });
+
+  it("does NOT fire when the email is changed to a different usable address", () => {
+    const original = record({ email: "james@example.test" });
+    const patch = buildPatch(original, record({ email: "jim@example.test" }), "brother", true);
+    expect(patch).toHaveProperty("email", "jim@example.test");
+    expect(wouldClearUsableEmail(original, patch)).toBe(false);
+  });
+
+  it("does NOT fire when the record never had a usable email (nothing to lose)", () => {
+    const original = record({ email: undefined });
+    // Even a patch that explicitly clears email can't lock out someone already email-less.
+    expect(wouldClearUsableEmail(original, { email: null } as unknown as Partial<Profile>)).toBe(
+      false,
+    );
+  });
+
+  it("does NOT fire when email is untouched and only another field changed", () => {
+    const original = record({ email: "james@example.test" });
+    const patch = buildPatch(original, record({ phone: "617-555-0142" }), "brother", true);
+    expect("email" in patch).toBe(false);
+    expect(wouldClearUsableEmail(original, patch)).toBe(false);
+  });
+
+  it("does NOT fire on the redacted private-email projection (original email absent)", () => {
+    // A manager without shareEmail never received the value, so the projected record
+    // carries no email; the field isn't even editable for them. The guard must not
+    // trip off a phantom clear.
+    const original = record({ email: undefined });
+    expect(wouldClearUsableEmail(original, { email: null } as unknown as Partial<Profile>)).toBe(
+      false,
+    );
+  });
+
+  it("does NOT fire for an empty patch (a photo-only or no-op Save)", () => {
+    expect(wouldClearUsableEmail(record(), {})).toBe(false);
   });
 });
 

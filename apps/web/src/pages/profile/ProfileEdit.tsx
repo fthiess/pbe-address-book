@@ -23,6 +23,7 @@ import {
   TextAreaField,
   TextField,
 } from "./fields.js";
+import { wouldClearUsableEmail } from "./patch.js";
 import { useProfileDraft } from "./useProfileDraft.js";
 import { useUnsavedGuard } from "./useUnsavedGuard.js";
 import { type Viewer, managerSeesPrivate } from "./viewer.js";
@@ -34,6 +35,10 @@ export type SubmitResult =
   | { status: "invalid"; issues: ValidationIssue[] }
   | { status: "forbidden" }
   | { status: "reload" }
+  /** The save would strip the sole usable admin's email — the server refused it
+   * (last-admin invariant, D129/N86). The editor shows a specific "assign another
+   * admin first" message instead of the generic failure (OFC-272). */
+  | { status: "last_admin" }
   /** The session lapsed mid-edit (401). The in-progress form is **kept** — the user
    * is told to sign in again to save, never bounced away losing their work (D109). */
   | { status: "expired" }
@@ -103,6 +108,10 @@ export function ProfileEdit({
   const [saving, setSaving] = useState(false);
   const [reconcile, setReconcile] = useState<string[] | null>(null);
   const [banner, setBanner] = useState<string | null>(null);
+  // Gate a Save that would clear a previously-usable email behind an explicit
+  // "you're locking this brother out" confirmation (OFC-272). Set when the guard in
+  // `onSave` trips; the dialog's confirm re-enters `onSave` with the clear approved.
+  const [confirmClearEmail, setConfirmClearEmail] = useState(false);
   // A staged (not-yet-saved) headshot change; counts as a dirty edit so the guard
   // fires and Save uploads it after the text PATCH (D50/N42).
   const [stagedHeadshot, setStagedHeadshot] = useState<HeadshotChange | null>(null);
@@ -138,19 +147,33 @@ export function ProfileEdit({
     });
   }
 
-  async function onSave() {
+  async function onSave(confirmedEmailClear = false) {
     setBanner(null);
     const firstInvalid = form.revealAll();
     if (firstInvalid) {
       focusFirstInvalid();
       return;
     }
+
+    // 1. Text PATCH first (D50) — skipped when only the photo changed, so a
+    //    photo-only Save never fires a no-op PATCH (and never re-verifies, N42).
+    const patch = form.patch();
+    const textChanged = Object.keys(patch).length > 0;
+
+    // Clearing a previously-usable email locks the brother out of sign-in to both
+    // the Address Book and PBE News — the Ghost bridge resolves login by email — the
+    // second-most-destructive profile edit after deletion, and until now silent. Gate
+    // it behind an explicit confirmation (OFC-272). The predicate fires on every edit
+    // path (self, manager, admin) and never on the private-email path where the field
+    // isn't shown; the sole-usable-admin case is *also* hard-blocked server-side
+    // (409 → last_admin below), so this warning sits in front of that backstop.
+    if (!confirmedEmailClear && wouldClearUsableEmail(record, patch)) {
+      setConfirmClearEmail(true);
+      return;
+    }
+
     setSaving(true);
     try {
-      // 1. Text PATCH first (D50) — skipped when only the photo changed, so a
-      //    photo-only Save never fires a no-op PATCH (and never re-verifies, N42).
-      const patch = form.patch();
-      const textChanged = Object.keys(patch).length > 0;
       if (textChanged) {
         const result = await submit(patch);
         if (result.status !== "ok") {
@@ -163,6 +186,13 @@ export function ProfileEdit({
             setBanner("Your role may not change one or more of these fields.");
           } else if (result.status === "reload") {
             setBanner("This page is out of date. Please reload it, then make your changes again.");
+          } else if (result.status === "last_admin") {
+            // The server refused clearing the sole usable admin's email (D129/N86).
+            // The client can't know "last admin" ahead of time (it's server state), so
+            // this lands after the warning-confirm; explain the block and the fix.
+            setBanner(
+              "You can't remove the last administrator's email address — the Address Book would then have no one able to manage it. Give another brother the administrator role first, then remove this email.",
+            );
           } else if (result.status === "expired") {
             // Session lapsed mid-edit AND the child-window re-auth didn't complete —
             // the popup was blocked (a slow save round-trip can outrun the browser's
@@ -616,6 +646,24 @@ export function ProfileEdit({
           onCancel={() => blocker.reset?.()}
         >
           You have unsaved edits on this profile. Discarding will lose them.
+        </ConfirmDialog>
+      )}
+
+      {confirmClearEmail && (
+        <ConfirmDialog
+          title={`Remove ${name}'s email address?`}
+          confirmLabel="Save"
+          cancelLabel="Keep editing"
+          tone="destructive"
+          onConfirm={() => {
+            setConfirmClearEmail(false);
+            void onSave(true);
+          }}
+          onCancel={() => setConfirmClearEmail(false)}
+        >
+          An email address is how a brother signs in. Removing this one will lock{" "}
+          <strong>{name}</strong> out of both the Address Book and PBE News until a new email
+          address is added.
         </ConfirmDialog>
       )}
     </article>

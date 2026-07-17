@@ -1,4 +1,10 @@
-import { type PrivacyFlags, type Profile, type Role, canWriteFieldOnRecord } from "@pbe/shared";
+import {
+  type PrivacyFlags,
+  type Profile,
+  type Role,
+  canWriteFieldOnRecord,
+  hasUsableEmail,
+} from "@pbe/shared";
 import type { ProfileRecord } from "../../lib/types.js";
 
 /**
@@ -93,6 +99,21 @@ export function buildPatch(
     }
   }
   return patch;
+}
+
+/**
+ * Whether a save would strip a brother's only sign-in credential: the record had a
+ * usable email and this patch clears it (to the `null` clear-sentinel or a blank
+ * string). Drives the OFC-272 "you're locking this brother out" confirmation.
+ *
+ * Two subtleties baked in: `"email" in patch` means email actually changed, so an
+ * untouched email never trips the guard; and `hasUsableEmail` (the same predicate
+ * the server's last-admin check uses) treats null / undefined / whitespace as "not
+ * usable", so a redacted private-email projection — where `original.email` never
+ * reached the client — can't false-trip either.
+ */
+export function wouldClearUsableEmail(original: ProfileRecord, patch: Partial<Profile>): boolean {
+  return "email" in patch && hasUsableEmail(original.email) && !hasUsableEmail(patch.email);
 }
 
 /** Whether the draft differs from the original in any writable field (the dirty bit). */
