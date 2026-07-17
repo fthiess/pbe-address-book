@@ -84,9 +84,13 @@ const PROFILES = {
   majors: [],
 };
 
-async function gotoDirectory(page: Page, role: "admin" | "brother" = "admin") {
+async function gotoDirectory(
+  page: Page,
+  role: "admin" | "brother" = "admin",
+  profiles: typeof PROFILES = PROFILES,
+) {
   await page.route("**/api/me", (route) => route.fulfill({ json: meFor(role) }));
-  await page.route("**/api/profiles", (route) => route.fulfill({ json: PROFILES }));
+  await page.route("**/api/profiles", (route) => route.fulfill({ json: profiles }));
   await page.route("**/img/thumbnails/**", (route) => route.fulfill({ status: 404 }));
   // Star writes echo the *resulting* list — as the real endpoint does — so the SPA
   // can reconcile its optimistic set to the server's authoritative array (OFC-103).
@@ -207,6 +211,61 @@ test.describe("Directory 3c — selection, export, auto-fit (admin)", () => {
     const widened = await width();
     await page.keyboard.press("Enter");
     await expect.poll(width).toBeLessThan(widened);
+  });
+
+  test("double-click auto-fit sizes the Course column to show ALL a brother's chips (OFC-277)", async ({
+    page,
+  }) => {
+    // A brother with three courses — the multi-chip case the pre-fix auto-fit
+    // clipped by measuring only his primary course.
+    await gotoDirectory(page, "admin", {
+      profiles: [
+        {
+          id: 5001,
+          firstName: "Aaron",
+          lastName: "Adams",
+          classYear: 1984,
+          majors: ["6-3", "18", "14-1"],
+          deceased: { isDeceased: false },
+          hasHeadshot: false,
+          email: "aaron.adams@example.test",
+        },
+      ],
+      majors: [],
+    });
+
+    // A course chip is a span labelled "Course <code>…"; a double-major brother's
+    // Course cell holds two. Report whether the first such multi-chip cell in the
+    // viewport has its last chip clipped past the cell's content edge — the case
+    // the pre-fix auto-fit produced by measuring only the primary course.
+    const multiChipClipped = () =>
+      page.evaluate(() => {
+        for (const cell of Array.from(document.querySelectorAll("td"))) {
+          const chips = cell.querySelectorAll('span[aria-label^="Course "]');
+          if (chips.length >= 2) {
+            const last = chips[chips.length - 1].getBoundingClientRect();
+            const padRight = Number.parseFloat(getComputedStyle(cell).paddingRight) || 0;
+            const contentRight = cell.getBoundingClientRect().right - padRight;
+            return { found: true, clipped: last.right > contentRight + 0.5 };
+          }
+        }
+        return { found: false, clipped: false };
+      });
+
+    // Shrink the Course column to its minimum so a double major's chips overflow...
+    const resizer = page.getByRole("separator", { name: /resize the course column/i });
+    await resizer.focus();
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.press("ArrowLeft");
+    }
+    const narrowed = await multiChipClipped();
+    expect(narrowed.found).toBe(true); // the seed has a visible double-major brother
+    expect(narrowed.clipped).toBe(true); // ...and at min width his second chip is clipped
+
+    // ...then double-click the separator to auto-fit: every chip must now fit,
+    // because the fit measures the whole chip strip, not just the primary course.
+    await resizer.dblclick();
+    await expect.poll(async () => (await multiChipClipped()).clipped).toBe(false);
   });
 });
 

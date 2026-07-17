@@ -22,8 +22,8 @@ import { FilterPanel } from "./directory/FilterPanel.js";
 import { useSelection } from "./directory/SelectionContext.js";
 import { useStars } from "./directory/StarsContext.js";
 import {
+  autoFitChipStripWidth,
   autoFitWidth,
-  extraWidthFor,
   gridCellFont,
   makeTextMeasurer,
 } from "./directory/autofit.js";
@@ -244,8 +244,22 @@ export function Directory() {
         return;
       }
       const measure = makeTextMeasurer(gridCellFont());
-      const values = rows.map((p) => column.display(p, nameOf(p)));
-      lens.setWidth(key, autoFitWidth(column.label, values, measure, extraWidthFor(key)));
+      // The Course column renders every course as a chip (OFC-269), so it fits to
+      // the widest full chip strip, not the primary-only display string (OFC-277);
+      // every other column fits its plain-text display value.
+      const width =
+        key === "major"
+          ? autoFitChipStripWidth(
+              column.label,
+              rows.map((p) => p.majors ?? []),
+              measure,
+            )
+          : autoFitWidth(
+              column.label,
+              rows.map((p) => column.display(p, nameOf(p))),
+              measure,
+            );
+      lens.setWidth(key, width);
     },
     [rows, nameOf, lens],
   );

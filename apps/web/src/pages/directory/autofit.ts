@@ -10,7 +10,7 @@
  * is unit-tested without a canvas; the DOM measurer is a thin adapter.
  */
 
-import { type ColumnKey, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from "./grid-model.js";
+import { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from "./grid-model.js";
 
 /** Horizontal cell chrome to add to a measured data string: the `px-3` padding both sides. */
 const CELL_PADDING = 24;
@@ -21,37 +21,83 @@ const CELL_PADDING = 24;
 const HEADER_CHROME = 64;
 /** A course chip adds its pill padding + border around the code text. */
 const CHIP_PADDING = 20;
+/** The `gap-1` (4px) between adjacent course chips in a cell's chip strip. */
+const CHIP_GAP = 4;
 
 /** A function that returns the rendered pixel width of a string at a fixed font. */
 export type TextMeasurer = (text: string) => number;
 
 /**
- * Compute the auto-fit width for a column: the larger of (its header label plus
- * header chrome) and (its widest data value plus cell padding), clamped to the
- * resize bounds. `extraPerValue` covers non-plain-text cells (the Course chip).
+ * Clamp a column to fit the larger of (its widest data content plus cell padding)
+ * and (its header label plus header chrome), within the resize bounds. Shared by
+ * the plain-text and chip-strip auto-fit paths so both round and clamp alike.
  */
-export function autoFitWidth(
-  headerLabel: string,
-  values: readonly string[],
-  measure: TextMeasurer,
-  extraPerValue = 0,
-): number {
-  let widestData = 0;
-  for (const value of values) {
-    const w = measure(value) + extraPerValue;
-    if (w > widestData) {
-      widestData = w;
-    }
-  }
+function fitColumn(headerLabel: string, widestData: number, measure: TextMeasurer): number {
   const dataNeeded = widestData + CELL_PADDING;
   const headerNeeded = measure(headerLabel) + HEADER_CHROME;
   const needed = Math.ceil(Math.max(dataNeeded, headerNeeded));
   return Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, needed));
 }
 
-/** Per-value chip/decoration padding for the columns whose cells aren't plain text. */
-export function extraWidthFor(key: ColumnKey): number {
-  return key === "major" ? CHIP_PADDING : 0;
+/**
+ * Auto-fit width for a plain-text column: the larger of (its header label plus
+ * header chrome) and (its widest measured data value plus cell padding), clamped
+ * to the resize bounds. The Course column, whose cells are chip strips rather
+ * than plain text, has its own path — {@link autoFitChipStripWidth}.
+ */
+export function autoFitWidth(
+  headerLabel: string,
+  values: readonly string[],
+  measure: TextMeasurer,
+): number {
+  let widestData = 0;
+  for (const value of values) {
+    const w = measure(value);
+    if (w > widestData) {
+      widestData = w;
+    }
+  }
+  return fitColumn(headerLabel, widestData, measure);
+}
+
+/**
+ * The rendered width of one brother's Course cell: every course code drawn as a
+ * chip (its code text plus the pill's padding+border, {@link CHIP_PADDING}), with
+ * a {@link CHIP_GAP} between adjacent chips (`gap-1`). An empty list contributes 0
+ * — that brother shows a narrow em-dash placeholder, not a chip. Codes are
+ * measured at the grid body font, a hair wider than the chips' `text-xs`, which
+ * only adds harmless slack so a fitted column never clips.
+ */
+export function chipStripWidth(codes: readonly string[], measure: TextMeasurer): number {
+  if (codes.length === 0) {
+    return 0;
+  }
+  let total = (codes.length - 1) * CHIP_GAP;
+  for (const code of codes) {
+    total += measure(code) + CHIP_PADDING;
+  }
+  return total;
+}
+
+/**
+ * Auto-fit width for the Course column, whose cell renders ALL of a brother's
+ * courses as chips (OFC-269), not a single value. Fits the widest full chip strip
+ * across the display set — so a double-click sizes the column to show every chip,
+ * not just the primary course (OFC-277). `rows` is each row's course codes.
+ */
+export function autoFitChipStripWidth(
+  headerLabel: string,
+  rows: readonly (readonly string[])[],
+  measure: TextMeasurer,
+): number {
+  let widestData = 0;
+  for (const codes of rows) {
+    const w = chipStripWidth(codes, measure);
+    if (w > widestData) {
+      widestData = w;
+    }
+  }
+  return fitColumn(headerLabel, widestData, measure);
 }
 
 /**
