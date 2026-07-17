@@ -112,7 +112,7 @@ describe("GhostAdminReader.listNewsletterEvents", () => {
   it("extracts memberId/subscribed/at and drops malformed rows", async () => {
     const r = reader(
       fetchFrom({
-        [`/members/events/?type:newsletter_event+created_at:>'${CUTOFF}'`]: {
+        [`/members/events/?type:newsletter_event+data.created_at:>'${CUTOFF}'`]: {
           events: [
             {
               type: "newsletter_event",
@@ -128,13 +128,25 @@ describe("GhostAdminReader.listNewsletterEvents", () => {
       { memberId: "m1", subscribed: false, at: "2026-06-01T00:00:00.000Z" },
     ]);
   });
+
+  it("degrades to [] (advisory) when the member-events fetch fails (OFC-275)", async () => {
+    // The audit's `ghostChangedAt` enrichment is advisory (N69) — a member-events
+    // read failure must NOT break the whole audit, mirroring the best-effort
+    // `listNewsletterEmails` swallow. (Before OFC-275's filter fix this failure was a
+    // real 400 "Cannot filter by created_at"; the swallow is the belt to that fix.)
+    const failing = (async () =>
+      new Response(JSON.stringify({ errors: [{ message: "Cannot filter by created_at" }] }), {
+        status: 400,
+      })) as unknown as typeof fetch;
+    expect(await reader(failing).listNewsletterEvents()).toEqual([]);
+  });
 });
 
 describe("GhostAdminReader.listBounceEvents", () => {
   it("extracts member/email ids and prefers failed_at over created_at", async () => {
     const r = reader(
       fetchFrom({
-        [`/members/events/?type:email_failed_event+created_at:>'${CUTOFF}'`]: {
+        [`/members/events/?type:email_failed_event+data.created_at:>'${CUTOFF}'`]: {
           events: [
             {
               type: "email_failed_event",
@@ -153,6 +165,17 @@ describe("GhostAdminReader.listBounceEvents", () => {
     expect(await r.listBounceEvents()).toEqual([
       { memberId: "m1", emailId: "e1", at: "2026-06-01T00:00:00.000Z" },
     ]);
+  });
+
+  it("throws (not advisory) when the member-events fetch fails — the bounce report needs the events", async () => {
+    // Unlike the audit's advisory newsletter events, the bounce report genuinely
+    // needs these, so a read failure must surface (→ route `502 ghost_read_failed`),
+    // not silently produce an empty-and-misleading report (OFC-275).
+    const failing = (async () =>
+      new Response(JSON.stringify({ errors: [{ message: "boom" }] }), {
+        status: 400,
+      })) as unknown as typeof fetch;
+    await expect(reader(failing).listBounceEvents()).rejects.toThrow();
   });
 });
 
@@ -176,9 +199,12 @@ describe("event-fetch date bound (OFC-231)", () => {
     await r.listNewsletterEvents();
     await r.listBounceEvents();
     // The `+` is NQL's AND: each fetch is "events of this type created after the cutoff".
+    // The date field is `data.created_at` — Ghost's `/members/events` filter allowlist
+    // is `[data.created_at, data.member_id, data.post_id, type, id]`; the bare
+    // `created_at` is rejected `400 "Cannot filter by created_at"` (OFC-275).
     expect(filters).toEqual([
-      `type:newsletter_event+created_at:>'${CUTOFF}'`,
-      `type:email_failed_event+created_at:>'${CUTOFF}'`,
+      `type:newsletter_event+data.created_at:>'${CUTOFF}'`,
+      `type:email_failed_event+data.created_at:>'${CUTOFF}'`,
     ]);
   });
 
@@ -191,7 +217,7 @@ describe("event-fetch date bound (OFC-231)", () => {
       now: () => Date.parse("2026-03-15T00:00:00.000Z"),
     });
     await r.listNewsletterEvents();
-    expect(filters[0]).toContain("created_at:>'2024-03-15'");
+    expect(filters[0]).toContain("data.created_at:>'2024-03-15'");
   });
 });
 
