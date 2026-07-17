@@ -1,4 +1,5 @@
 import { type EmergencyContact, type Link, MAX_EMERGENCY_CONTACTS, MAX_LINKS } from "@pbe/shared";
+import { cn } from "../../lib/utils.js";
 import { FIELD_LABEL_CLASS, TextField } from "./fields.js";
 import { isBlankContact, isBlankLink } from "./repeatables.js";
 
@@ -36,14 +37,21 @@ function AddButton({
   );
 }
 
-/** Per-row Remove control. */
-function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
+/** Per-row Remove control. `className` lets a caller override alignment/size. */
+function RemoveButton({
+  label,
+  onClick,
+  className,
+}: { label: string; onClick: () => void; className?: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={label}
-      className="self-start rounded-[var(--radius-md)] border border-input bg-card px-2.5 py-2 text-[length:var(--text-body-sm)] font-medium text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
+      className={cn(
+        "self-start rounded-[var(--radius-md)] border border-input bg-card px-2.5 py-2 text-[length:var(--text-body-sm)] font-medium text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
+        className,
+      )}
     >
       Remove
     </button>
@@ -79,7 +87,7 @@ export function LinksEditor({
     onChange(rows.map((row, index) => (index === i ? { ...row, ...partial } : row)));
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {rows.map((link, i) => {
         const si = fieldIndex[i] ?? -1;
         return (
@@ -111,16 +119,21 @@ export function LinksEditor({
               error={si >= 0 ? errorFor(`links.${si}.url`) : undefined}
               placeholder="https://…"
             />
-            {/* A label-height spacer (sm+) so the Remove button lines up with the
-              inputs, not the labels — and a field's error text can't shove it. */}
-            <div className="flex flex-col">
+            {/* A label-height spacer (sm+) reserves the label row; the Remove button
+              is then vertically centred against the inputs beside it, so its short
+              height no longer leaves its bottom edge floating above theirs (OFC-260
+              #1). The button stays compact, and a field's error text can't shove it. */}
+            <div className="flex flex-col sm:self-stretch">
               <span aria-hidden="true" className={`mb-1 hidden sm:block ${FIELD_LABEL_CLASS}`}>
                 &nbsp;
               </span>
-              <RemoveButton
-                label={`Remove link ${i + 1}`}
-                onClick={() => onChange(rows.filter((_, index) => index !== i))}
-              />
+              <div className="flex sm:flex-1 sm:items-center">
+                <RemoveButton
+                  label={`Remove link ${i + 1}`}
+                  onClick={() => onChange(rows.filter((_, index) => index !== i))}
+                  className="self-center"
+                />
+              </div>
             </div>
           </fieldset>
         );
@@ -161,7 +174,9 @@ export function EmergencyContactsEditor({
     onChange(rows.map((row, index) => (index === i ? { ...row, ...partial } : row)));
 
   return (
-    <div className="space-y-3">
+    // space-y-4 gives the contact cards air from each other and from the Add button
+    // (OFC-260 #3/#4) — the same token the Links group and the wider form use.
+    <div className="space-y-4">
       {rows.map((contact, i) => {
         const si = fieldIndex[i] ?? -1;
         return (

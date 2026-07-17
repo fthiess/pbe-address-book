@@ -97,7 +97,12 @@ export function ProfileView({
 
           {restricted ? (
             <Row>
-              <PreferencesSection record={record} />
+              {/* Preferences and the staff-only Administrative section stack in the
+                  left column; Record status stays on the right (OFC-271). */}
+              <div className="space-y-8">
+                <PreferencesSection record={record} />
+                <AdministrativeSection record={record} viewer={viewer} />
+              </div>
               <RecordStatusSection
                 record={record}
                 viewer={viewer}
@@ -538,10 +543,11 @@ function VerificationReadout({
 
 /**
  * Record status (§5.7.6), the owner/staff view: the verification read-out and the
- * Verify affordance (owner/staff — the 4c-2 verification pass, D28/D48), the
- * last-updated line, plus the staff-internal Admin Note for managers/admins.
- * Brothers viewing another brother see only the verification read-out, rendered
- * standalone in {@link ProfileView} (OFC-207).
+ * Verify affordance (owner/staff — the 4c-2 verification pass, D28/D48) plus the
+ * last-updated line. The staff-internal Admin Note is **not** here — it moved to its
+ * own {@link AdministrativeSection} so it no longer blends into the verification
+ * read-out (OFC-271). Brothers viewing another brother see only the verification
+ * read-out, rendered standalone in {@link ProfileView} (OFC-207).
  */
 function RecordStatusSection({
   record,
@@ -563,11 +569,28 @@ function RecordStatusSection({
           Last updated {record.lastModified.slice(0, 10)}.
         </p>
       )}
-      {(viewer.role === "manager" || viewer.role === "admin") && record.adminNote && (
-        <ReadField label="Admin note (staff only)">
-          <span className="whitespace-pre-wrap">{record.adminNote}</span>
-        </ReadField>
-      )}
+    </Section>
+  );
+}
+
+/**
+ * The staff-internal Admin Note in its own section (OFC-271). Split out of Record
+ * status — where it kept getting overlooked against the verification read-out — into
+ * a clearly-labelled "Administrative" heading of its own. Renders **only** for
+ * managers/admins and **only** when a note exists, so the heading never appears for
+ * the owner, a non-staff viewer, or an empty note (`adminNote` is `staff-internal`,
+ * so a brother's projection never carries it in the first place).
+ */
+function AdministrativeSection({ record, viewer }: { record: ProfileRecord; viewer: Viewer }) {
+  const isStaff = viewer.role === "manager" || viewer.role === "admin";
+  if (!isStaff || !record.adminNote) {
+    return null;
+  }
+  return (
+    <Section title="Administrative">
+      <ReadField label="Admin note (staff only)">
+        <span className="whitespace-pre-wrap">{record.adminNote}</span>
+      </ReadField>
     </Section>
   );
 }
