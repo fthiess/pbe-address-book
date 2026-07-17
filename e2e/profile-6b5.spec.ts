@@ -168,3 +168,59 @@ test.describe("profile 6b-5 — OFC-271 Administrative section (view)", () => {
     expect(results.violations).toEqual([]);
   });
 });
+
+test.describe("profile 6b-5 — OFC-271 Administrative section (edit)", () => {
+  test("staff edit the Admin Note in its own Administrative section, not Record status", async ({
+    page,
+  }) => {
+    // The edit page must match the view page — the note field moved out of Record
+    // status into Administrative (live-test follow-up; the ticket named only the view).
+    await mock(page, me("admin", 5247), record());
+    await page.goto("/brother/5247/edit");
+    await expect(page.getByText("Editing", { exact: true })).toBeVisible();
+
+    const admin = section(page, "Administrative");
+    await expect(admin.getByRole("heading", { name: "Administrative" })).toBeVisible();
+    await expect(admin.getByLabel("Admin note (staff only)", { exact: true })).toBeVisible();
+    await expect(
+      section(page, "Record status").getByLabel("Admin note (staff only)", { exact: true }),
+    ).toHaveCount(0);
+  });
+});
+
+test.describe("profile 6b-5 — OFC-260 repeatable spacing", () => {
+  test("link rows and the Add button keep real vertical separation (m-0 fieldsets don't collapse it)", async ({
+    page,
+  }) => {
+    // Guards the bug that shipped: `space-y-*` between the rows was cancelled by the
+    // fieldsets' `m-0` (browser fieldset-margin reset), collapsing every gap to 0px.
+    // `flex … gap` fixed it; assert a real gap so the regression can't return.
+    await mock(
+      page,
+      me("admin", 5247),
+      record({
+        links: [
+          { label: "A", url: "https://a.test" },
+          { label: "B", url: "https://b.test" },
+        ],
+      }),
+    );
+    await page.goto("/brother/5247/edit");
+    await expect(page.getByText("Editing", { exact: true })).toBeVisible();
+
+    const gaps = await page.evaluate(() => {
+      const fs = [...document.querySelectorAll("fieldset")].filter((f) =>
+        /^Link \d+$/.test(f.querySelector("legend")?.textContent || ""),
+      );
+      const add = [...document.querySelectorAll("button")].find((b) =>
+        /Add a link/.test(b.textContent || ""),
+      );
+      const r1 = fs[0].getBoundingClientRect();
+      const r2 = fs[1].getBoundingClientRect();
+      const a = (add as HTMLElement).getBoundingClientRect();
+      return { rowGap: r2.top - r1.bottom, addGap: a.top - r2.bottom };
+    });
+    expect(gaps.rowGap).toBeGreaterThan(10);
+    expect(gaps.addGap).toBeGreaterThan(10);
+  });
+});

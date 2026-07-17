@@ -29,7 +29,10 @@ function AddButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="inline-flex items-center gap-1.5 rounded-[var(--radius-md)] border border-dashed border-input bg-background px-3 py-2 text-[length:var(--text-label)] font-medium text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      // `self-start` keeps the button its natural content width: the flex-column
+      // parent (the `gap` fix, OFC-260) stretches its children by default, which
+      // otherwise blew this up to the full column width (live-test).
+      className="inline-flex items-center gap-1.5 self-start rounded-[var(--radius-md)] border border-dashed border-input bg-background px-3 py-2 text-[length:var(--text-label)] font-medium text-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
     >
       <span aria-hidden="true">+</span>
       {label}
@@ -86,8 +89,12 @@ export function LinksEditor({
   const setRow = (i: number, partial: Partial<Link>) =>
     onChange(rows.map((row, index) => (index === i ? { ...row, ...partial } : row)));
 
+  // `gap` (not `space-y`) between the rows and the Add button: the rows are
+  // `<fieldset m-0>` — that browser-margin reset also cancels `space-y`'s margin,
+  // which left the rows and the button visually touching. Flex `gap` is immune to
+  // child margins, so the separation actually renders (OFC-260 #2, live-test).
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       {rows.map((link, i) => {
         const si = fieldIndex[i] ?? -1;
         return (
@@ -174,9 +181,10 @@ export function EmergencyContactsEditor({
     onChange(rows.map((row, index) => (index === i ? { ...row, ...partial } : row)));
 
   return (
-    // space-y-4 gives the contact cards air from each other and from the Add button
-    // (OFC-260 #3/#4) — the same token the Links group and the wider form use.
-    <div className="space-y-4">
+    // Flex `gap` (not `space-y`) so the cards clear each other and the Add button:
+    // the cards are `<fieldset m-0>`, whose margin reset cancels `space-y` — same
+    // fix and same token as the Links group (OFC-260 #3/#4, live-test).
+    <div className="flex flex-col gap-4">
       {rows.map((contact, i) => {
         const si = fieldIndex[i] ?? -1;
         return (

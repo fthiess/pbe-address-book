@@ -531,80 +531,98 @@ export function ProfileEdit({
             />
           </div>
 
-          {/* Preferences & consent ‖ Record status (restricted). */}
+          {/* Preferences & consent + Administrative ‖ Record status (restricted).
+              The staff Admin Note lives in its own "Administrative" section stacked
+              under Privacy & consent in the left column, mirroring the view page
+              (OFC-271) — it used to sit inside Record status here too. */}
           <EditRow>
-            <Section title="Privacy &amp; consent" locked={consentLocked}>
-              <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
-                Each switch shows what's true now.
-              </p>
-              {/* The primary per-field switches carry the same box insets (border +
+            <div className="space-y-8">
+              <Section title="Privacy &amp; consent" locked={consentLocked}>
+                <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
+                  Each switch shows what's true now.
+                </p>
+                {/* The primary per-field switches carry the same box insets (border +
                   p-3) as the boxed subgroups below — transparent here — so every
                   switch track and ? button lines up down the column (N35). All five
                   share-toggles live here together — emergency and spouse/partner were
                   relocated from beside their fields so the placement is consistent
                   rather than split across two philosophies (OFC-270). */}
-              <div className="space-y-3 rounded-[var(--radius-lg)] border border-transparent p-3">
-                <ConsentSwitch
-                  entryKey={SWITCH_KEYS.shareEmail}
-                  value={form.draft.privacy?.shareEmail ?? false}
-                  onChange={(v) => form.setPrivacy("shareEmail", v)}
-                  locked={consentLocked}
-                />
-                <ConsentSwitch
-                  entryKey={SWITCH_KEYS.shareAddress}
-                  value={form.draft.privacy?.shareAddress ?? false}
-                  onChange={(v) => form.setPrivacy("shareAddress", v)}
-                  locked={consentLocked}
-                />
-                <ConsentSwitch
-                  entryKey={SWITCH_KEYS.sharePhone}
-                  value={form.draft.privacy?.sharePhone ?? false}
-                  onChange={(v) => form.setPrivacy("sharePhone", v)}
-                  locked={consentLocked}
-                />
-                <ConsentSwitch
-                  entryKey={SWITCH_KEYS.shareEmergency}
-                  value={form.draft.privacy?.shareEmergency ?? false}
-                  onChange={(v) => form.setPrivacy("shareEmergency", v)}
-                  locked={consentLocked}
-                />
-                <ConsentSwitch
-                  entryKey={SWITCH_KEYS.shareSpousePartner}
-                  value={form.draft.privacy?.shareSpousePartner ?? false}
-                  onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
-                  locked={consentLocked}
-                />
-              </div>
+                <div className="space-y-3 rounded-[var(--radius-lg)] border border-transparent p-3">
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.shareEmail}
+                    value={form.draft.privacy?.shareEmail ?? false}
+                    onChange={(v) => form.setPrivacy("shareEmail", v)}
+                    locked={consentLocked}
+                  />
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.shareAddress}
+                    value={form.draft.privacy?.shareAddress ?? false}
+                    onChange={(v) => form.setPrivacy("shareAddress", v)}
+                    locked={consentLocked}
+                  />
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.sharePhone}
+                    value={form.draft.privacy?.sharePhone ?? false}
+                    onChange={(v) => form.setPrivacy("sharePhone", v)}
+                    locked={consentLocked}
+                  />
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.shareEmergency}
+                    value={form.draft.privacy?.shareEmergency ?? false}
+                    onChange={(v) => form.setPrivacy("shareEmergency", v)}
+                    locked={consentLocked}
+                  />
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.shareSpousePartner}
+                    value={form.draft.privacy?.shareSpousePartner ?? false}
+                    onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
+                    locked={consentLocked}
+                  />
+                </div>
 
-              <Subgroup title="Sharing beyond the brotherhood" warn>
-                <ConsentSwitch
-                  entryKey={SWITCH_KEYS.allowShareWithMITAA}
-                  value={form.draft.allowShareWithMITAA ?? false}
-                  onChange={(v) => form.setBool("allowShareWithMITAA", v)}
-                  locked={consentLocked}
-                />
-              </Subgroup>
+                <Subgroup title="Sharing beyond the brotherhood" warn>
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.allowShareWithMITAA}
+                    value={form.draft.allowShareWithMITAA ?? false}
+                    onChange={(v) => form.setBool("allowShareWithMITAA", v)}
+                    locked={consentLocked}
+                  />
+                </Subgroup>
 
-              <Subgroup title="Emails from PBE News">
-                <ConsentSwitch
-                  entryKey={SWITCH_KEYS.allowNewsletterEmail}
-                  value={form.draft.allowNewsletterEmail ?? false}
-                  onChange={(v) => form.setBool("allowNewsletterEmail", v)}
-                  locked={consentLocked}
-                />
-              </Subgroup>
+                <Subgroup title="Emails from PBE News">
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.allowNewsletterEmail}
+                    value={form.draft.allowNewsletterEmail ?? false}
+                    onChange={(v) => form.setBool("allowNewsletterEmail", v)}
+                    locked={consentLocked}
+                  />
+                </Subgroup>
 
-              <Subgroup title="Directory listing">
-                {/* Presented positively as "Listed" (on = listed); the stored
+                <Subgroup title="Directory listing">
+                  {/* Presented positively as "Listed" (on = listed); the stored
                     field is `unlisted`, so the value and change are inverted (N35). */}
-                <ConsentSwitch
-                  entryKey={SWITCH_KEYS.listed}
-                  value={!(form.draft.unlisted ?? false)}
-                  onChange={(v) => form.setBool("unlisted", !v)}
-                  locked={consentLocked}
-                />
-              </Subgroup>
-            </Section>
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.listed}
+                    value={!(form.draft.unlisted ?? false)}
+                    onChange={(v) => form.setBool("unlisted", !v)}
+                    locked={consentLocked}
+                  />
+                </Subgroup>
+              </Section>
+              {isStaff && (
+                <Section title="Administrative">
+                  <TextAreaField
+                    id="profile-adminNote"
+                    label="Admin note (staff only)"
+                    value={form.draft.adminNote ?? ""}
+                    onChange={(v) => form.setText("adminNote", v)}
+                    onBlur={() => form.touch("adminNote")}
+                    error={form.errorFor("adminNote")}
+                    helpKey="profile.adminNote"
+                  />
+                </Section>
+              )}
+            </div>
 
             <Section title="Record status">
               {form.draft.lastVerifiedDate ? (
@@ -621,17 +639,6 @@ export function ProfileEdit({
                   ? "Saving your changes re-verifies your record as of today."
                   : "Saving content changes marks the record unverified until re-confirmed."}
               </p>
-              {isStaff && (
-                <TextAreaField
-                  id="profile-adminNote"
-                  label="Admin note (staff only)"
-                  value={form.draft.adminNote ?? ""}
-                  onChange={(v) => form.setText("adminNote", v)}
-                  onBlur={() => form.touch("adminNote")}
-                  error={form.errorFor("adminNote")}
-                  helpKey="profile.adminNote"
-                />
-              )}
             </Section>
           </EditRow>
         </div>
