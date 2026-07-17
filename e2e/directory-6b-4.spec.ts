@@ -179,6 +179,31 @@ test.describe("directory 6b-4 — UI batch", () => {
     ).toHaveClass(/whitespace-nowrap/);
   });
 
+  test("OFC-265: the checkbox aligns with the chip (first line) on a wrapping option (N111)", async ({
+    page,
+  }) => {
+    // A narrow (3-column) filter width so the longest course name wraps to two
+    // lines — the case where the checkbox used to float at the block centre.
+    await page.setViewportSize({ width: 1024, height: 900 });
+    await gotoDirectory(page);
+    const courseField = await openCourseFilter(page);
+
+    const name = courseField.getByText("Computer Science and Engineering");
+    const chip = courseField.getByLabel("Course 6-3, Computer Science and Engineering");
+    const checkbox = courseField.getByRole("checkbox", { name: /Course 6-3/ });
+    const nameBox = await name.boundingBox();
+    const chipBox = await chip.boundingBox();
+    const cbBox = await checkbox.boundingBox();
+
+    // Guard: the name really is wrapping (two lines), or this test proves nothing.
+    expect(nameBox?.height ?? 0).toBeGreaterThan(30);
+    // The checkbox's vertical centre tracks the chip's (both on the first line),
+    // not the centre of the two-line block.
+    const chipCenter = (chipBox?.y ?? 0) + (chipBox?.height ?? 0) / 2;
+    const cbCenter = (cbBox?.y ?? 0) + (cbBox?.height ?? 0) / 2;
+    expect(Math.abs(cbCenter - chipCenter)).toBeLessThanOrEqual(4);
+  });
+
   test("OFC-266 / OFC-267: filter labels are self-explanatory", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: "Filters" }).click();
