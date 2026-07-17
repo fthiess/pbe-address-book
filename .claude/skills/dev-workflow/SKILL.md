@@ -1,6 +1,6 @@
 ---
 name: dev-workflow
-description: Forrest's development-session methodology — the plan → build → review → remediate → live-test → close loop and its approval gates. Invoke at the start of ANY session that will change code or docs (feature, bugfix, refactor, ticket batch), before proposing a plan or writing code. Also covers PR/merge rules, code-review depth, bugfix discipline (repro-test-before-fix), Linear ticket hygiene, decision-log conventions (append-only + topic index), model/effort guidance, and the session close-out checklist. For new-project design-stage work (seed doc → PRD/engineering design → adversarial review), read design-methodology.md in this skill; for production cutovers and live-data migrations, read launch-and-cutover.md.
+description: Forrest's development-session methodology — the plan → build → review → remediate → live-test → close loop and its approval gates. Invoke at the start of ANY session that will change code or docs (feature, bugfix, refactor, ticket batch), and for triage sessions that schedule Linear tickets into work sessions, before proposing a plan or writing code. Also covers PR/merge rules, code-review depth, bugfix discipline (repro-test-before-fix), Linear ticket hygiene, triage-session conventions, decision-log conventions (append-only + topic index), model/effort guidance, and the session close-out checklist. For new-project design-stage work (seed doc → PRD/engineering design → adversarial review), read design-methodology.md in this skill; for production cutovers and live-data migrations, read launch-and-cutover.md.
 ---
 
 # Development Session Workflow
@@ -96,6 +96,16 @@ The decision log (`DECISIONS.md`) is the compact read-first artifact that lets l
 - **Every entry records the Why**, not just the What — the rationale is the part a later session cannot reconstruct.
 - **Keep a topic index from decision one.** A sibling `DECISIONS-INDEX.md` maps each subsystem to its currently-authoritative decision chain (e.g. "read/cache: D7 → D82 → D83 → D84 (current)"). Update it in the same PR as any log append. Sessions consult the index first and jump to the few governing entries — never read the full log into context.
 - **Distill at completion.** When a project or major build phase closes, freeze the chronological log into `history/` and write an as-built digest organized by subsystem: the net of all decisions with superseded entries dropped, citing historical IDs for the reasoning. The digest becomes the read-first artifact for the next phase; the index is its skeleton.
+
+## Triage sessions
+
+When the tracker accumulates new Todo tickets, schedule them in a dedicated **triage session** — a planning session that touches only Linear and auto-memory, never the repo. Triage is cheap in tokens but its errors compound (a bad batch degrades an entire implementation session), so run it on the strongest available model. Gate 1 still applies: propose the schedule before applying it, unless Forrest has explicitly delegated the grouping decision up front.
+
+- **Read every candidate ticket in full** (`get_issue`, not list excerpts) before grouping anything.
+- **Group for the implementing model's context, not by theme.** Batch by surface affinity — tickets touching the same page or subsystem share a session so the model holds one surface in context. Genuine bugs and behavioral changes get solo or near-solo sessions; cosmetic tickets batch well, even many at a time. Component affinity beats conceptual affinity: two tickets editing the same component belong together even when one is cosmetic and one behavioral.
+- **Session labels are the session index.** Apply one label per session (`6b-2`, `7c`, …) following the existing naming, with a one-line scope description on the label entity. Number sessions by priority; execution order may deviate. Labels beat parent/child tickets (a synthetic parent repurposes an issue as a container) and cycles (sessions aren't time-boxed); if label-namespace cruft ever grates, project milestones are the natural upgrade — ordered, progress-rolled, project-scoped.
+- **Leave each ticket a guidance comment** — the highest-value artifact of the session, carrying cross-session context the implementing session cannot reconstruct: the session assignment and pairing rationale; any root-cause hypothesis, framed as verify-not-assume; landmines from the decision history that the ticket's surface touches; and design forks to escalate at the plan gate (the comment recommends; Forrest decides).
+- **Close-out:** update auto-memory's forward state with the schedule. When a work session later closes, strip its label from the closed tickets; deleting the label entity itself is Forrest's (Linear Settings → Labels — the MCP can't delete labels).
 
 ## Model & effort guidance
 
