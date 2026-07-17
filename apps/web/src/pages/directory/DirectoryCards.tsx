@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import { entryNavState, newStashId, putDirectoryStash } from "../profile/directory-stash.js";
-import { CourseChip, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
+import { CourseChips, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { Selection } from "./SelectionContext.js";
 import type { GridColumn } from "./grid-model.js";
@@ -177,14 +177,14 @@ export function DirectoryCards({
                         if (value === "—") {
                           return null;
                         }
-                        const code = column.key === "major" ? profile.majors?.[0] : undefined;
+                        const codes = column.key === "major" ? (profile.majors ?? []) : undefined;
                         const searchable = column.key === "fullName" || column.key === "mugName";
                         return (
                           <div key={column.key} className="contents">
                             <dt className="text-muted-foreground">{column.label}</dt>
                             <dd className="m-0 min-w-0 truncate">
-                              {code ? (
-                                <CourseChip code={code} />
+                              {codes ? (
+                                <CourseChips codes={codes} />
                               ) : searchable ? (
                                 <HighlightedName
                                   text={value}

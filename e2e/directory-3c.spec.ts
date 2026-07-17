@@ -248,10 +248,12 @@ test.describe("Directory 3c — follow-up fixes", () => {
   test("the Course filter shows the course name, not just the code", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: /^Filters/ }).click();
-    // Course is the first multi-select; open its disclosure and confirm a named option.
+    // Course is the first multi-select; open its disclosure and confirm a named
+    // option. Each option is now the shared course chip (OFC-265/N106), so the
+    // checkbox's accessible name is the chip's "Course <code>, <name>".
     await page.locator("summary").filter({ hasText: "Any" }).first().click();
     await expect(
-      page.getByRole("checkbox", { name: /6-3 — Computer Science and Engineering/ }),
+      page.getByRole("checkbox", { name: /Course 6-3, Computer Science and Engineering/ }),
     ).toBeVisible();
   });
 

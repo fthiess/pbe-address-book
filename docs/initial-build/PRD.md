@@ -170,7 +170,7 @@ Four columns are always present and fixed at the left edge, in order: **Select**
 - **Star** shows a filled gold star when the brother is on the viewing user's personal star list and an outline star otherwise; clicking toggles it (§5.6.x).
 - **Thumbnail** shows the brother's 96×96 thumbnail (or a generic avatar), lazily loaded (D9).
 - **Canonical Name** shows the constructed `First Last 'YY` form (DATABASE-SCHEMA §5.1).
-- **Major** shows the derived display name of the brother's *primary* major — defined as the first entry in their `majors` list, an order the brother controls on their own profile. This makes the profile edit UI's major-ordering (§5.7) load-bearing for what appears here. (Filtering still matches any of a brother's majors.)
+- **Course** shows **all** of a brother's courses (majors) as colour-coded chips, in the order the brother controls on their own profile (primary first) — so the profile edit UI's course-ordering (§5.7) is load-bearing for the order shown here (D136, amends the earlier primary-only rule of D33). Almost every brother has one course and a handful have two; when a brother has more courses than the column is wide enough to show, the extras clip at the column edge like any too-narrow column (widen it to see them). The column still **sorts** on the primary course, and **filtering** still matches any of a brother's courses.
 
 Class Year appears as its own column even though the year is already part of Canonical Name: the separate column is what makes the year numerically sortable and range-filterable (e.g. `1980-1989`), which a year embedded in a display string is not.
 
