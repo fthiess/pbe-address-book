@@ -262,6 +262,27 @@ test.describe("Directory 3c — follow-up fixes", () => {
     await expect(page.getByTitle("6-3 — Computer Science and Engineering")).toBeVisible();
   });
 
+  test("a filter multi-select closes on an outside click and on Escape (N110)", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+
+    // Open the Course multi-select (the first "Any" disclosure).
+    await page.locator("summary").filter({ hasText: "Any" }).first().click();
+    await expect(page.locator("details[open]")).toHaveCount(1);
+
+    // A click anywhere outside the open disclosure dismisses it.
+    await page.getByRole("heading", { name: "Directory" }).click();
+    await expect(page.locator("details[open]")).toHaveCount(0);
+
+    // Re-open, then Escape closes it too.
+    await page.locator("summary").filter({ hasText: "Any" }).first().click();
+    await expect(page.locator("details[open]")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("details[open]")).toHaveCount(0);
+  });
+
   test("staff filters sit under the 'Membership upkeep' divider (admin)", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: /^Filters/ }).click();

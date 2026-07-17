@@ -1754,3 +1754,9 @@ Forrest's live-test of N106's Course-filter chips surfaced three issues, all fix
 **OFC-271 completed on the edit page.** N107 promoted the Admin Note into its own "Administrative" section on the *view*; the note also renders on the *edit* page, where it was still sitting inside Record status. The edit page now mirrors the view — a staff-only "Administrative" `Section` (the note's `TextAreaField`) stacked in the left column under Privacy & consent, out of Record status (the input is always shown for staff, empty or not, since they need it to add a note).
 
 *Follow-up to N107 (OFC-260/271); corrects N107's spacing mechanism (`space-y` → flex `gap`). Log-tail order: N107 → N108 → N109.*
+
+### N110 — Directory filter multi-selects dismiss on outside click / Escape (live-test follow-up)
+
+The Directory's Course, Country, and State/Province filters are native `<details>` disclosures (§5.6.4, D38); unlike the Profile course picker's Radix popover they stayed open until the summary was clicked again. Forrest flagged the inconsistency on live-test. Fixed by reusing the app's existing **`useDetailsAutoClose`** hook — already dismissing the Columns picker and the masthead avatar menu — inside `MultiSelectFilter`: an outside pointerdown closes the open disclosure, and Escape closes it and restores focus to the summary. The fix lives in the shared component, so all three multi-selects gain it together (Forrest's call: consistency over singling out Course). Filtering behaviour is unchanged. Test: `directory-3c.spec.ts` opens the Course disclosure and asserts that an outside click and Escape each close it.
+
+*Extends D38 (filter panel) with the disclosure-dismiss hook already used by the Columns picker and the avatar menu. Renumbered from N109 (the 6b-5 session merged first and took N109). Log-tail order: N109 → N110.*
