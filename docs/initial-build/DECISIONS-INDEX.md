@@ -41,7 +41,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Privacy & consent
 
-- Consent toggles & copy: D45 → **D89** (MITAA opt-in) → **D93** (third-party data defaults off) → **D113** (consequence-copy model) → **N68** → **N102** (switch copy — label/whenOn/whenOff — folded off `consent.ts` into the help-content registry, Option A; `ConsentSwitch` takes an `entryKey`) → **N103** (the counterfactual is dropped from the `?` as redundant with the inline consequence — amends D113; a switch's `?` shows only its optional static `toggleTip`, so only MITAA and Listed keep one; the `?` unified onto `ControlHelp` — current).
+- Consent toggles & copy: D45 → **D89** (MITAA opt-in) → **D93** (third-party data defaults off) → **D113** (consequence-copy model) → **N68** → **N102** (switch copy — label/whenOn/whenOff — folded off `consent.ts` into the help-content registry, Option A; `ConsentSwitch` takes an `entryKey`) → **N103** (the counterfactual is dropped from the `?` as redundant with the inline consequence — amends D113; a switch's `?` shows only its optional static `toggleTip`, so only MITAA and Listed keep one; the `?` unified onto `ControlHelp`) → **N106** (6b-5: the `shareEmergency`/`shareSpousePartner` toggles relocated into the Privacy & consent group beside the reachability switches, and their off-copy rewritten to name the field so each row self-identifies away from it; **OFC-268 declined — D93 stands**, emergency/spouse stay opt-in — OFC-270 — current).
 - Posture: **D77** (no CCPA machinery) + **D116** (persistent footer privacy notice).
 - PII egress: **D95** (`no-store` PII endpoints; sign-out control), **D88** (Mixpanel identity drops name), **D80** (mark-deceased consent snapshot; narrowed by N68; Ghost member now deleted/re-created rather than left subscribed-off — **D134**).
 
@@ -62,7 +62,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Profile page
 
 - Model: **D43** (view/edit, two-up layout) + **N33** (edit mode accumulates no history), **D44** (one layout, four role projections), **D50** (validation/save/conflict) with guard order **N11**.
-- Controls: **D46** → **N36** (Radix Combobox, editable address, sanitized repeatables); polish N35 → **N37** (incl. phone canonicalization).
+- Controls: **D46** → **N36** (Radix Combobox, editable address, sanitized repeatables); polish N35 → **N37** (incl. phone canonicalization) → **N106** (6b-5: the emergency/spouse share toggles unified into the Privacy & consent group; Admin Note promoted to its own "Administrative" view section, left column under Preferences; repeatable Remove-button centring + one `space-y-4` spacing token — OFC-270/271/260).
 - Headshot: **D47** (crop-on-upload, staged until Save).
 - Deceased: D49 → **D122** (birth/death years, b./d. display).
 - Prev/next: N32 → N45 → **N52** (sessionStorage stash of the displayed set; pure derivation).

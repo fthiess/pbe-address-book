@@ -444,20 +444,14 @@ export function ProfileEdit({
               {privateEmergency ? (
                 <PrivateMarker label="Emergency contacts" />
               ) : (
-                <>
-                  <EmergencyContactsEditor
-                    contacts={form.draft.emergencyContacts}
-                    onChange={form.setEmergencyContacts}
-                    errorFor={form.errorFor}
-                    touch={form.touch}
-                  />
-                  <ConsentSwitch
-                    entryKey={SWITCH_KEYS.shareEmergency}
-                    value={form.draft.privacy?.shareEmergency ?? false}
-                    onChange={(v) => form.setPrivacy("shareEmergency", v)}
-                    locked={consentLocked}
-                  />
-                </>
+                // The share-emergency toggle lives with the other share switches in
+                // Privacy & consent (OFC-270) — the field editor stands alone here.
+                <EmergencyContactsEditor
+                  contacts={form.draft.emergencyContacts}
+                  onChange={form.setEmergencyContacts}
+                  errorFor={form.errorFor}
+                  touch={form.touch}
+                />
               )}
             </Section>
           </EditRow>
@@ -504,24 +498,16 @@ export function ProfileEdit({
                   {privateSpouse ? (
                     <PrivateMarker label="Spouse / partner" />
                   ) : (
-                    <div>
-                      <TextField
-                        id="profile-spousePartnerName"
-                        label="Spouse / partner"
-                        value={form.draft.spousePartnerName ?? ""}
-                        onChange={(v) => form.setText("spousePartnerName", v)}
-                        onBlur={() => form.touch("spousePartnerName")}
-                        error={form.errorFor("spousePartnerName")}
-                      />
-                      <div className="mt-2">
-                        <ConsentSwitch
-                          entryKey={SWITCH_KEYS.shareSpousePartner}
-                          value={form.draft.privacy?.shareSpousePartner ?? false}
-                          onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
-                          locked={consentLocked}
-                        />
-                      </div>
-                    </div>
+                    // The share-spouse toggle lives with the other share switches in
+                    // Privacy & consent (OFC-270) — the field stands alone here.
+                    <TextField
+                      id="profile-spousePartnerName"
+                      label="Spouse / partner"
+                      value={form.draft.spousePartnerName ?? ""}
+                      onChange={(v) => form.setText("spousePartnerName", v)}
+                      onBlur={() => form.touch("spousePartnerName")}
+                      error={form.errorFor("spousePartnerName")}
+                    />
                   )}
                   <MajorsEditor
                     codes={form.draft.majors ?? []}
@@ -553,7 +539,10 @@ export function ProfileEdit({
               </p>
               {/* The primary per-field switches carry the same box insets (border +
                   p-3) as the boxed subgroups below — transparent here — so every
-                  switch track and ? button lines up down the column (N35). */}
+                  switch track and ? button lines up down the column (N35). All five
+                  share-toggles live here together — emergency and spouse/partner were
+                  relocated from beside their fields so the placement is consistent
+                  rather than split across two philosophies (OFC-270). */}
               <div className="space-y-3 rounded-[var(--radius-lg)] border border-transparent p-3">
                 <ConsentSwitch
                   entryKey={SWITCH_KEYS.shareEmail}
@@ -571,6 +560,18 @@ export function ProfileEdit({
                   entryKey={SWITCH_KEYS.sharePhone}
                   value={form.draft.privacy?.sharePhone ?? false}
                   onChange={(v) => form.setPrivacy("sharePhone", v)}
+                  locked={consentLocked}
+                />
+                <ConsentSwitch
+                  entryKey={SWITCH_KEYS.shareEmergency}
+                  value={form.draft.privacy?.shareEmergency ?? false}
+                  onChange={(v) => form.setPrivacy("shareEmergency", v)}
+                  locked={consentLocked}
+                />
+                <ConsentSwitch
+                  entryKey={SWITCH_KEYS.shareSpousePartner}
+                  value={form.draft.privacy?.shareSpousePartner ?? false}
+                  onChange={(v) => form.setPrivacy("shareSpousePartner", v)}
                   locked={consentLocked}
                 />
               </div>

@@ -141,17 +141,21 @@ export const helpContent: HelpContent = {
     whenOn: "Brothers can reach you by telephone.",
     whenOff: "Your phone number is hidden from other brothers.",
   },
+  // The off-copy names the field ("Your emergency contacts…") rather than the bare
+  // "Visible to administrators only." it once carried: since 6b-5 these two switches
+  // sit together in Privacy & consent, away from the fields they protect (OFC-270),
+  // so each row must identify itself on its own — as the reachability switches do.
   "profile.privacy.shareEmergency": {
     key: "profile.privacy.shareEmergency",
     label: "Share emergency contacts with brothers",
     whenOn: "Your emergency contacts are visible to brothers.",
-    whenOff: "Visible to administrators only.",
+    whenOff: "Your emergency contacts are visible to administrators only.",
   },
   "profile.privacy.shareSpousePartner": {
     key: "profile.privacy.shareSpousePartner",
     label: "Share spouse / partner with brothers",
     whenOn: "Your spouse / partner is visible to brothers.",
-    whenOff: "Visible to administrators only.",
+    whenOff: "Your spouse / partner is visible to administrators only.",
   },
   "profile.consent.allowShareWithMITAA": {
     key: "profile.consent.allowShareWithMITAA",
