@@ -20,10 +20,19 @@ import {
  * so a view is fully shareable and walks the browser back/forward history — a
  * deliberate refinement of D30/D31, which originally kept columns out of the URL.
  * The original concern (a shared link must not clobber the recipient's saved
- * column setup) is preserved: a URL that arrives carrying `cols` is *applied* to
- * that view but **never written back to localStorage** — only the user's own
- * edits update their saved default. The URL is the single source of truth for the
- * active lens; localStorage seeds it on first load and records each edit.
+ * column setup) is preserved: a URL that arrives carrying a `cols` that **differs
+ * from the user's own saved default** is a *foreign* view — applied to the page
+ * but **never written back to localStorage**; only edits to the user's own view
+ * update their saved default. The URL is the single source of truth for the active
+ * lens; localStorage seeds it on first load and records each edit.
+ *
+ * "Foreign" is decided by comparing the incoming `cols` against the persisted
+ * value, **not** by mere URL presence (OFC-263/N104): `apply` writes the URL and
+ * localStorage in lock-step, so the user's *own* view always satisfies
+ * `cols === saved` after any reload — including the hard reload that "View as"
+ * impersonation performs (N31), which preserves the URL. The old URL-presence test
+ * misread that reload as a shared link, latched the view "foreign", and so broke
+ * "Reset to default columns" for the rest of the session.
  *
  * Width clamps and the `cols` grammar live here; the resize affordance and the
  * grid template consume `getWidth`.
@@ -108,16 +117,21 @@ export function serializeLens(lens: Lens): string {
   return tokens.join(",");
 }
 
-function loadSaved(role: Role): Lens | null {
+/** The raw persisted `cols` string, exactly as `saveLens` wrote it (unparsed). */
+function loadSavedRaw(): string | null {
   if (typeof localStorage === "undefined") {
     return null;
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? parseLens(raw, role) : null;
+    return localStorage.getItem(STORAGE_KEY);
   } catch {
     return null;
   }
+}
+
+function loadSaved(role: Role): Lens | null {
+  const raw = loadSavedRaw();
+  return raw ? parseLens(raw, role) : null;
 }
 
 function saveLens(lens: Lens): void {
@@ -159,15 +173,25 @@ export function useColumnLens(role: Role): ColumnLens {
     savedRef.current = loadSaved(role) ?? defaultLens();
   }
 
-  // Whether this view arrived carrying a shared `?cols=` link — captured once,
-  // from the initial URL, on first render. Edits to a shared-link view update the
-  // URL (so the view stays shareable and walks history) but must NEVER be written
-  // back to the recipient's own localStorage default: opening someone's shared
-  // link and tweaking a column must not clobber the column setup the recipient
-  // had saved (D30/D31, OFC-101). Only edits to the user's *own* view persist.
+  // Whether this view arrived carrying a *foreign* shared `?cols=` link — a lens
+  // that differs from the user's own saved default. Captured once, from the initial
+  // URL, on first render. Edits to a shared-link view update the URL (so the view
+  // stays shareable and walks history) but must NEVER be written back to the
+  // recipient's own localStorage default: opening someone's shared link and
+  // tweaking a column must not clobber the column setup the recipient had saved
+  // (D30/D31, OFC-101). Only edits to the user's *own* view persist.
+  //
+  // The discriminator is a comparison against the persisted raw value, NOT mere URL
+  // presence (OFC-263/N104). `apply` writes the URL and localStorage from the same
+  // serialisation, so the user's own view has `cols === saved` after any reload —
+  // including "View as" impersonation's hard reload (N31), which keeps the URL. The
+  // comparison is on the raw strings, before role-parsing, so a saved staff-only
+  // column (filtered out of a brother's *displayed* lens) can't make the own view
+  // look foreign. A shared link — a lens the recipient never saved — differs, and
+  // stays transient.
   const fromSharedLink = useRef<boolean | null>(null);
   if (fromSharedLink.current === null) {
-    fromSharedLink.current = cols != null;
+    fromSharedLink.current = cols != null && cols !== loadSavedRaw();
   }
 
   // Active lens = the URL when present, else the saved default.
