@@ -1734,6 +1734,7 @@ Five Directory-page tickets, one PR, all on `apps/web/src/pages/directory/` (plu
 **Tests.** New `profile-6b5.spec.ts` locks the two structural changes — the five share switches all resolve *inside* the Privacy & consent section with none stranded beside their fields, the moved switches' self-identifying off-copy, and the Administrative section's staff-only/non-empty guard — plus an axe WCAG 2.2 AA scan of the restructured restricted block. The OFC-260 spacing is visual-only and not asserted.
 
 *Batch of OFC-270/271/260; reaffirms D93 (OFC-268 declined). Extends the Profile-controls polish chain (N35) and the consent-copy chain (N102/N103). Log-tail order: D135 → N105 → D136 → N106 → N107.*
+*Later updated by: N109 — the OFC-260 spacing here was inert (`space-y` cancelled by the rows' `m-0`); the real fix is flex `gap`. And the OFC-271 Admin Note "Administrative" section reaches the edit page there too.*
 
 ### N108 — 6b-4 follow-up: the course chip + name unified into one aligned component, adopted by the Profile course picker (refines N106/OFC-265)
 
@@ -1746,3 +1747,10 @@ Forrest's live-test of N106's Course-filter chips surfaced three issues, all fix
 **Tests.** `directory-6b-4.spec.ts` gains an alignment assertion (every description shares the same left x across chip-code widths 2 / 6-3 / 18) and a `whitespace-nowrap` guard on the chip; `profile-4b1.spec.ts` asserts the picker option renders the chip (by its "code — name" title). Full gate green.
 
 *Refines N106 (OFC-265); extends the controls chain N36/N37 (`Combobox` gains `renderOption`) and the course-chip presentation (D136/N106). Log-tail order: N107 → N108.*
+### N109 — 6b-5 live-test follow-up: the repeatable-editor spacing actually renders now (flex `gap`, not `space-y`), and the Admin Note's "Administrative" section reaches the edit page too (OFC-260 / OFC-271)
+
+**N107's OFC-260 spacing fix was inert — flex `gap` was needed.** The Links and Emergency repeatable rows are `<fieldset>`s carrying `m-0` (the reset of the browser's default fieldset margin), and `m-0` cancels `space-y`'s `margin-top`. So N107's `space-y-3 → space-y-4` changed nothing: the rows, the contact cards, and the "+ Add …" buttons all rendered with **0px** between them — the ticket's literal "zero vertical space." The real fix is **`flex flex-col gap-4`** on both repeatable containers — flex/grid `gap` is immune to child margins. Two riders: a flex column stretches its children on the cross axis by default, which blew the Add button up to the full column width (pinned back with `self-start`); and the gap was tuned to 16px after the first attempt's 20px read "a little too far." A new e2e measures the actual pixel gap between the link rows and before the Add button, so the collapse can't silently return. **Reusable landmine: `space-y-*` silently no-ops on any child carrying `m-0` / a margin reset — use flex or grid `gap` there.**
+
+**OFC-271 completed on the edit page.** N107 promoted the Admin Note into its own "Administrative" section on the *view*; the note also renders on the *edit* page, where it was still sitting inside Record status. The edit page now mirrors the view — a staff-only "Administrative" `Section` (the note's `TextAreaField`) stacked in the left column under Privacy & consent, out of Record status (the input is always shown for staff, empty or not, since they need it to add a note).
+
+*Follow-up to N107 (OFC-260/271); corrects N107's spacing mechanism (`space-y` → flex `gap`). Log-tail order: N107 → N108 → N109.*
