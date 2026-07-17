@@ -68,6 +68,9 @@ export function CourseChip({ code }: { code: string }) {
  * (the caller shows its own em-dash placeholder).
  */
 export function CourseChips({ codes }: { codes: readonly string[] }) {
+  if (codes.length === 0) {
+    return null;
+  }
   return (
     <span className="flex items-center gap-1">
       {codes.map((code) => (
