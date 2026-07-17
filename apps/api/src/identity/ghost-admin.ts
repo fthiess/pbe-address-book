@@ -112,7 +112,10 @@ export class GhostAdminLifecycle implements GhostLifecycle {
       // B) rather than a generic `502` that would wrongly invite a retry. Guarded on the
       // diff actually carrying an email: a 422 on a name/newsletter-only update is not a
       // duplicate-email condition and must stay a generic failure. All else propagates.
-      if (cause instanceof GhostHttpError && cause.status === 422 && diff.email !== undefined) {
+      // A truthy check (not just `!== undefined`) so an empty email — which
+      // `computeGhostUpdateDiff` never emits, but which would 422 for a different reason
+      // — is never mislabelled a collision.
+      if (cause instanceof GhostHttpError && cause.status === 422 && diff.email) {
         throw new GhostDuplicateEmailError(diff.email);
       }
       throw cause;
