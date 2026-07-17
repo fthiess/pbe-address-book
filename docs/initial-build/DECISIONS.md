@@ -1659,3 +1659,26 @@ Forrest's staging live-test of N102 (2026-07-16). Changes, all his calls:
 **Directory.** The **Export CSV** `?` is now wrapped with its button in one tight `inline-flex` (gap-1.5) inside a `gap-3` bar, so the tip visibly binds to Export and is clearly separated from Add Brother (it had sat equidistant between them).
 
 *Records to the registry doc-comment; amends D113 (counterfactual dropped from the `?`) and N102; leaves D48's staleness horizon authoritative for verification. Log-tail order: N102 → N103.*
+
+### D135 — Clearing a set email is gated behind a client-side confirmation; the sole-usable-admin case stays a server hard-block (OFC-272)
+
+Removing a brother's email address silently locks them out of both the Address Book and PBE News — the Ghost bridge resolves sign-in by email (`hasUsableEmail`; C15/D20/D115), so an email-less brother can never authenticate. It is the second-most-destructive profile edit after outright deletion, yet the edit form saved it with no more friction than fixing a typo. **Forrest's call: gate it.** A Save that removes a previously-usable email now raises an "are you sure — this locks *name* out" confirmation — the same accessible `ConfirmDialog` (destructive tone) the Delete-brother / De-brother controls use, different copy — on all three edit paths (self, manager, admin).
+
+**Two design forks, both Forrest's call:**
+
+- **No new server-side guard for the general case.** The confirmation is a UX affordance, not an invariant: a brother *may* legitimately remove their email (Book deliberately tolerates email-less brothers, ~1/3 of the roster — C15/D115). The only genuine server invariant is the last-admin one, which already exists (D129/D130), so the general email-clear stays a soft, confirmable client warning with no matching hard block.
+- **The confirmation composes *in front of* the existing sole-usable-admin hard block.** `profiles.ts` already refuses (`409 last_admin`) a PATCH that would strip the sole usable admin's email (D130). The client cannot know "sole usable admin" ahead of a save (it is server-resident cache state — D128/D83), so the warning fires for that admin too; on confirm the server's 409 is the backstop — now surfaced with a specific message instead of the generic banner (N104). Warning for everyone, hard block preserved for the last admin.
+
+*Continues the write-side chain D106 → D128 → D129 → D130 → N86; implemented in N104. Log-tail order: N103 → D135 → N104.*
+
+### N104 — 6b-3 implementation: the email-clear guard predicate, and the PATCH `409 last_admin` finally mapped on the client (closes N86's gap on this path)
+
+Implements D135 (OFC-272).
+
+**The trip predicate is one pure, unit-tested function.** `wouldClearUsableEmail(original, patch)` in `patch.ts` — `"email" in patch && hasUsableEmail(original.email) && !hasUsableEmail(patch.email)` — reuses the *same* `hasUsableEmail` the server's last-admin check uses, so client and server agree on what "usable" means. `"email" in patch` keys off the field actually changing (an untouched email never trips it); `hasUsableEmail` treats null / undefined / whitespace as not-usable, so a redacted private-email projection (a manager without `shareEmail`, N70 — `original.email` never reached the client) cannot false-trip either. `ProfileEdit.onSave` gained a `confirmedEmailClear` re-entry: the guard sets a `confirmClearEmail` state and bails before the PATCH; the dialog's confirm re-invokes `onSave(true)`, which skips the guard and proceeds.
+
+**The N86 gap on the PATCH-email path is closed.** N86 surfaced the last-admin refusal in the mark-deceased / de-brother / role UIs but left the *PATCH-email* 409 unmapped: `patchProfile` had no `409` branch (it threw → the generic "couldn't save just now"), and `PatchOutcome` / `SubmitResult` had no `last_admin` variant. The `409 → last_admin` outcome is now threaded end to end (`api.ts` → `Profile.tsx` `submit` → `ProfileEdit` banner), guarded on `body.error === "last_admin"` so any other 409 still throws. The sole-usable-admin block now reads "You can't remove the last administrator's email address — … Give another brother the administrator role first."
+
+**Tests.** `patch.test.ts` covers the predicate (clear / whitespace / change / untouched / never-had / redacted / empty-patch); a new `profile-email-guard-6b3.spec.ts` e2e drives the dialog on self / manager / admin, asserts the PATCH is withheld until confirm and that Keep-editing sends nothing, covers the 409 banner, and gates the open dialog on WCAG 2.2 AA (D79).
+
+*Implements D135; extends N86 (its last-admin-surfacing thread now covers the PATCH-email path). Log-tail order: D135 → N104.*

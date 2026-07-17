@@ -195,6 +195,9 @@ export function ProfileContainer() {
         if (outcome.status === "reload") {
           return { status: "reload" };
         }
+        if (outcome.status === "last_admin") {
+          return { status: "last_admin" };
+        }
         return { status: "forbidden" };
       } catch (error) {
         // A mid-edit session lapse (401) surfaces as its own result so the editor
