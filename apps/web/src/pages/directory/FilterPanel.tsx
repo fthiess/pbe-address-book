@@ -1,9 +1,9 @@
-import { type Role, courseName } from "@pbe/shared";
+import type { Role } from "@pbe/shared";
 import { ChevronRight } from "lucide-react";
 import { useId, useState } from "react";
 import { ClearButton } from "../../components/ClearButton.js";
 import { ControlHelp } from "../../components/ControlHelp.js";
-import { CourseChip } from "./Chips.js";
+import { CourseChipName } from "./Chips.js";
 import {
   type BoolFilter,
   type DirectoryFilters,
@@ -103,20 +103,10 @@ export function FilterPanel({
               options={options.major}
               selected={filters.major}
               onChange={(v) => setFilter("major", v, "push")}
-              // OFC-265: render each option as the same course chip used across
-              // Book, followed by the course name — visual consistency with the
-              // grid/cards/profile. The chip's aria-label already carries
-              // "Course <code>, <name>", so the visible name is aria-hidden to
-              // avoid a doubled screen-reader announcement.
-              renderOption={(option) => {
-                const name = courseName(option.value);
-                return (
-                  <>
-                    <CourseChip code={option.value} />
-                    {name && <span aria-hidden="true">{name}</span>}
-                  </>
-                );
-              }}
+              // OFC-265: render each option as the shared course chip + aligned
+              // name (the same component the Profile course picker uses, N108),
+              // for visual consistency with the grid/cards/profile.
+              renderOption={(option) => <CourseChipName code={option.value} />}
             />
             <MultiSelectFilter
               label="Country"

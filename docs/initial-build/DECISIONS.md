@@ -1734,3 +1734,15 @@ Five Directory-page tickets, one PR, all on `apps/web/src/pages/directory/` (plu
 **Tests.** New `profile-6b5.spec.ts` locks the two structural changes — the five share switches all resolve *inside* the Privacy & consent section with none stranded beside their fields, the moved switches' self-identifying off-copy, and the Administrative section's staff-only/non-empty guard — plus an axe WCAG 2.2 AA scan of the restructured restricted block. The OFC-260 spacing is visual-only and not asserted.
 
 *Batch of OFC-270/271/260; reaffirms D93 (OFC-268 declined). Extends the Profile-controls polish chain (N35) and the consent-copy chain (N102/N103). Log-tail order: D135 → N105 → D136 → N106 → N107.*
+
+### N108 — 6b-4 follow-up: the course chip + name unified into one aligned component, adopted by the Profile course picker (refines N106/OFC-265)
+
+Forrest's live-test of N106's Course-filter chips surfaced three issues, all fixed here:
+
+1. **Chip codes wrapped.** In a tight flex row beside a long course name, `CourseChip` flex-shrank and its code (e.g. "6-2") broke across two lines. Fixed at the source: `CourseChip` now carries `shrink-0 whitespace-nowrap`, so a chip keeps its full size and its code never wraps anywhere it appears. `CourseChips` (the Directory grid/cards list) drops its now-redundant per-chip `shrink-0` wrappers.
+2. **Descriptions didn't line up.** Chip widths vary with the code ("7" vs "6-3"), so the names started at different x. New shared component **`CourseChipName`** (Chips.tsx) puts the chip in a fixed-width slot (`w-11`, wide enough for the widest 3-character code), followed by the name; a long name wraps beneath itself while the chip stays top-aligned (`items-start`). The name is `aria-hidden` (the chip's aria-label already carries "Course <code>, <name>"), so the option's accessible name is unchanged.
+3. **The Profile course picker didn't match.** Forrest asked (extending OFC-265) that the Profile edit **course picker** read like the filter — colour chips + aligned names, minus the checkboxes. The picker is the shared `Combobox` (also the Big-Brother typeahead), so it gained an optional **`renderOption`** prop (default unchanged → the typeahead is untouched); `MajorsEditor` passes `CourseChipName`. The Directory Course filter (`MultiSelectFilter` renderOption) and the picker now render through the one component, so the two can't drift again.
+
+**Tests.** `directory-6b-4.spec.ts` gains an alignment assertion (every description shares the same left x across chip-code widths 2 / 6-3 / 18) and a `whitespace-nowrap` guard on the chip; `profile-4b1.spec.ts` asserts the picker option renders the chip (by its "code — name" title). Full gate green.
+
+*Refines N106 (OFC-265); extends the controls chain N36/N37 (`Combobox` gains `renderOption`) and the course-chip presentation (D136/N106). Log-tail order: N107 → N108.*
