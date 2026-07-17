@@ -126,6 +126,16 @@ export class GhostAdminReader implements GhostReader {
     return cutoff.toISOString().slice(0, 10);
   }
 
+  /**
+   * Emit a structured `WARNING` for a best-effort read that degraded rather than
+   * failing the whole report — the shared shape for the two swallow sites below
+   * ({@link listNewsletterEvents}'s advisory events, {@link listNewsletterEmails}'s
+   * optional titles).
+   */
+  private logDegraded(message: string): void {
+    process.stderr.write(`${JSON.stringify({ logType: "error", severity: "WARNING", message })}\n`);
+  }
+
   async listMembers(): Promise<GhostMemberRecord[]> {
     // Only `newsletters` is read (the label relation was requested but never used).
     const rows = await this.http.getAll("/members/", "members", { include: "newsletters" });
@@ -156,10 +166,26 @@ export class GhostAdminReader implements GhostReader {
 
   async listNewsletterEvents(): Promise<GhostNewsletterEvent[]> {
     // Bounded to the last EVENT_LOOKBACK_MONTHS (OFC-231): the `+` is NQL's AND, so
-    // this is "newsletter events created after the cutoff".
-    const rows = await this.http.getAll("/members/events/", "events", {
-      filter: `type:newsletter_event+created_at:>'${this.eventCutoff()}'`,
-    });
+    // this is "newsletter events created after the cutoff". The date field is
+    // `data.created_at`, not the bare `created_at`: Ghost's `/members/events` filter
+    // allowlist is `[data.created_at, data.member_id, data.post_id, type, id]`, and a
+    // bare `created_at` is rejected `400 "Cannot filter by created_at"` (OFC-275).
+    let rows: unknown[];
+    try {
+      rows = await this.http.getAll("/members/events/", "events", {
+        filter: `type:newsletter_event+data.created_at:>'${this.eventCutoff()}'`,
+      });
+    } catch (error) {
+      // Advisory (N69): the audit enriches newsletterDrift with a Ghost-side change
+      // timestamp, but a missing `ghostChangedAt` degrades the report, it does not
+      // break it. So swallow a read failure to `[]` rather than 502 the whole audit —
+      // mirroring the best-effort `listNewsletterEmails` swallow below. (The bounce
+      // report's `listBounceEvents` genuinely needs its events and does NOT swallow.)
+      this.logDegraded(
+        `ghost-audit: newsletter change timestamps unavailable: ${(error as Error).message}`,
+      );
+      return [];
+    }
     const events: GhostNewsletterEvent[] = [];
     for (const row of rows) {
       const event = row as Record<string, unknown>;
@@ -179,8 +205,12 @@ export class GhostAdminReader implements GhostReader {
   async listBounceEvents(): Promise<GhostBounceEvent[]> {
     // Bounded to the last EVENT_LOOKBACK_MONTHS (OFC-231): bounces matter only for
     // recent sends, so old failure events are dropped rather than paginated forever.
+    // Date field is `data.created_at`, not the bare `created_at` (OFC-275; see the
+    // allowlist note in listNewsletterEvents). NOT swallowed on failure: the bounce
+    // report needs these events, so a read error must surface as 502, not an empty
+    // (and misleadingly "clean") report.
     const rows = await this.http.getAll("/members/events/", "events", {
-      filter: `type:email_failed_event+created_at:>'${this.eventCutoff()}'`,
+      filter: `type:email_failed_event+data.created_at:>'${this.eventCutoff()}'`,
     });
     return rows.map((row) => {
       const data = (row as Record<string, unknown>).data as Record<string, unknown> | undefined;
@@ -202,13 +232,7 @@ export class GhostAdminReader implements GhostReader {
     } catch (error) {
       // Best-effort (D120): the posts/email endpoint can 403 for a custom
       // integration token. Log server-side and proceed without titles.
-      process.stderr.write(
-        `${JSON.stringify({
-          logType: "error",
-          severity: "WARNING",
-          message: `bounce-report: newsletter titles unavailable: ${(error as Error).message}`,
-        })}\n`,
-      );
+      this.logDegraded(`bounce-report: newsletter titles unavailable: ${(error as Error).message}`);
       return [];
     }
     const emails: GhostNewsletterEmail[] = [];
