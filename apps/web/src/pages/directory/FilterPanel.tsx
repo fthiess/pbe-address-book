@@ -414,12 +414,16 @@ function MultiSelectFilter({
             <p className="py-1 text-xs text-muted-foreground">No values to filter by.</p>
           ) : (
             options.map((option) => (
-              <label key={option.value} className="flex items-center gap-2 py-1 text-sm">
+              // items-start so the checkbox aligns with the FIRST line of a
+              // multi-line option (e.g. a wrapped course name), matching the chip,
+              // rather than centring on the whole two-line block. mt-0.5 nudges the
+              // 16px checkbox to the centre of that first (20px) line.
+              <label key={option.value} className="flex items-start gap-2 py-1 text-sm">
                 <input
                   type="checkbox"
                   checked={selectedSet.has(option.value)}
                   onChange={() => toggle(option.value)}
-                  className="size-4 rounded border-input accent-[var(--brand-gold)]"
+                  className="mt-0.5 size-4 rounded border-input accent-[var(--brand-gold)]"
                 />
                 {renderOption ? renderOption(option) : option.label}
               </label>
