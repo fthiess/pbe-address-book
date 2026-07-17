@@ -1,8 +1,9 @@
 import type { Role } from "@pbe/shared";
 import { ChevronRight } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { ClearButton } from "../../components/ClearButton.js";
 import { ControlHelp } from "../../components/ControlHelp.js";
+import { useDetailsAutoClose } from "../../lib/useDetailsAutoClose.js";
 import { CourseChipName } from "./Chips.js";
 import {
   type BoolFilter,
@@ -392,9 +393,15 @@ function MultiSelectFilter({
         ? "1 selected"
         : `${selected.length} selected`;
 
+  // Close the disclosure on an outside click or Escape — a native <details>
+  // stays open otherwise, unlike the Combobox popover (the same hook the Columns
+  // picker and avatar menu use).
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  useDetailsAutoClose(detailsRef);
+
   return (
     <Field label={label} onClear={selected.length > 0 ? () => onChange([]) : undefined}>
-      <details className="rounded-lg border border-input bg-background">
+      <details ref={detailsRef} className="rounded-lg border border-input bg-background">
         <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
           <span className={selected.length === 0 ? "text-muted-foreground" : undefined}>
             {summary}
