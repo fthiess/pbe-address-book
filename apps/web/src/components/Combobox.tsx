@@ -57,6 +57,13 @@ interface ComboboxProps {
   disabled?: boolean;
   /** A leading adornment inside the input frame (e.g. a search glyph). */
   adornment?: ReactNode;
+  /**
+   * Custom option-row content; defaults to the `label` with the `hint` right-
+   * aligned. When provided, the row left-aligns and top-aligns its content (so a
+   * wrapping renderer reads cleanly). The option's accessible name still comes
+   * from `ariaLabel`/`label`, so a custom renderer is purely visual.
+   */
+  renderOption?: (option: ComboboxOption) => ReactNode;
 }
 
 function defaultFilter(option: ComboboxOption, query: string): boolean {
@@ -82,6 +89,7 @@ export function Combobox({
   describedBy,
   disabled = false,
   adornment,
+  renderOption,
 }: ComboboxProps) {
   const fallbackId = useId();
   const id = providedId ?? fallbackId;
@@ -257,17 +265,24 @@ export function Combobox({
                   }}
                   onMouseEnter={() => setActiveIndex(index)}
                   className={cn(
-                    "flex cursor-pointer items-baseline justify-between gap-3 rounded-[var(--radius-md)] px-3 py-2 text-[length:var(--text-body)]",
+                    "flex cursor-pointer gap-3 rounded-[var(--radius-md)] px-3 py-2 text-[length:var(--text-body)]",
+                    renderOption ? "items-start" : "items-baseline justify-between",
                     index === clampedActive && "bg-accent text-accent-foreground",
                   )}
                 >
-                  <span className={cn(option.muted && "text-muted-foreground")}>
-                    {option.label}
-                  </span>
-                  {option.hint && (
-                    <span className="shrink-0 text-[length:var(--text-body-sm)] text-muted-foreground">
-                      {option.hint}
-                    </span>
+                  {renderOption ? (
+                    renderOption(option)
+                  ) : (
+                    <>
+                      <span className={cn(option.muted && "text-muted-foreground")}>
+                        {option.label}
+                      </span>
+                      {option.hint && (
+                        <span className="shrink-0 text-[length:var(--text-body-sm)] text-muted-foreground">
+                          {option.hint}
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               ))

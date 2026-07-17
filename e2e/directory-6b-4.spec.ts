@@ -154,6 +154,31 @@ test.describe("directory 6b-4 — UI batch", () => {
     await expect(courseField.getByRole("checkbox").first()).toBeChecked();
   });
 
+  test("OFC-265: course descriptions align to a common left edge, chip never wraps (N108)", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    const courseField = await openCourseFilter(page);
+
+    // Every description starts at the same x regardless of chip-code width
+    // (2 / 6-3 / 18) — proving the fixed-width chip slot aligns them.
+    const names = ["Mechanical Engineering", "Computer Science and Engineering", "Mathematics"];
+    const xs: number[] = [];
+    for (const name of names) {
+      const box = await courseField.getByText(name).boundingBox();
+      xs.push(box?.x ?? Number.NaN);
+    }
+    for (const x of xs) {
+      expect(Math.abs(x - xs[0])).toBeLessThanOrEqual(1);
+    }
+
+    // The chip carries whitespace-nowrap, so a code like "6-3" never breaks
+    // across two lines beside a long name.
+    await expect(
+      courseField.getByLabel("Course 6-3, Computer Science and Engineering"),
+    ).toHaveClass(/whitespace-nowrap/);
+  });
+
   test("OFC-266 / OFC-267: filter labels are self-explanatory", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: "Filters" }).click();

@@ -7,7 +7,7 @@ import { type CSSProperties, type KeyboardEvent, useId } from "react";
 import { Combobox } from "../../components/Combobox.js";
 import { ControlHelp } from "../../components/ControlHelp.js";
 import { cn } from "../../lib/utils.js";
-import { type ChipFamily, courseFamily, familyStyle } from "../directory/Chips.js";
+import { type ChipFamily, CourseChipName, courseFamily, familyStyle } from "../directory/Chips.js";
 import { FIELD_LABEL_CLASS } from "./fields.js";
 
 /**
@@ -99,6 +99,9 @@ export function MajorsEditor({
             emptyMessage="No more courses to add."
             describedBy={error ? errorId : helpId}
             adornment={<Plus size={14} strokeWidth={1.6} aria-hidden="true" />}
+            // OFC-265/N108: show each option as the shared course chip + aligned
+            // name, matching the Directory Course filter (retired codes muted).
+            renderOption={(option) => <CourseChipName code={option.value} muted={option.muted} />}
           />
         </div>
       </div>
