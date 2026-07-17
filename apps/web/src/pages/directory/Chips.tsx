@@ -96,9 +96,10 @@ export function CourseChipName({ code, muted }: { code: string; muted?: boolean 
   const name = courseName(code);
   return (
     <span className="flex min-w-0 items-start gap-2">
-      {/* Fixed-width slot: wide enough for the widest course code so every name
-          starts at the same x (the chip left-aligns within it). */}
-      <span className="flex w-11 shrink-0">
+      {/* Chip slot sized to the widest course code so every name starts at the
+          same x. min-width (not a fixed width) so a hypothetically wider code
+          grows the slot rather than overflowing it into the name. */}
+      <span className="flex min-w-11 shrink-0">
         <CourseChip code={code} />
       </span>
       {name ? (
