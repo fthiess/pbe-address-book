@@ -40,6 +40,26 @@ export const helpContent: HelpContent = {
     label: "Columns",
     helperText: "Choose which columns appear; drag a column header's grip to reorder.",
   },
+  // The two numeric filters carried hardcoded labels and placeholders and no
+  // registry entry at all until 6c-2 (OFC-283) — so they had no `?` help, and
+  // generating USER-MANUAL §10 from this registry (N118) would have dropped the
+  // range-and-list syntax the hand-written manual used to document. Forrest's
+  // call: the need for a toggle-tip here was borderline, and the manual being
+  // generated from the registry pushed it over.
+  "directory.filter.classYear": {
+    key: "directory.filter.classYear",
+    label: "Class Year",
+    placeholder: "e.g. 1980, 1985-1989, 1990-",
+    toggleTip:
+      "The year the brother and his pledge class associate with; usually (but not always) the same as his year of graduation. Enter a single year (1985), a list separated by commas, or a range. Ranges can be open-ended: 1985-1989 for a span, 1990- for that year onward, -1975 for up to that year.",
+  },
+  "directory.filter.constitutionId": {
+    key: "directory.filter.constitutionId",
+    label: "Constitution ID",
+    placeholder: "e.g. 5001, 5100-5200",
+    toggleTip:
+      "The Constitution ID is the sequence number of the brother's signature on the PBE constitution. Filter by Constitution ID the same way as Class Year: a single number, a comma-separated list, or a range like 800-900 (open-ended ranges like 800- work too).",
+  },
   "directory.filter.staff": {
     key: "directory.filter.staff",
     label: "Staff",
@@ -221,8 +241,12 @@ export const helpContent: HelpContent = {
   "admin.bugReports": {
     key: "admin.bugReports",
     label: "Bug reports",
+    // N116's naming rule applies here: this is ordinary admin copy, not part of
+    // the Ghost alignment-audit surface, which deliberately keeps bare "Book" as
+    // a system name set against "Ghost" (see `admin.ghostAudit` below — do not
+    // "fix" that one).
     helperText:
-      "Reports members file with the “Report a bug” control appear here. Copy any worth keeping into your bug tracker, then delete them — Book only holds them so you can read them.",
+      "Reports members file with the “Report a bug” control appear here. Copy any worth keeping into your bug tracker, then delete them — the Address Book only holds them so you can read them.",
   },
 };
 

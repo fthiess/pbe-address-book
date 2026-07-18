@@ -1,6 +1,6 @@
 import aboutHtml from "virtual:about-html";
 import { useEffect, useRef } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
 /**
  * The About page (OFC-244, N116): what the PBE Address Book is, how to report a
@@ -15,6 +15,7 @@ import { Link, useNavigate } from "react-router-dom";
  */
 export function AboutPage() {
   const navigate = useNavigate();
+  const { hash } = useLocation();
   const proseRef = useRef<HTMLDivElement>(null);
 
   /**
@@ -58,6 +59,41 @@ export function AboutPage() {
     container.addEventListener("click", onClick);
     return () => container.removeEventListener("click", onClick);
   }, [navigate]);
+
+  /**
+   * Scroll to the `#fragment` a link asked for. The browser does this itself on a
+   * full page load, but **not** on a client-side navigation — and the privacy
+   * footer's `/about#privacy` (OFC-281) is exactly that: a router `<Link>` from
+   * another page. Without this the reader lands at the top of About and has to
+   * hunt for the section he asked for.
+   *
+   * Focus moves with the scroll, so the jump works for keyboard and screen-reader
+   * users rather than only visually (WCAG 2.4.3). The heading isn't natively
+   * focusable, hence the temporary `tabIndex`; it is removed on blur so the
+   * heading never becomes a stop in normal tab order.
+   */
+  useEffect(() => {
+    if (!hash) return;
+
+    // Decoded because a fragment arrives percent-encoded: every anchor the
+    // compiler generates today is plain ASCII, so this is belt-and-braces rather
+    // than a live case — but an undecoded lookup fails by silently landing at the
+    // top of the page, which is indistinguishable from the link being broken.
+    let fragment = hash.slice(1);
+    try {
+      fragment = decodeURIComponent(fragment);
+    } catch {
+      // A malformed escape sequence — fall back to the raw fragment.
+    }
+
+    const target = document.getElementById(fragment);
+    if (!target) return;
+
+    target.scrollIntoView({ block: "start" });
+    target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+    target.addEventListener("blur", () => target.removeAttribute("tabindex"), { once: true });
+  }, [hash]);
 
   return (
     <section className="mx-auto max-w-2xl">

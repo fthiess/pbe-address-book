@@ -245,7 +245,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
           own measure rather than relying on a shell-wide cap. */}
       <main className="w-full flex-1 px-4 py-6 sm:px-6 lg:px-8">{children}</main>
 
-      <PrivacyFooter />
+      <PrivacyFooter withAboutLink />
 
       {/* The long-lived-tab "new version available" toast (OFC-63) — only runs for a
           signed-in tab, so it never polls on the sign-in screen. */}

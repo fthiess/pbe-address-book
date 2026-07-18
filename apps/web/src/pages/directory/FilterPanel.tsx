@@ -92,12 +92,14 @@ export function FilterPanel({
               placeholder="e.g. 1980, 1985-1989, 1990-"
               value={filters.classYear}
               onChange={(v) => setFilter("classYear", v)}
+              helpKey="directory.filter.classYear"
             />
             <NumericFilter
               label="Constitution ID"
               placeholder="e.g. 5001, 5100-5200"
               value={filters.constitutionId}
               onChange={(v) => setFilter("constitutionId", v)}
+              helpKey="directory.filter.constitutionId"
             />
             <MultiSelectFilter
               label="Course"
@@ -255,18 +257,21 @@ function NumericFilter({
   placeholder,
   value,
   onChange,
+  helpKey,
 }: {
   label: string;
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
+  /** Registry id for the `?` toggle-tip beside the label (OFC-283). */
+  helpKey?: string;
 }) {
   const id = useId();
   const errorId = useId();
   const { errors } = parseNumericGrammar(value);
   const hasErrors = errors.length > 0;
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} helpKey={helpKey}>
       <ClearableInput
         id={id}
         type="text"

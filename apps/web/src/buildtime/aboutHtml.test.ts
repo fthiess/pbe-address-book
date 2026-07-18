@@ -8,7 +8,7 @@ const ABOUT_MD = fileURLToPath(new URL("../content/about.md", import.meta.url));
 describe("compileAboutHtml", () => {
   it("compiles ordinary Markdown", () => {
     const html = compileAboutHtml("## Heading\n\nSome **bold** prose.\n");
-    expect(html).toContain("<h2>Heading</h2>");
+    expect(html).toContain('<h2 id="heading">Heading</h2>');
     expect(html).toContain("<strong>bold</strong>");
   });
 
@@ -44,6 +44,47 @@ describe("compileAboutHtml", () => {
 
     it("rejects an h1 nested in a list item", () => {
       expect(() => compileAboutHtml("## ok\n\n- item\n\n  # deep\n")).toThrow(/produced an <h1>/);
+    });
+  });
+
+  describe("heading anchors", () => {
+    it("slugs a heading into an id so a section can be linked directly", () => {
+      expect(compileAboutHtml("## Privacy\n")).toContain('<h2 id="privacy">Privacy</h2>');
+    });
+
+    it("reduces punctuation and spaces to single hyphens, with none left dangling", () => {
+      expect(compileAboutHtml("## Something not right? Tell us\n")).toContain(
+        '<h2 id="something-not-right-tell-us">',
+      );
+    });
+
+    it("keeps the heading's own inline markup in the visible text", () => {
+      const html = compileAboutHtml("## Our *open* source\n");
+
+      expect(html).toContain('id="our-open-source"');
+      expect(html).toContain("<em>open</em>");
+    });
+
+    it("slugs deeper headings too", () => {
+      expect(compileAboutHtml("## A\n\n### Nested Bit\n")).toContain('<h3 id="nested-bit">');
+    });
+
+    /**
+     * A duplicate anchor is worse than merely invalid: a fragment resolves to the
+     * first match, so a second similarly-titled section would silently point
+     * `/about#privacy` at the wrong part of the page.
+     */
+    it("fails the build on two headings that produce the same anchor", () => {
+      expect(() => compileAboutHtml("## Privacy\n\n## Privacy?\n")).toThrow(/#privacy/);
+    });
+
+    it("fails the build on a heading that yields an empty anchor", () => {
+      expect(() => compileAboutHtml("## ---\n")).toThrow(/empty anchor/);
+    });
+
+    it("starts clean on each compile, so a second call is not a false duplicate", () => {
+      expect(compileAboutHtml("## Privacy\n")).toContain('id="privacy"');
+      expect(compileAboutHtml("## Privacy\n")).toContain('id="privacy"');
     });
   });
 
@@ -121,8 +162,19 @@ describe("compileAboutHtml", () => {
     const html = compileAboutHtml(readFileSync(ABOUT_MD, "utf8"));
 
     it("compiles and passes every guard", () => {
-      expect(html).toContain("<h2>");
-      expect(html).not.toContain("<h1>");
+      expect(html).toContain("<h2 id=");
+      expect(html).not.toContain("<h1");
+    });
+
+    /**
+     * The footer's "How we handle your information" link points at
+     * `/about#privacy` (OFC-281). Nothing else ties that fragment to the
+     * "## Privacy" heading in about.md, so renaming the heading would break the
+     * link silently — in a page whose subject is a promise about privacy. This
+     * test is the tie.
+     */
+    it("keeps the #privacy anchor the privacy footer links to", () => {
+      expect(html).toContain('<h2 id="privacy">');
     });
 
     it("uses the N116 naming rule — never bare 'Book'", () => {

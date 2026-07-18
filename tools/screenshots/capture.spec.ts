@@ -196,15 +196,58 @@ async function settle(page: Page): Promise<void> {
 
   await page.evaluate(() => document.fonts.ready);
   await page.waitForLoadState("networkidle");
+  await waitForStableLayout(page);
+}
+
+/**
+ * Wait until every image has finished decoding and the page's height stops
+ * moving. `networkidle` plus `fonts.ready` is not sufficient on its own: the
+ * Directory's list is virtualized, so it measures and re-renders a frame or two
+ * *after* the last response settles, and the avatar images resolve their
+ * intrinsic size on their own schedule.
+ *
+ * This was found the hard way — the phone shot came out byte-different roughly
+ * one run in six, invisibly to the eye, which is exactly the failure that erodes
+ * trust in "re-run it and commit whatever changed." An intermittent flake is
+ * worse than a consistent one: it looks like a real UI change.
+ */
+async function waitForStableLayout(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    await Promise.all(
+      Array.from(document.images)
+        .filter((img) => !img.complete)
+        .map((img) => img.decode().catch(() => undefined)),
+    );
+
+    const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+
+    // Require the document height to repeat across three consecutive frames
+    // before calling it settled; one repeat can happen mid-reflow.
+    let stable = 0;
+    let previous = -1;
+    while (stable < 3) {
+      await frame();
+      const height = document.documentElement.scrollHeight;
+      stable = height === previous ? stable + 1 : 0;
+      previous = height;
+    }
+  });
 }
 
 async function shoot(
   page: Page,
   name: string,
-  options: { fullPage?: boolean } = {},
+  options: {
+    fullPage?: boolean;
+    clip?: { x: number; y: number; width: number; height: number };
+  } = {},
 ): Promise<void> {
   await settle(page);
-  await page.screenshot({ path: `${OUT}${name}.png`, fullPage: options.fullPage ?? false });
+  await page.screenshot({
+    path: `${OUT}${name}.png`,
+    fullPage: options.fullPage ?? false,
+    clip: options.clip,
+  });
 }
 
 test("directory", async ({ page }) => {
@@ -256,5 +299,14 @@ test("directory on a phone, with the Options fold open", async ({ page }) => {
   // open rather than collapsed.
   await page.getByRole("button", { name: /^Options/ }).click();
 
-  await shoot(page, "directory-mobile-options");
+  // Clipped to the top of the page rather than the whole viewport. The card list
+  // below is virtualized, and its tail rendered two different ways about one run
+  // in eight — imperceptible to the eye but a byte difference, which reads as a
+  // real UI change and erodes trust in the whole "commit whatever changed" habit.
+  // The clip both removes that dependency and frames the subject §3 actually
+  // describes: the Options fold, with enough of the card list to show the phone
+  // layout.
+  await shoot(page, "directory-mobile-options", {
+    clip: { x: 0, y: 0, width: 390, height: 600 },
+  });
 });

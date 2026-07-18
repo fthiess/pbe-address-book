@@ -82,6 +82,23 @@ function isExternal(href: string): boolean {
 }
 
 /**
+ * Turn a heading's plain text into a URL fragment. Deliberately conservative —
+ * lower-case, ASCII word characters, single hyphens — so the resulting id needs
+ * no escaping to be safe in a URL and stays stable if the heading's punctuation
+ * is edited. "Something not right? Tell us" → `something-not-right-tell-us`.
+ *
+ * These ids are a **public surface**: `PrivacyFooter` links `/about#privacy`, so
+ * renaming the "Privacy" heading in about.md silently breaks that link. A unit
+ * test pins the anchors the app depends on for exactly that reason.
+ */
+function slugify(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
  * Throw on compiled HTML that must never reach a reader. Build-time, so a mistake
  * in the copy is a failed build rather than a shipped hazard.
  */
@@ -131,6 +148,10 @@ export function compileAboutHtml(markdown: string): string {
 
   const source = markdown;
   const marked = new Marked();
+  // Per-compile, not module-level: each call must start clean, or a second
+  // compile in the same process (the unit tests, or a watch-mode rebuild) would
+  // see the first one's anchors and report a false duplicate.
+  const seenIds = new Set<string>();
 
   for (const token of marked.lexer(source)) {
     if (token.type === "heading" && token.depth === 1) {
@@ -146,6 +167,42 @@ export function compileAboutHtml(markdown: string): string {
       // marked v16+ passes the renderer a token object, not positional arguments
       // (https://marked.js.org/using_pro). Nested inline content is rendered by
       // handing the child tokens back to the parser.
+
+      // Headings carry a slugged id so a section can be linked directly — the
+      // privacy footer points at `/about#privacy` (OFC-281). marked has emitted
+      // no ids of its own since v5, so this is the whole mechanism. Generalized
+      // rather than special-casing the one section that needs it today: every
+      // section becomes addressable, which is what the Ghost theme will want in
+      // 7.6. Note that a *link* alone is not enough — AboutPage must also scroll
+      // to the hash, because a client-side navigation does not.
+      heading(token) {
+        const text = this.parser.parseInline(token.tokens);
+        const id = slugify(token.text);
+
+        // Two guards, in the spirit of the rest of this compiler: a bad anchor is
+        // a failed build, not a shipped page that quietly misbehaves.
+        //
+        // An **empty** slug (a heading of pure punctuation) would emit `id=""` —
+        // invalid, and unlinkable while looking like an anchor. A **duplicate**
+        // slug is worse than invalid: the browser resolves a fragment to the
+        // first match, so adding a second similarly-titled section would
+        // silently redirect `/about#privacy` to the wrong part of the page —
+        // failing precisely the promise the privacy link exists to keep.
+        if (!id) {
+          throw new Error(
+            `about.md heading ${JSON.stringify(token.text)} has no letters or digits, so it yields an empty anchor id. Give it some word text.`,
+          );
+        }
+        if (seenIds.has(id)) {
+          throw new Error(
+            `about.md has two headings that both produce the anchor "#${id}" (most recently ${JSON.stringify(token.text)}). Fragment links resolve to the first match, so this would silently point links at the wrong section — reword one of them.`,
+          );
+        }
+        seenIds.add(id);
+
+        return `<h${token.depth} id="${escapeAttribute(id)}">${text}</h${token.depth}>\n`;
+      },
+
       link(token) {
         const text = this.parser.parseInline(token.tokens);
         const href = escapeAttribute(token.href);
