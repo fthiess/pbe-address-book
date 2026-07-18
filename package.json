@@ -32,6 +32,7 @@
     "check:bundle-size": "node scripts/check-bundle-size.mjs",
     "ci:timing": "node scripts/ci-timing.mjs",
     "docs:help": "tsx scripts/generate-help-manual.ts",
+    "docs:screenshots": "playwright test --config playwright.screenshots.config.ts",
     "verify:gate": "npm run check && npm run assert:tokens && npm run assert:help-manual && npm run typecheck && npm run build && npm run assert:csp-hashes && npm run assert:no-dev-provider && npm run check:bundle-size && npm run test && npm run test:emulator && npm run e2e"
   },
   "overrides": {

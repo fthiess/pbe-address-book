@@ -18,6 +18,21 @@ authoritative for *why* anything is the way it is.
 each phase actually landed is recorded in the decision log's `N`-notes
 ([`DECISIONS.md`](docs/initial-build/DECISIONS.md)).
 
+## What it looks like
+
+The **Directory** — every brother, searchable and sortable, with the columns
+each member chooses for himself:
+
+![The Book directory: a dark-mode table of brothers with name, class year, course, email, telephone and location columns, a name-search box, and filter and column controls above it.](docs/images/directory.png)
+
+A **brother's profile** — showing only what he has chosen to share, enforced on
+the server rather than hidden in the browser:
+
+![A brother's profile page in dark mode: headshot, name and class year, contact and mailing address, employer and courses, Big Brother, and a preferences-and-consent list beside the record's verification status.](docs/images/profile-view.png)
+
+Both are captured from the real production bundle against fake data by
+`npm run docs:screenshots` (see [`docs/images/`](docs/images/README.md)).
+
 ## Architecture
 
 <picture>
