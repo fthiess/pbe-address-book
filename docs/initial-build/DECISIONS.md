@@ -1807,7 +1807,7 @@ Fix: both pages now present the same canonical order — **Email, Telephone, Mai
 
 Purely presentational: no field, projection, validation, or write path changed, and the switch copy still resolves from the help-content registry (N102/N103), so the USER-MANUAL — which describes the switches conceptually, not in visual order — needs no change. No strict-order unit/e2e assertion added (the 6b-5 e2e already guards switch presence/count in Privacy & consent; a positional test would be brittle); verified by the full local gate plus Forrest's staging live-test.
 
-*Extends the consent-toggle chain D45 → … → N107 (OFC-270 relocated Emergency/Spouse into the edit page's Privacy & consent group) by standardizing the *order* across both pages and completing the view digest. Log-tail order: N114 → N115.*
+*Extends the consent-toggle chain D45 → … → N107 (OFC-270 relocated Emergency/Spouse into the edit page's Privacy & consent group) by standardizing the *order* across both pages and completing the view digest. Log-tail order: N114 → N115. Later updated by: N117 (OFC-282 swapped the final MITAA/Directory-listing pair back the other way one day later).*
 
 ### N116 — The About page: Markdown compiled to HTML at build time, and the "Address Book" naming rule (OFC-244)
 
@@ -1834,3 +1834,11 @@ That link exposed a hazard worth recording: injected HTML holds **plain `<a href
 Tests: `aboutHtml.test.ts` (19 units — every guard actually throws, including the protocol-relative, nested-heading, upper-case-`<SCRIPT>` and unterminated-comment cases the code review and CodeQL surfaced; external-link treatment, comment stripping, and the shipped `about.md` compiling and obeying the naming rule) and `e2e/about-6c-1.spec.ts` (5: the avatar-menu link navigates *and closes the menu* — the `closeMenu` wiring regresses silently otherwise; a deep link renders the compiled content, proving the whole build-time chain in the real preview build; the profile link routes **in-app**, asserted by a `window` marker surviving the navigation, with Back returning to About rather than looping through the alias; `/brother/me` resolves to the real record; axe WCAG 2.2 AA). Full gate green.
 
 *Extends the help/guidance chain D53 → D111 → N102 → N103 with the app's first standalone guidance *page* (as opposed to per-control help). Records `/about` to `PRD.md` §5.4's route inventory. Filed during: OFC-280 (build-time TS untypechecked), OFC-281 (USER-MANUAL §8 claims a footer privacy link that does not exist — 6c-2). Log-tail order: N115 → N116.*
+
+### N117 — MITAA moves back below Directory listing on both Profile pages (amends N115, OFC-282)
+
+N115 (the day before) set the canonical eight-switch order ending **…PBE News, MITAA, Directory listing** — but that put MITAA, the one toggle governing sharing *beyond* the brotherhood, ahead of Directory listing, a toggle about visibility *within* it. Forrest flagged the resulting read as odd: the beyond-brotherhood switch sitting in the middle of two brotherhood-internal ones. Fix: swap the last two so the order reads **…PBE News, Directory listing, MITAA** — the two internal-sharing switches (PBE News email, Directory listing) now sit together, with the one beyond-brotherhood switch last on both pages.
+
+On edit (`ProfileEdit.tsx`) this is a straight swap of the "Directory listing" and "Sharing beyond the brotherhood" `Subgroup`s. On view (`ProfileView.tsx` `PreferencesSection`) the `listed` line's `lines.push` moves ahead of the `allowShareWithMITAA` push. No field, projection, or copy changed — pure reorder, same as N115. No strict-order assertion added, for the same reason N115 gave.
+
+*Amends N115 in the consent-toggle chain D45 → … → N107 → N115 → **N117** (current). Log-tail order: N116 → N117.*
