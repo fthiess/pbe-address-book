@@ -454,6 +454,20 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
       on: record.privacy.shareAddress,
       text: activeConsequence(switchCopy(SWITCH_KEYS.shareAddress), record.privacy.shareAddress),
     });
+    lines.push({
+      on: record.privacy.shareEmergency,
+      text: activeConsequence(
+        switchCopy(SWITCH_KEYS.shareEmergency),
+        record.privacy.shareEmergency,
+      ),
+    });
+    lines.push({
+      on: record.privacy.shareSpousePartner,
+      text: activeConsequence(
+        switchCopy(SWITCH_KEYS.shareSpousePartner),
+        record.privacy.shareSpousePartner,
+      ),
+    });
   }
   if (record.allowNewsletterEmail !== undefined) {
     lines.push({
@@ -473,11 +487,13 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
       ),
     });
   }
-  if (record.unlisted) {
-    // Shown in the positive "Listed" framing (N35); an unlisted record is the
-    // off-state — a hollow marker with the "you don't appear" consequence.
-    lines.push({ on: false, text: activeConsequence(switchCopy(SWITCH_KEYS.listed), false) });
-  }
+  // Directory listing, in the positive "Listed" framing (N35): on = listed, the
+  // stored field is `unlisted` so the sense is inverted. Always shown to match the
+  // edit page — every privacy toggle appears for the owner/staff who can see this
+  // digest (OFC-278), a filled marker when listed and a hollow one with the "you
+  // don't appear" consequence when not.
+  const listed = !(record.unlisted ?? false);
+  lines.push({ on: listed, text: activeConsequence(switchCopy(SWITCH_KEYS.listed), listed) });
 
   return (
     <Section title="Preferences &amp; consent">
