@@ -108,64 +108,172 @@ These settings are remembered on the device you set them on.
 
 ## 10. Help reference (the single source for in-page help)
 
-This section is the reference text for the guidance Book shows inside its pages. Each entry corresponds to a control whose purpose or usage isn't self-evident — Book deliberately does *not* clutter obvious controls (Save, Cancel) with help. In the running app, the **helper text** appears beneath the control, the **placeholder** appears as a light example inside an empty field, and the **toggle-tip** is the explanation revealed by the small "?" (question-mark-in-a-circle) beside the control. The same text is the source for this reference, so the two can never disagree (see §11).
+This section is the reference text for the guidance the Address Book shows inside its pages. Each entry corresponds to a control whose purpose or usage isn't self-evident — the Address Book deliberately does *not* clutter obvious controls (Save, Cancel) with help. In the running app, the **helper text** appears beneath the control, the **placeholder** appears as a light example inside an empty field, a two-position switch shows the **when on** or **when off** line matching its current position, and the text listed **behind the "?"** is the explanation revealed by the small question-mark-in-a-circle beside the control.
 
-### Name Search (Directory)
-- **Label:** Name Search
-- **Helper text:** Searches names only — first, last, middle, and mug names. Use the filters for class year, major, or location.
-- **Placeholder:** Search by name — e.g., Smyth, or Lissajous
-- **Toggle-tip:** Type any part of a brother's name. Spelling doesn't have to be exact: Book tolerates typos and matches names that sound alike, so "Smith" still finds "Smyth." It searches names only — to narrow by class year, major, or location, use the filters below.
+Everything below this paragraph is **assembled automatically from the same source the app reads**, so the reference and the running app can never disagree (see §11). Don't edit it by hand — run `npm run docs:help`.
 
-### Class year (Directory filter and Profile)
-- **Label:** Class year
-- **Helper text:** Accepts a single year, a range, or a list — e.g., `1980-1989, 1992`.
-- **Placeholder:** e.g., 1984 or 1980-1989, 1992
-- **Toggle-tip:** Enter one year (`1984`), a range with a hyphen (`1980-1989`), or several of either separated by commas (`1980-1989, 1992`). On a brother's own profile this is a single year; in the Directory filter you can combine years and ranges to gather a whole span of classes at once.
+<!-- BEGIN GENERATED: help-reference (npm run docs:help) -->
 
-### Constitution ID filter (Directory, managers/admins)
-- **Label:** Constitution ID
-- **Helper text:** Accepts a single ID, a range, or a list — e.g., `5200-5219, 5230`.
-- **Toggle-tip:** The Constitution ID is a brother's permanent PBE number. Filter by a single ID, a hyphenated range, or a comma-separated list, the same way as class year.
+### Directory
 
-### Majors — ordering (Profile)
-- **Label:** Majors
-- **Helper text:** Drag to reorder. The major listed first is the one shown in the Directory.
-- **Toggle-tip:** Add each major you studied. Drag the chips — or use the keyboard — to order them; the one you place first is the major shown beside your name in the Directory listing. You can list more than one.
+#### Name Search
 
-### Big Brother (Profile)
-- **Label:** Big Brother
-- **Helper text:** Start typing a brother's name and choose from the list.
-- **Toggle-tip:** Begin typing your Big Brother's name and pick him from the suggestions, so the link points to the right brother. Your Little Brothers are filled in automatically from the other direction — you don't enter them here.
+- **Helper text:** Find brothers by name — handles typos, sound-alikes, and nicknames (Bill finds William).
+- **Placeholder:** Search by name…
+- **Behind the “?”:** Name Search looks only at names — first, last, nickname, and mug name — and forgives typos, sound-alikes, and common nicknames (type Bill to find William). To narrow by class year, course, city, or country, use Filters below.
 
-### Verify (Profile)
-- **Label:** Verify
-- **Helper text (owner):** Confirm your information is current. Saving any change verifies it automatically.
-- **Helper text (manager/admin):** Editing another brother's profile removes its verified mark, since only he can confirm his own details.
-- **Toggle-tip:** "Verified" means the information has been confirmed as current. When you edit and save your *own* profile, Book marks it verified as of that date. A correction made by someone else removes the verified mark, because only the brother himself can vouch for his details.
+#### Columns
 
-### Share with the MIT Alumni Association (Profile)
-- **Label:** Share with the MIT Alumni Association
-- **Helper text (on):** PBE may occasionally share your contact information with the MIT Alumni Association.
-- **Helper text (off):** PBE will not share your contact information with the MIT Alumni Association.
-- **Toggle-tip:** This switch controls whether your contact information may be included when PBE shares data with the MIT Alumni Association. It starts off. Turned on, PBE may include your full contact set; turned off, none of it. Your emergency-contact information is never shared either way, and public facts — your name and class year — always flow, because they are MIT's own data.
+- **Helper text:** Choose which columns appear; drag a column header's grip to reorder.
 
-### Alternate email (Profile)
-- **Label:** Alternate email
-- **Helper text:** A secondary contact address. Your primary email is the one you sign in with.
-- **Toggle-tip:** An optional second address where brothers can reach you. It is a contact detail only — you sign in with your primary email, and PBE News is sent to your primary email, not this one.
+#### Staff
+
+- **Behind the “?”:** Use this filter to find PBE Address Book staff — the managers and administrators who have extra powers to help keep brother information up to date and to maintain the system.
+
+#### Verification
+
+- **Behind the “?”:** A record is verified when a brother confirms it's current — saving a profile stamps that day's date.
+
+#### Not verified since
+
+- **Behind the “?”:** A record is verified when a brother confirms it's current — use this to find the ones going stale before a date you pick.
+
+#### Export CSV
+
+- **Behind the “?”:** Export downloads a spreadsheet (CSV) of the brothers you've selected. Your selection is kept as you search and filter, so it can span the whole directory — not just the rows on screen now. Photos and staff roles are never included.
+
+### Your profile
+
+#### Full name
+
+- **Helper text:** Including suffixes (Jr., III) and any compound names.
+- **Behind the “?”:** Your full name as it should appear in a formal listing — including suffixes (Jr., III) and any compound or hyphenated names. The separate First / Middle / Last fields are what the directory searches and sorts on.
+
+#### Class year
+
+- **Helper text:** A 4-digit year, or “unknown”.
+- **Behind the “?”:** The year you and your pledge brothers associate with. Usually, but not necessarily, the same as your graduation year.
+
+#### Mug name
+
+- **Helper text:** The nickname printed on your PBE mug.
+
+#### Email
+
+- **Behind the “?”:** This is the email address that PBE News and Address Book login links are sent to. Clearing this field will make it impossible for you to log in. If you just want to unsubscribe from PBE News or hide your email address, turn off the appropriate privacy switch under “Privacy & consent”, below.
+
+#### Alternate email
+
+- **Helper text:** Optional — a second address we can reach you at.
+
+#### Links
+
+- **Behind the “?”:** Links to other websites with information about you that you'd like to share with other brothers.
+
+#### Courses
+
+- **Behind the “?”:** These are the MIT courses in which you did substantial work toward a degree.
+
+#### Big Brother
+
+- **Behind the “?”:** Record the brother who was your Big Brother. You don't enter your Little Brothers here — they appear automatically from the profiles of the brothers who name you as their Big Brother.
+
+#### Verification
+
+- **Behind the “?”:** “Verified” means the information in this profile was confirmed current as of the date shown. Saving your own profile re-verifies it as of today.
+
+#### Admin note (staff only)
+
+- **Helper text:** Visible to managers and administrators only — never to the brother.
+
+### Privacy and consent switches
+
+#### Share email with brothers
+
+- **Shows when on:** Brothers can reach you by email.
+- **Shows when off:** Your email is hidden from other brothers.
+
+#### Share address with brothers
+
+- **Shows when on:** Your mailing address is visible to brothers.
+- **Shows when off:** Your mailing address is hidden from other brothers.
+
+#### Share phone with brothers
+
+- **Shows when on:** Brothers can reach you by telephone.
+- **Shows when off:** Your phone number is hidden from other brothers.
+
+#### Share emergency contacts with brothers
+
+- **Shows when on:** Your emergency contacts are visible to brothers.
+- **Shows when off:** Your emergency contacts are visible to administrators only.
+
+#### Share spouse / partner with brothers
+
+- **Shows when on:** Your spouse / partner is visible to brothers.
+- **Shows when off:** Your spouse / partner is visible to administrators only.
+
+#### Share with the MIT Alumni Association
+
+- **Shows when on:** May be shared with the MIT Alumni Association.
+- **Shows when off:** Will not be shared with the MIT Alumni Association.
+- **Behind the “?”:** If set to allowed, PBE may share updates of your information with the MIT Alumni Association to help maintain their alum.mit.edu alumni directory.
+
+#### PBE News newsletter
+
+- **Shows when on:** You will receive PBE News by email.
+- **Shows when off:** You won't receive PBE News by email.
+
+#### Listed in the directory
+
+- **Shows when on:** You appear in the directory for all brothers.
+- **Shows when off:** You don't appear in the directory for other brothers; managers and administrators can still see your record.
+- **Behind the “?”:** This switch lets you be “unlisted”, so none of your information is visible to the brotherhood at large. You'll still be in PBE's official records, and Address Book staff can still see your information.
+
+### Administration
+
+#### Download backup
+
+- **Helper text:** Save a complete snapshot of the PBE Address Book as a JSON file you keep off-site. Automatic nightly backups arrive in a later update.
+
+#### Message
+
+- **Helper text:** Shown across the top of every page for everyone, until you clear it. Use for maintenance notices and announcements.
+- **Placeholder:** Scheduled maintenance Sunday 2–4am ET…
+
+#### Severity
+
+- **Helper text:** Info for announcements; Warning for maintenance or disruptions.
+
+#### Book / Ghost alignment audit
+
+- **Helper text:** Compares Book membership to the PBE News membership on Ghost and downloads a report showing any differences. It only reports — it never changes Book — so each difference needs to be resolved by hand.
+
+#### Email bounce report
+
+- **Helper text:** Downloads a spreadsheet (CSV) of brothers whose PBE News emails have bounced, so their addresses can be checked and updated.
+
+#### Bug reports
+
+- **Helper text:** Reports members file with the “Report a bug” control appear here. Copy any worth keeping into your bug tracker, then delete them — Book only holds them so you can read them.
+
+<!-- END GENERATED: help-reference -->
 
 ## 11. How the help stays in step with this manual
 
-The guidance Book shows on its pages and the §10 reference above are **one source, not two.** The help text lives in a single place in Book's code — a structured set of entries, one per control — which the running app reads to render its in-page help, and from which the §10 reference is assembled. A help string is therefore written once and appears in both places identically; the two cannot drift apart over time.
+The guidance the Address Book shows on its pages and the §10 reference above are **one source, not two.** The help text lives in a single place in the code — a structured set of entries, one per control, in `packages/help-content` — which the running app reads to render its in-page help, and from which the §10 reference is assembled. A help string is therefore written once and appears in both places identically.
 
 Each entry has a small, fixed shape:
 
 | Field | Meaning |
 |---|---|
-| `id` | A stable identifier for the control (e.g. `directory.nameSearch`, `profile.classYear`). |
+| `key` | A stable identifier for the control (e.g. `directory.search`, `profile.classYear`). |
 | `label` | The control's visible label. |
-| `helperText` | The always-visible line beneath the control, announced by screen readers on focus. Optional. May vary by role, or by the control's current state, where noted (e.g. the Verify text differs for an owner versus a manager; a two-position switch states the consequence of its *current* position, via its on/off helper text). |
+| `helperText` | The always-visible line beneath the control, announced by screen readers on focus. Optional. May vary by role where noted — the Verification text differs for an owner versus a manager. |
 | `placeholder` | A light example shown inside an empty field, which clears the instant you type. Never carries essential instructions. Optional. |
+| `whenOn` / `whenOff` | Two-position switches only: the consequence of the switch's *current* position, stated inline beneath it. The switch shows whichever matches its live value. |
 | `toggleTip` | The deeper "what is this and how do I use it" explanation revealed by the "?" control. Optional. |
 
-A control that needs no help simply has no entry; help is provided only where a control isn't self-evident. When the interface is built, the §10 entries above seed this source, and this manual's reference section is generated from it thereafter.
+A control that needs no help simply has no entry; help is provided only where a control isn't self-evident.
+
+**How the two are held together.** §10 is not maintained by hand. It is regenerated from the registry by `npm run docs:help`, which rewrites everything between the two marker comments in this file, and the project's verification gate runs the same generator in `--check` mode (`npm run assert:help-manual`): if a help string changes in the code without §10 being regenerated, the build fails. Drift between the app and this manual is therefore caught mechanically rather than trusted to memory.

@@ -15,10 +15,12 @@
  *
  * A **switch** entry additionally carries `whenOn`/`whenOff`: the two consequence
  * sentences a privacy/consent toggle states (D45/D113). The switch shows the one
- * matching its live value inline and the other — the *counterfactual* — in the
- * `?` popover (Phase 6b folded this copy off the interim `consent.ts` module into
- * the registry so the in-page help and the assembled USER-MANUAL share one source,
- * D53). These two fields are populated only by switch entries.
+ * matching its live value inline; the `?` popover carries only the entry's static
+ * `toggleTip`, the counterfactual having been dropped from it as redundant with
+ * the inline consequence (N103, amends D113). Phase 6b folded this copy off the
+ * interim `consent.ts` module into the registry so the in-page help and the
+ * assembled USER-MANUAL share one source (D53). These two fields are populated
+ * only by switch entries.
  *
  * Phase 0 ships the type and an empty registry; entries are authored as each
  * page is built.

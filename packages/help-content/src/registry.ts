@@ -3,7 +3,10 @@ import type { HelpContent, HelpEntry } from "./types.js";
 /**
  * The single help-content registry, keyed by stable control id. Both the running
  * UI and the assembled USER-MANUAL (Phase 6c) read from here, so a help string
- * lives in exactly one place and the two cannot drift (D53). The **baseline**
+ * lives in exactly one place and the two cannot drift (D53) — USER-MANUAL §10 is
+ * generated from this file by `npm run docs:help`, and the verification gate
+ * fails on drift via `npm run assert:help-manual` (N118). Edit the copy here, then
+ * regenerate. The **baseline**
  * layer (label + helperText — the AA instructions a control needs to be usable,
  * D111) ships with each page in its phase; the above-baseline `toggleTip`
  * enrichment (the `?` CircleHelp popover) and the switch `whenOn`/`whenOff` copy

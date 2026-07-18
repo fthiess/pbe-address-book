@@ -1842,3 +1842,19 @@ N115 (the day before) set the canonical eight-switch order ending **…PBE News,
 On edit (`ProfileEdit.tsx`) this is a straight swap of the "Directory listing" and "Sharing beyond the brotherhood" `Subgroup`s. On view (`ProfileView.tsx` `PreferencesSection`) the `listed` line's `lines.push` moves ahead of the `allowShareWithMITAA` push. No field, projection, or copy changed — pure reorder, same as N115. No strict-order assertion added, for the same reason N115 gave.
 
 *Amends N115 in the consent-toggle chain D45 → … → N107 → N115 → **N117** (current). Log-tail order: N116 → N117.*
+
+### N118 — USER-MANUAL §10 is generated from the help registry, and the gate fails on drift (6c-2)
+
+D53 promised the in-page help and the manual's §10 reference are "one source, not two," and §11 told the reader they "cannot drift apart." Until now that was an intention, not a mechanism: §10 was hand-written during planning and the registry moved on without it. By this session the two had visibly separated — §10 still documented a **Majors** control the app calls **Courses**, carried a *Constitution ID filter* entry the registry never had, and was missing a dozen entries the registry had gained (Columns, Export CSV, the whole privacy/consent switch set with its `whenOn`/`whenOff` copy, the four admin-card descriptions). A promise with no enforcement had decayed exactly as one would expect.
+
+**The mechanism.** `scripts/generate-help-manual.ts` (run by `npm run docs:help`) renders the registry into §10 **in place**, between two marker comments in `USER-MANUAL.md`; `npm run assert:help-manual` runs the same generator in `--check` mode and exits non-zero if regenerating would change the file. That check is wired into `verify:gate` immediately after `assert:tokens`, so a help string edited in the code without a regenerated §10 fails the build. It reads the registry's **TypeScript source** directly via `tsx` rather than the built `dist/`, so it needs no prior `build:libs` and can sit early in the gate.
+
+**In place, not a separate generated file (Forrest's call at the 6c-2 plan gate).** The alternative — generating a sibling file the manual points at — would keep the checked-in manual entirely hand-written, but it splits one document across two files for the reader. Markers keep the manual a single reviewable artifact, and the diff of a copy change stays legible in review.
+
+**Grouping is mechanical, not curated.** Entries group by key prefix (`directory.` → Directory, `profile.` → Your profile, `profile.privacy.`/`profile.consent.` → Privacy and consent switches, `admin.` → Administration) and keep registry order within a group, which is authored in on-page order. A key matching **no** group throws rather than being silently omitted — the omission would be precisely the drift this script exists to prevent, and it would be invisible in review. A new key prefix therefore requires a deliberate edit to `GROUPS`.
+
+**Two stale code comments fixed in passing**, both contradicting N103: `types.ts` still described the switch counterfactual as appearing in the `?` popover (it was dropped from there), and `registry.ts`'s header didn't mention the generator. Left alone they would have taught the next session the wrong model.
+
+Not addressed here, deliberately: the generated Administration entries still say "Book" in member-facing help copy ("never changes Book", "Book only holds them"), which the N116 naming rule makes "the Address Book." That copy lives in the registry, so fixing it is a registry edit that regenerates §10 — folded into 6c-2's manual-wide naming pass rather than smuggled into the generator PR.
+
+*Extends the help chain D53 → D111 → N102 → N103 → N116 → **N118** (current) with the enforcement D53 always implied. Log-tail order: N117 → N118.*
