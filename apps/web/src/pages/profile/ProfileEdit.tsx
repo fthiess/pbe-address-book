@@ -555,15 +555,15 @@ export function ProfileEdit({
                     locked={consentLocked}
                   />
                   <ConsentSwitch
-                    entryKey={SWITCH_KEYS.shareAddress}
-                    value={form.draft.privacy?.shareAddress ?? false}
-                    onChange={(v) => form.setPrivacy("shareAddress", v)}
-                    locked={consentLocked}
-                  />
-                  <ConsentSwitch
                     entryKey={SWITCH_KEYS.sharePhone}
                     value={form.draft.privacy?.sharePhone ?? false}
                     onChange={(v) => form.setPrivacy("sharePhone", v)}
+                    locked={consentLocked}
+                  />
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.shareAddress}
+                    value={form.draft.privacy?.shareAddress ?? false}
+                    onChange={(v) => form.setPrivacy("shareAddress", v)}
                     locked={consentLocked}
                   />
                   <ConsentSwitch
@@ -580,20 +580,20 @@ export function ProfileEdit({
                   />
                 </div>
 
-                <Subgroup title="Sharing beyond the brotherhood" warn>
-                  <ConsentSwitch
-                    entryKey={SWITCH_KEYS.allowShareWithMITAA}
-                    value={form.draft.allowShareWithMITAA ?? false}
-                    onChange={(v) => form.setBool("allowShareWithMITAA", v)}
-                    locked={consentLocked}
-                  />
-                </Subgroup>
-
                 <Subgroup title="Emails from PBE News">
                   <ConsentSwitch
                     entryKey={SWITCH_KEYS.allowNewsletterEmail}
                     value={form.draft.allowNewsletterEmail ?? false}
                     onChange={(v) => form.setBool("allowNewsletterEmail", v)}
+                    locked={consentLocked}
+                  />
+                </Subgroup>
+
+                <Subgroup title="Sharing beyond the brotherhood" warn>
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.allowShareWithMITAA}
+                    value={form.draft.allowShareWithMITAA ?? false}
+                    onChange={(v) => form.setBool("allowShareWithMITAA", v)}
                     locked={consentLocked}
                   />
                 </Subgroup>
