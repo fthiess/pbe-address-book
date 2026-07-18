@@ -150,7 +150,7 @@ test.describe("Directory 3c — deceased & filters", () => {
   test("the filter panel filters by Class Year and Reset clears it (D38)", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: /^Filters/ }).click();
-    await page.getByLabel("Class Year").fill("1984");
+    await page.getByLabel("Class Year", { exact: true }).fill("1984");
     await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
     await expect(page.getByRole("rowheader", { name: /Dev Admin/ })).toHaveCount(0);
     await expect(page.getByText("1 active")).toBeVisible();
@@ -162,7 +162,7 @@ test.describe("Directory 3c — deceased & filters", () => {
   test("a numeric-grammar typo is flagged inline, not dropped (§5.6.4)", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: /^Filters/ }).click();
-    await page.getByLabel("Class Year").fill("198x");
+    await page.getByLabel("Class Year", { exact: true }).fill("198x");
     await expect(page.getByText(/Couldn't read: 198x/)).toBeVisible();
   });
 });
@@ -278,7 +278,7 @@ test.describe("Directory 3c — role gating", () => {
     await expect(page.getByRole("checkbox", { name: /select all brothers/i })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Export CSV/ })).toHaveCount(0);
     await page.getByRole("button", { name: /^Filters/ }).click();
-    await expect(page.getByLabel("Class Year")).toBeVisible();
+    await expect(page.getByLabel("Class Year", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Verification", { exact: true })).toHaveCount(0);
   });
 });
@@ -298,7 +298,7 @@ test.describe("Directory 3c — follow-up fixes", () => {
   test("a filter field's clear button empties it", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: /^Filters/ }).click();
-    const year = page.getByLabel("Class Year");
+    const year = page.getByLabel("Class Year", { exact: true });
     await year.fill("1984");
     await page.getByRole("button", { name: "Clear Class Year" }).click();
     await expect(year).toHaveValue("");
@@ -416,7 +416,7 @@ test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
 
     // Filter to 1988 — Aaron leaves the view, but the selection survives (the D41 reversal).
     await page.getByRole("button", { name: /^Filters/ }).click();
-    await page.getByLabel("Class Year").fill("1988");
+    await page.getByLabel("Class Year", { exact: true }).fill("1988");
     await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
 
@@ -549,7 +549,7 @@ test.describe("Directory 3c — accessibility", () => {
   test("the open filter panel has no axe violations (WCAG 2.2 AA)", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("button", { name: /^Filters/ }).click();
-    await page.getByLabel("Class Year").fill("1984");
+    await page.getByLabel("Class Year", { exact: true }).fill("1984");
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);
   });
