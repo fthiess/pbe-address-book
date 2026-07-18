@@ -269,7 +269,7 @@ Each entry has a small, fixed shape:
 |---|---|
 | `key` | A stable identifier for the control (e.g. `directory.search`, `profile.classYear`). |
 | `label` | The control's visible label. |
-| `helperText` | The always-visible line beneath the control, announced by screen readers on focus. Optional. May vary by role where noted — the Verification text differs for an owner versus a manager. |
+| `helperText` | The always-visible line beneath the control, announced by screen readers on focus. Optional. |
 | `placeholder` | A light example shown inside an empty field, which clears the instant you type. Never carries essential instructions. Optional. |
 | `whenOn` / `whenOff` | Two-position switches only: the consequence of the switch's *current* position, stated inline beneath it. The switch shows whichever matches its live value. |
 | `toggleTip` | The deeper "what is this and how do I use it" explanation revealed by the "?" control. Optional. |

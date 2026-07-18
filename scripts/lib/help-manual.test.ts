@@ -1,14 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { helpContent } from "../packages/help-content/src/registry.js";
-import type { HelpContent } from "../packages/help-content/src/types.js";
-import {
-  BEGIN,
-  END,
-  renderEntry,
-  renderReference,
-  spliceIntoManual,
-} from "./generate-help-manual.js";
+import { helpContent } from "../../packages/help-content/src/registry.js";
+import type { HelpContent } from "../../packages/help-content/src/types.js";
+import { BEGIN, END, renderEntry, renderReference, spliceIntoManual } from "./help-manual.js";
 
 /**
  * Unit cover for the USER-MANUAL §10 generator (N118). The value of these tests

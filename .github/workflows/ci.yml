@@ -64,6 +64,9 @@ jobs:
       - name: Token layer in sync (D29)
         run: npm run assert:tokens
 
+      - name: USER-MANUAL §10 in sync with the help registry (N118)
+        run: npm run assert:help-manual
+
       - name: Type-check
         run: npm run typecheck
 
