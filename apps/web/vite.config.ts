@@ -1,8 +1,10 @@
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { URL, fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { type Plugin, defineConfig } from "vite";
+import { compileAboutHtml } from "./src/buildtime/aboutHtml.js";
 
 /**
  * Emit a tiny, un-hashed `version.json` carrying the build id (OFC-63). Because the
@@ -24,6 +26,55 @@ function versionJsonPlugin(version: string): Plugin {
         res.setHeader("Cache-Control", "no-store");
         res.end(body);
       });
+    },
+  };
+}
+
+const ABOUT_MD = fileURLToPath(new URL("./src/content/about.md", import.meta.url));
+const ABOUT_MODULE_ID = "virtual:about-html";
+// Rollup's convention for a virtual module: the resolved id is prefixed with a NUL
+// so no other plugin (or the filesystem) mistakes it for a real path.
+const RESOLVED_ABOUT_MODULE_ID = `\0${ABOUT_MODULE_ID}`;
+
+/** Windows gives backslashes; Vite's hot-update paths are always forward-slashed. */
+const normalizePath = (path: string) => path.replace(/\\/g, "/");
+
+/**
+ * Compile the About page's Markdown to HTML at **build time** and expose it as the
+ * virtual module `virtual:about-html` (OFC-244, N116). Nothing about Markdown
+ * reaches the browser: `marked` is a devDependency, and the SPA imports only the
+ * finished HTML string. That matters against the 250 KB brotli bundle ceiling (D74)
+ * and for the slow-connection audience — a parser shipped to every reader to render
+ * one static page would be a poor trade.
+ *
+ * A virtual module rather than a `.md` `transform`: `.md` is not a type Vite knows
+ * how to serve as JS, so a bare transform is the classic "works in build, MIME-errors
+ * under `vite dev`" trap. This shape behaves identically in both.
+ *
+ * `compileAboutHtml` throws on unsafe or ill-formed copy, so a mistake fails the
+ * build rather than reaching a reader (see apps/web/src/buildtime/aboutHtml.ts).
+ */
+function aboutHtmlPlugin(): Plugin {
+  return {
+    name: "book-about-html",
+    resolveId(id) {
+      return id === ABOUT_MODULE_ID ? RESOLVED_ABOUT_MODULE_ID : undefined;
+    },
+    load(id) {
+      if (id !== RESOLVED_ABOUT_MODULE_ID) return undefined;
+      // Rebuild when the copy changes, so `vite build --watch` and the dev server
+      // both notice an edit to a file that is not in any import graph.
+      this.addWatchFile(ABOUT_MD);
+      return `export default ${JSON.stringify(compileAboutHtml(readFileSync(ABOUT_MD, "utf8")))};`;
+    },
+    handleHotUpdate({ file, server, modules }) {
+      if (normalizePath(file) !== normalizePath(ABOUT_MD)) return undefined;
+      // The virtual module isn't in the changed file's module list, so invalidate it
+      // by hand and reload — copy edits then show up without restarting the server.
+      const virtualModule = server.moduleGraph.getModuleById(RESOLVED_ABOUT_MODULE_ID);
+      if (virtualModule) server.moduleGraph.invalidateModule(virtualModule);
+      server.ws.send({ type: "full-reload" });
+      return modules;
     },
   };
 }
@@ -72,7 +123,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __PBE_NEWS_URL__: JSON.stringify(PBE_NEWS_URL),
   },
-  plugins: [react(), tailwindcss(), versionJsonPlugin(APP_VERSION)],
+  plugins: [react(), tailwindcss(), versionJsonPlugin(APP_VERSION), aboutHtmlPlugin()],
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

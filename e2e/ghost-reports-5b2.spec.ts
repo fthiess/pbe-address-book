@@ -148,7 +148,7 @@ test.describe("Maintenance / outage screen (D118)", () => {
     await page.route("**/api/me", (route) => route.fulfill({ status: 503, body: "{}" }));
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "Book is temporarily unavailable" }),
+      page.getByRole("heading", { name: "The Address Book is temporarily unavailable" }),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
     // Crucially, it did NOT bounce to the Ghost sign-in screen.
@@ -159,7 +159,7 @@ test.describe("Maintenance / outage screen (D118)", () => {
     await page.route("**/api/me", (route) => route.fulfill({ status: 503, body: "{}" }));
     await page.goto("/");
     await expect(
-      page.getByRole("heading", { name: "Book is temporarily unavailable" }),
+      page.getByRole("heading", { name: "The Address Book is temporarily unavailable" }),
     ).toBeVisible({ timeout: 15_000 });
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
     expect(results.violations).toEqual([]);

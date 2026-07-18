@@ -27,7 +27,7 @@ export function MaintenanceOutage({ onRetry }: { onRetry: () => void }) {
           className="w-full max-w-md rounded-2xl border border-border bg-card p-8 text-center text-card-foreground shadow-sm"
         >
           <h1 id="outage-heading" className="text-2xl font-bold tracking-tight">
-            Book is temporarily unavailable
+            The Address Book is temporarily unavailable
           </h1>
           <p className="mt-3 text-sm text-muted-foreground">
             This is usually brief — the connection dropped, the server was waking up, or the

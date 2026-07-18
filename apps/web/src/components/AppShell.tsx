@@ -147,6 +147,11 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                 <Link to={`/brother/${me.profileId}`} onClick={closeMenu} className={MENU_ITEM}>
                   My profile
                 </Link>
+                {/* Open to every brother, so it sits with "My profile" above the
+                    role-gated Admin link rather than below it (OFC-244). */}
+                <Link to="/about" onClick={closeMenu} className={MENU_ITEM}>
+                  About
+                </Link>
                 {isAdmin && (
                   <Link
                     to="/admin"
