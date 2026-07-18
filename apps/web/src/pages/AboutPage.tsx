@@ -46,8 +46,8 @@ export function AboutPage() {
       // In-app iff it is a root-relative path — and `//host/x` is NOT one: it is
       // protocol-relative and resolves off-origin, so a bare `startsWith("/")`
       // would hand an external URL to the router. Mirrors OFF_ORIGIN_URL in
-      // build/aboutHtml.ts, which marks such links `target="_blank"` (checked
-      // below as a second line of defence).
+      // buildtime/aboutHtml.ts, which marks such links `target="_blank"`
+      // (checked below as a second line of defence).
       if (!href?.startsWith("/") || href.startsWith("//")) return;
       if (anchor?.hasAttribute("target")) return;
 
@@ -73,7 +73,7 @@ export function AboutPage() {
             content or a network response — and because that claim is *enforced*, not
             merely asserted: compileAboutHtml() fails the build on a <script>, an
             inline on*= handler, a javascript: URL, or an off-origin asset. Do not
-            point this div at any other source of HTML. See src/build/aboutHtml.ts
+            point this div at any other source of HTML. See src/buildtime/aboutHtml.ts
             and its unit tests. */}
         <div
           ref={proseRef}

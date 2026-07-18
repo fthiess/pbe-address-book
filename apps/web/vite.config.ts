@@ -4,7 +4,7 @@ import { URL, fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { type Plugin, defineConfig } from "vite";
-import { compileAboutHtml } from "./src/build/aboutHtml.js";
+import { compileAboutHtml } from "./src/buildtime/aboutHtml.js";
 
 /**
  * Emit a tiny, un-hashed `version.json` carrying the build id (OFC-63). Because the
@@ -52,7 +52,7 @@ const normalizePath = (path: string) => path.replace(/\\/g, "/");
  * under `vite dev`" trap. This shape behaves identically in both.
  *
  * `compileAboutHtml` throws on unsafe or ill-formed copy, so a mistake fails the
- * build rather than reaching a reader (see apps/web/src/build/aboutHtml.ts).
+ * build rather than reaching a reader (see apps/web/src/buildtime/aboutHtml.ts).
  */
 function aboutHtmlPlugin(): Plugin {
   return {
