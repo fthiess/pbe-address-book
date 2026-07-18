@@ -65,8 +65,26 @@ describe("compileAboutHtml", () => {
   });
 
   describe("safety guards", () => {
+    // Asserted on the message wording rather than a `/<script>/` pattern: a
+    // tag-shaped regex here reads to CodeQL as an HTML filter and trips
+    // js/bad-tag-filter ("does not match upper case <SCRIPT>"), even though it only
+    // ever matches an Error message.
     it("rejects a script tag", () => {
-      expect(() => compileAboutHtml("## H\n\n<script>alert(1)</script>\n")).toThrow(/<script>/);
+      expect(() => compileAboutHtml("## H\n\n<script>alert(1)</script>\n")).toThrow(
+        /that is not allowed/,
+      );
+    });
+
+    it("rejects an upper-case SCRIPT tag too (the guard is case-insensitive)", () => {
+      expect(() => compileAboutHtml("## H\n\n<SCRIPT>alert(1)</SCRIPT>\n")).toThrow(
+        /that is not allowed/,
+      );
+    });
+
+    it("rejects an unterminated HTML comment", () => {
+      expect(() => compileAboutHtml("## H\n\n<!-- never closed\n")).toThrow(
+        /unterminated HTML comment/,
+      );
     });
 
     it("rejects an inline event handler", () => {

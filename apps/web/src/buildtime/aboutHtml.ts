@@ -17,8 +17,18 @@ import { Marked } from "marked";
  * asserted: it fails the **build** on anything script-bearing or off-origin.
  */
 
-/** Matches an HTML comment, including the authoring note at the top of about.md. */
+/** Matches a *closed* HTML comment, including the authoring note atop about.md. */
 const HTML_COMMENT = /<!--[\s\S]*?-->/g;
+
+/**
+ * A surviving comment opener. Stripping closed comments cannot remove an
+ * **unterminated** `<!--` — there is no `-->` to match, and looping the replace to
+ * a fixed point does not help (verified). Left alone it reaches the browser as raw
+ * HTML and opens a comment that swallows everything after it, silently blanking
+ * part of the page. So the honest remedy is to *reject* rather than sanitize
+ * harder: this is what CodeQL's `js/incomplete-sanitization` was pointing at.
+ */
+const RESIDUAL_COMMENT_OPENER = "<!--";
 
 /** `<script`, an inline `on*=` handler, or a `javascript:` URL — none may survive. */
 const SCRIPT_BEARING = [
@@ -83,6 +93,12 @@ function assertSafe(html: string): void {
     throw new Error(
       "about.md references an off-origin image or embed. The production CSP is " +
         "default-src 'self', so it would be blocked on staging while passing local e2e.",
+    );
+  }
+  if (html.includes(RESIDUAL_COMMENT_OPENER)) {
+    throw new Error(
+      "about.md left an unterminated HTML comment ('<!--' with no '-->'). It would " +
+        "reach the browser as raw HTML and comment out the rest of the page. Close it.",
     );
   }
   if (RENDERED_H1.test(html)) {
