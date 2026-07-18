@@ -17,18 +17,20 @@ import { Marked } from "marked";
  * asserted: it fails the **build** on anything script-bearing or off-origin.
  */
 
-/** Matches a *closed* HTML comment, including the authoring note atop about.md. */
-const HTML_COMMENT = /<!--[\s\S]*?-->/g;
-
 /**
- * A surviving comment opener. Stripping closed comments cannot remove an
- * **unterminated** `<!--` — there is no `-->` to match, and looping the replace to
- * a fixed point does not help (verified). Left alone it reaches the browser as raw
- * HTML and opens a comment that swallows everything after it, silently blanking
- * part of the page. So the honest remedy is to *reject* rather than sanitize
- * harder: this is what CodeQL's `js/incomplete-sanitization` was pointing at.
+ * An HTML comment opener. `about.md` may not contain one **at all** — which is why
+ * that file carries no authoring note and the guidance lives in
+ * `src/content/README.md` instead.
+ *
+ * This started as a strip (`replace(/<!--[\s\S]*?-->/g, "")`) so the note could sit
+ * atop the copy, and CodeQL's `js/incomplete-sanitization` was right to object: an
+ * **unterminated** `<!--` cannot be stripped — there is no `-->` to match, and
+ * looping the replace to a fixed point does not help (both verified) — and it would
+ * reach the browser as raw HTML, commenting out the rest of the page. Rejecting the
+ * construct outright deletes the whole class of problem instead of sanitizing it,
+ * and costs only a comment in one Markdown file.
  */
-const RESIDUAL_COMMENT_OPENER = "<!--";
+const HTML_COMMENT_OPENER = "<!--";
 
 /** `<script`, an inline `on*=` handler, or a `javascript:` URL — none may survive. */
 const SCRIPT_BEARING = [
@@ -95,12 +97,6 @@ function assertSafe(html: string): void {
         "default-src 'self', so it would be blocked on staging while passing local e2e.",
     );
   }
-  if (html.includes(RESIDUAL_COMMENT_OPENER)) {
-    throw new Error(
-      "about.md left an unterminated HTML comment ('<!--' with no '-->'). It would " +
-        "reach the browser as raw HTML and comment out the rest of the page. Close it.",
-    );
-  }
   if (RENDERED_H1.test(html)) {
     throw new Error(
       "about.md produced an <h1>: the About page renders the page's only top-level " +
@@ -113,8 +109,9 @@ function assertSafe(html: string): void {
 /**
  * Compile the About copy. Beyond running `marked`, this:
  *
- * - **strips HTML comments** so the authoring note in `about.md` stays out of the
- *   shipped markup (marked passes raw HTML, comments included, straight through);
+ * - **rejects an HTML comment** outright (see {@link HTML_COMMENT_OPENER}) — marked
+ *   passes raw HTML straight through, and an unterminated comment cannot be
+ *   sanitized, so `about.md` simply may not contain one;
  * - **rejects an `<h1>`**, because AboutPage.tsx renders the page's only `<h1>` —
  *   a second one breaks heading order (axe `heading-order`, WCAG 1.3.1). Checked
  *   against the lexed tokens rather than by regex, so a `#` inside a code fence
@@ -124,7 +121,15 @@ function assertSafe(html: string): void {
  *   PBE News link already follows (AppShell.tsx).
  */
 export function compileAboutHtml(markdown: string): string {
-  const source = markdown.replace(HTML_COMMENT, "");
+  if (markdown.includes(HTML_COMMENT_OPENER)) {
+    throw new Error(
+      "about.md must not contain an HTML comment: marked passes raw HTML through, " +
+        "and an unterminated '<!--' would comment out the rest of the page in the " +
+        "browser. Put authoring notes in src/content/README.md instead.",
+    );
+  }
+
+  const source = markdown;
   const marked = new Marked();
 
   for (const token of marked.lexer(source)) {

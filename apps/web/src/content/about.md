@@ -1,22 +1,3 @@
-<!--
-  The About page's copy (OFC-244, N116). This file is the source: it is compiled to
-  HTML at **build time** by `aboutHtmlPlugin` in apps/web/vite.config.ts, so no
-  Markdown parser ships in the SPA bundle.
-
-  Two rules the compiler enforces, so a violation fails the build rather than
-  reaching a reader:
-
-  1. **Start headings at `##`.** AboutPage.tsx renders the page's single `<h1>`;
-     a `#` here would break heading order (WCAG 1.3.1 / axe `heading-order`).
-  2. **No raw HTML, no external images or embeds.** The compiled HTML is injected
-     with `dangerouslySetInnerHTML`, and Firebase Hosting's CSP is `default-src
-     'self'` — an external asset would pass local e2e (vite preview sends no CSP)
-     and fail on staging.
-
-  Copy convention (N116): "PBE Address Book" on first use, "the Address Book"
-  thereafter. Never bare "Book" — that is internal shorthand only.
--->
-
 ## What this is
 
 The PBE Address Book is a private directory for the brothers of Phi Beta Epsilon. It lets you

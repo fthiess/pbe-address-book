@@ -12,10 +12,19 @@ describe("compileAboutHtml", () => {
     expect(html).toContain("<strong>bold</strong>");
   });
 
-  it("strips HTML comments so the authoring note never ships", () => {
-    const html = compileAboutHtml("<!-- a note to the author -->\n\n## Heading\n");
-    expect(html).not.toContain("note to the author");
-    expect(html).not.toContain("<!--");
+  // Comments are rejected rather than stripped: an unterminated `<!--` cannot be
+  // stripped at all, so the construct is banned outright and authoring notes live
+  // in src/content/README.md. Both shapes must fail.
+  it("rejects a closed HTML comment", () => {
+    expect(() => compileAboutHtml("<!-- a note to the author -->\n\n## Heading\n")).toThrow(
+      /must not contain an HTML comment/,
+    );
+  });
+
+  it("rejects an unterminated HTML comment", () => {
+    expect(() => compileAboutHtml("## Heading\n\n<!-- never closed\n")).toThrow(
+      /must not contain an HTML comment/,
+    );
   });
 
   describe("heading order", () => {
@@ -78,12 +87,6 @@ describe("compileAboutHtml", () => {
     it("rejects an upper-case SCRIPT tag too (the guard is case-insensitive)", () => {
       expect(() => compileAboutHtml("## H\n\n<SCRIPT>alert(1)</SCRIPT>\n")).toThrow(
         /that is not allowed/,
-      );
-    });
-
-    it("rejects an unterminated HTML comment", () => {
-      expect(() => compileAboutHtml("## H\n\n<!-- never closed\n")).toThrow(
-        /unterminated HTML comment/,
       );
     });
 

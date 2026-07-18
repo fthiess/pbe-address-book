@@ -93,8 +93,10 @@ test.describe("6c-1 About page (OFC-244)", () => {
       page.getByText("private directory for the brothers of Phi Beta Epsilon"),
     ).toBeVisible();
 
-    // The authoring note in about.md is an HTML comment; it must not ship.
-    await expect(page.locator(".about-prose")).not.toContainText("compiled to HTML");
+    // about.md may contain no HTML comments at all (the compiler rejects them, and
+    // the authoring guidance lives in src/content/README.md), so none can reach the
+    // DOM as raw markup.
+    expect(await page.locator(".about-prose").innerHTML()).not.toContain("<!--");
 
     // External links carry the new-tab treatment the compiler adds.
     const gitHub = page.getByRole("link", { name: /github\.com\/fthiess\/pbe-address-book/ });
