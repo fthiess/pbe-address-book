@@ -478,6 +478,13 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
       ),
     });
   }
+  // Directory listing, in the positive "Listed" framing (N35): on = listed, the
+  // stored field is `unlisted` so the sense is inverted. Always shown to match the
+  // edit page — every privacy toggle appears for the owner/staff who can see this
+  // digest (OFC-278), a filled marker when listed and a hollow one with the "you
+  // don't appear" consequence when not.
+  const listed = !(record.unlisted ?? false);
+  lines.push({ on: listed, text: activeConsequence(switchCopy(SWITCH_KEYS.listed), listed) });
   if (record.allowShareWithMITAA !== undefined) {
     lines.push({
       on: record.allowShareWithMITAA,
@@ -487,13 +494,6 @@ function PreferencesSection({ record }: { record: ProfileRecord }) {
       ),
     });
   }
-  // Directory listing, in the positive "Listed" framing (N35): on = listed, the
-  // stored field is `unlisted` so the sense is inverted. Always shown to match the
-  // edit page — every privacy toggle appears for the owner/staff who can see this
-  // digest (OFC-278), a filled marker when listed and a hollow one with the "you
-  // don't appear" consequence when not.
-  const listed = !(record.unlisted ?? false);
-  lines.push({ on: listed, text: activeConsequence(switchCopy(SWITCH_KEYS.listed), listed) });
 
   return (
     <Section title="Preferences &amp; consent">

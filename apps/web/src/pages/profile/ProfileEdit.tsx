@@ -589,15 +589,6 @@ export function ProfileEdit({
                   />
                 </Subgroup>
 
-                <Subgroup title="Sharing beyond the brotherhood" warn>
-                  <ConsentSwitch
-                    entryKey={SWITCH_KEYS.allowShareWithMITAA}
-                    value={form.draft.allowShareWithMITAA ?? false}
-                    onChange={(v) => form.setBool("allowShareWithMITAA", v)}
-                    locked={consentLocked}
-                  />
-                </Subgroup>
-
                 <Subgroup title="Directory listing">
                   {/* Presented positively as "Listed" (on = listed); the stored
                     field is `unlisted`, so the value and change are inverted (N35). */}
@@ -605,6 +596,15 @@ export function ProfileEdit({
                     entryKey={SWITCH_KEYS.listed}
                     value={!(form.draft.unlisted ?? false)}
                     onChange={(v) => form.setBool("unlisted", !v)}
+                    locked={consentLocked}
+                  />
+                </Subgroup>
+
+                <Subgroup title="Sharing beyond the brotherhood" warn>
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.allowShareWithMITAA}
+                    value={form.draft.allowShareWithMITAA ?? false}
+                    onChange={(v) => form.setBool("allowShareWithMITAA", v)}
                     locked={consentLocked}
                   />
                 </Subgroup>
