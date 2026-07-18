@@ -23,6 +23,9 @@ export default defineConfig({
       // is covered end-to-end by Playwright (e2e/).
       "apps/web/src/**/*.test.ts",
       "tools/fake-data/src/**/*.test.ts",
+      // The repo-maintenance scripts' pure logic (e.g. the USER-MANUAL §10
+      // generator's grouping and marker guards, N118).
+      "scripts/**/*.test.ts",
     ],
     exclude: ["**/node_modules/**", "**/dist/**", "**/*.emulator.test.ts"],
   },

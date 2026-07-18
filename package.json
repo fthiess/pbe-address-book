@@ -16,7 +16,7 @@
     "check": "biome check .",
     "check:fix": "biome check --write .",
     "build:libs": "tsc -b tsconfig.libs.json",
-    "typecheck": "npm run build:libs && tsc --noEmit -p apps/api/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p tools/fake-data/tsconfig.json",
+    "typecheck": "npm run build:libs && tsc --noEmit -p apps/api/tsconfig.json && tsc --noEmit -p apps/web/tsconfig.json && tsc --noEmit -p tools/fake-data/tsconfig.json && tsc --noEmit -p scripts/tsconfig.json",
     "build:web": "npm run build --workspace apps/web",
     "build:api": "npm run build --workspace apps/api",
     "build": "npm run build:libs && npm run build:web && npm run build:api",
@@ -28,9 +28,11 @@
     "assert:no-dev-provider": "node scripts/assert-no-dev-provider.mjs",
     "assert:tokens": "node scripts/assert-tokens-in-sync.mjs",
     "assert:csp-hashes": "node scripts/assert-csp-hashes.mjs",
+    "assert:help-manual": "tsx scripts/generate-help-manual.ts --check",
     "check:bundle-size": "node scripts/check-bundle-size.mjs",
     "ci:timing": "node scripts/ci-timing.mjs",
-    "verify:gate": "npm run check && npm run assert:tokens && npm run typecheck && npm run build && npm run assert:csp-hashes && npm run assert:no-dev-provider && npm run check:bundle-size && npm run test && npm run test:emulator && npm run e2e"
+    "docs:help": "tsx scripts/generate-help-manual.ts",
+    "verify:gate": "npm run check && npm run assert:tokens && npm run assert:help-manual && npm run typecheck && npm run build && npm run assert:csp-hashes && npm run assert:no-dev-provider && npm run check:bundle-size && npm run test && npm run test:emulator && npm run e2e"
   },
   "overrides": {
     "uuid": "^11.1.1"

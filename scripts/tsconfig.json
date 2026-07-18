@@ -1,0 +1,14 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2023"],
+    "types": ["node"]
+  },
+  // The TypeScript maintenance scripts (the USER-MANUAL §10 generator and its
+  // tests, N118). Wired into the root `typecheck` so new build-time TS doesn't
+  // land untypechecked — the wider gap in vite.config.ts and elsewhere is
+  // OFC-280. The `.mjs` scripts alongside these are not TypeScript and are
+  // covered by Biome only.
+  "include": ["**/*.ts"]
+}
