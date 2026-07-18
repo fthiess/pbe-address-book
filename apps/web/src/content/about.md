@@ -50,7 +50,7 @@ information about yourself will be shared with other brothers. You can change th
 settings at any time on [your own profile](/brother/me/edit) — or reach it by clicking your
 name at the top right of the screen and selecting "My profile". Please be
 aware that Address
-Book staff may be able to see information you have marked as private because of their
+Book administrators are able to see information you have marked as private because of their
 responsibilities to maintain and manage Address Book data and operations.
 
 The MIT Alumni Association maintains [their own alumni database](https://alum.mit.edu/) and
