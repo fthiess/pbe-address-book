@@ -396,7 +396,7 @@ function DeleteControl({ name, actions }: { name: string; actions: ProfileAction
   return (
     <ControlRow
       label="Delete"
-      help="Permanently remove this brother from Book, the newsletter, and their photos. This cannot be undone."
+      help="Permanently remove this brother from the Address Book, the newsletter, and their photos. This cannot be undone."
     >
       <button
         type="button"
@@ -419,8 +419,8 @@ function DeleteControl({ name, actions }: { name: string; actions: ProfileAction
           onCancel={() => setConfirming(false)}
           onConfirm={apply}
         >
-          <strong>{name}</strong> and their photos will be permanently removed from Book and the
-          newsletter. This cannot be undone.
+          <strong>{name}</strong> and their photos will be permanently removed from the Address Book
+          and the newsletter. This cannot be undone.
         </ConfirmDialog>
       )}
     </ControlRow>

@@ -44,6 +44,16 @@
           }
         }
       }
+    },
+    {
+      "include": ["apps/web/src/pages/AboutPage.tsx"],
+      "linter": {
+        "rules": {
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
+          }
+        }
+      }
     }
   ],
   "javascript": {

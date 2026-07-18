@@ -8,11 +8,13 @@ import { LoadingOverlay } from "./components/LoadingOverlay.js";
 import { MaintenanceOutage } from "./components/MaintenanceOutage.js";
 import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
+import { AboutPage } from "./pages/AboutPage.js";
 import { Admin } from "./pages/Admin.js";
 import { AuthCallback } from "./pages/AuthCallback.js";
 import { Directory } from "./pages/Directory.js";
 import { NewProfile } from "./pages/NewProfile.js";
 import { NotFoundPage } from "./pages/NotFoundPage.js";
+import { OwnProfileRedirect } from "./pages/OwnProfileRedirect.js";
 import { ProfileContainer, ProfileEditRoute, ProfileViewRoute } from "./pages/Profile.js";
 import { SignIn } from "./pages/SignIn.js";
 import { SelectionProvider } from "./pages/directory/SelectionContext.js";
@@ -101,6 +103,13 @@ const router = createBrowserRouter([
           // sibling of `brother/:id`, so the router ranks it above the dynamic param
           // and it is never mistaken for a brother whose id is "new" (the old bug).
           { path: "brother/new", element: <NewProfile /> },
+          // Same reasoning as `brother/new`: `brother/me` and `brother/me/edit` are
+          // **static** siblings ranked above `brother/:id`, so "me" is never taken
+          // for a Constitution ID. They exist for callers that can't know one — the
+          // build-time About copy, and (7.6) the Ghost theme — and redirect to the
+          // real record so a profile keeps one canonical URL (N116).
+          { path: "brother/me", element: <OwnProfileRedirect /> },
+          { path: "brother/me/edit", element: <OwnProfileRedirect edit /> },
           {
             path: "brother/:id",
             element: <ProfileContainer />,
@@ -110,6 +119,9 @@ const router = createBrowserRouter([
             ],
           },
           { path: "admin", element: <Admin /> },
+          // Reached from the avatar menu (OFC-244). Inside the gate like every other
+          // page — About is members-only, not a public marketing page.
+          { path: "about", element: <AboutPage /> },
           // An unknown URL renders an honest "page not found" (OFC-202) rather than
           // silently falling through to the Directory. Still a 200 (SPA behind the
           // Hosting `**`→index.html rewrite), but a real not-found UI.
