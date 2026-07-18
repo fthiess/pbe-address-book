@@ -47,7 +47,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Verification
 
-- **D28** (verification coupled to content edits) → **D48** (surfacing + staleness nudge) → **D68** (CSV import ignores verification fields) → **D80** (snapshot on mark-deceased) → **N73** (read reclassified public — verification visible to all brothers, verifier Canonical Name shown; write coupling unchanged); endpoint **N40**.
+- **D28** (verification coupled to content edits) → **D48** (surfacing + staleness nudge) → **D68** (CSV import ignores verification fields) → **D80** (snapshot on mark-deceased) → **N73** (read reclassified public — verification visible to all brothers, verifier Canonical Name shown; write coupling unchanged) → **N121** (who may confirm, recorded at last: the verify endpoint is **owner-or-staff** — staff see "Mark as verified" — while an *edit* by anyone other than the owner clears the mark; the two are independent, and "only the brother himself can confirm" is a **false** rationale that had been written and corrected twice — current); endpoint **N40**.
 
 ## Directory page
 
