@@ -43,7 +43,13 @@ export function AboutPage() {
 
       const anchor = (event.target as HTMLElement | null)?.closest("a");
       const href = anchor?.getAttribute("href");
-      if (!href?.startsWith("/") || anchor?.hasAttribute("target")) return;
+      // In-app iff it is a root-relative path — and `//host/x` is NOT one: it is
+      // protocol-relative and resolves off-origin, so a bare `startsWith("/")`
+      // would hand an external URL to the router. Mirrors OFF_ORIGIN_URL in
+      // build/aboutHtml.ts, which marks such links `target="_blank"` (checked
+      // below as a second line of defence).
+      if (!href?.startsWith("/") || href.startsWith("//")) return;
+      if (anchor?.hasAttribute("target")) return;
 
       event.preventDefault();
       void navigate(href);
