@@ -105,7 +105,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Logging & analytics
 
 - Logging/audit: D61 → **D91** (no audit-log egress to external LLMs) → **D92** (export audit via notify endpoint); stream structure **N14**. Inherited gaps surveyed in **N122** (sign-in/JWKS unaudited, `ghost.push` declared but never emitted, no app access log, no diagnostic logger, no log bucket/metrics/alerting/log-reader SA provisioned) — 7a-3 closes them.
-- Analytics identity: D62 → D88 → **D137** (the `distinct_id` is the Ghost member **uuid**, fetched from the Admin API at sign-in and held on the session; *not* persisted — D81 stays unreversed, and D134's delete/re-create is why a stored uuid would go stale).
+- Analytics identity: D62 → D88 → **D137** (the `distinct_id` is the Ghost member **uuid**, fetched from the Admin API at sign-in and held on the session; *not* persisted — D81 stays unreversed, and D134's delete/re-create is why a stored uuid would go stale). ⚠ The project runs **Simplified ID Merge**, under which two `$user_id`s can **never** be merged — so both halves of the composite system must emit an identical `$user_id`, and D62's "Identity Merge absorbs an email change" premise is false for this configuration.
 - Analytics delivery: **D138** (two projects — Mixpanel-Staging + Mixpanel-Prod, each spanning Ghost *and* Book at its tier; `mixpanel-browser` **core** build at 31.4 KB brotli vs 81.6 for the default; **session replay and autocapture deliberately off** — replay would ship other brothers' PII around the D5/D82 projection; token as an env-specific build define per N94; `connect-src` extension pending in 7a-2).
 
 ## Backups, restore & DR
