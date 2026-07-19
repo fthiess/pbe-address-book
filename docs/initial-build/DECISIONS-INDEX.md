@@ -43,7 +43,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 - Consent toggles & copy: D45 → **D89** (MITAA opt-in) → **D93** (third-party data defaults off) → **D113** (consequence-copy model) → **N68** → **N102** (switch copy — label/whenOn/whenOff — folded off `consent.ts` into the help-content registry, Option A; `ConsentSwitch` takes an `entryKey`) → **N103** (the counterfactual is dropped from the `?` as redundant with the inline consequence — amends D113; a switch's `?` shows only its optional static `toggleTip`, so only MITAA and Listed keep one; the `?` unified onto `ControlHelp`) → **N107** (6b-5: the `shareEmergency`/`shareSpousePartner` toggles relocated into the Privacy & consent group beside the reachability switches, and their off-copy rewritten to name the field so each row self-identifies away from it; **OFC-268 declined — D93 stands**, emergency/spouse stay opt-in — OFC-270) → **N115** (one canonical switch order across the Profile view and edit pages — Email, Telephone, Mailing, Emergency, Spouse, PBE News, MITAA, Directory listing; the view digest completed with the Emergency/Spouse lines and an always-shown Directory-listing line — OFC-278) → **N117** (swaps the final pair back — …PBE News, Directory listing, MITAA — so the beyond-brotherhood switch sits last rather than between two brotherhood-internal ones — OFC-282 — current).
 - Posture: **D77** (no CCPA machinery) + **D116** (persistent footer privacy notice).
-- PII egress: **D95** (`no-store` PII endpoints; sign-out control), **D88** (Mixpanel identity drops name), **D80** (mark-deceased consent snapshot; narrowed by N68; Ghost member now deleted/re-created rather than left subscribed-off — **D134**).
+- PII egress: **D95** (`no-store` PII endpoints; sign-out control), **D88** (Mixpanel identity drops name), **D80** (mark-deceased consent snapshot; narrowed by N68; Ghost member now deleted/re-created rather than left subscribed-off — **D134**), **D138** (Mixpanel session replay refused — it would carry other brothers' PII around the D5/D82 projection; the core build makes the refusal structural).
 
 ## Verification
 
@@ -104,8 +104,9 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Logging & analytics
 
-- Logging/audit: D61 → **D91** (no audit-log egress to external LLMs) → **D92** (export audit via notify endpoint); stream structure **N14**.
-- Analytics: D62 → **D88** (Mixpanel identity payload).
+- Logging/audit: D61 → **D91** (no audit-log egress to external LLMs) → **D92** (export audit via notify endpoint); stream structure **N14**. Inherited gaps surveyed in **N122** (sign-in/JWKS unaudited, `ghost.push` declared but never emitted, no app access log, no diagnostic logger, no log bucket/metrics/alerting/log-reader SA provisioned) — 7a-3 closes them.
+- Analytics identity: D62 → D88 → **D137** (the `distinct_id` is the Ghost member **uuid**, fetched from the Admin API at sign-in and held on the session; *not* persisted — D81 stays unreversed, and D134's delete/re-create is why a stored uuid would go stale). ⚠ The project runs **Simplified ID Merge**, under which two `$user_id`s can **never** be merged — so both halves of the composite system must emit an identical `$user_id`, and D62's "Identity Merge absorbs an email change" premise is false for this configuration.
+- Analytics delivery: **D138** (two projects — Mixpanel-Staging + Mixpanel-Prod, each spanning Ghost *and* Book at its tier; `mixpanel-browser` **core** build at 31.4 KB brotli vs 81.6 for the default; **session replay and autocapture deliberately off** — replay would ship other brothers' PII around the D5/D82 projection; token as an env-specific build define per N94; `connect-src` extension pending in 7a-2).
 
 ## Backups, restore & DR
 
@@ -141,7 +142,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Process & scope
 
-- **D1** (doc homes), **D11** (MVP line; → D27, D60); re-plans **N30** (Phase 4), **N39** (4c split), **N59** (Phase 5.5 batches), **N67** (5b split), **N62** (Phase 7.5), **D132** (UAT → Phase 7.7 + theme-integration Phase 7.6; `UAT-PLAN.md` + `CUTOVER-PLAN.md` stub), **N95** (second Todo triage: sessions 5.5i–5.5l appended, order 5.5k→l→i→j; the rest of the backlog scheduled onto Phases 6–8 by Linear label; pre-session ruling D133).
+- **D1** (doc homes), **D11** (MVP line; → D27, D60); re-plans **N30** (Phase 4), **N39** (4c split), **N59** (Phase 5.5 batches), **N67** (5b split), **N62** (Phase 7.5), **D132** (UAT → Phase 7.7 + theme-integration Phase 7.6; `UAT-PLAN.md` + `CUTOVER-PLAN.md` stub), **N95** (second Todo triage: sessions 5.5i–5.5l appended, order 5.5k→l→i→j; the rest of the backlog scheduled onto Phases 6–8 by Linear label; pre-session ruling D133), **N122** (Phase 7a splits into 7a-1 identity / 7a-2 Mixpanel skeleton / 7a-3 logging & observability; 7b and 7c untouched so their labels stay valid).
 - Licensing: **D127** (repo is MIT — code only; PBE names, marks + brand-artwork files reserved to Phi Beta Epsilon Corporation).
 
 ---
