@@ -11,7 +11,7 @@ Every substantive session follows one loop:
 
 The gates below are firm. When a gate and expedience conflict, the gate wins; when genuinely unsure whether something clears a gate, ask Forrest rather than guessing.
 
-**Freshness check (on invocation):** this skill's canonical upstream is the `fthiess/claude-skills` repo, cloned at `~/.claude/skills/`. When the working project carries a vendored copy (`.claude/skills/dev-workflow/`), diff it against the clone at session start; if they differ, say so and offer to sync — usually a shallow doc-only PR bringing the vendored copy up to the upstream, or a commit+push upstream when the newer change originated in the project.
+**Freshness check (on invocation):** this skill's canonical upstream is the `fthiess/claude-skills` repo, cloned at `~/.claude/skills/`. When the working project carries a vendored copy (`.claude/skills/dev-workflow/`), diff it against the clone at session start — use **`diff --strip-trailing-cr -r`**, because git normalizes the committed copy to LF while the Windows clone keeps CRLF, so a plain `diff -r` reports every line as changed and false-alarms on a copy that is genuinely in sync. If the *content* differs, say so and offer to sync — usually a shallow doc-only PR bringing the vendored copy up to the upstream, or a commit+push upstream when the newer change originated in the project.
 
 ## Gate 1 — Plan first, always
 
