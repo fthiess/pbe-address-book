@@ -49,9 +49,14 @@ export function useAnalytics(): void {
   const me = state.status === "authenticated" ? state.me : null;
 
   useEffect(() => {
-    if (!me?.profile) {
+    if (!me) {
       return;
     }
+    // Gated on the session, NOT on `me.profile`. Everything identify needs —
+    // `profileId`, `role`, `ghostMemberUuid` — is top-level on `Me`; `profile` is
+    // separately `null` whenever the caller's own record isn't cache-resident
+    // (apps/api/src/routes/auth.ts). Gating on it would silently drop analytics
+    // for a live, fully-valid session for reasons unrelated to identity.
     identifyMember(me.ghostMemberUuid, me.profileId, me.role);
   }, [me]);
 
@@ -63,6 +68,10 @@ export function useAnalytics(): void {
 
   useEffect(() => {
     if (!me) {
+      // Forget the last entry on the way out, so the *next* session's first page
+      // view isn't swallowed by a key left over from the previous one (the tab
+      // survives a sign-out, and the sign-in screen can return to the same route).
+      lastKey.current = null;
       return;
     }
     const pattern = matches.findLast((match) => hasAnalyticsRoute(match.handle))?.handle as
