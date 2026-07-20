@@ -46,7 +46,7 @@ Debugging is where corners get cut fastest, so it has its own discipline:
 
 ## Gate 3 — Code review, scaled to depth
 
-- **Deep changes** (new subsystems, auth/privacy/security surface, tricky logic): run `/code-review` at high effort on the PR in-session and remediate the findings directly before merge. For the biggest changes Forrest may instead run `/code-review ultra` from a separate session — findings then come back as Linear tickets to triage and mitigate in the building session.
+- **Deep changes** (new subsystems, auth/privacy/security surface, tricky logic): run `/code-review` at high effort on the PR in-session and remediate the findings directly before merge. For the biggest changes Forrest may instead run `/code-review ultra` from a separate session — findings then come back as Linear tickets to triage and mitigate in the building session. If /code-review is unavailable, say so in the session before proceeding, and run its methodology manually — five independent agents across CLAUDE.md compliance, shallow bug scan, git history, prior-PR guidance, and comment accuracy, then confidence-score the findings and drop anything below ~80. Never silently substitute a single-pass review.
 - **Shallow follow-ups** (CSS tweak, test data, doc fix, workflow step): self-review the edge cases; CI green suffices. Still via a PR — the review round is what's optional, never the PR.
 - When unsure whether a change is deep or shallow, ask.
 - Local `/code-review` subagents inherit the session model — invoke local reviews from the strongest available model.
