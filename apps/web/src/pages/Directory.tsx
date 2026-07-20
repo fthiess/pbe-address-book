@@ -220,9 +220,14 @@ export function Directory() {
     sort.direction,
   ]);
 
-  // Report the settled search to analytics — a bucketed result count only, never
-  // the query text or the matched ids (P6; see lib/analytics.ts).
-  useSearchTracking(q, rows.length, searchSettled);
+  // Report the settled search to analytics — a bucketed count only, never the
+  // query text or the matched ids (P6; see lib/analytics.ts).
+  //
+  // `matchedIds` (the name-search match set), NOT `rows` (search ∩ filters ∩
+  // starred ∩ deceased default): the event answers "did search find anyone?", and
+  // a filter hiding the matches is a different question. Gated on `profiles` being
+  // loaded, so a `?q=…` deep link doesn't report a match against an empty index.
+  useSearchTracking(q, matchedIds?.size ?? 0, searchSettled, profiles !== null);
 
   // The export scope for a non-empty selection: every selected brother across the
   // *whole* dataset — not just the current view — so a disjoint set built across

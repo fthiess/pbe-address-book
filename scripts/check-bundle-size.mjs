@@ -19,9 +19,15 @@ const ASSETS_DIR = "apps/web/dist/assets";
 //
 // Raised from 250 KB in 7a-2, attributable to one change (the argument in
 // OFC-286: every move of this number should name the code that caused it).
-// Mixpanel's core build adds 30.5 KB, taking the measured total from 223.8 KB to
-// 254.3 KB — so the old ceiling was not merely tight, it was exceeded. 270 KB
-// restores roughly the working margin the 250 KB figure used to give.
+// Mixpanel's core build takes the measured total from 223.8 KB to 254.5 KB — so
+// the old ceiling was not merely tight, it was exceeded. 270 KB restores roughly
+// the working margin the 250 KB figure used to give.
+//
+// Note this script measures a **token-less** build (CI never sets
+// BOOK_MIXPANEL_TOKEN), in which the minifier dead-code-eliminates the body of
+// `initAnalytics()`. A token-bearing staging build is ~0.6 KB larger (255.1 KB
+// measured). The library itself is in both, because the import is static, so the
+// figure tracks the real thing closely — but it is a floor, not an exact match.
 //
 // The 250 KB was an arbitrary forcing function: a number low enough to require a
 // conversation before the bundle grew again. It did its job (Forrest's call, this

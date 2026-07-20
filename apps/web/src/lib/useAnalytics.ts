@@ -53,11 +53,20 @@ export function useAnalytics(): void {
       return;
     }
     // Gated on the session, NOT on `me.profile`. Everything identify needs —
-    // `profileId`, `role`, `ghostMemberUuid` — is top-level on `Me`; `profile` is
-    // separately `null` whenever the caller's own record isn't cache-resident
+    // `profileId`, `realRole`, `ghostMemberUuid` — is top-level on `Me`; `profile`
+    // is separately `null` whenever the caller's own record isn't cache-resident
     // (apps/api/src/routes/auth.ts). Gating on it would silently drop analytics
     // for a live, fully-valid session for reasons unrelated to identity.
-    identifyMember(me.ghostMemberUuid, me.profileId, me.role);
+    //
+    // **`realRole`, never `role`.** `role` is the *effective* role — the "View as"
+    // projection the UI gates on (N31) — while this writes a durable Mixpanel
+    // person property. `viewAs` hard-reloads, which clears the identify latch, so
+    // passing `role` would rewrite an admin's person profile to `Role: "brother"`
+    // the moment he inspected the brother view, and leave it there. That destroys
+    // the admin-vs-brother segmentation D88 kept the property for, and it is the
+    // same bug class as OFC-263/N104 (impersonation writing through to persisted,
+    // identity-keyed state).
+    identifyMember(me.ghostMemberUuid, me.profileId, me.realRole);
   }, [me]);
 
   // Dedupe on the history entry's key, not on the pattern: navigating from one
@@ -90,22 +99,61 @@ export function useAnalytics(): void {
  * and the name-search worker has settled (D138's one proof-of-life feature event).
  *
  * The query text is held in a ref **only to avoid reporting the same search
- * twice** — it is compared, never sent. What travels is a bucketed result count
- * (see `trackSearchPerformed`), which answers the question the event exists for:
- * does search find people, or come back empty?
+ * twice** — it is compared, never sent. What travels is a bucketed count of
+ * name-search matches (see `trackSearchPerformed`), which answers the question the
+ * event exists for: does search find people, or come back empty?
+ *
+ * Three ways this measured the wrong thing in its first draft, all caught in review
+ * (N125) and all biasing the **same** direction — toward a falsely empty-looking
+ * search:
+ *
+ *  - `datasetReady` gates the whole hook. On a `?q=…` deep link the worker settles
+ *    against an *empty* index in milliseconds, long before the roster arrives on a
+ *    slow link, so without this the event reported "0 matches" and the dedupe latch
+ *    then suppressed the corrected one forever.
+ *  - The count is the name-search match set, not the rows on screen. Filters and
+ *    the deceased default narrow the view further (D36/D38/D39), and folding those
+ *    in would report an empty *search* for a search that worked and a filter that
+ *    hid the results.
+ *  - The pending report is **flushed on unmount**. Clicking a result unmounts the
+ *    Directory, which used to cancel the timer — so precisely the searches that
+ *    succeeded went unreported, while an empty result set (nothing to click) always
+ *    sat out the full second and got counted.
  */
-export function useSearchTracking(query: string, resultCount: number, settled: boolean): void {
+export function useSearchTracking(
+  query: string,
+  matchCount: number,
+  settled: boolean,
+  datasetReady: boolean,
+): void {
   const lastReported = useRef<string | null>(null);
+  // The report that is armed but not yet sent, readable by the unmount flush.
+  const pending = useRef<{ query: string; count: number } | null>(null);
 
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed === "" || !settled || lastReported.current === trimmed) {
+    if (!datasetReady || trimmed === "" || !settled || lastReported.current === trimmed) {
       return;
     }
+    pending.current = { query: trimmed, count: matchCount };
     const timer = window.setTimeout(() => {
       lastReported.current = trimmed;
-      trackSearchPerformed(resultCount);
+      pending.current = null;
+      trackSearchPerformed(matchCount);
     }, SEARCH_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [query, resultCount, settled]);
+  }, [query, matchCount, settled, datasetReady]);
+
+  // Unmount only (empty deps), so this fires when the brother leaves the Directory
+  // — typically by clicking a search result — and not on every dependency change.
+  useEffect(() => {
+    return () => {
+      const armed = pending.current;
+      if (armed && lastReported.current !== armed.query) {
+        lastReported.current = armed.query;
+        pending.current = null;
+        trackSearchPerformed(armed.count);
+      }
+    };
+  }, []);
 }

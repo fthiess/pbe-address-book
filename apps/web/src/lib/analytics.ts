@@ -18,6 +18,13 @@ import type { Role } from "@pbe/shared";
  * brother viewed, starred or searched for. That is why {@link trackPageView} takes
  * a route *pattern* and never a URL, and why {@link trackSearchPerformed} takes a
  * result count and never the query text.
+ *
+ * ⚠ **That covers only the properties this module authors.** Mixpanel attaches its
+ * own to every event — `$current_url` among them — so P6 compliance depends
+ * equally on `BLOCKED_PROPERTIES` in `analyticsConfig.ts`. The first draft of this
+ * feature got the app half right, claimed that settled the matter, and shipped the
+ * record id and the search query anyway (N125). Keeping events clean is a property
+ * of the app code **and** the library config together; neither alone is sufficient.
  */
 
 /** The slice of the Mixpanel client Book actually uses. */
@@ -101,10 +108,12 @@ export function resetIdentity(): void {
  * `/brother/5247`.
  *
  * A raw URL would put a specific brother's record id into the event stream, which
- * P6 forbids (no viewed/starred/searched-whom). The rule earns its keep twice
- * over: `/auth/callback` carries a one-time Ghost token in its query string, and
- * Mixpanel's own `track_pageview` option — which records the URL — is left at its
- * default of `false` for exactly this reason.
+ * P6 forbids (no viewed/starred/searched-whom).
+ *
+ * This is necessary but **not sufficient** on its own: Mixpanel's own
+ * `track_pageview` is disabled in `analyticsConfig.ts` so it can't fire a
+ * URL-bearing pageview of its own, and `BLOCKED_PROPERTIES` strips the
+ * `$current_url` the library would otherwise staple onto this very event.
  */
 export function trackPageView(routePattern: string): void {
   client?.track("Page View", { "Route Pattern": routePattern });
@@ -130,6 +139,16 @@ export function resultBucket(count: number): string {
  * Carries **no query text and no result ids**: what a brother typed, and whom it
  * matched, are precisely what P6 keeps out of the event stream. Only the shape of
  * the outcome travels.
+ *
+ * ⚠ The Directory mirrors its search box into the URL as `?q=` (D31/N15), so the
+ * query text *does* sit in `window.location.href` while this fires. It is kept out
+ * of the payload by `BLOCKED_PROPERTIES` stripping `$current_url` — omitting it
+ * from the call below is only half the job (N125).
+ *
+ * `resultCount` is the **name-search match count**, not the count of rows on
+ * screen: the filters, the starred-only toggle and the deceased default narrow the
+ * view further (D36/D38/D39), and folding those in would report "search found
+ * nothing" for a search that found forty brothers the filters then hid.
  */
 export function trackSearchPerformed(resultCount: number): void {
   client?.track("Search Performed", { "Result Count": resultBucket(resultCount) });
