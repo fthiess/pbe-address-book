@@ -245,3 +245,117 @@ describe("GhostAdminReader.listNewsletterEmails", () => {
     expect(await r.listNewsletterEmails()).toEqual([]);
   });
 });
+
+/**
+ * The sign-in member lookup (D137, OFC-287). The encoding assertions matter more than
+ * the happy path: OFC-275 is the standing proof that a wrong NQL filter fails at
+ * runtime against real Ghost while every unit test passes, so these pin the exact
+ * query string that goes on the wire.
+ */
+describe("GhostAdminReader.findUuidByEmail", () => {
+  /** A fetch double that records the request URLs and serves one canned body. */
+  function capturingFetch(body: unknown): { impl: typeof fetch; urls: string[] } {
+    const urls: string[] = [];
+    const impl = (async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as unknown as typeof fetch;
+    return { impl, urls };
+  }
+
+  /** The single URL the lookup requested, as a parsed `URL` (fails loudly if absent). */
+  function requested(urls: string[]): URL {
+    expect(urls).toHaveLength(1);
+    return new URL(urls[0] ?? "");
+  }
+
+  it("returns the uuid for a matching member", async () => {
+    const { impl } = capturingFetch({
+      members: [
+        { id: "m1", uuid: "4fa3e4df-85d5-44bd-b0bf-d504bbe22060", email: "a@example.test" },
+      ],
+    });
+    expect(await reader(impl).findUuidByEmail("a@example.test")).toBe(
+      "4fa3e4df-85d5-44bd-b0bf-d504bbe22060",
+    );
+  });
+
+  it("single-quotes the email in the NQL filter and asks for a single row", async () => {
+    const { impl, urls } = capturingFetch({ members: [] });
+    await reader(impl).findUuidByEmail("a@example.test");
+    const query = requested(urls).searchParams;
+    // Quoting is unconditional (see findUuidByEmail): an unquoted `+` is NQL's AND.
+    expect(query.get("filter")).toBe("email:'a@example.test'");
+    expect(query.get("limit")).toBe("1");
+  });
+
+  it("percent-encodes a `+` address so Ghost does not read it as AND (regression)", async () => {
+    // `fred+news@example.test` is the shape that breaks a hand-built query string:
+    // a raw `+` in a query is decoded as a space, and an unquoted `+` in NQL is AND.
+    // Both halves — the quotes and the `%2B` — are required for this to match.
+    const { impl, urls } = capturingFetch({ members: [{ uuid: "u-plus" }] });
+    const uuid = await reader(impl).findUuidByEmail("fred+news@example.test");
+    expect(uuid).toBe("u-plus");
+    const url = requested(urls);
+    expect(url.href).toContain("%2Bnews%40example.test");
+    expect(url.href).not.toContain("+news@");
+    // And it still round-trips back to the intended filter when Ghost decodes it.
+    expect(url.searchParams.get("filter")).toBe("email:'fred+news@example.test'");
+  });
+
+  it("returns null when Ghost has no member at that address", async () => {
+    const { impl } = capturingFetch({ members: [] });
+    expect(await reader(impl).findUuidByEmail("nobody@example.test")).toBeNull();
+  });
+
+  it("returns null rather than a bad value when the row carries no usable uuid", async () => {
+    // A wrong `$user_id` is unrecoverable under Simplified ID Merge (D137), so a
+    // malformed row degrades to "unidentified" instead of being trusted through.
+    const { impl } = capturingFetch({ members: [{ id: "m1", uuid: 12345 }] });
+    expect(await reader(impl).findUuidByEmail("a@example.test")).toBeNull();
+    const empty = capturingFetch({ members: [{ id: "m1", uuid: "" }] });
+    expect(await reader(empty.impl).findUuidByEmail("a@example.test")).toBeNull();
+  });
+
+  it("throws on a transport failure, leaving the fail-soft decision to the caller", async () => {
+    // `null` (no such member) and "threw" (Ghost is broken) are deliberately
+    // distinguishable — the provider logs them differently.
+    const impl = (async () =>
+      new Response(JSON.stringify({ errors: [{ message: "boom" }] }), {
+        status: 500,
+      })) as unknown as typeof fetch;
+    await expect(reader(impl).findUuidByEmail("a@example.test")).rejects.toThrow();
+  });
+
+  it("bounds the wait so a hung Ghost cannot stall sign-in (OFC-287)", async () => {
+    // The one place Book passes `timeoutMs`. A fetch that never settles on its own
+    // must still reject, via the abort signal the request attaches. The budget is
+    // shrunk to keep the test instant; the production value is 3s.
+    const hangs = ((_url: string, init?: RequestInit) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+      })) as unknown as typeof fetch;
+    const r = new GhostAdminReader({
+      apiUrl: API,
+      adminApiKey: KEY,
+      fetchImpl: hangs,
+      memberLookupTimeoutMs: 10,
+    });
+    await expect(r.findUuidByEmail("a@example.test")).rejects.toThrow();
+  });
+
+  it("leaves the report reads unbounded — the timeout is opt-in per call (OFC-294)", async () => {
+    // Guards the deliberate asymmetry: only the sign-in lookup passes `timeoutMs`,
+    // so `listMembers` must attach no abort signal. If a later change defaults a
+    // timeout for every Ghost call, this fails and forces the decision to be explicit.
+    let sawSignal: unknown = "unset";
+    const impl = (async (_url: string, init?: RequestInit) => {
+      sawSignal = init?.signal;
+      return new Response(JSON.stringify({ members: [], meta: { pagination: { next: null } } }), {
+        status: 200,
+      });
+    }) as unknown as typeof fetch;
+    await reader(impl).listMembers();
+    expect(sawSignal).toBeUndefined();
+  });
+});

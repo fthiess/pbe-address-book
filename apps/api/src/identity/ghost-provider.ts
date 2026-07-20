@@ -1,6 +1,7 @@
 import { formatCanonicalName, normalizeEmail } from "@pbe/shared";
 import type { ProfileCache } from "../data/cache.js";
 import type { KeyResolver } from "./ghost-jwks.js";
+import type { GhostMemberLookup } from "./ghost-reader.js";
 import { JWT_CLOCK_SKEW_SEC, verifyRsJwt } from "./jwt-verify.js";
 import type { NonceService } from "./nonce-store.js";
 import {
@@ -36,6 +37,17 @@ export interface GhostProviderDeps {
   cache: ProfileCache;
   /** Create-if-absent the caller's private `users` doc (stars); role is on the profile (OFC-139). */
   ensureUser: (profileId: number) => Promise<{ stars: number[] }>;
+  /**
+   * The Ghost member-uuid lookup for the analytics `distinct_id` (D137, OFC-287).
+   *
+   * **Optional by design, on two axes.** It is the sign-in path's first and only
+   * Ghost HTTP dependency — before this, `createSession` resolved identity purely
+   * from the verified email against the in-memory profile index and made zero Ghost
+   * calls. Leaving it optional means (a) a deploy with no Ghost Admin-API key
+   * configured still signs members in, exactly as before, minting uuid-less
+   * sessions; and (b) the existing provider tests need no live Ghost and no fake.
+   */
+  memberLookup?: GhostMemberLookup;
   /** Session lifetime; defaults to the 4-hour cap. */
   sessionTtlMs?: number;
   /** Allowed signing algorithms; defaults to the asymmetric RS family (D104). */
@@ -59,8 +71,12 @@ export interface GhostProviderDeps {
  *     against the in-memory email index. Resolution **fails closed**: no match →
  *     `unlinked_member`; multiple matches → `ambiguous_member` (never a guess).
  *  4. Create-if-absent the brother's `users` document and read their role (R20).
+ *  5. Fetch the Ghost member `uuid` for the analytics `distinct_id` (D137) — the
+ *     one step that is **allowed to fail**, and the only Ghost HTTP call sign-in
+ *     makes. It runs last, after the sign-in has already succeeded.
  *
- * Every failure throws an {@link AuthError} carrying the API-SPEC §2 status/code.
+ * Every failure in steps 1–4 throws an {@link AuthError} carrying the API-SPEC §2
+ * status/code.
  */
 export class GhostIdentityProvider implements IdentityProvider {
   readonly name = "ghost";
@@ -118,15 +134,57 @@ export class GhostIdentityProvider implements IdentityProvider {
     await this.deps.ensureUser(profile.id);
     const role = profile.role;
 
+    // 5. Fetch the Ghost member uuid for the analytics `distinct_id` (D137). Deliberately
+    //    **last**, after every denial check and after the nonce has been consumed: the
+    //    sign-in has already decided to succeed, so nothing this step does — including
+    //    failing — can change the outcome. That ordering is what makes the fail-soft
+    //    below honest rather than a claim.
+    const ghostMemberUuid = await this.lookupMemberUuid(email);
+
     const identity: Identity = {
       subject: email,
       profileId: profile.id,
       email,
       role,
       displayName: formatCanonicalName(profile, false),
+      // Omitted entirely when absent, rather than set to `undefined`: the session is
+      // serialized into Firestore, which rejects an explicit `undefined` field value.
+      ...(ghostMemberUuid ? { ghostMemberUuid } : {}),
     };
     const ttl = this.deps.sessionTtlMs ?? FOUR_HOURS_MS;
     return { identity, expiresAt: Date.now() + ttl };
+  }
+
+  /**
+   * The analytics-identity lookup (D137), which **never throws**. A missing uuid costs
+   * one session's worth of unidentified Mixpanel events; a thrown error here would cost
+   * the brother his sign-in, and D137 is explicit that sign-in must never be blocked by
+   * an analytics concern. So every failure mode — Ghost down, timeout, bad key, `400` on
+   * the filter, no member at that address — collapses to `undefined`.
+   *
+   * The two outcomes are logged differently on purpose: no-member is an *expected* state
+   * worth noticing (it means Book and Ghost disagree about who exists, which the
+   * alignment audit exists to catch), while a throw is an infrastructure fault. Both are
+   * `WARNING`, matching the structured shape `ghost-reader.ts` uses for its degraded
+   * reads; neither is an `ERROR`, because the sign-in itself succeeded.
+   */
+  private async lookupMemberUuid(email: string): Promise<string | undefined> {
+    if (!this.deps.memberLookup) {
+      return undefined;
+    }
+    try {
+      const uuid = await this.deps.memberLookup.findUuidByEmail(email);
+      if (!uuid) {
+        // The email is NOT logged: sign-in logs are not a PII sink, and the profile id
+        // is already the identifier the rest of the log stream keys on.
+        warn("ghost member lookup found no member for a verified sign-in email");
+        return undefined;
+      }
+      return uuid;
+    } catch (error) {
+      warn(`ghost member uuid lookup failed, session will be unidentified: ${describe(error)}`);
+      return undefined;
+    }
   }
 
   /**
@@ -181,4 +239,9 @@ export class GhostIdentityProvider implements IdentityProvider {
 
 function describe(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
+}
+
+/** A structured `WARNING` for a degraded-but-successful sign-in (matches `ghost-reader.ts`). */
+function warn(message: string): void {
+  process.stderr.write(`${JSON.stringify({ logType: "error", severity: "WARNING", message })}\n`);
 }

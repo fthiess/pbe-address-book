@@ -14,7 +14,14 @@ import {
 } from "../test-support/fakes.js";
 import { makeProfile } from "../test-support/make-profile.js";
 
-function sessionFor(profileId: number, role: "brother" | "manager" | "admin"): Session {
+/** The Ghost member uuid the stub session carries (D137); see `/api/me` below. */
+const SESSION_UUID = "4fa3e4df-85d5-44bd-b0bf-d504bbe22060";
+
+function sessionFor(
+  profileId: number,
+  role: "brother" | "manager" | "admin",
+  withUuid = true,
+): Session {
   return {
     identity: {
       subject: String(profileId),
@@ -22,26 +29,31 @@ function sessionFor(profileId: number, role: "brother" | "manager" | "admin"): S
       email: "x@example.test",
       role,
       displayName: "X",
+      // Omitted, not undefined, when absent — matching what the real provider
+      // builds for a session whose uuid lookup failed or found nothing (D137).
+      ...(withUuid ? { ghostMemberUuid: SESSION_UUID } : {}),
     },
     expiresAt: Date.now() + 60 * 60 * 1000,
   };
 }
 
 // A stub Ghost provider: `good` succeeds, the others throw the spec's AuthErrors.
-const provider: IdentityProvider = {
-  name: "ghost-stub",
-  async createSession(request) {
-    if (request.token === "good" && request.state) {
-      return sessionFor(5001, "brother");
-    }
-    if (request.token === "unlinked") {
-      throw new AuthError(403, "unlinked_member");
-    }
-    throw new AuthError(401, "invalid_token");
-  },
-};
+function makeProvider(withUuid = true): IdentityProvider {
+  return {
+    name: "ghost-stub",
+    async createSession(request) {
+      if (request.token === "good" && request.state) {
+        return sessionFor(5001, "brother", withUuid);
+      }
+      if (request.token === "unlinked") {
+        throw new AuthError(403, "unlinked_member");
+      }
+      throw new AuthError(401, "invalid_token");
+    },
+  };
+}
 
-async function buildAuthServer(withBridge = true) {
+async function buildAuthServer(withBridge = true, opts: { withUuid?: boolean } = {}) {
   const cache = new ProfileCache();
   await cache.load([
     makeProfile({
@@ -62,7 +74,7 @@ async function buildAuthServer(withBridge = true) {
   ]);
   const sessionStore = new InMemorySessionStore();
   const app = await buildServer({
-    identityProvider: provider,
+    identityProvider: makeProvider(opts.withUuid ?? true),
     profileCache: cache,
     profileStore: new InMemoryProfileStore(),
     adminUsers: new InMemoryAdminUserStore(),
@@ -155,6 +167,30 @@ describe("auth routes", () => {
     // …but never the staff-internal note or the system-internal Ghost id (§9).
     expect(body.profile).not.toHaveProperty("adminNote");
     expect(body.profile).not.toHaveProperty("ghostMemberId");
+    // The stub session carries a uuid, so /api/me hands the SPA its Mixpanel
+    // `distinct_id` (D137) — from the session, and at the top level, NOT inside
+    // `profile` (so it never passes through the projection).
+    expect(body.ghostMemberUuid).toBe(SESSION_UUID);
+    expect(body.profile).not.toHaveProperty("ghostMemberUuid");
+    await app.close();
+  });
+
+  it("GET /api/me omits ghostMemberUuid when the sign-in lookup did not supply one", async () => {
+    // A uuid-less session is a valid session (D137 fail-soft) — /api/me must not
+    // invent a value or 500; the SPA simply skips `identify()` in 7a-2.
+    const { app } = await buildAuthServer(true, { withUuid: false });
+    const signIn = await app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { token: "good", state: "s" },
+    });
+    const me = await app.inject({
+      method: "GET",
+      url: "/api/me",
+      headers: { cookie: cookieFromResponse(signIn.headers["set-cookie"]) },
+    });
+    expect(me.statusCode).toBe(200);
+    expect(me.json()).not.toHaveProperty("ghostMemberUuid");
     await app.close();
   });
 

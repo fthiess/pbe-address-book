@@ -23,6 +23,32 @@ export interface Identity {
   email: string;
   role: Role;
   displayName: string;
+  /**
+   * The caller's **Ghost member `uuid`** — Book's Mixpanel `distinct_id` (D137),
+   * the same key pbe400.org has identified on since 2026-05-27, so one brother is
+   * one Mixpanel person across both halves of the system.
+   *
+   * Fetched from the Ghost Admin API at session creation, keyed on the
+   * already-verified email, and **absent when that lookup fails or finds nothing**:
+   * sign-in must never be blocked by an analytics concern, so a uuid-less session
+   * is a valid session whose events simply go unidentified. Every consumer must
+   * treat it as optional.
+   *
+   * It lives on `Identity` — not `Session` — because it is a fact about *who the
+   * caller is*, beside the email it is derived from. (Contrast `effectiveRole`,
+   * which is on `Session` precisely because impersonation is not an identity fact.)
+   *
+   * Deliberately **not** persisted to the `Profile`: D81 stays unreversed and there
+   * is no `ghostMemberUuid` schema field. D134 deletes and re-creates a member's
+   * Ghost record on mark-deceased/undo, minting a **new** uuid — so a stored value
+   * would go silently stale there, whereas this per-sign-in fetch is self-healing.
+   * Its lifetime is the session's own (the 4-hour cap), inside the session document.
+   *
+   * Note this is **not** `ghostMemberId`: Ghost's `id` and `uuid` are different
+   * fields. `ghostMemberId` is the profile-borne `system-internal` join key that
+   * `projectSelf` strips; this rides the session and never touches that projection.
+   */
+  ghostMemberUuid?: string;
 }
 
 /** A Book session. */
