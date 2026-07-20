@@ -11,6 +11,7 @@ import { ControlHelp } from "../components/ControlHelp.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
 import { fetchProfiles } from "../lib/api.js";
 import type { DirectoryProfile } from "../lib/types.js";
+import { useSearchTracking } from "../lib/useAnalytics.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
 import { useHistoryFlag } from "../lib/useHistoryFlag.js";
 import { useMediaQuery } from "../lib/useMediaQuery.js";
@@ -218,6 +219,10 @@ export function Directory() {
     sort.sortKey,
     sort.direction,
   ]);
+
+  // Report the settled search to analytics — a bucketed result count only, never
+  // the query text or the matched ids (P6; see lib/analytics.ts).
+  useSearchTracking(q, rows.length, searchSettled);
 
   // The export scope for a non-empty selection: every selected brother across the
   // *whole* dataset — not just the current view — so a disjoint set built across

@@ -15,7 +15,20 @@ import { join } from "node:path";
 import { brotliCompressSync } from "node:zlib";
 
 const ASSETS_DIR = "apps/web/dist/assets";
-const BUDGET_BYTES = 250 * 1024; // 250 KB brotli, total JS. Tighten later (D74).
+// 270 KB brotli, total JS (D74).
+//
+// Raised from 250 KB in 7a-2, attributable to one change (the argument in
+// OFC-286: every move of this number should name the code that caused it).
+// Mixpanel's core build adds 30.5 KB, taking the measured total from 223.8 KB to
+// 254.3 KB — so the old ceiling was not merely tight, it was exceeded. 270 KB
+// restores roughly the working margin the 250 KB figure used to give.
+//
+// The 250 KB was an arbitrary forcing function: a number low enough to require a
+// conversation before the bundle grew again. It did its job (Forrest's call, this
+// session). Phase 7b's Lighthouse baseline (OFC-286) measures the critical path
+// this byte count can't see, and is the right place to re-derive the ceiling from
+// evidence rather than from feel.
+const BUDGET_BYTES = 270 * 1024;
 
 let files;
 try {
