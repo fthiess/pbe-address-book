@@ -124,6 +124,31 @@ const EVENT_LOOKBACK_MONTHS = 24;
  */
 const MEMBER_LOOKUP_TIMEOUT_MS = 3000;
 
+/**
+ * Escape a value for interpolation into a **single-quoted NQL string**. Ghost's
+ * filter documentation is explicit that a quote appearing inside a quoted string
+ * must be escaped; the escape character is a backslash, so the backslash itself
+ * must be doubled — and **doubled first**, or escaping the quote would produce a
+ * `\'` that the subsequent backslash pass would turn back into `\\'`, re-exposing
+ * the quote it was meant to neutralize.
+ *
+ * This is not theoretical for an email address: `'` is valid RFC 5322 atext, so
+ * `o'brien@example.test` is an ordinary address that a fraternity roster will
+ * eventually contain. Unescaped it terminates the NQL string after `o`, and the
+ * two outcomes are a silent no-match (that brother is never identified) or — far
+ * worse — a mangled filter that matches a **different** member, whose uuid would
+ * then be adopted as this caller's `$user_id`. Under Simplified ID Merge that
+ * misattribution is unrecoverable (D137), which is what makes this worth
+ * foreclosing at the string level rather than trusting Ghost to reject it.
+ *
+ * Double quotes are escaped too: they cannot terminate a single-quoted string, but
+ * Ghost's docs name both quote characters, so this follows the documented rule
+ * rather than a narrower reading of it.
+ */
+function escapeNql(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/['"]/g, "\\$&");
+}
+
 export class GhostAdminReader implements GhostReader, GhostMemberLookup {
   private readonly http: GhostAdminHttp;
   /** Injectable clock for the event-fetch cutoff; defaults to the wall clock. */
@@ -225,7 +250,7 @@ export class GhostAdminReader implements GhostReader, GhostMemberLookup {
    * `limit: "1"` because a match is unique and an unbounded page is wasted bytes.
    */
   async findUuidByEmail(email: string): Promise<string | null> {
-    const query = new URLSearchParams({ filter: `email:'${email}'`, limit: "1" });
+    const query = new URLSearchParams({ filter: `email:'${escapeNql(email)}'`, limit: "1" });
     const body = (await this.http.request("GET", `/members/?${query.toString()}`, undefined, {
       timeoutMs: this.memberLookupTimeoutMs,
     })) as { members?: unknown } | undefined;

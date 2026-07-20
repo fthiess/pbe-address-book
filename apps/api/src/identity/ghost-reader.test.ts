@@ -303,6 +303,28 @@ describe("GhostAdminReader.findUuidByEmail", () => {
     expect(url.searchParams.get("filter")).toBe("email:'fred+news@example.test'");
   });
 
+  it("escapes an apostrophe in the address so the NQL string cannot be broken out of", async () => {
+    // `o'brien@example.test` is a valid, unremarkable address — `'` is RFC 5322
+    // atext, and a 700-brother roster with Irish surnames will contain one. Ghost's
+    // filter docs are explicit that a quote inside a quoted string MUST be escaped;
+    // unescaped, `email:'o'brien@…'` terminates the string after `o` and the rest is
+    // garbage. Two failure modes, one silent and one severe: Ghost 400s and the
+    // brother is never identified, or the mangled filter matches a DIFFERENT member
+    // and we adopt his uuid — and a wrong `$user_id` is unrecoverable under
+    // Simplified ID Merge (D137). Escaping forecloses both.
+    const { impl, urls } = capturingFetch({ members: [] });
+    await reader(impl).findUuidByEmail("o'brien@example.test");
+    expect(requested(urls).searchParams.get("filter")).toBe("email:'o\\'brien@example.test'");
+  });
+
+  it("escapes a backslash before the quote, so the escape cannot itself be escaped away", async () => {
+    // Order matters: escaping `'` first and `\` second would turn `\'` into `\\'`,
+    // re-exposing the quote. Backslash must be doubled first.
+    const { impl, urls } = capturingFetch({ members: [] });
+    await reader(impl).findUuidByEmail("odd\\'name@example.test");
+    expect(requested(urls).searchParams.get("filter")).toBe("email:'odd\\\\\\'name@example.test'");
+  });
+
   it("returns null when Ghost has no member at that address", async () => {
     const { impl } = capturingFetch({ members: [] });
     expect(await reader(impl).findUuidByEmail("nobody@example.test")).toBeNull();
