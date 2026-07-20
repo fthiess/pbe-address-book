@@ -83,6 +83,8 @@ Phase 7.6 (sequenced in `CODING-PROJECT-PLAN.md` §7; no dependency on Phases 6/
 
 **Gate:** a signed-in member on Ghost-staging can follow an article link into Book and reach account management from the Ghost site's UI, landing on Book.
 
+**Status (2026-07-20; DECISIONS D139).** **OFC-251 is done** — a canonical-form brother citation in a Ghost-staging article, hyperlinked to that brother's Book-staging profile, live-verified by Forrest; the article→Book half of the gate is satisfied and the link is available to the tester task script. **OFC-250 is built** and awaiting its manual staging deploy: account links and both account routes hand off to Book behind a new `book_url` theme setting. The phase closes when the theme zip is uploaded to Ghost-staging, the staging Mixpanel snippet is pasted into its Code Injection, and the account-management half of the gate is live-confirmed.
+
 ## 9. Running the UAT
 
 **Window: 2–3 weeks.** Long enough for two rounds of fix-and-retest, short enough to hold volunteers' interest (Forrest's call). Continuous deploys during the window keep giving testers new things to look at.
