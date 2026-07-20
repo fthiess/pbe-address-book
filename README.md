@@ -76,7 +76,7 @@ full picture is [`ENGINEERING-DESIGN.md`](docs/initial-build/ENGINEERING-DESIGN.
 | `tools/fake-data/` | The deterministic seeded fake-data generator (D65) + the staging seed/link scripts. |
 | `tools/migration/` | One-time pre-launch migration utilities (never deployed; built in Phase 8). |
 | `e2e/` | The Playwright end-to-end suite (including the axe WCAG 2.2 AA scans). |
-| `scripts/` | The CI gate guards: no-dev-provider, tokens-in-sync, bundle-size, CSP hashes, CI timing. |
+| `scripts/` | The CI gate guards: no-dev-provider, no-session-replay, tokens-in-sync, bundle-size, CSP hashes, CI timing. |
 | `infra/` | Staging provisioning + Workload Identity Federation setup scripts, and the environment notes. |
 | `ghost-bridge/` | Reference mirror of the Ghost-side relay (`book.hbs` + routes snippet); the deployment home is the `pbe-news-ghost-theme` repo — keep the two in sync. |
 | `docs/` | Design and build documentation, by build. The initial release lives in `docs/initial-build/`. |

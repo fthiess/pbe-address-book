@@ -26,6 +26,7 @@
     "seed": "firebase emulators:exec --only firestore \"npm run seed:run --workspace tools/fake-data\"",
     "e2e": "playwright test",
     "assert:no-dev-provider": "node scripts/assert-no-dev-provider.mjs",
+    "assert:no-session-replay": "node scripts/assert-no-session-replay.mjs",
     "assert:tokens": "node scripts/assert-tokens-in-sync.mjs",
     "assert:csp-hashes": "node scripts/assert-csp-hashes.mjs",
     "assert:help-manual": "tsx scripts/generate-help-manual.ts --check",
@@ -33,7 +34,7 @@
     "ci:timing": "node scripts/ci-timing.mjs",
     "docs:help": "tsx scripts/generate-help-manual.ts",
     "docs:screenshots": "playwright test --config playwright.screenshots.config.ts",
-    "verify:gate": "npm run check && npm run assert:tokens && npm run assert:help-manual && npm run typecheck && npm run build && npm run assert:csp-hashes && npm run assert:no-dev-provider && npm run check:bundle-size && npm run test && npm run test:emulator && npm run e2e"
+    "verify:gate": "npm run check && npm run assert:tokens && npm run assert:help-manual && npm run typecheck && npm run build && npm run assert:csp-hashes && npm run assert:no-dev-provider && npm run assert:no-session-replay && npm run check:bundle-size && npm run test && npm run test:emulator && npm run e2e"
   },
   "overrides": {
     "uuid": "^11.1.1"

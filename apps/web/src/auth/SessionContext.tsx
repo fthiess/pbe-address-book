@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { resetIdentity } from "../lib/analytics.js";
 import {
   ApiError,
   impersonate as apiImpersonate,
@@ -187,6 +188,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       return;
     }
     clearRoster();
+    // Drop the Mixpanel identity alongside the roster (7a-2). An expired session is
+    // as much an end-of-session as the sign-out button, and on a shared machine the
+    // next brother must not inherit this one's device id — see `resetIdentity`.
+    resetIdentity();
     setState({ status: "unauthenticated", expired: true });
   }, []);
 
@@ -282,6 +287,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     // Drop the cached full-PII roster from the heap so it can't outlive the
     // session on a shared/family machine (OFC-118, D95).
     clearRoster();
+    // Same reasoning, applied to analytics identity (7a-2, D138).
+    resetIdentity();
     setState({ status: "unauthenticated" });
   }, []);
 

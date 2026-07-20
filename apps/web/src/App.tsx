@@ -7,6 +7,7 @@ import { FontSizeProvider } from "./components/FontSizeProvider.js";
 import { LoadingOverlay } from "./components/LoadingOverlay.js";
 import { MaintenanceOutage } from "./components/MaintenanceOutage.js";
 import { ThemeProvider } from "./components/ThemeProvider.js";
+import { useAnalytics } from "./lib/useAnalytics.js";
 import { useDelayedFlag } from "./lib/useDelayedFlag.js";
 import { AboutPage } from "./pages/AboutPage.js";
 import { Admin } from "./pages/Admin.js";
@@ -28,6 +29,10 @@ import { StarsProvider } from "./pages/directory/StarsContext.js";
  * state and so wrap `RouterProvider` in {@link App}.
  */
 function RootLayout() {
+  // Analytics lives here because it needs both halves: route matches (for the
+  // page-view pattern) and the session (for `identify`). This is the innermost
+  // point that sees the router and the outermost that sees every route (7a-2).
+  useAnalytics();
   return (
     <NuqsAdapter>
       <Outlet />
@@ -94,38 +99,62 @@ const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
-      { path: "/auth/callback", element: <AuthCallback /> },
+      {
+        path: "/auth/callback",
+        element: <AuthCallback />,
+        handle: { analyticsRoute: "/auth/callback" },
+      },
       {
         element: <GateLayout />,
         children: [
-          { index: true, element: <Directory /> },
+          { index: true, element: <Directory />, handle: { analyticsRoute: "/" } },
           // `brother/new` (the Add-Brother essentials step, OFC-201) is a **static**
           // sibling of `brother/:id`, so the router ranks it above the dynamic param
           // and it is never mistaken for a brother whose id is "new" (the old bug).
-          { path: "brother/new", element: <NewProfile /> },
+          {
+            path: "brother/new",
+            element: <NewProfile />,
+            handle: { analyticsRoute: "/brother/new" },
+          },
           // Same reasoning as `brother/new`: `brother/me` and `brother/me/edit` are
           // **static** siblings ranked above `brother/:id`, so "me" is never taken
           // for a Constitution ID. They exist for callers that can't know one — the
           // build-time About copy, and (7.6) the Ghost theme — and redirect to the
           // real record so a profile keeps one canonical URL (N116).
-          { path: "brother/me", element: <OwnProfileRedirect /> },
-          { path: "brother/me/edit", element: <OwnProfileRedirect edit /> },
+          {
+            path: "brother/me",
+            element: <OwnProfileRedirect />,
+            handle: { analyticsRoute: "/brother/me" },
+          },
+          {
+            path: "brother/me/edit",
+            element: <OwnProfileRedirect edit />,
+            handle: { analyticsRoute: "/brother/me/edit" },
+          },
           {
             path: "brother/:id",
             element: <ProfileContainer />,
+            // The pattern, never the id — `/brother/5247` in an event property would
+            // record *whom* a brother looked at, which P6 forbids (see analytics.ts).
+            // The view child inherits this handle; only `edit` overrides it.
+            handle: { analyticsRoute: "/brother/:id" },
             children: [
               { index: true, element: <ProfileViewRoute /> },
-              { path: "edit", element: <ProfileEditRoute /> },
+              {
+                path: "edit",
+                element: <ProfileEditRoute />,
+                handle: { analyticsRoute: "/brother/:id/edit" },
+              },
             ],
           },
-          { path: "admin", element: <Admin /> },
+          { path: "admin", element: <Admin />, handle: { analyticsRoute: "/admin" } },
           // Reached from the avatar menu (OFC-244). Inside the gate like every other
           // page — About is members-only, not a public marketing page.
-          { path: "about", element: <AboutPage /> },
+          { path: "about", element: <AboutPage />, handle: { analyticsRoute: "/about" } },
           // An unknown URL renders an honest "page not found" (OFC-202) rather than
           // silently falling through to the Directory. Still a 200 (SPA behind the
           // Hosting `**`→index.html rewrite), but a real not-found UI.
-          { path: "*", element: <NotFoundPage /> },
+          { path: "*", element: <NotFoundPage />, handle: { analyticsRoute: "/*" } },
         ],
       },
     ],

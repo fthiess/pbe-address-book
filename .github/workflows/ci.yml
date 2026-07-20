@@ -81,6 +81,11 @@ jobs:
       - name: DevIdentityProvider absent from prod bundle (D108)
         run: npm run assert:no-dev-provider
 
+      # Also after the build, for the same reason as the CSP hashes above: it reads
+      # the shipped chunks in apps/web/dist/assets.
+      - name: Session-replay recorder absent from SPA bundle (D138/D140)
+        run: npm run assert:no-session-replay
+
       - name: Bundle-size budget (D74)
         run: npm run check:bundle-size
 

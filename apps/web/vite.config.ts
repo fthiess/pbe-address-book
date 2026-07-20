@@ -118,10 +118,29 @@ const APP_VERSION = process.env.BOOK_APP_VERSION ?? gitVersion();
 // override and never accidentally links to staging.
 const PBE_NEWS_URL = process.env.BOOK_PBE_NEWS_URL ?? "https://pbe400.org";
 
+// The Mixpanel project token for this environment (D138). The token is a
+// publishable client-side identifier, not a secret, so it lives in the repo.
+//
+// **This define deliberately inverts N94's default-to-production rule, amending
+// D138.** For a link URL, defaulting to production is right: an unconfigured prod
+// build is already correct and a wrong value is a harmless dead link. For an
+// analytics token it fails the other way — there is no prod environment file or
+// prod deploy workflow yet, so the *only* builds that would pick up a prod default
+// today are local dev and CI, and Playwright builds and drives the real production
+// bundle on every gate run. That would file synthetic events against real member
+// usage in Mixpanel-Prod, which is not something a later cleanup can undo.
+//
+// So: **empty by default, which disables analytics entirely** (see
+// lib/analyticsClient.ts). `infra/environments/staging.env` supplies the staging
+// token; the production token is added when the production deploy path is built at
+// cutover — tracked in CUTOVER-PLAN.md.
+const MIXPANEL_TOKEN = process.env.BOOK_MIXPANEL_TOKEN ?? "";
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(APP_VERSION),
     __PBE_NEWS_URL__: JSON.stringify(PBE_NEWS_URL),
+    __MIXPANEL_TOKEN__: JSON.stringify(MIXPANEL_TOKEN),
   },
   plugins: [react(), tailwindcss(), versionJsonPlugin(APP_VERSION), aboutHtmlPlugin()],
   resolve: {
