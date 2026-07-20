@@ -23,7 +23,11 @@ import { GhostAdminLifecycle } from "./identity/ghost-admin.js";
 import { createGhostKeyResolver } from "./identity/ghost-jwks.js";
 import type { GhostLifecycle } from "./identity/ghost-lifecycle.js";
 import { GhostIdentityProvider } from "./identity/ghost-provider.js";
-import { GhostAdminReader, type GhostReader } from "./identity/ghost-reader.js";
+import {
+  GhostAdminReader,
+  type GhostMemberLookup,
+  type GhostReader,
+} from "./identity/ghost-reader.js";
 import {
   GoogleOidcVerifier,
   type RosterVerifier,
@@ -95,8 +99,15 @@ function resolveGhostLifecycle(): GhostLifecycle | undefined {
  * Build the read-only Ghost client (the admin alignment audit + bounce report,
  * 5b-2) when the Admin API is configured, else undefined (→ the routes `503`).
  * Reads need no `GHOST_NEWSLETTER_ID`, so this gates only on URL + key.
+ *
+ * Returned as **both** read seams it satisfies: the report surfaces take
+ * {@link GhostReader}, and sign-in takes the one-method {@link GhostMemberLookup}
+ * for the analytics uuid (D137, OFC-287). One instance, so there is a single
+ * Admin-API config and a single transport — the two consumers are separate
+ * *interfaces*, not separate clients. When the Admin API is unconfigured, both
+ * degrade as documented: the reports `503`, sign-in mints uuid-less sessions.
  */
-function resolveGhostReader(): GhostReader | undefined {
+function resolveGhostReader(): (GhostReader & GhostMemberLookup) | undefined {
   if (!GHOST_ADMIN_API_URL || !GHOST_ADMIN_API_KEY) {
     return undefined;
   }
@@ -122,6 +133,8 @@ async function main(): Promise<void> {
 
   const sessionStore = new SessionStore(db);
   const nonceStore = new NonceStore(db);
+  // One client, two seams (see `resolveGhostReader`): the report routes and sign-in.
+  const ghostReader = resolveGhostReader();
 
   const provider = new GhostIdentityProvider({
     keyResolver: createGhostKeyResolver(GHOST_JWKS_URL),
@@ -130,6 +143,7 @@ async function main(): Promise<void> {
     nonceStore,
     cache: profileCache,
     ensureUser: (profileId) => ensureUser(db, profileId),
+    memberLookup: ghostReader,
     // Optional override (comma-separated); defaults to the asymmetric RS family.
     algorithms: process.env.GHOST_JWT_ALGS?.split(",").map((a) => a.trim()),
   });
@@ -151,7 +165,7 @@ async function main(): Promise<void> {
     cookie: { secure: true },
     ghostBridge: { url: GHOST_BRIDGE_URL, target: GHOST_BRIDGE_TARGET },
     ghostLifecycle: resolveGhostLifecycle(),
-    ghostReader: resolveGhostReader(),
+    ghostReader,
     rosterVerifier: resolveRosterVerifier(),
   });
 

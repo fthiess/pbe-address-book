@@ -38,6 +38,27 @@ export interface GhostReader {
   listNewsletterEmails(): Promise<GhostNewsletterEmail[]>;
 }
 
+/**
+ * The single-member read the **sign-in path** needs (D137, OFC-287) — deliberately
+ * its own one-method interface rather than a fifth method on {@link GhostReader}.
+ * The two are implemented by the same class ({@link GhostAdminReader}) so there is
+ * one Admin-API config and one transport, but they are separate *seams* because
+ * their consumers have opposite tolerances: a report surface wants every member and
+ * fails closed with `503`/`502` when Ghost is unreachable, whereas sign-in wants one
+ * member, must never block on Ghost, and degrades to a uuid-less session. Declaring
+ * the narrow interface is what lets `GhostIdentityProvider` depend on *only* the
+ * capability it uses, and lets its tests supply a two-line fake.
+ */
+export interface GhostMemberLookup {
+  /**
+   * The Ghost member `uuid` for an already-verified email, or `null` when Ghost
+   * has no member at that address. **Throws** on a transport/API failure — the
+   * caller decides what a failure means (the provider swallows it; see D137's
+   * fail-soft residual). `null` and "threw" are deliberately distinguishable.
+   */
+  findUuidByEmail(email: string): Promise<string | null>;
+}
+
 /** A Ghost member, projected to what the audit + bounce join read. */
 export interface GhostMemberRecord {
   /** The Ghost Admin-API member id (Book's `ghostMemberId` join key). */
@@ -93,16 +114,59 @@ export interface GhostNewsletterEmail {
  */
 const EVENT_LOOKBACK_MONTHS = 24;
 
-export class GhostAdminReader implements GhostReader {
+/**
+ * The bound on the sign-in member lookup (OFC-287). Sign-in is interactive and the
+ * lookup is *optional* — its only consumer is analytics identity (D137) — so the
+ * budget is small: a Ghost that has not answered in this long is a Ghost that should
+ * be given up on rather than waited out, and the session proceeds without a uuid.
+ * Generous enough not to fire on an ordinary slow response from a small self-hosted
+ * instance; short enough to be invisible against the magic-link round-trip.
+ */
+const MEMBER_LOOKUP_TIMEOUT_MS = 3000;
+
+/**
+ * Escape a value for interpolation into a **single-quoted NQL string**. Ghost's
+ * filter documentation is explicit that a quote appearing inside a quoted string
+ * must be escaped; the escape character is a backslash, so the backslash itself
+ * must be doubled — and **doubled first**, or escaping the quote would produce a
+ * `\'` that the subsequent backslash pass would turn back into `\\'`, re-exposing
+ * the quote it was meant to neutralize.
+ *
+ * This is not theoretical for an email address: `'` is valid RFC 5322 atext, so
+ * `o'brien@example.test` is an ordinary address that a fraternity roster will
+ * eventually contain. Unescaped it terminates the NQL string after `o`, and the
+ * two outcomes are a silent no-match (that brother is never identified) or — far
+ * worse — a mangled filter that matches a **different** member, whose uuid would
+ * then be adopted as this caller's `$user_id`. Under Simplified ID Merge that
+ * misattribution is unrecoverable (D137), which is what makes this worth
+ * foreclosing at the string level rather than trusting Ghost to reject it.
+ *
+ * Double quotes are escaped too: they cannot terminate a single-quoted string, but
+ * Ghost's docs name both quote characters, so this follows the documented rule
+ * rather than a narrower reading of it.
+ */
+function escapeNql(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/['"]/g, "\\$&");
+}
+
+export class GhostAdminReader implements GhostReader, GhostMemberLookup {
   private readonly http: GhostAdminHttp;
   /** Injectable clock for the event-fetch cutoff; defaults to the wall clock. */
   private readonly now: () => number;
+  /** The sign-in lookup's wait budget; defaults to {@link MEMBER_LOOKUP_TIMEOUT_MS}. */
+  private readonly memberLookupTimeoutMs: number;
 
   constructor(
     config: Omit<GhostAdminConfig, "newsletterId"> & {
       newsletterId?: string;
       /** Test seam for {@link EVENT_LOOKBACK_MONTHS}'s cutoff; defaults to `Date.now`. */
       now?: () => number;
+      /**
+       * Test seam for {@link MEMBER_LOOKUP_TIMEOUT_MS}. Exists so the abort-path test
+       * runs in milliseconds instead of stalling the suite for the real budget; not
+       * intended as a production knob (nothing in `index.ts` sets it).
+       */
+      memberLookupTimeoutMs?: number;
     },
   ) {
     this.http = new GhostAdminHttp({
@@ -112,6 +176,7 @@ export class GhostAdminReader implements GhostReader {
       fetchImpl: config.fetchImpl,
     });
     this.now = config.now ?? (() => Date.now());
+    this.memberLookupTimeoutMs = config.memberLookupTimeoutMs ?? MEMBER_LOOKUP_TIMEOUT_MS;
   }
 
   /**
@@ -162,6 +227,42 @@ export class GhostAdminReader implements GhostReader {
       });
     }
     return members;
+  }
+
+  /**
+   * {@link GhostMemberLookup.findUuidByEmail} — the sign-in path's single-member read
+   * (D137, OFC-287). A **single** request, not `getAll`: exactly one member can match
+   * an email in Ghost, so pagination is pointless and each extra round-trip is latency
+   * on the magic-link callback.
+   *
+   * Two encoding subtleties, both verified against Ghost's docs rather than assumed
+   * (OFC-275 is the standing reminder that a wrong NQL filter `400`s):
+   *
+   *  - The email is wrapped in **single quotes** inside the NQL filter. Ghost's filter
+   *    syntax only requires quoting for strings containing syntax characters, but an
+   *    email always contains `@` and may contain `+`, and an unquoted `+` is NQL's AND
+   *    operator — `fred+news@x.com` unquoted parses as two clauses and silently matches
+   *    nothing. Quoting is unconditional here so the rare address is not a special case.
+   *  - `URLSearchParams` percent-encodes the assembled value (`+` → `%2B`, `@` → `%40`),
+   *    which is the second half of what Ghost requires; building the query string by
+   *    hand would reintroduce the `+`-means-space bug.
+   *
+   * `limit: "1"` because a match is unique and an unbounded page is wasted bytes.
+   */
+  async findUuidByEmail(email: string): Promise<string | null> {
+    const query = new URLSearchParams({ filter: `email:'${escapeNql(email)}'`, limit: "1" });
+    const body = (await this.http.request("GET", `/members/?${query.toString()}`, undefined, {
+      timeoutMs: this.memberLookupTimeoutMs,
+    })) as { members?: unknown } | undefined;
+    const rows = body?.members;
+    if (!Array.isArray(rows) || rows.length === 0) {
+      return null;
+    }
+    const uuid = (rows[0] as Record<string, unknown>).uuid;
+    // Defensive, in the house style: a member row without a string `uuid` is treated
+    // as "no uuid" rather than trusted into the session and on to Mixpanel, where a
+    // wrong `$user_id` is unrecoverable under Simplified ID Merge (D137).
+    return typeof uuid === "string" && uuid.length > 0 ? uuid : null;
   }
 
   async listNewsletterEvents(): Promise<GhostNewsletterEvent[]> {

@@ -116,7 +116,7 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
     if (!session) {
       return reply.code(401).send({ error: "unauthenticated" });
     }
-    const { profileId, role: realRole } = session.identity;
+    const { profileId, role: realRole, ghostMemberUuid } = session.identity;
     // `role` is the **effective** role (the "View as" projection the SPA gates its
     // UI on); `realRole` and `impersonating` let the masthead show the un-spoofable
     // "View as …" / "Stop" controls, both gated on the real role (N31). The owner's
@@ -126,7 +126,22 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
     const profile = own ? projectSelf(own) : null;
     const stars = await config.getStars(profileId);
     reply.header("Cache-Control", "no-store");
-    return { profileId, role, realRole, impersonating: role !== realRole, stars, profile };
+    // `ghostMemberUuid` is the SPA's Mixpanel `distinct_id` (D137) — read from the
+    // **caller's own session**, never from a profile record, so it is structurally
+    // impossible to hand back another brother's. It is absent whenever the sign-in
+    // lookup failed or found no Ghost member; 7a-2's `identify()` is conditional on
+    // it, because under Simplified ID Merge a wrong `$user_id` is unrecoverable.
+    // Note it is NOT part of `profile` and so never passes through `projectSelf`;
+    // it is also not `ghostMemberId`, which is `system-internal` and always stripped.
+    return {
+      profileId,
+      role,
+      realRole,
+      impersonating: role !== realRole,
+      stars,
+      profile,
+      ...(ghostMemberUuid ? { ghostMemberUuid } : {}),
+    };
   });
 
   /**

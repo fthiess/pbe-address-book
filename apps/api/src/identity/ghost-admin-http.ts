@@ -95,8 +95,21 @@ export class GhostAdminHttp {
    * `undefined` for an empty response, e.g. a `DELETE`). Any non-2xx **throws**
    * with Ghost's error message when present; the message is for the server log
    * only — endpoints surface a generic error to the client.
+   *
+   * `timeoutMs` bounds the wait and is **opt-in** (OFC-287): the admin report
+   * surfaces have always waited indefinitely and keep doing so, because a slow
+   * report is merely slow and a human is watching it. The sign-in uuid lookup
+   * cannot afford that — a half-open connection to Ghost would hang the magic-link
+   * callback until Cloud Run's request timeout, turning D137's "fail soft" into a
+   * blocked sign-in — so it passes a bound. Whether the report surfaces should
+   * adopt one too is OFC-294.
    */
-  async request(method: string, path: string, body?: unknown): Promise<unknown> {
+  async request(
+    method: string,
+    path: string,
+    body?: unknown,
+    options: { timeoutMs?: number } = {},
+  ): Promise<unknown> {
     const token = await this.signToken();
     const response = await this.fetchImpl(`${this.apiUrl}${path}`, {
       method,
@@ -106,6 +119,9 @@ export class GhostAdminHttp {
         ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
+      ...(options.timeoutMs !== undefined
+        ? { signal: AbortSignal.timeout(options.timeoutMs) }
+        : {}),
     });
     if (!response.ok) {
       throw new GhostHttpError(

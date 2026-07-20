@@ -48,6 +48,18 @@ export interface Me {
   impersonating: boolean;
   stars: number[];
   profile: Profile | null;
+  /**
+   * The caller's **Ghost member `uuid`** — the Mixpanel `distinct_id` (D137), the
+   * same key pbe400.org identifies on, so one brother is one Mixpanel person
+   * across the newsletter and the Book.
+   *
+   * **Optional, and 7a-2's `identify()` must be conditional on it.** The server
+   * fetches it from Ghost at sign-in and omits it whenever that lookup failed or
+   * found no member, because sign-in is never blocked by an analytics concern. An
+   * unidentified session is the correct degraded state; guessing a `distinct_id`
+   * is not, since Mixpanel's Simplified ID Merge cannot merge two `$user_id`s.
+   */
+  ghostMemberUuid?: string;
 }
 
 /** `POST /api/auth/start` — the relay redirect to begin the Ghost handshake. */

@@ -4,6 +4,7 @@ import { ProfileCache } from "../data/cache.js";
 import { makeProfile } from "../test-support/make-profile.js";
 import type { KeyResolver } from "./ghost-jwks.js";
 import { GhostIdentityProvider } from "./ghost-provider.js";
+import type { GhostMemberLookup } from "./ghost-reader.js";
 import type { NonceService } from "./nonce-store.js";
 import { AuthError } from "./types.js";
 
@@ -95,6 +96,7 @@ function buildProvider(
   publicKey: KeyObject,
   cache: ProfileCache,
   nonceStore: NonceService,
+  memberLookup?: GhostMemberLookup,
 ): GhostIdentityProvider {
   return new GhostIdentityProvider({
     keyResolver: resolverFor(publicKey),
@@ -105,6 +107,9 @@ function buildProvider(
     // Role now comes from the resolved profile (OFC-139), not this call; ensureUser
     // only guarantees the private `users` doc (stars) exists.
     ensureUser: async () => ({ stars: [] }),
+    // Omitted by default: the uuid lookup (D137) is optional, and every test above
+    // this line predates it and must keep passing with no Ghost HTTP dependency.
+    memberLookup,
   });
 }
 
@@ -273,5 +278,89 @@ describe("GhostIdentityProvider.createSession", () => {
     await expect(
       provider.createSession({ token: makeToken({ privateKey }), state: "n" }),
     ).rejects.toMatchObject({ status: 403, code: "debrothered" });
+  });
+});
+
+/**
+ * The analytics-identity fetch (D137, OFC-287). The property under test is not
+ * really "the uuid arrives" — it is that **nothing about this step can cost a
+ * brother his sign-in**. Sign-in previously made zero Ghost HTTP calls; this adds
+ * the first one, and every way it can fail must degrade to a uuid-less session.
+ */
+describe("GhostIdentityProvider.createSession — Ghost member uuid (D137)", () => {
+  const UUID = "4fa3e4df-85d5-44bd-b0bf-d504bbe22060";
+
+  /** Sign in successfully with the supplied lookup and return the session. */
+  async function signInWith(memberLookup?: GhostMemberLookup) {
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"), memberLookup);
+    return provider.createSession({ token: makeToken({ privateKey }), state: "n" });
+  }
+
+  it("puts the uuid on the identity, keyed on the verified email", async () => {
+    const seen: string[] = [];
+    const session = await signInWith({
+      findUuidByEmail: async (email) => {
+        seen.push(email);
+        return UUID;
+      },
+    });
+    expect(session.identity.ghostMemberUuid).toBe(UUID);
+    // Keyed on the **verified, normalized** email — never on unvalidated input.
+    expect(seen).toEqual([LINKED_EMAIL]);
+  });
+
+  it("still signs in when the lookup throws (Ghost down / timeout / bad key)", async () => {
+    const session = await signInWith({
+      findUuidByEmail: async () => {
+        throw new Error("ghost unreachable");
+      },
+    });
+    expect(session.identity.profileId).toBe(5001);
+    expect(session.identity.ghostMemberUuid).toBeUndefined();
+    expect(session.expiresAt).toBeGreaterThan(Date.now());
+  });
+
+  it("still signs in when Ghost has no member at that address", async () => {
+    const session = await signInWith({ findUuidByEmail: async () => null });
+    expect(session.identity.profileId).toBe(5001);
+    expect(session.identity.ghostMemberUuid).toBeUndefined();
+  });
+
+  it("still signs in when no lookup is wired at all (unconfigured Admin API)", async () => {
+    const session = await signInWith(undefined);
+    expect(session.identity.profileId).toBe(5001);
+    expect(session.identity.ghostMemberUuid).toBeUndefined();
+  });
+
+  it("omits the key entirely rather than setting it undefined (Firestore rejects undefined)", async () => {
+    // The session is serialized whole into the session document; an explicit
+    // `undefined` field value would throw on write and break sign-in at the store.
+    const session = await signInWith({ findUuidByEmail: async () => null });
+    expect(Object.hasOwn(session.identity, "ghostMemberUuid")).toBe(false);
+  });
+
+  it("does not consult Ghost until the sign-in has already been granted", async () => {
+    // Ordering guarantee: the lookup runs last, so a denied sign-in makes no Ghost
+    // call at all — a rejected caller cannot be used to probe Ghost, and the
+    // fail-soft claim holds by construction rather than by catch-block alone.
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const cache = await loadedCache({
+      id: 5001,
+      email: LINKED_EMAIL,
+      debrothered: { isDebrothered: true, debrotheredAt: "2026-01-01T00:00:00.000Z" },
+    });
+    let calls = 0;
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"), {
+      findUuidByEmail: async () => {
+        calls += 1;
+        return UUID;
+      },
+    });
+    await expect(
+      provider.createSession({ token: makeToken({ privateKey }), state: "n" }),
+    ).rejects.toMatchObject({ status: 403, code: "debrothered" });
+    expect(calls).toBe(0);
   });
 });
