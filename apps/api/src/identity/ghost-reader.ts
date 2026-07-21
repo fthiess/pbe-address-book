@@ -198,10 +198,11 @@ export class GhostAdminReader implements GhostReader, GhostMemberLookup {
    * ({@link listNewsletterEvents}'s advisory events, {@link listNewsletterEmails}'s
    * optional titles).
    */
-  private logDegraded(message: string): void {
-    // The message interpolates the upstream Ghost error; the diagnostic logger
-    // scrubs any member email/phone it may name (P10).
-    diagnosticLog.warn(message);
+  private logDegraded(message: string, detail?: string): void {
+    // The `message` is a constant; the upstream Ghost error text rides the scrubbed
+    // `detail` slot (the P10 shape layer, plus the scrub safety net for any member
+    // email/phone it may name).
+    diagnosticLog.warn(message, detail !== undefined ? { detail } : undefined);
   }
 
   async listMembers(): Promise<GhostMemberRecord[]> {
@@ -286,7 +287,8 @@ export class GhostAdminReader implements GhostReader, GhostMemberLookup {
       // mirroring the best-effort `listNewsletterEmails` swallow below. (The bounce
       // report's `listBounceEvents` genuinely needs its events and does NOT swallow.)
       this.logDegraded(
-        `ghost-audit: newsletter change timestamps unavailable: ${(error as Error).message}`,
+        "ghost-audit: newsletter change timestamps unavailable",
+        error instanceof Error ? error.message : undefined,
       );
       return [];
     }
@@ -336,7 +338,10 @@ export class GhostAdminReader implements GhostReader, GhostMemberLookup {
     } catch (error) {
       // Best-effort (D120): the posts/email endpoint can 403 for a custom
       // integration token. Log server-side and proceed without titles.
-      this.logDegraded(`bounce-report: newsletter titles unavailable: ${(error as Error).message}`);
+      this.logDegraded(
+        "bounce-report: newsletter titles unavailable",
+        error instanceof Error ? error.message : undefined,
+      );
       return [];
     }
     const emails: GhostNewsletterEmail[] = [];

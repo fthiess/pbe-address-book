@@ -25,10 +25,18 @@
  * repetition counts. CodeQL's polynomial-ReDoS query stays quiet, deliberately.
  */
 
-// local@domain, both runs excluding whitespace and `@`, bounded. The mandatory
-// `@` the runs cannot contain makes the match unambiguous (no backtracking).
-// Over-redaction of trailing punctuation is acceptable — the whole token goes.
-const EMAIL_RE = /[^\s@]{1,64}@[^\s@]{1,255}/g;
+// local@domain.tld. The character classes are restricted to what actually appears
+// in an email — the local part to RFC-common local characters, the domain to
+// letters/digits/dot/hyphen — and a real dotted TLD is **required**. That last
+// restriction is load-bearing: the free-text this scrubs includes ERROR **stack
+// traces**, whose frames name scoped npm packages (`@grpc/grpc-js`,
+// `@google-cloud/firestore`, `@fastify/cookie` — exactly the libraries under
+// `firebase-admin`, the modal 500). A permissive `@`-with-non-space-runs pattern
+// would swallow those frames wholesale and gut the stack; requiring a dotted TLD
+// after a domain that excludes `/` and `:` means a package path (`@grpc/grpc-js`)
+// never matches while a genuine address (`james@example.com`) still does. All
+// quantifiers are bounded → linear, no ReDoS (N88).
+const EMAIL_RE = /[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,255}\.[A-Za-z]{2,24}/g;
 
 // NANP-shaped: an optional country code, then a 3-3-4 grouping whose area code
 // may be paren-wrapped, with common separators. Fixed repetition counts → linear.

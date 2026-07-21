@@ -26,20 +26,22 @@ import { traceId } from "./trace.js";
 export async function revokeSessionsBestEffort(
   sessionStore: SessionService,
   profileId: number,
-  context: { action: AuditAction; actorId: number },
+  context: { action: AuditAction; actorId: number; trace?: string },
   diagnostics: DiagnosticLog = diagnosticLog,
 ): Promise<number | null> {
   try {
     return await sessionStore.destroyAllForProfile(profileId);
   } catch (error) {
-    // Constant message; the action, actor, and target ride structured slots and
-    // the raw error detail is scrubbed (P10). Loud enough that the fall-back to
+    // Constant message; the action, actor, target, and request-correlation id ride
+    // structured slots and the raw error detail is scrubbed (P10). Loud enough —
+    // and correlatable to the request's audit lines (D99) — that the fall-back to
     // the D22 cap is visible in the forensic record.
     diagnostics.error("session revocation failed; falling back to the 4-hour session cap", {
       action: context.action,
       actorId: context.actorId,
       targetId: profileId,
       detail: error instanceof Error ? error.message : "unknown",
+      trace: context.trace,
     });
     return null;
   }

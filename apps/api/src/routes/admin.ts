@@ -168,6 +168,7 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
       const sessionsRevoked = await revokeSessionsBestEffort(sessionStore, id, {
         action: "profile.delete",
         actorId,
+        trace,
       });
 
       audit.record(
@@ -269,6 +270,7 @@ function registerRole(app: FastifyInstance, deps: AdminRouteDeps): void {
         sessionsRevoked = await revokeSessionsBestEffort(sessionStore, id, {
           action: "role.change",
           actorId,
+          trace,
         });
       }
 
