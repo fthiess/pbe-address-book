@@ -58,6 +58,29 @@ jobs:
     );
   });
 
+  it("parses the `- run:` list-dash shorthand", () => {
+    expect(parseWorkflowSteps("      - run: npm run check\n")).toEqual(["check"]);
+  });
+
+  it("strips one layer of quotes around the command", () => {
+    expect(parseWorkflowSteps('      - run: "npm run check"\n')).toEqual(["check"]);
+    expect(parseWorkflowSteps("      - run: 'npm run check'\n")).toEqual(["check"]);
+  });
+
+  it("rejects block-scalar run commands rather than silently skipping their lines", () => {
+    const blockScalar = [
+      "      - name: Build everything",
+      "        run: |",
+      "          npm run build:libs",
+      "          npm run build:web",
+      "",
+    ].join("\n");
+    expect(() => parseWorkflowSteps(blockScalar)).toThrow(GateSyncError);
+    expect(() => parseWorkflowSteps("        run: >-\n          npm run check\n")).toThrow(
+      GateSyncError,
+    );
+  });
+
   it("fails loudly when it finds no npm-run steps at all — the parser must not silently go blind", () => {
     expect(() => parseWorkflowSteps("jobs:\n  verify:\n    steps: []\n")).toThrow(GateSyncError);
   });

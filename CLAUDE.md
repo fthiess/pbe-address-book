@@ -19,7 +19,7 @@ Tooling: Biome (format + lint), Vitest (unit + Firestore-emulator integration �
 
 ## Commands
 
-- `npm run verify:gate` — the full local gate (gate-list sync, Biome, token drift, help-manual drift, typecheck, build, CSP hashes, no-dev-provider, no-session-replay, bundle-size ceiling, all tests, e2e). Must be green before any push. CI runs the same steps individually — deliberately, for per-step timing and failure attribution (`ci-timing.mjs`) — and **`assert:gate-in-sync`, the first step of both pipelines, fails either side if the two lists ever drift** (D141/OFC-297). A new gate step still goes into both `package.json` and `ci.yml`; the guard makes forgetting one a red build instead of a silent hole.
+- `npm run verify:gate` — the full local gate (gate-list sync, Biome, token drift, help-manual drift, typecheck, build, CSP hashes, no-dev-provider, no-session-replay, bundle-size ceiling, unit/integration tests, emulator tests, e2e). Must be green before any push. CI runs the same steps individually — deliberately, for per-step timing and failure attribution (`ci-timing.mjs`) — and **`assert:gate-in-sync`, the first gate step of both pipelines, fails either side if the two lists ever drift** (D141/OFC-297). A new gate step still goes into both `package.json` and `ci.yml`; the guard makes forgetting one a red build instead of a silent hole.
 - `npm run seed` — seed the emulator with fake data. Staging seed/link scripts live in `tools/fake-data`; provisioning playbooks in `infra/`.
 - CI runs the same gate; a green push to `main` auto-deploys staging (`pbe-book-staging.web.app`) via the `workflow_run` deploy workflow.
 

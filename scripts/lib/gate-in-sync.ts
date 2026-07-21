@@ -11,9 +11,14 @@
  * exactly equal, order included — order is semantic (the CSP/bundle/replay
  * asserts must follow `build`).
  *
- * Both parsers are deliberately strict: a segment or run command they don't
- * understand is an error, not a skip, so a refactor of either file's shape
- * breaks the guard loudly instead of silently narrowing what it checks.
+ * Strictness, precisely: a `verify:gate` segment that isn't a bare
+ * `npm run <script>`, an npm-run command carrying extra arguments, a
+ * block-scalar `run: |` / `run: >` command, or a workflow yielding zero steps
+ * is each an error, not a skip. Non-npm-run workflow commands (checkout,
+ * `npm ci`, the Playwright install) are environment setup and deliberately
+ * ignored. The workflow scan is whole-file, not scoped to the verify job —
+ * safe because an unexpected npm-run step anywhere fails the equality check
+ * loudly; the scan errs toward false alarm, never silence.
  */
 
 /** A parse failure — either list's shape has drifted beyond what the guard understands. */
@@ -42,18 +47,27 @@ export function parseGateSteps(verifyGateScript: string): string[] {
 
 /**
  * The ordered `npm run` step names of the CI gate, from the workflow's
- * `run:` lines. Non-`npm run` commands (checkout, `npm ci`, the Playwright
- * install) are environment setup, not gate steps, and are ignored; an
- * `npm run` with extra arguments is an error for the same strictness reason
- * as above.
+ * `run:` lines — both the `run:` key on its own line and the `- run:`
+ * list-dash shorthand, with one layer of surrounding quotes tolerated.
+ * Non-`npm run` commands (checkout, `npm ci`, the Playwright install) are
+ * environment setup, not gate steps, and are ignored. Two shapes are errors,
+ * not skips: an `npm run` with extra arguments (equivalence unverifiable) and
+ * a block-scalar `run: |` / `run: >` (its commands sit on continuation lines
+ * this line scan cannot see, so accepting it would silently blind the guard).
  */
 export function parseWorkflowSteps(workflowYaml: string): string[] {
   const steps: string[] = [];
   for (const line of workflowYaml.split("\n")) {
-    const command = /^\s*run:\s*(.+?)\s*$/.exec(line)?.[1];
-    if (command === undefined) {
+    const rawCommand = /^\s*(?:-\s+)?run:\s*(.+?)\s*$/.exec(line)?.[1];
+    if (rawCommand === undefined) {
       continue;
     }
+    if (/^[|>]/.test(rawCommand)) {
+      throw new GateSyncError(
+        `ci.yml uses a block-scalar run command ("run: ${rawCommand}") — its lines are invisible to this guard's line scan. Write gate steps as single-line "run: npm run <script>", or extend scripts/lib/gate-in-sync.ts to walk block scalars.`,
+      );
+    }
+    const command = /^(["'])(.*)\1$/.exec(rawCommand)?.[2] ?? rawCommand;
     const name = NPM_RUN_RE.exec(command)?.[1];
     if (name !== undefined) {
       steps.push(name);
