@@ -1,0 +1,34 @@
+# Dependabot version updates. Configures the *update PRs*; the security-alert
+# side (Dependabot alerts) is a repo setting under Settings -> Code security,
+# not this file. Tuned for a solo maintainer: low PR volume, deliberate majors.
+version: 2
+updates:
+  # npm — one entry covers the whole workspace. The monorepo has a single root
+  # package-lock.json (workspaces: packages/*, apps/*, tools/*), so directory "/"
+  # is the only lockfile Dependabot needs to resolve against.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      # Fold every minor/patch bump into ONE PR per week so routine upkeep is a
+      # single green-CI review, not a stream. Majors are deliberately excluded
+      # here, so each major arrives as its own PR for a considered upgrade.
+      npm-minor-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions — keeps the pinned action versions in .github/workflows current
+  # (supply-chain hygiene). Low churn, so group them all into one weekly PR.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    groups:
+      github-actions-all:
+        patterns:
+          - "*"
