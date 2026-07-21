@@ -1,6 +1,6 @@
 ---
 name: dev-workflow
-description: Forrest's development-session methodology — the plan → build → review → remediate → live-test → close loop and its approval gates. Invoke at the start of ANY session that will change code or docs (feature, bugfix, refactor, ticket batch), and for triage sessions that schedule Linear tickets into work sessions, before proposing a plan or writing code. Also covers PR/merge rules, code-review depth, bugfix discipline (repro-test-before-fix), Linear ticket hygiene, triage-session conventions, decision-log conventions (append-only + topic index), model/effort guidance, and the session close-out checklist. For new-project design-stage work (seed doc → PRD/engineering design → adversarial review), read design-methodology.md in this skill; for production cutovers and live-data migrations, read launch-and-cutover.md.
+description: Forrest's development-session methodology — the plan → build → review → remediate → live-test → close loop and its approval gates. Invoke at the start of ANY session that will change code or docs (feature, bugfix, refactor, ticket batch), and for triage sessions that schedule Linear tickets into work sessions, before proposing a plan or writing code. Also covers PR/merge rules, code-review depth, bugfix discipline (repro-test-before-fix), Linear ticket hygiene, triage-session conventions, autonomous Routine-triggered sessions (auto-triage → approved schedule → stop-at-PR), decision-log conventions (append-only + topic index), model/effort guidance, and the session close-out checklist. For new-project design-stage work (seed doc → PRD/engineering design → adversarial review), read design-methodology.md in this skill; for production cutovers and live-data migrations, read launch-and-cutover.md.
 ---
 
 # Development Session Workflow
@@ -51,9 +51,14 @@ Debugging is where corners get cut fastest, so it has its own discipline:
 - When unsure whether a change is deep or shallow, ask.
 - Local `/code-review` subagents inherit the session model — invoke local reviews from the strongest available model.
 
-## Gate 4 — Merge only on explicit OK
+## Gate 4 — Merge, tiered by change class and presence
 
-**Never merge to `main` without Forrest's explicit go-ahead**, even when CI is green and review is clean. (In Book, merging auto-deploys staging, so a merge is a deploy.) After merge, wait for the deploy to complete and confirm it went green before declaring anything live.
+Human review is highest-leverage at intent (Gate 1) and outcome (Gate 5); between them, the automated review round plus a green gate is the real quality check, and a merge that deploys only staging is cheap to revert. So the merge pause is tiered, not universal. (In Book, merging auto-deploys staging, so a merge is a deploy.) After any merge, wait for the deploy to complete and confirm it went green before declaring anything live.
+
+- **Interactive sessions, non-deep changes: merge on green.** Once CI is green and the Gate 3 review round (at the depth the change warranted) is clean and remediated, merge without waiting for Forrest's click — and say plainly in the session that the merge happened.
+- **The pause stays — explicit go-ahead required, every time — for:** deep changes (Gate 3's taxonomy: new subsystems, auth/privacy/security surface, tricky logic); dependency upgrades; anything touching data shape, migrations, or the Ghost auth bridge; and **every PR produced by an autonomous session** (see "Autonomous sessions" below). When unsure which tier a change is in, ask — it's the same deep/shallow call Gate 3 already requires.
+- **Mechanical precondition, per repo:** merge-on-green applies only where CI enforces the project's *full* verification gate and branch protection requires those checks — otherwise "green" doesn't mean verified. For Book that is OFC-297 (CI does not yet run `verify:gate`); **until it lands, every Book merge still waits for explicit OK.**
+- **The audit loop replaces the dropped pause:** at each live-test session, Forrest reviews `git log --oneline` on `main` since his last visit as the merge digest. Anything that surprises him means the auto-merge criteria tighten — the relaxation is self-correcting, not a one-way door.
 
 ## Gate 5 — Live testing closes the loop
 
@@ -79,7 +84,8 @@ The gates erode through plausible-sounding exceptions, not open defiance. The us
 |---|---|
 | "This change is trivial — skip the plan." | Trivial still gets a two-line plan and a "go." Gate 1 is how *trivial* gets confirmed. |
 | "He answered my clarifying questions, so that's approval." | Approval is an unambiguous "go," nothing less. |
-| "CI is green and review is clean — merging." | Merging is Forrest's call, every time. In Book, a merge is a deploy. |
+| "CI is green and review is clean — merging." | Only if Gate 4's tier allows it: interactive session, non-deep change, in a repo whose CI enforces the full gate. Deep/dependency/data-shape changes and all autonomous-session PRs wait for Forrest, every time. |
+| "I'm autonomous, but this PR is clean — merging it unblocks the next one." | Autonomous sessions never merge. The stop-at-PR is an integration serialization point, not a quality verdict — Forrest merges the batch in his chosen order and live-tests once. |
 | "I'll file the Linear ticket at close-out." | File it when discovered. Close-out verifies tickets exist; it doesn't remember them for you. |
 | "It's minor — I'll TODO it / leave it." | Minor known debt is cheapest to fix now, in context. Defer only if the fix needs its own PR — and then it's a ticket, not a TODO. |
 | "The fix is obvious — no need to reproduce first." | Obvious fixes are right most of the time; the rest cost hours. Repro test first. |
@@ -106,6 +112,17 @@ When the tracker accumulates new Todo tickets, schedule them in a dedicated **tr
 - **Session labels are the session index.** Apply one label per session (`6b-2`, `7c`, …) following the existing naming, with a one-line scope description on the label entity. Number sessions by priority; execution order may deviate. Labels beat parent/child tickets (a synthetic parent repurposes an issue as a container) and cycles (sessions aren't time-boxed); if label-namespace cruft ever grates, project milestones are the natural upgrade — ordered, progress-rolled, project-scoped.
 - **Leave each ticket a guidance comment** — the highest-value artifact of the session, carrying cross-session context the implementing session cannot reconstruct: the session assignment and pairing rationale; any root-cause hypothesis, framed as verify-not-assume; landmines from the decision history that the ticket's surface touches; and design forks to escalate at the plan gate (the comment recommends; Forrest decides).
 - **Close-out:** update auto-memory's forward state with the schedule. When a work session later closes, strip its label from the closed tickets; deleting the label entity itself is Forrest's (Linear Settings → Labels — the MCP can't delete labels).
+
+A triage run by a scheduled Routine follows these same conventions — see "Autonomous sessions" below for what changes when Forrest isn't present.
+
+## Autonomous sessions (Routine-triggered)
+
+Some work runs without Forrest present: a scheduled Routine triages the backlog and spawns implementation sessions. The gates don't relax when he's away — they move:
+
+1. **Triage automates the work, not the decision.** The Routine reads every candidate ticket in full, drafts the groupings, session labels, and per-ticket guidance comments per the triage conventions above — then **posts the proposed schedule to Forrest and stops**. His one approval of the schedule satisfies Gate 1 for every session it spawns: the approved schedule plus each ticket's guidance comment *is* the plan. No implementation session starts before that approval.
+2. **Spawned sessions run the full loop unattended** — branch, build, gate green, code review at the depth the change warrants, remediate — and **stop with the PR ready. Never merge** (Gate 4). With Forrest absent there is no live-testing between merges, and parallel PRs landing on a moving `main` compound; the batch waits for him to review, merge in his chosen order, and live-test once.
+3. **Concurrency follows surface affinity** — the same affinity triage already computed. Sessions on disjoint surfaces may run in parallel; sessions touching the same surface run serially, each starting from the prior session's PR outcome. Never stack PRs across autonomous sessions.
+4. **Degrade loudly, never silently.** Cloud/headless environments may lack interactively-authenticated MCP servers (Linear) or the `/code-review` plugin. If Linear is unreachable, record what would have been ticket updates in the PR description and say so; if `/code-review` is absent, say so in the PR and run its five-agent methodology manually (Gate 3). A missing tool changes the mechanics, never the standard.
 
 ## Model & effort guidance
 
