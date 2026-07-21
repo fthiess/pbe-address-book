@@ -894,7 +894,7 @@ describe("PATCH /api/profiles/:id — Ghost-first-gated push (N65)", () => {
 
   it("pushes the recomputed Canonical Name when a name input changes", async () => {
     const ghost = new RecordingGhostLifecycle();
-    const { app, cookieAs, etagOf } = await buildWriteServer(
+    const { app, audited, cookieAs, etagOf } = await buildWriteServer(
       [makeProfile({ id: 5001, firstName: "James", ghostMemberId: "gm-5001" })],
       ghost,
     );
@@ -913,6 +913,17 @@ describe("PATCH /api/profiles/:id — Ghost-first-gated push (N65)", () => {
     expect(ghost.updated).toEqual([
       { id: 5001, ghostMemberId: "gm-5001", diff: { name: expectedName } },
     ]);
+    // The push is audited at the seam (`ghost.push`, 7a-3a) with the pushed field
+    // NAME only — never the recomputed value.
+    const push = audited.find((a) => a.action === "ghost.push");
+    expect(push).toMatchObject({
+      op: "update",
+      outcome: "ok",
+      targetId: 5001,
+      actorId: 5001,
+      fields: ["name"],
+    });
+    expect(JSON.stringify(push)).not.toContain(expectedName);
     await app.close();
   });
 
@@ -936,6 +947,10 @@ describe("PATCH /api/profiles/:id — Ghost-first-gated push (N65)", () => {
     // Book is untouched: the email did not change and no success was audited.
     expect(cache.getById(5001)?.email).toBe("old@example.test");
     expect(audited.some((a) => a.outcome === "ok")).toBe(false);
+    // …but the FAILED push IS audited at the seam (7a-3a) — the whole point, since
+    // the Ghost-first abort means no profile.update entry is ever written for it.
+    const push = audited.find((a) => a.action === "ghost.push");
+    expect(push).toMatchObject({ op: "update", outcome: "error", targetId: 5001, actorId: 5001 });
     await app.close();
   });
 

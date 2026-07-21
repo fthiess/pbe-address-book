@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { AuditLog, type AuditSink } from "../audit/audit-log.js";
 import { ProfileCache } from "../data/cache.js";
 import { SESSION_COOKIE } from "../identity/session-cookie.js";
 import { AuthError, type IdentityProvider, type Session } from "../identity/types.js";
@@ -38,6 +39,8 @@ function sessionFor(
 }
 
 // A stub Ghost provider: `good` succeeds, the others throw the spec's AuthErrors.
+// `jwksdown` throws a JWKS-tagged AuthError — same client-facing 401 invalid_token,
+// but categorized so the route audits it as the infrastructure event `auth.jwks`.
 function makeProvider(withUuid = true): IdentityProvider {
   return {
     name: "ghost-stub",
@@ -48,12 +51,24 @@ function makeProvider(withUuid = true): IdentityProvider {
       if (request.token === "unlinked") {
         throw new AuthError(403, "unlinked_member");
       }
+      if (request.token === "jwksdown") {
+        throw new AuthError(401, "invalid_token", "jwks unreachable", { category: "jwks" });
+      }
       throw new AuthError(401, "invalid_token");
     },
   };
 }
 
-async function buildAuthServer(withBridge = true, opts: { withUuid?: boolean } = {}) {
+/** A capturing audit sink so a test can assert exactly what the auth route logged. */
+function captureSink(): { records: Record<string, unknown>[]; sink: AuditSink } {
+  const records: Record<string, unknown>[] = [];
+  return { records, sink: { write: (record) => records.push(record) } };
+}
+
+async function buildAuthServer(
+  withBridge = true,
+  opts: { withUuid?: boolean; auditSink?: AuditSink } = {},
+) {
   const cache = new ProfileCache();
   await cache.load([
     makeProfile({
@@ -88,6 +103,7 @@ async function buildAuthServer(withBridge = true, opts: { withUuid?: boolean } =
     removeStar: async () => [42],
     cookie: { secure: true },
     ghostBridge: withBridge ? { url: "https://pbe400.org/book", target: "staging" } : undefined,
+    ...(opts.auditSink ? { auditLog: new AuditLog(opts.auditSink) } : {}),
   });
   return { app, sessionStore };
 }
@@ -139,6 +155,57 @@ describe("auth routes", () => {
     });
     expect(response.statusCode).toBe(403);
     expect(response.json()).toEqual({ error: "unlinked_member" });
+    await app.close();
+  });
+
+  it("audits a successful sign-in as auth.signin ok, carrying the authenticated actor (7a-3a)", async () => {
+    const { records, sink } = captureSink();
+    const { app } = await buildAuthServer(true, { auditSink: sink });
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { token: "good", state: "s" },
+    });
+    const signin = records.find((r) => r.action === "auth.signin");
+    expect(signin).toBeDefined();
+    expect(signin).toMatchObject({ action: "auth.signin", outcome: "ok", actorId: 5001 });
+    await app.close();
+  });
+
+  it("audits a denied sign-in as auth.signin denied with the reason code, no actor, no PII (7a-3a)", async () => {
+    const { records, sink } = captureSink();
+    const { app } = await buildAuthServer(true, { auditSink: sink });
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { token: "unlinked", state: "s" },
+    });
+    const signin = records.find((r) => r.action === "auth.signin");
+    expect(signin).toBeDefined();
+    expect(signin).toMatchObject({ outcome: "denied", reason: "unlinked_member" });
+    // No established actor on a denial, and nothing resembling an email or token.
+    expect(signin).not.toHaveProperty("actorId");
+    expect(JSON.stringify(signin)).not.toContain("@");
+    await app.close();
+  });
+
+  it("audits a JWKS key-resolution failure as auth.jwks, distinct from a sign-in denial (7a-3a)", async () => {
+    const { records, sink } = captureSink();
+    const { app } = await buildAuthServer(true, { auditSink: sink });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/auth/session",
+      payload: { token: "jwksdown", state: "s" },
+    });
+    // The client still sees the ordinary 401 invalid_token — no API-behavior change.
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: "invalid_token" });
+    // …but the audit stream records the infrastructure fault as its own action, and
+    // does NOT also emit an auth.signin denial (which would pollute the denial metric).
+    const jwks = records.find((r) => r.action === "auth.jwks");
+    expect(jwks).toBeDefined();
+    expect(jwks).toMatchObject({ action: "auth.jwks", outcome: "error" });
+    expect(records.find((r) => r.action === "auth.signin")).toBeUndefined();
     await app.close();
   });
 

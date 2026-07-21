@@ -9,6 +9,7 @@ import type { FastifyInstance, FastifyReply, preHandlerHookHandler } from "fasti
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { ProfileStore } from "../data/profiles.js";
+import { AuditingGhostLifecycle } from "../identity/ghost-audit-lifecycle.js";
 import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
@@ -194,6 +195,13 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
       }
 
       const now = clock();
+      // Audit every Ghost push this deceased-toggle makes at the seam (`ghost.push`,
+      // 7a-3a) — including a failed one, which the Ghost-first abort (N65) would
+      // otherwise leave unrecorded.
+      const auditedGhost = new AuditingGhostLifecycle(ghostLifecycle, audit, clock, {
+        actorId,
+        trace,
+      });
       // The whole write runs under the shared per-record lock (N65; OFC-220/221/226):
       // the consent SNAPSHOT is built inside the lock from a FRESH read
       // (`currentOr404`), so a PATCH that changed consent before this task acquired the
@@ -242,14 +250,14 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
                 // (OFC-232/D133), mirroring the de-brother raise (D115). A re-PUT edit
                 // of an already-deceased record, or a Book-only brother, has no member.
                 if (p.current.ghostMemberId) {
-                  await ghostLifecycle.deleteMember(p.current);
+                  await auditedGhost.deleteMember(p.current);
                 }
               } else if (isGhostEligibleAfterReverse(p.current)) {
                 // Reverse re-creates the member for a brother who is Ghost-eligible once
                 // living again — created with the RESTORED newsletter consent (the
                 // snapshot value the commit writes), so Ghost and Book agree from the
                 // first moment rather than the forced-off state `p.current` still holds.
-                p.created = await ghostLifecycle.createMember(profileForDeceasedReverse(p.current));
+                p.created = await auditedGhost.createMember(profileForDeceasedReverse(p.current));
               }
             } catch (cause) {
               throw new GhostStepError(
@@ -344,6 +352,13 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
 
       const now = clock();
 
+      // Audit every Ghost push this de-brother toggle makes at the seam (`ghost.push`,
+      // 7a-3a) — including a failed one the Ghost-first abort (N65) would otherwise drop.
+      const auditedGhost = new AuditingGhostLifecycle(ghostLifecycle, audit, clock, {
+        actorId,
+        trace,
+      });
+
       // Under the shared per-record lock (N65; OFC-220/221/226): Ghost-first
       // (D96/D98) — the member delete/create runs (in `ghostStep`) before any Book
       // write, and a failure aborts clean via GhostStepError → 502. A **reverse**
@@ -371,7 +386,7 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
                 // has nothing to delete, and the real client throws without a
                 // `ghostMemberId`. De-brothering them is a Book-only operation.
                 if (p.current.ghostMemberId) {
-                  await ghostLifecycle.deleteMember(p.current);
+                  await auditedGhost.deleteMember(p.current);
                 }
               } else if (
                 shouldHaveGhostMember({ ...p.current, debrothered: { isDebrothered: false } })
@@ -380,7 +395,7 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
                 // reinstated (D133; OFC-232): living, with a usable email (he is being
                 // un-de-brothered, so debrothered is forced false here). An email-less —
                 // or also-deceased — brother is reinstated Book-only, no Ghost.
-                p.created = await ghostLifecycle.createMember(p.current);
+                p.created = await auditedGhost.createMember(p.current);
               }
             } catch (cause) {
               throw new GhostStepError(

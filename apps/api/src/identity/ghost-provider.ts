@@ -2,7 +2,7 @@ import { formatCanonicalName, normalizeEmail } from "@pbe/shared";
 import type { ProfileCache } from "../data/cache.js";
 import type { KeyResolver } from "./ghost-jwks.js";
 import type { GhostMemberLookup } from "./ghost-reader.js";
-import { JWT_CLOCK_SKEW_SEC, verifyRsJwt } from "./jwt-verify.js";
+import { JWT_CLOCK_SKEW_SEC, JwtKeyResolutionError, verifyRsJwt } from "./jwt-verify.js";
 import type { NonceService } from "./nonce-store.js";
 import {
   AuthError,
@@ -207,6 +207,16 @@ export class GhostIdentityProvider implements IdentityProvider {
         allowedAlgs: this.deps.algorithms ?? DEFAULT_ALGS,
       }));
     } catch (error) {
+      // A key-resolution failure is a **transient** Ghost-JWKS availability fault
+      // (OFC-223) — Ghost's key endpoint was unreachable or failed to yield the
+      // signing key — not a bad token. The client-facing response stays an unchanged
+      // `401 invalid_token`, but the error is tagged `jwks` so the auth route audits
+      // it as the distinct infrastructure event `auth.jwks` (7a-3a) and keeps it out
+      // of the sign-in-denial metric. Every other failure (malformed, forged, wrong
+      // alg, bad signature) is a genuine `invalid_token` denial.
+      if (error instanceof JwtKeyResolutionError) {
+        throw new AuthError(401, "invalid_token", describe(error), { category: "jwks" });
+      }
       throw new AuthError(401, "invalid_token", describe(error));
     }
 

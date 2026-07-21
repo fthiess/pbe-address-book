@@ -22,9 +22,22 @@
  * and Ghost pushes — each a new {@link AuditAction}, never a new way to log.
  */
 
+/** The Ghost-push operation an {@link AuditEntry.op} labels on a `ghost.push` (7a-3a). */
+export type GhostPushOp = "create" | "update" | "delete";
+
 /** The audited actions (ENGINEERING-DESIGN §6.1). Grown by later phases. */
 export type AuditAction =
   | "profile.update"
+  // Authentication events (7a-3a, closing D61's event list). `auth.signin` records
+  // a sign-in *attempt* — `ok` carries the authenticated actor, `denied` carries a
+  // coarse `reason` code (the API-SPEC §2 AuthError code, never the email or token)
+  // and no actor, because a denied sign-in has no established identity. `auth.jwks`
+  // is a *distinct* infrastructure fault — Ghost's JWKS key endpoint failed to yield
+  // the signing key (a transient availability problem, OFC-223) — kept separate from
+  // `auth.signin denied` so a Ghost-side outage never inflates the sign-in-denial
+  // metric a burst alert (7a-3c) watches, and vice versa.
+  | "auth.signin"
+  | "auth.jwks"
   // Headshot sub-resource writes (4c-1; API-SPEC §6). Audited names-not-values as
   // the field name `headshot`; no verification coupling (DECISIONS N42).
   | "headshot.update"
@@ -44,6 +57,12 @@ export type AuditAction =
   | "backup.download"
   | "banner.set"
   | "bug.report"
+  // A push of a Book mutation to the external Ghost member record (7a-3a). Emitted
+  // at the {@link GhostLifecycle} seam by the AuditingGhostLifecycle decorator, so
+  // every create/update/delete — from any call site — is recorded exactly once,
+  // **including a failed push**, which the Ghost-first gating (N65) otherwise leaves
+  // unaudited because the aborted save never reaches its own `profile.*` entry. The
+  // `op` labels the operation; on an update `fields` carries the pushed field *names*.
   | "ghost.push"
   // Admin-triggered read reports over Ghost (5b-2): the Book/Ghost alignment audit
   // (D99/D103) and the email-bounce report (D120). Both read-only; audited as a
@@ -62,8 +81,13 @@ export type AuditOutcome = "ok" | "denied" | "error";
  */
 export interface AuditEntry {
   action: AuditAction;
-  /** The acting brother's Constitution ID (the session identity). */
-  actorId: number;
+  /**
+   * The acting brother's Constitution ID (the session identity). **Optional**
+   * because some security events precede identity resolution: a denied or
+   * JWKS-failed sign-in (`auth.*`) has no established actor. Every mutation action
+   * carries it; only pre-authentication events omit it.
+   */
+  actorId?: number;
   /**
    * The record or resource acted upon (a Constitution ID for profile actions).
    * Omitted for whole-collection actions with no single target — notably
@@ -117,6 +141,21 @@ export interface AuditEntry {
    * not a count.
    */
   sessionsRevoked?: number | null;
+  /**
+   * The coarse, machine-readable reason a security event failed — the API-SPEC §2
+   * `AuthError` code on an `auth.signin` **denial** (`unlinked_member`,
+   * `ambiguous_member`, `debrothered`, `invalid_token`, `invalid_state`). A label,
+   * never a value: it is the same code already returned to the client, and carries
+   * no email, token, or record content, so it stays within the §1.4 boundary (7a-3a).
+   */
+  reason?: string;
+  /**
+   * The operation a `ghost.push` performed against the external Ghost member record
+   * (7a-3a) — `create` / `update` / `delete`. A label, not a value. On an `update`
+   * the pushed field *names* ride `fields` alongside it (`email`, `name`,
+   * `allowNewsletterEmail`); create/delete carry no diff.
+   */
+  op?: GhostPushOp;
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
   trace?: string;
 }
@@ -160,7 +199,10 @@ export class AuditLog {
       severity: entry.outcome === "ok" ? "INFO" : "WARNING",
       timestamp: at,
       action: entry.action,
-      actorId: entry.actorId,
+      // Omitted for pre-authentication events (a denied/JWKS-failed sign-in has no
+      // established actor); present on every mutation action. `0` is not a real
+      // Constitution ID, so the `!== undefined` guard never drops a genuine actor.
+      ...(entry.actorId !== undefined ? { actorId: entry.actorId } : {}),
       ...(entry.targetId !== undefined ? { targetId: entry.targetId } : {}),
       outcome: entry.outcome,
       ...(entry.fields !== undefined ? { fields: entry.fields } : {}),
@@ -172,6 +214,8 @@ export class AuditLog {
       ...(entry.fromRole !== undefined ? { fromRole: entry.fromRole } : {}),
       ...(entry.toRole !== undefined ? { toRole: entry.toRole } : {}),
       ...(entry.sessionsRevoked !== undefined ? { sessionsRevoked: entry.sessionsRevoked } : {}),
+      ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
+      ...(entry.op !== undefined ? { op: entry.op } : {}),
       ...(entry.trace !== undefined ? { trace: entry.trace } : {}),
     });
   }
