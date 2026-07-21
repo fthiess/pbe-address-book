@@ -55,6 +55,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # First gate step, before the Playwright download: this workflow and
+      # package.json's verify:gate must list the same npm-run steps in the same
+      # order, or a guard can silently run on only one side (D141/OFC-297 —
+      # assert:no-session-replay did exactly that in 7a-2). The guard is itself
+      # in both lists, so deleting it from either one fails the other.
+      - name: Gate lists in sync (D141/OFC-297)
+        run: npm run assert:gate-in-sync
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
