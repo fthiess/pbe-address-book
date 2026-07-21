@@ -4,10 +4,11 @@ import { DevIdentityProvider } from "./dev-provider.js";
 // A clean, non-production env to construct the provider in tests.
 const DEV_ENV: NodeJS.ProcessEnv = { NODE_ENV: "development" };
 
-// The env gate logs a security alert to stderr on refusal (D108 layer 4);
-// silence it here so the intentional failures don't clutter the test output.
+// The env gate logs a security alert on the diagnostic stream on refusal (D108
+// layer 4); its default sink writes an ERROR line to stderr. Silence stderr here
+// so the intentional failures don't clutter the test output.
 beforeEach(() => {
-  vi.spyOn(console, "error").mockImplementation(() => {});
+  vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 });
 
 afterEach(() => {

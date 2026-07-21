@@ -1,4 +1,5 @@
 import { formatCanonicalName, normalizeEmail } from "@pbe/shared";
+import { diagnosticLog } from "../audit/diagnostic-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { KeyResolver } from "./ghost-jwks.js";
 import type { GhostMemberLookup } from "./ghost-reader.js";
@@ -182,7 +183,7 @@ export class GhostIdentityProvider implements IdentityProvider {
       }
       return uuid;
     } catch (error) {
-      warn(`ghost member uuid lookup failed, session will be unidentified: ${describe(error)}`);
+      warn("ghost member uuid lookup failed, session will be unidentified", describe(error));
       return undefined;
     }
   }
@@ -254,7 +255,13 @@ function describe(error: unknown): string {
   return error instanceof Error ? error.message : "unknown error";
 }
 
-/** A structured `WARNING` for a degraded-but-successful sign-in (matches `ghost-reader.ts`). */
-function warn(message: string): void {
-  process.stderr.write(`${JSON.stringify({ logType: "error", severity: "WARNING", message })}\n`);
+/**
+ * A structured `WARNING` for a degraded-but-successful sign-in (matches
+ * `ghost-reader.ts`). The `message` is a **constant**; any upstream Ghost error
+ * text rides the separate `detail` slot, which the diagnostic logger scrubs — so
+ * the P10 shape layer holds here as at every other migrated site, not just the
+ * scrub safety net. Sign-in logs are not a PII sink (N14).
+ */
+function warn(message: string, detail?: string): void {
+  diagnosticLog.warn(message, detail !== undefined ? { detail } : undefined);
 }

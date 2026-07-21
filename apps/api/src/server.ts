@@ -3,6 +3,7 @@ import { STATUS_CODES } from "node:http";
 import cookie from "@fastify/cookie";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { AuditLog } from "./audit/audit-log.js";
+import { DiagnosticLog } from "./audit/diagnostic-log.js";
 import type { BackupSource } from "./data/backup.js";
 import type { BannerStore } from "./data/banner.js";
 import type { BugReportStore } from "./data/bug-reports.js";
@@ -76,6 +77,8 @@ export interface BuildServerOptions {
   ghostReader?: GhostReader;
   /** The audit stream sink (D61); defaults to structured JSON on stdout. */
   auditLog?: AuditLog;
+  /** The diagnostic stream (D61/P10); defaults to the shared severity-routed sink. */
+  diagnostics?: DiagnosticLog;
   /** "Now" for write timestamps and audit entries; defaults to the wall clock. */
   clock?: Clock;
   /** Firestore-persisted session store (read-through cache; D125). */
@@ -120,6 +123,13 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   const app = Fastify({ logger: false, trustProxy: true });
   app.register(cookie);
 
+  // The diagnostic stream (D61/P10), shared by the error handler here and the
+  // Ghost-read routes below; the clock-less deep modules use the default
+  // singleton directly. `logger: false` above is deliberate — Book emits no
+  // app-side HTTP access log; the platform request log is the access stream
+  // (D142). This is the *diagnostic* stream, a different concern.
+  const diagnostics = options.diagnostics ?? new DiagnosticLog();
+
   // Error handler (OFC-149): the Fastify default echoes the thrown error's raw
   // `message` into the 500 body, which for a Firestore/GCS/`firebase-admin`
   // failure can leak project ids, database paths, and internal state to the
@@ -137,16 +147,15 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   app.setErrorHandler((error: FastifyError, request, reply) => {
     const statusCode = error.statusCode ?? 500;
     if (statusCode >= 500) {
-      const trace = traceId(request);
-      process.stderr.write(
-        `${JSON.stringify({
-          logType: "error",
-          severity: "ERROR",
-          message: error.message,
-          stack: error.stack,
-          ...(trace !== undefined ? { trace } : {}),
-        })}\n`,
-      );
+      // The real error is kept server-side (OFC-149); the client gets a generic
+      // body. `message` is a constant — the thrown error's own message and stack
+      // ride the scrubbed `detail`/`stack` slots, so a Firestore/GCS/Ghost error
+      // echoing a value cannot carry it into the log (P10).
+      diagnostics.error("unhandled server error", {
+        trace: traceId(request),
+        detail: error.message,
+        stack: error.stack,
+      });
       return reply.code(500).send({ error: "internal", message: "Something went wrong." });
     }
     // Preserve the standard 4xx representation (statusCode / error / message).
@@ -271,6 +280,7 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     ghostReader: options.ghostReader,
     audit,
     clock,
+    diagnostics,
   });
   registerRosterRoutes(app, { verifier: options.rosterVerifier });
   registerImageRoutes(app, { cache: options.profileCache, gate, imageStore });

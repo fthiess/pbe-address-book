@@ -434,6 +434,7 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
         ? await revokeSessionsBestEffort(sessionStore, id, {
             action: "profile.debrother",
             actorId,
+            trace,
           })
         : undefined;
 

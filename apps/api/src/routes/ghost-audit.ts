@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import { planBounceReport } from "../audit/bounce-report.js";
+import type { DiagnosticLog } from "../audit/diagnostic-log.js";
 import { planGhostAudit } from "../audit/ghost-audit.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { AdminUserStore } from "../data/users.js";
@@ -23,6 +24,8 @@ export interface GhostAuditRoutesConfig {
   ghostReader?: GhostReader;
   audit: AuditLog;
   clock: Clock;
+  /** The diagnostic stream (P10) — carries the scrubbed Ghost-read failure detail. */
+  diagnostics: DiagnosticLog;
 }
 
 /**
@@ -44,7 +47,7 @@ export function registerGhostAuditRoutes(
   app: FastifyInstance,
   config: GhostAuditRoutesConfig,
 ): void {
-  const { gate, cache, adminUsers, ghostReader, audit, clock } = config;
+  const { gate, cache, adminUsers, ghostReader, audit, clock, diagnostics } = config;
 
   app.get(
     "/api/admin/ghost-audit",
@@ -77,7 +80,7 @@ export function registerGhostAuditRoutes(
           generatedAt: now.toISOString(),
         });
       } catch (error) {
-        return ghostReadFailed(reply, request, error);
+        return ghostReadFailed(reply, request, error, diagnostics);
       }
       audit.record(
         {
@@ -123,7 +126,7 @@ export function registerGhostAuditRoutes(
           generatedAt: now.toISOString(),
         });
       } catch (error) {
-        return ghostReadFailed(reply, request, error);
+        return ghostReadFailed(reply, request, error, diagnostics);
       }
       audit.record(
         {
@@ -156,16 +159,14 @@ function ghostReadFailed(
   reply: FastifyReply,
   request: FastifyRequest,
   error: unknown,
+  diagnostics: DiagnosticLog,
 ): FastifyReply {
-  const trace = traceId(request);
-  process.stderr.write(
-    `${JSON.stringify({
-      logType: "error",
-      severity: "ERROR",
-      message: `ghost read failed: ${(error as Error).message}`,
-      ...(trace !== undefined ? { trace } : {}),
-    })}\n`,
-  );
+  // Constant message; the underlying Ghost error (which may name a member email)
+  // rides the scrubbed `detail` slot, never returned to the client (P10).
+  diagnostics.error("ghost read failed", {
+    trace: traceId(request),
+    detail: error instanceof Error ? error.message : "unknown error",
+  });
   return reply
     .code(502)
     .send({ error: "ghost_read_failed", message: "Could not reach the newsletter system." });
