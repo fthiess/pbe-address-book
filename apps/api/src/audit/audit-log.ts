@@ -32,10 +32,11 @@ export type AuditAction =
   // a sign-in *attempt* — `ok` carries the authenticated actor, `denied` carries a
   // coarse `reason` code (the API-SPEC §2 AuthError code, never the email or token)
   // and no actor, because a denied sign-in has no established identity. `auth.jwks`
-  // is a *distinct* infrastructure fault — Ghost's JWKS key endpoint failed to yield
-  // the signing key (a transient availability problem, OFC-223) — kept separate from
+  // is a *distinct* infrastructure fault — Ghost's JWKS key endpoint was unreachable /
+  // timed out / 5xx'd (a transient availability problem, OFC-223) — kept separate from
   // `auth.signin denied` so a Ghost-side outage never inflates the sign-in-denial
-  // metric a burst alert (7a-3c) watches, and vice versa.
+  // metric a burst alert (7a-3c) watches, and a forged-token burst never inflates the
+  // JWKS metric (a no-matching-`kid` is a denial, not a `jwks` — see `jwt-verify`).
   | "auth.signin"
   | "auth.jwks"
   // Headshot sub-resource writes (4c-1; API-SPEC §6). Audited names-not-values as

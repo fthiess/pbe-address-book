@@ -111,10 +111,12 @@ export interface IdentityProvider {
 /**
  * The category of an auth failure that the audit stream (7a-3a) distinguishes from
  * an ordinary credential denial. `jwks` marks a **transient key-resolution failure**
- * — Ghost's JWKS endpoint was unreachable or failed to yield the signing key
- * (OFC-223) — an infrastructure fault, not a bad token. The client still sees the
- * same `401 invalid_token`; the tag exists only so the route can emit the distinct
- * `auth.jwks` audit event and keep the sign-in-denial metric free of Ghost outages.
+ * — Ghost's JWKS endpoint was unreachable, timed out, or returned a 5xx (OFC-223) —
+ * an availability fault, not a bad token. (A token whose `kid` does not match the
+ * key set is *not* this — that is a bad-token denial; see `jwt-verify`'s
+ * `isNoMatchingKeyError`.) The client still sees the same `401 invalid_token`; the
+ * tag exists only so the route can emit the distinct `auth.jwks` audit event and keep
+ * the sign-in-denial metric free of Ghost outages.
  */
 export type AuthFailureCategory = "jwks";
 
