@@ -15,6 +15,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandl
 import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import { ProfileExistsError, type ProfileStore, StaleWriteError } from "../data/profiles.js";
+import { AuditingGhostLifecycle } from "../identity/ghost-audit-lifecycle.js";
 import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import { effectiveRole } from "../identity/types.js";
 import {
@@ -468,6 +469,14 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
       }
       const now = clock();
       const trace = traceId(request);
+      // Wrap the Ghost seam so every push this request makes is audited (`ghost.push`,
+      // 7a-3a) at the seam — including a failed one, which Ghost-first gating (N65)
+      // would otherwise leave unrecorded because the aborted save never reaches its
+      // own `profile.update` entry.
+      const auditedGhost = new AuditingGhostLifecycle(ghostLifecycle, audit, clock, {
+        actorId: actor.profileId,
+        trace,
+      });
 
       // 1. Object-level predicate — before touching the record (the IDOR guard).
       if (!canActOnProfile(role, actor.profileId, id)) {
@@ -650,7 +659,7 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
           // member. A Ghost failure throws → 502, Book untouched; a duplicate-email
           // collision throws → 422 on `email` (Option B).
           ghostStep: async (p) => {
-            p.ghost = await runEmailGhostLifecycle(ghostLifecycle, stored, next, changedSet);
+            p.ghost = await runEmailGhostLifecycle(auditedGhost, stored, next, changedSet);
           },
           commit: async (p) => {
             // Fold the lifecycle's `ghostMemberId` change into the write. It is a

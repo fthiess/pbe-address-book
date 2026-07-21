@@ -2,7 +2,7 @@ import { formatCanonicalName, normalizeEmail } from "@pbe/shared";
 import type { ProfileCache } from "../data/cache.js";
 import type { KeyResolver } from "./ghost-jwks.js";
 import type { GhostMemberLookup } from "./ghost-reader.js";
-import { JWT_CLOCK_SKEW_SEC, verifyRsJwt } from "./jwt-verify.js";
+import { JWT_CLOCK_SKEW_SEC, JwtKeyResolutionError, verifyRsJwt } from "./jwt-verify.js";
 import type { NonceService } from "./nonce-store.js";
 import {
   AuthError,
@@ -207,6 +207,19 @@ export class GhostIdentityProvider implements IdentityProvider {
         allowedAlgs: this.deps.algorithms ?? DEFAULT_ALGS,
       }));
     } catch (error) {
+      // A `JwtKeyResolutionError` is a **transient** Ghost-JWKS availability fault
+      // (OFC-223) — the key endpoint was unreachable, timed out, or returned a 5xx —
+      // not a bad token. The client-facing response stays an unchanged `401
+      // invalid_token`, but the error is tagged `jwks` so the auth route audits it as
+      // the distinct infrastructure event `auth.jwks` (7a-3a) and keeps it out of the
+      // sign-in-denial metric. Every other failure — malformed, forged, wrong alg, bad
+      // signature, or a **no-matching-`kid`** (a bogus/rotated-away key id, which
+      // `jwt-verify` classifies as a `JwtVerifyError`, not a resolution fault) — is a
+      // genuine `invalid_token` denial, so a forged-token burst stays in the denial
+      // signal rather than masquerading as an outage.
+      if (error instanceof JwtKeyResolutionError) {
+        throw new AuthError(401, "invalid_token", describe(error), { category: "jwks" });
+      }
       throw new AuthError(401, "invalid_token", describe(error));
     }
 

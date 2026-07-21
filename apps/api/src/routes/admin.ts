@@ -5,6 +5,7 @@ import type { ProfileCache } from "../data/cache.js";
 import type { ImageStore } from "../data/images.js";
 import type { ProfileStore } from "../data/profiles.js";
 import type { AdminUserStore } from "../data/users.js";
+import { AuditingGhostLifecycle } from "../identity/ghost-audit-lifecycle.js";
 import type { GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { SessionService } from "../identity/session-store.js";
 import { writeRateLimit } from "../security/rate-limit.js";
@@ -107,8 +108,14 @@ function registerDelete(app: FastifyInstance, deps: AdminRouteDeps): void {
       // throw in the real client (→ a spurious 502 that makes ~1/3 of the real roster
       // undeletable). Skip the Ghost step for them.
       if (stored.ghostMemberId) {
+        // Audit the Ghost member delete at the seam (`ghost.push`, 7a-3a) — the failed
+        // case included, which the abort-clean 502 below would otherwise leave unrecorded.
+        const auditedGhost = new AuditingGhostLifecycle(ghostLifecycle, audit, clock, {
+          actorId,
+          trace,
+        });
         try {
-          await ghostLifecycle.deleteMember(stored);
+          await auditedGhost.deleteMember(stored);
         } catch {
           return reply.code(502).send({ error: "ghost_delete_failed" });
         }

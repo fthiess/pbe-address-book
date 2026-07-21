@@ -109,18 +109,37 @@ export interface IdentityProvider {
 }
 
 /**
+ * The category of an auth failure that the audit stream (7a-3a) distinguishes from
+ * an ordinary credential denial. `jwks` marks a **transient key-resolution failure**
+ * — Ghost's JWKS endpoint was unreachable, timed out, or returned a 5xx (OFC-223) —
+ * an availability fault, not a bad token. (A token whose `kid` does not match the
+ * key set is *not* this — that is a bad-token denial; see `jwt-verify`'s
+ * `isNoMatchingKeyError`.) The client still sees the same `401 invalid_token`; the
+ * tag exists only so the route can emit the distinct `auth.jwks` audit event and keep
+ * the sign-in-denial metric free of Ghost outages.
+ */
+export type AuthFailureCategory = "jwks";
+
+/**
  * A failure in the auth handshake, carrying the HTTP status and the
  * machine-readable error code from API-SPEC §2 (`401`/`403` with
  * `unlinked_member` / `ambiguous_member` / `debrothered` / `invalid_state` /
  * `invalid_token`). The route handler maps it straight onto the JSON error body.
+ *
+ * The optional {@link category} rides *alongside* the client-facing `code` (it never
+ * changes the status or code the client sees) so the audit stream can tell an
+ * infrastructure fault apart from a credential denial — see {@link AuthFailureCategory}.
  */
 export class AuthError extends Error {
+  readonly category?: AuthFailureCategory;
   constructor(
     readonly status: 401 | 403,
     readonly code: string,
     message?: string,
+    options?: { category?: AuthFailureCategory },
   ) {
     super(message ?? code);
     this.name = "AuthError";
+    this.category = options?.category;
   }
 }

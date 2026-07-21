@@ -86,14 +86,39 @@ export function registerAuthRoutes(app: FastifyInstance, config: AuthRoutesConfi
     const body = (request.body ?? {}) as { token?: unknown; state?: unknown };
     const token = typeof body.token === "string" ? body.token : undefined;
     const state = typeof body.state === "string" ? body.state : undefined;
+    const trace = traceId(request);
     try {
       const session = await config.provider.createSession({ token, state });
       const id = await config.sessionStore.create(session);
       setSessionCookie(reply, id, config.cookie);
+      // Audit the successful sign-in (D61 event list; 7a-3a). Session-expiry
+      // re-authentications land here too, so the real frequency of cap-driven
+      // re-logins (D125) is measurable. The actor is the just-authenticated brother.
+      config.audit.record(
+        { action: "auth.signin", actorId: session.identity.profileId, outcome: "ok", trace },
+        config.clock().toISOString(),
+      );
       const stars = await config.getStars(session.identity.profileId);
       return { profileId: session.identity.profileId, role: session.identity.role, stars };
     } catch (error) {
       if (error instanceof AuthError) {
+        // A JWKS key-resolution failure is an infrastructure fault, not a credential
+        // denial (OFC-223) — audited as its own `auth.jwks` event and deliberately
+        // NOT also as an `auth.signin` denial, so a Ghost-side outage cannot inflate
+        // the sign-in-denial burst metric (7a-3c), nor vice versa. Every other failure
+        // is a genuine denial, recorded with its coarse reason code — never the email
+        // or token (names-not-values, §1.4).
+        if (error.category === "jwks") {
+          config.audit.record(
+            { action: "auth.jwks", outcome: "error", trace },
+            config.clock().toISOString(),
+          );
+        } else {
+          config.audit.record(
+            { action: "auth.signin", outcome: "denied", reason: error.code, trace },
+            config.clock().toISOString(),
+          );
+        }
         return reply.code(error.status).send({ error: error.code });
       }
       throw error;

@@ -1,10 +1,12 @@
 import { type KeyObject, sign as cryptoSign, generateKeyPairSync } from "node:crypto";
+import { errors as joseErrors } from "jose";
 import { describe, expect, it } from "vitest";
 import { ProfileCache } from "../data/cache.js";
 import { makeProfile } from "../test-support/make-profile.js";
 import type { KeyResolver } from "./ghost-jwks.js";
 import { GhostIdentityProvider } from "./ghost-provider.js";
 import type { GhostMemberLookup } from "./ghost-reader.js";
+import { JwtKeyResolutionError } from "./jwt-verify.js";
 import type { NonceService } from "./nonce-store.js";
 import { AuthError } from "./types.js";
 
@@ -164,6 +166,63 @@ describe("GhostIdentityProvider.createSession", () => {
       status: 401,
       code: "invalid_token",
     });
+  });
+
+  it("tags a JWKS key-resolution failure `jwks`, keeping the client-facing 401 invalid_token (7a-3a)", async () => {
+    // Ghost's JWKS endpoint is unreachable / can't yield the key: the resolver throws
+    // a JwtKeyResolutionError (OFC-223). The client still sees 401 invalid_token, but
+    // the AuthError is categorized so the route can audit it as `auth.jwks` — an
+    // infrastructure fault, not a credential denial.
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
+    const provider = new GhostIdentityProvider({
+      keyResolver: {
+        resolve: async () => {
+          throw new JwtKeyResolutionError("JWKS endpoint unreachable");
+        },
+      },
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      nonceStore: singleUseNonce("n"),
+      cache,
+      ensureUser: async () => ({ stars: [] }),
+    });
+
+    await expect(
+      provider.createSession({ token: makeToken({ privateKey }), state: "n" }),
+    ).rejects.toMatchObject({ status: 401, code: "invalid_token", category: "jwks" });
+  });
+
+  it("classifies an unknown-`kid` (no matching key) as a DENIAL, not a JWKS infra fault (7a-3a)", async () => {
+    // jose's createRemoteJWKSet throws JWKSNoMatchingKey when a token's `kid` is present
+    // but resolves to no key — even after its refetch (the D87 rotation robustness). A
+    // still-unresolved kid is therefore a bogus / rotated-away key id: a forged or stale
+    // TOKEN, not an availability fault. It must be a plain `invalid_token` denial (audited
+    // `auth.signin denied`), NOT tagged `jwks` (which would hide a token-forgery burst from
+    // the sign-in-denial alert and pollute the JWKS-availability alert). Contrast the
+    // transport-failure case above, which stays `jwks`.
+    const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
+    const provider = new GhostIdentityProvider({
+      keyResolver: {
+        resolve: async () => {
+          throw new joseErrors.JWKSNoMatchingKey();
+        },
+      },
+      issuer: ISSUER,
+      audience: AUDIENCE,
+      nonceStore: singleUseNonce("n"),
+      cache,
+      ensureUser: async () => ({ stars: [] }),
+    });
+
+    const error = await provider
+      .createSession({ token: makeToken({ privateKey }), state: "n" })
+      .catch((e) => e);
+    expect(error).toBeInstanceOf(AuthError);
+    expect(error).toMatchObject({ status: 401, code: "invalid_token" });
+    // The crux: NOT categorized as an infrastructure fault.
+    expect((error as AuthError).category).toBeUndefined();
   });
 
   it("rejects a symmetric-algorithm (HS256) token — the alg pin (D104)", async () => {

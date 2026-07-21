@@ -43,16 +43,42 @@ export class JwtVerifyError extends Error {
 
 /**
  * A **transient** key-resolution / transport failure — the JWKS endpoint was
- * unreachable, rate-limited, or otherwise failed to yield the key. This is an
- * availability problem, not a bad token, so callers may map it to a retryable `5xx`
- * rather than a `401` that a client would treat as permanent bad credentials
- * (OFC-223).
+ * unreachable, timed out, rate-limited, or returned a `5xx`. This is an availability
+ * problem, not a bad token, so callers may map it to a retryable `5xx` rather than a
+ * `401` that a client would treat as permanent bad credentials (OFC-223).
+ *
+ * A token whose `kid` simply does **not** match the (freshly re-fetched) key set is
+ * *not* this error — that is a property of the token, handled as a {@link JwtVerifyError}
+ * denial; see {@link isNoMatchingKeyError}.
  */
 export class JwtKeyResolutionError extends Error {
   constructor(reason: string) {
     super(reason);
     this.name = "JwtKeyResolutionError";
   }
+}
+
+/**
+ * Is `error` a jose "no (or ambiguous) matching key" failure — the token's `kid` did
+ * not resolve against the JWKS **even after a refetch**? `createRemoteJWKSet` refetches
+ * once on an unknown `kid` (the D87 key-rotation robustness), so a still-unresolved kid
+ * is a bogus or rotated-away key id: a **forged or stale token**, a property of the
+ * token itself, not an availability fault. Callers therefore treat it as a bad-token
+ * denial rather than a transient failure — which keeps a forged-token burst in the
+ * sign-in-denial signal and out of the JWKS-availability signal (7a-3a). Identified by
+ * jose v6's stable error `code`, with a `name` fallback, so no jose import is needed here.
+ */
+export function isNoMatchingKeyError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) {
+    return false;
+  }
+  const { code, name } = error as { code?: unknown; name?: unknown };
+  return (
+    code === "ERR_JWKS_NO_MATCHING_KEY" ||
+    code === "ERR_JWKS_MULTIPLE_MATCHING_KEYS" ||
+    name === "JWKSNoMatchingKey" ||
+    name === "JWKSMultipleMatchingKeys"
+  );
 }
 
 export interface VerifiedJwt {
@@ -90,12 +116,18 @@ export async function verifyRsJwt(
     throw new JwtVerifyError("token header has no kid");
   }
 
-  // Resolve the signing key by kid. A resolution failure is transient (OFC-223) —
-  // distinct from a bad token — so it gets its own error type.
+  // Resolve the signing key by kid. Two failure shapes, deliberately distinguished
+  // (OFC-223; 7a-3a): a **no-matching-kid** is a property of the token — a bogus or
+  // rotated-away key id that survived jose's refetch — so it is a bad-token
+  // {@link JwtVerifyError} denial; any other resolver failure (timeout, network, 5xx)
+  // is a **transient** availability fault and gets {@link JwtKeyResolutionError}.
   let key: KeyObject;
   try {
     key = await options.keyResolver.resolve({ alg, kid: header.kid });
   } catch (error) {
+    if (isNoMatchingKeyError(error)) {
+      throw new JwtVerifyError(describe(error));
+    }
     throw new JwtKeyResolutionError(describe(error));
   }
   if (key.asymmetricKeyType !== "rsa") {
