@@ -12,6 +12,7 @@
  * Sessions and login nonces persist in Firestore, so the same cold start does
  * not invalidate live sessions (D125).
  */
+import { diagnosticLog } from "./audit/diagnostic-log.js";
 import { FirestoreBackupSource } from "./data/backup.js";
 import { FirestoreBannerStore } from "./data/banner.js";
 import { FirestoreBugReportStore } from "./data/bug-reports.js";
@@ -170,7 +171,9 @@ async function main(): Promise<void> {
   });
 
   const address = await app.listen({ port, host: "0.0.0.0" });
-  console.log(
+  // Startup banner on the diagnostic stream at INFO (progress → stdout). Config
+  // only — issuer/audience/bridge URLs and a count, no member PII.
+  diagnosticLog.info(
     `Book API (production) listening at ${address} — ${profileCache.size} profiles cached; ` +
       `Ghost iss=${GHOST_JWT_ISSUER} aud=${GHOST_JWT_AUDIENCE} bridge=${GHOST_BRIDGE_URL} target=${GHOST_BRIDGE_TARGET}; ` +
       `ghost-admin=${GHOST_ADMIN_API_URL ? "configured" : "stub"} roster=${ROSTER_AUDIENCE ? "configured" : "unconfigured"}`,
@@ -178,6 +181,10 @@ async function main(): Promise<void> {
 }
 
 main().catch((error) => {
-  console.error(error);
+  // Last-ditch fatal handler: a structured ERROR with the scrubbed detail/stack.
+  diagnosticLog.error("fatal startup error", {
+    detail: error instanceof Error ? error.message : String(error),
+    stack: error instanceof Error ? error.stack : undefined,
+  });
   process.exit(1);
 });

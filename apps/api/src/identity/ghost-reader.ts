@@ -1,3 +1,4 @@
+import { diagnosticLog } from "../audit/diagnostic-log.js";
 import { GhostAdminHttp } from "./ghost-admin-http.js";
 import type { GhostAdminConfig } from "./ghost-admin.js";
 
@@ -198,7 +199,9 @@ export class GhostAdminReader implements GhostReader, GhostMemberLookup {
    * optional titles).
    */
   private logDegraded(message: string): void {
-    process.stderr.write(`${JSON.stringify({ logType: "error", severity: "WARNING", message })}\n`);
+    // The message interpolates the upstream Ghost error; the diagnostic logger
+    // scrubs any member email/phone it may name (P10).
+    diagnosticLog.warn(message);
   }
 
   async listMembers(): Promise<GhostMemberRecord[]> {

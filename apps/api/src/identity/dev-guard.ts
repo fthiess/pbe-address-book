@@ -13,6 +13,8 @@
  *             observable, not silent.
  */
 
+import { diagnosticLog } from "../audit/diagnostic-log.js";
+
 const PROD_ENVIRONMENT_NAMES = new Set(["production", "prod"]);
 
 /** True if the environment looks like production (NODE_ENV or BOOK_ENV). */
@@ -32,8 +34,9 @@ export function assertDevProviderAllowed(env: NodeJS.ProcessEnv = process.env): 
       "[SECURITY ALERT] DevIdentityProvider load attempted under a production-like " +
       "configuration. Refusing to start. This provider must never run in or near " +
       "production (DECISIONS D72/D108).";
-    // Layer 4: make it observable.
-    console.error(message);
+    // Layer 4: make it observable — a structured ERROR on the diagnostic stream
+    // (the alert text is a constant, no PII).
+    diagnosticLog.error(message);
     // Layer 2: make it impossible.
     throw new Error(message);
   }

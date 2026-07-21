@@ -1,6 +1,7 @@
 import { type ConsentSnapshot, type Profile, type Role, canActOnProfile } from "@pbe/shared";
 import type { FastifyReply, FastifyRequest } from "fastify";
 import type { AuditAction, AuditLog } from "../audit/audit-log.js";
+import { type DiagnosticLog, diagnosticLog } from "../audit/diagnostic-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import { MissingProfileError, type ProfileStore, isTokenNewer } from "../data/profiles.js";
 import type { SessionService } from "../identity/session-store.js";
@@ -26,21 +27,20 @@ export async function revokeSessionsBestEffort(
   sessionStore: SessionService,
   profileId: number,
   context: { action: AuditAction; actorId: number },
+  diagnostics: DiagnosticLog = diagnosticLog,
 ): Promise<number | null> {
   try {
     return await sessionStore.destroyAllForProfile(profileId);
   } catch (error) {
-    process.stderr.write(
-      `${JSON.stringify({
-        logType: "error",
-        severity: "ERROR",
-        message: "session revocation failed; falling back to the 4-hour session cap",
-        action: context.action,
-        actorId: context.actorId,
-        targetId: profileId,
-        detail: error instanceof Error ? error.message : "unknown",
-      })}\n`,
-    );
+    // Constant message; the action, actor, and target ride structured slots and
+    // the raw error detail is scrubbed (P10). Loud enough that the fall-back to
+    // the D22 cap is visible in the forensic record.
+    diagnostics.error("session revocation failed; falling back to the 4-hour session cap", {
+      action: context.action,
+      actorId: context.actorId,
+      targetId: profileId,
+      detail: error instanceof Error ? error.message : "unknown",
+    });
     return null;
   }
 }

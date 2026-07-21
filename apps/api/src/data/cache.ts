@@ -2,6 +2,7 @@ import { promisify } from "node:util";
 import zlib from "node:zlib";
 import { type Profile, type Role, isUsableAdmin, normalizeEmail } from "@pbe/shared";
 import type { Firestore } from "firebase-admin/firestore";
+import { diagnosticLog } from "../audit/diagnostic-log.js";
 import { type ProjectedProfile, projectForRole } from "../projection/projection.js";
 import { INITIAL_CONCURRENCY_TOKEN, encodeToken } from "./profiles.js";
 
@@ -271,7 +272,7 @@ export class ProfileCache {
     const profiles: Profile[] = [];
     for (const doc of snapshot.docs) {
       const profile = normalizeHydratedProfile(doc.data() as Profile, (message) =>
-        process.stderr.write(`${message}\n`),
+        diagnosticLog.warn(message),
       );
       if (profile === null) {
         continue;

@@ -1,4 +1,5 @@
 import type { Profile } from "@pbe/shared";
+import { diagnosticLog } from "../audit/diagnostic-log.js";
 
 /**
  * The subset of a member's Ghost-pushed fields carried in an **update** diff
@@ -113,18 +114,19 @@ export interface GhostLifecycle {
  */
 export class StubGhostLifecycle implements GhostLifecycle {
   async deleteMember(profile: Profile): Promise<void> {
-    console.log(`ghost-lifecycle(stub): would delete member for profile ${profile.id}`);
+    diagnosticLog.debug("ghost-lifecycle(stub): would delete member", { targetId: profile.id });
   }
 
   async createMember(profile: Profile): Promise<GhostCreateResult> {
-    console.log(`ghost-lifecycle(stub): would create member for profile ${profile.id}`);
+    diagnosticLog.debug("ghost-lifecycle(stub): would create member", { targetId: profile.id });
     return { ghostMemberId: `stub-member-${profile.id}` };
   }
 
   async updateMember(profile: Profile, diff: GhostMemberDiff): Promise<void> {
-    console.log(
-      `ghost-lifecycle(stub): would update member ${profile.ghostMemberId ?? "(none)"} ` +
-        `for profile ${profile.id}: ${Object.keys(diff).join(", ")}`,
-    );
+    // The diff keys are field *names* (names-not-values, P10), safe on `fields`.
+    diagnosticLog.debug("ghost-lifecycle(stub): would update member", {
+      targetId: profile.id,
+      fields: Object.keys(diff),
+    });
   }
 }

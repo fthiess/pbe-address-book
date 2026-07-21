@@ -1,4 +1,5 @@
 import { formatCanonicalName, normalizeEmail } from "@pbe/shared";
+import { diagnosticLog } from "../audit/diagnostic-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { KeyResolver } from "./ghost-jwks.js";
 import type { GhostMemberLookup } from "./ghost-reader.js";
@@ -256,5 +257,7 @@ function describe(error: unknown): string {
 
 /** A structured `WARNING` for a degraded-but-successful sign-in (matches `ghost-reader.ts`). */
 function warn(message: string): void {
-  process.stderr.write(`${JSON.stringify({ logType: "error", severity: "WARNING", message })}\n`);
+  // The message may interpolate an upstream Ghost error naming the member email;
+  // the diagnostic logger scrubs it (P10). Sign-in logs are not a PII sink (N14).
+  diagnosticLog.warn(message);
 }
