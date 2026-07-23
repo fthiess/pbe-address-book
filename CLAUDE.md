@@ -21,7 +21,7 @@ Tooling: Biome (format + lint), Vitest (unit + Firestore-emulator integration �
 
 - `npm run verify:gate` — the full local gate (gate-list sync, Biome, token drift, help-manual drift, typecheck, build, CSP hashes, no-dev-provider, no-session-replay, bundle-size ceiling, unit/integration tests, emulator tests, e2e). Must be green before any push. CI runs the same steps individually — deliberately, for per-step timing and failure attribution (`ci-timing.mjs`) — and **`assert:gate-in-sync`, the first gate step of both pipelines, fails either side if the two lists ever drift** (D141/OFC-297). A new gate step still goes into both `package.json` and `ci.yml`; the guard makes forgetting one a red build instead of a silent hole.
 - `npm run seed` — seed the emulator with fake data. Staging seed/link scripts live in `tools/fake-data`; provisioning playbooks in `infra/`.
-- CI runs the same gate; a green push to `main` auto-deploys staging (`pbe-book-staging.web.app`) via the `workflow_run` deploy workflow.
+- CI runs the same gate on every **pull request**, and that run is the authoritative one (D143). Merging to `main` auto-deploys staging (`pbe-book-staging.web.app`): the deploy workflow triggers on the push to `main` itself, trusting the PR gate that already passed on that tree. There is deliberately **no post-merge CI re-run** — it would replay a known-green result against an identical tree.
 
 ## Documentation map
 

@@ -77,8 +77,13 @@ binding that lets the repo impersonate it. It prints the provider resource name 
 the two non-secret values that go in
 [`.github/workflows/deploy-staging.yml`](../.github/workflows/deploy-staging.yml).
 
-That workflow is **gated on the CI gate**: it triggers via `workflow_run` only
-after the CI workflow succeeds on `main`, so a red `main` is never deployed.
+That workflow triggers on the **push to `main` directly** (D143). A red `main` is
+still never deployed, but the guarantee is carried by **branch protection**, not by
+a post-merge test run: `main` requires a pull request whose `Verify gate` check
+passed `strict` (branches up to date before merging), and admin bypass is off — so
+a commit can only reach `main` already-green. The workflow previously waited on a
+CI `workflow_run`; that post-merge re-run was removed because it replayed the
+PR run against an identical tree.
 
 **Node-version landmine (don't "fix" it):** the Firebase deploy step pins the
 Firebase CLI to **Node 20**, even though the rest of the repo is on Node 24. Under
