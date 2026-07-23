@@ -1,0 +1,155 @@
+<svg viewBox="0 0 1600 900" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">PBE Address Book — CI/CD paths and triggers</title>
+  <desc id="desc">The delivery pipeline. Before the merge: a local verify:fast run, then a pull request whose pull_request trigger fans out to two required checks — the Verify gate (13 steps) and CodeQL — which both feed branch protection, where a red check blocks the merge. After the merge: merging is the only route onto main, and the resulting push event triggers the staging deploy directly, reaching Firebase Hosting, Cloud Run, Firestore and Cloud Storage. There is deliberately no CI run on main; that post-merge re-run was removed by decision D143. A docs-only merge deploys nothing. Production is reached only by a manual dispatch that runs the gate against the commit being promoted, and is not yet built. Two reference panels list the Verify gate's 13 steps and the staging deploy's sequence in order.</desc>
+
+  <style>
+    text { font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; fill: #14181b; }
+    .eyebrow { font-size: 14px; font-weight: 700; letter-spacing: 0.09em; fill: #3a434b; }
+    .group-label { font-size: 14px; font-weight: 700; letter-spacing: 0.08em; fill: #3a434b; }
+    .card-title { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; }
+    .card-title-teal { font-size: 21px; font-weight: 700; letter-spacing: -0.01em; fill: #00566f; }
+    .card-sub { font-size: 15px; fill: #3a434b; }
+    .note { font-size: 15px; fill: #1c2126; }
+    .panel-title { font-size: 16.5px; font-weight: 650; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: #3a434b; }
+    .mono-num { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; fill: #808a92; }
+    .mono-teal { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #00566f; }
+  </style>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#007194"/>
+    </marker>
+    <marker id="arrowMuted" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#808a92"/>
+    </marker>
+  </defs>
+
+  <!-- canvas -->
+  <rect width="1600" height="900" fill="#eef0f1"/>
+  <text class="eyebrow" x="60" y="66">PBE ADDRESS BOOK · CI/CD PATHS AND TRIGGERS</text>
+
+  <!-- ===================== BEFORE THE MERGE ===================== -->
+  <text class="group-label" x="60" y="110">BEFORE THE MERGE — THE GATE</text>
+
+  <!-- local machine -->
+  <rect x="60" y="180" width="250" height="100" rx="16" fill="#ffffff" stroke="#808a92" stroke-width="1.5"/>
+  <text class="card-title" x="185" y="222" text-anchor="middle">Local machine</text>
+  <text class="card-sub" x="185" y="248" text-anchor="middle">verify:fast · 11 s</text>
+
+  <!-- pull request -->
+  <rect x="350" y="180" width="250" height="100" rx="16" fill="#ffffff" stroke="#808a92" stroke-width="1.5"/>
+  <text class="card-title" x="475" y="222" text-anchor="middle">Pull request</text>
+  <text class="mono-teal" x="475" y="248" text-anchor="middle">trigger: pull_request</text>
+
+  <!-- the two required checks -->
+  <rect x="660" y="120" width="290" height="100" rx="16" fill="#cfe6ee" stroke="#4b8ba0" stroke-width="2"/>
+  <text class="card-title-teal" x="805" y="162" text-anchor="middle">Verify gate</text>
+  <text class="card-sub" x="805" y="188" text-anchor="middle">13 steps · about 3 min</text>
+
+  <rect x="660" y="245" width="290" height="85" rx="16" fill="#cfe6ee" stroke="#4b8ba0" stroke-width="2"/>
+  <text class="card-title-teal" x="805" y="283" text-anchor="middle">CodeQL</text>
+  <text class="card-sub" x="805" y="307" text-anchor="middle">2 analyses</text>
+
+  <!-- branch protection -->
+  <rect x="1010" y="165" width="290" height="120" rx="16" fill="#cfe6ee" stroke="#4b8ba0" stroke-width="2"/>
+  <text class="card-title-teal" x="1155" y="205" text-anchor="middle">Branch protection</text>
+  <text class="card-sub" x="1155" y="230" text-anchor="middle">both checks required, strict</text>
+  <text class="card-sub" x="1155" y="252" text-anchor="middle">pull request required</text>
+  <text class="card-sub" x="1155" y="274" text-anchor="middle">admin bypass off</text>
+
+  <!-- flow: local -> PR -->
+  <line x1="310" y1="230" x2="344" y2="230" stroke="#007194" stroke-width="2" marker-end="url(#arrow)"/>
+  <text class="mono" x="327" y="212" text-anchor="middle">push</text>
+
+  <!-- flow: PR -> both checks (fan out) -->
+  <path d="M600 230 L630 230 L630 170 L654 170" fill="none" stroke="#007194" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M630 230 L630 287 L654 287" fill="none" stroke="#007194" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- flow: both checks -> branch protection (fan in) -->
+  <path d="M950 170 L980 170 L980 225 L1004 225" fill="none" stroke="#007194" stroke-width="2" marker-end="url(#arrow)"/>
+  <path d="M950 287 L980 287 L980 225" fill="none" stroke="#007194" stroke-width="2"/>
+
+  <!-- red-check outcome -->
+  <text class="note" x="1155" y="325" text-anchor="middle">A red check blocks the merge.</text>
+
+  <!-- ===================== AFTER THE MERGE ===================== -->
+  <text class="group-label" x="60" y="420">AFTER THE MERGE — THE DEPLOY</text>
+
+  <!-- merge to main -->
+  <rect x="60" y="450" width="250" height="110" rx="16" fill="#ffffff" stroke="#808a92" stroke-width="1.5"/>
+  <text class="card-title" x="185" y="492" text-anchor="middle">Merge to main</text>
+  <text class="card-sub" x="185" y="518" text-anchor="middle">the only route in</text>
+  <text class="card-sub" x="185" y="540" text-anchor="middle">squash commit</text>
+
+  <!-- deploy staging -->
+  <rect x="360" y="450" width="290" height="110" rx="16" fill="#cfe6ee" stroke="#4b8ba0" stroke-width="2"/>
+  <text class="card-title-teal" x="505" y="492" text-anchor="middle">Deploy staging</text>
+  <text class="mono-teal" x="505" y="518" text-anchor="middle">trigger: push to main</text>
+  <text class="card-sub" x="505" y="542" text-anchor="middle">keyless, WIF</text>
+
+  <!-- staging targets -->
+  <rect x="700" y="450" width="330" height="110" rx="16" fill="#ffffff" stroke="#808a92" stroke-width="1.5"/>
+  <text class="card-title" x="865" y="490" text-anchor="middle">Staging</text>
+  <text class="card-sub" x="865" y="516" text-anchor="middle">Hosting · Cloud Run</text>
+  <text class="card-sub" x="865" y="538" text-anchor="middle">Firestore · Cloud Storage</text>
+
+  <line x1="310" y1="505" x2="354" y2="505" stroke="#007194" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="650" y1="505" x2="694" y2="505" stroke="#007194" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- the two standing notes about what does NOT happen -->
+  <rect x="360" y="605" width="290" height="72" rx="12" fill="#e0e6ea" stroke="#a8b1b8" stroke-width="1.5"/>
+  <text class="note" x="505" y="633" text-anchor="middle">A docs-only merge</text>
+  <text class="note" x="505" y="656" text-anchor="middle">deploys nothing.</text>
+
+  <rect x="700" y="605" width="330" height="72" rx="12" fill="#e0e6ea" stroke="#a8b1b8" stroke-width="1.5"/>
+  <text class="note" x="865" y="633" text-anchor="middle">No CI runs on main — that</text>
+  <text class="note" x="865" y="656" text-anchor="middle">post-merge re-run is gone (D143).</text>
+
+  <!-- ===================== PRODUCTION ===================== -->
+  <rect x="60" y="720" width="330" height="110" rx="16" fill="none" stroke="#808a92" stroke-width="2" stroke-dasharray="8 6"/>
+  <text class="card-title" x="225" y="760" text-anchor="middle">Production</text>
+  <text class="card-sub" x="225" y="786" text-anchor="middle">manual dispatch, gate first</text>
+  <text class="card-sub" x="225" y="808" text-anchor="middle">never merge-triggered</text>
+
+  <path d="M120 560 L120 714" fill="none" stroke="#808a92" stroke-width="2" stroke-dasharray="8 6" marker-end="url(#arrowMuted)"/>
+  <text class="mono" x="136" y="645">promote</text>
+
+  <text class="mono" x="60" y="862">dashed = not built yet (phase 8)</text>
+
+  <!-- ===================== REFERENCE PANELS ===================== -->
+  <rect x="1080" y="400" width="460" height="450" rx="20" fill="#e0e6ea" stroke="#a8b1b8" stroke-width="1.5"/>
+
+  <text class="panel-title" x="1108" y="437">Verify gate</text>
+  <text class="mono-num" x="1108" y="460">runs on the pull request</text>
+  <text class="mono-num" x="1108" y="492">1</text><text class="mono" x="1128" y="492">assert:gate-in-sync</text>
+  <text class="mono-num" x="1108" y="518">2</text><text class="mono" x="1128" y="518">check (Biome)</text>
+  <text class="mono-num" x="1108" y="544">3</text><text class="mono" x="1128" y="544">assert:tokens</text>
+  <text class="mono-num" x="1108" y="570">4</text><text class="mono" x="1128" y="570">assert:help-manual</text>
+  <text class="mono-num" x="1108" y="596">5</text><text class="mono" x="1128" y="596">typecheck</text>
+  <text class="mono-num" x="1108" y="622">6</text><text class="mono" x="1128" y="622">build</text>
+  <text class="mono-num" x="1108" y="648">7</text><text class="mono" x="1128" y="648">assert:csp-hashes</text>
+  <text class="mono-num" x="1108" y="674">8</text><text class="mono" x="1128" y="674">assert:no-dev-provider</text>
+  <text class="mono-num" x="1108" y="700">9</text><text class="mono" x="1128" y="700">assert:no-session-replay</text>
+  <text class="mono-num" x="1101" y="726">10</text><text class="mono" x="1128" y="726">check:bundle-size</text>
+  <text class="mono-num" x="1101" y="752">11</text><text class="mono" x="1128" y="752">test</text>
+  <text class="mono-num" x="1101" y="778">12</text><text class="mono" x="1128" y="778">test:emulator</text>
+  <text class="mono-num" x="1101" y="804">13</text><text class="mono" x="1128" y="804">e2e (Playwright + axe)</text>
+  <text class="mono-num" x="1108" y="832">1–5 and 11 are verify:fast</text>
+
+  <text class="panel-title" x="1330" y="437">Deploy staging</text>
+  <text class="mono-num" x="1330" y="460">runs on the push to main</text>
+  <text class="mono-num" x="1330" y="492">1</text><text class="mono" x="1350" y="492">checkout</text>
+  <text class="mono-num" x="1330" y="518">2</text><text class="mono" x="1350" y="518">resolve build version</text>
+  <text class="mono-num" x="1330" y="544">3</text><text class="mono" x="1350" y="544">load staging.env</text>
+  <text class="mono-num" x="1330" y="570">4</text><text class="mono" x="1350" y="570">npm ci</text>
+  <text class="mono-num" x="1330" y="596">5</text><text class="mono" x="1350" y="596">build libs + SPA</text>
+  <text class="mono-num" x="1330" y="622">6</text><text class="mono" x="1350" y="622">authenticate (WIF)</text>
+  <text class="mono-num" x="1330" y="648">7</text><text class="mono" x="1350" y="648">Hosting + rules</text>
+  <text class="mono-num" x="1330" y="674">8</text><text class="mono" x="1350" y="674">re-seed staging</text>
+  <text class="mono-num" x="1330" y="700">9</text><text class="mono" x="1350" y="700">reconcile bucket</text>
+  <text class="mono-num" x="1323" y="726">10</text><text class="mono" x="1350" y="726">deploy API (Cloud Run)</text>
+  <text class="mono-num" x="1330" y="758">the build precedes the auth</text>
+  <text class="mono-num" x="1330" y="778">step on purpose: the WIF</text>
+  <text class="mono-num" x="1330" y="798">token is short-lived</text>
+</svg>
