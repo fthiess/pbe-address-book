@@ -3,21 +3,16 @@ name: CI
 # The mechanical enforcement of the tests-green gate (CODING-PROJECT-PLAN §5).
 # A red pipeline blocks merge. Every step here mirrors a `npm run` script so the
 # same checks run locally and in CI.
+#
+# PULL REQUESTS ONLY — this is the single authoritative run of the gate (D143).
+# GitHub builds the pull_request event from the merge *result* (the branch merged
+# into its base), and branch protection requires this check `strict` (branches
+# up to date before merging, N91), so the tree verified here is the tree that
+# lands on main. A post-merge re-run on main would replay a known-green result
+# against an identical tree, so it was removed; the staging deploy now triggers
+# on the push to main directly instead of waiting on a CI `workflow_run`
+# (amends N82 — the docs-only skip it described now lives on that push trigger).
 on:
-  push:
-    branches: [main]
-    # Docs-only merges skip this post-merge re-run — and with it the staging
-    # deploy, which fires only on a successful CI workflow_run for a push to
-    # main (N82). PRs are NOT filtered: the pull_request trigger below runs the
-    # full gate on every change, docs included, so a docs-only main commit's
-    # green evidence is its PR run. Scoped deliberately — packages/help-content
-    # ships Markdown into the app bundle (D111), so only clearly non-shipped
-    # paths are ignored; `*.md` matches root-level files only (single `*` does
-    # not cross `/`).
-    paths-ignore:
-      - "docs/**"
-      - "*.md"
-      - ".claude/**"
   pull_request:
   workflow_dispatch:
 

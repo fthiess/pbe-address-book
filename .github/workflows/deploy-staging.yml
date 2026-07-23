@@ -1,19 +1,30 @@
 name: Deploy staging
 
 # Keyless deploy of the Book API (Cloud Run) + Firebase Hosting to the staging
-# environment, gated on a green test gate. It does NOT trigger on push directly:
-# it waits for the CI workflow to SUCCEED on main, so a red main is never
-# deployed (CODING-PROJECT-PLAN §5 — the gate guards the deploy too).
+# environment. Triggers on the push to main DIRECTLY (D143). The authoritative
+# gate is the pull-request run, which verifies the merge result before the merge
+# is allowed (branch protection requires it `strict`, N91) — so a commit can only
+# reach main already-green, and a post-merge re-run would add latency, not signal.
+# This replaces the previous `workflow_run: ["CI"]` chain (amends N82).
+#
+# The paths-ignore carries N82's docs-only skip over from ci.yml's old push
+# trigger: a merge touching only these paths deploys nothing. Scoped deliberately
+# — packages/help-content ships Markdown into the app bundle (D111), so only
+# clearly non-shipped paths are listed; `*.md` matches root-level files only (a
+# single `*` does not cross `/`).
 #
 # Auth is via Workload Identity Federation (infra/setup-wif.sh) — GitHub mints a
 # short-lived OIDC token Google trusts only for this repo. There is no JSON key
 # anywhere in the repo or its secrets, which is essential: this repo is PUBLIC.
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-  # Manual re-deploy (e.g. after a config change with no new commit, or to kick
-  # the very first deploy before the workflow_run trigger has registered).
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "*.md"
+      - ".claude/**"
+  # Manual re-deploy (e.g. after a config change with no new commit, or to
+  # redeploy a commit whose merge skipped the deploy under paths-ignore).
   workflow_dispatch:
 
 # Never run two deploys at once; a deploy in flight should finish, not be cancelled.
@@ -25,25 +36,23 @@ jobs:
   deploy:
     name: Deploy to staging
     runs-on: ubuntu-latest
-    # Deploy only when CI passed on a push to main — or on a manual dispatch.
-    # The workflow_run payload carries the conclusion, branch, and triggering event.
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      ( github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.head_branch == 'main' &&
-        github.event.workflow_run.event == 'push' )
-
+    # No job-level guard: both triggers are deploy-worthy on their own. The push
+    # trigger is already branch- and path-filtered above, and a workflow_dispatch
+    # is a deliberate human act. (The old `if` existed to interrogate a
+    # workflow_run payload for conclusion/branch/event — none of which exists,
+    # or is needed, on a direct push. D143.)
     permissions:
       contents: read
       id-token: write # required for the WIF OIDC token exchange
 
     steps:
-      # Check out the exact commit CI validated (workflow_run defaults to the
-      # branch tip, which may have moved). Falls back to the ref for dispatch.
+      # The default checkout is exactly right for both triggers: the pushed
+      # commit on a push, the dispatched ref's tip on a manual run. The explicit
+      # `ref` this replaces existed only because a workflow_run checkout defaults
+      # to the branch tip, which may have moved past the commit CI validated —
+      # a hazard the direct push trigger removes outright (D143).
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
       # The build id stamped into both the SPA (BOOK_APP_VERSION → clientContext.webVersion)
       # and the API (BOOK_API_VERSION → the server-stamped apiVersion on bug reports).
