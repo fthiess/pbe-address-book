@@ -74,7 +74,7 @@ Before ending a session, verify every box:
 - [ ] Linear tickets for completed work closed **with evidence comments**; tickets filed for everything deferred.
 - [ ] Decision log appended, its index (`DECISIONS-INDEX.md`) updated to match, and doc changes committed alongside the code.
 - [ ] Merged local branches deleted.
-- [ ] Auto-memory updated: current forward state, what's next, and any new landmines — lean pointers, not history (the repo's docs and git log are the record).
+- [ ] Auto-memory updated **in place, not appended**: rewrite the forward-state summary so this session's outcome *replaces* the entry that queued it. Memory keeps only what's next, open blockers, still-active landmines, and pointers into the decision log and tickets — those hold the full detail. If the file no longer fits in a single read (roughly a few thousand tokens), consolidate before closing: copy it verbatim to `archive/<name>-<date>.md`, then rewrite it down to forward state.
 - [ ] State plainly what was verified versus what wasn't.
 
 ## Rationalizations and red flags
@@ -88,6 +88,7 @@ The gates erode through plausible-sounding exceptions, not open defiance. The us
 | "CI is green and review is clean — merging." | Only if Gate 4's tier allows it: interactive session, non-deep change, in a repo whose CI enforces the full gate. Deep/dependency/data-shape changes and all autonomous-session PRs wait for Forrest, every time. |
 | "I'm autonomous, but this PR is clean — merging it unblocks the next one." | Autonomous sessions never merge. The stop-at-PR is an integration serialization point, not a quality verdict — Forrest merges the batch in his chosen order and live-tests once. |
 | "I'll file the Linear ticket at close-out." | File it when discovered. Close-out verifies tickets exist; it doesn't remember them for you. |
+| "This session's full write-up is worth keeping — append it to memory." | Memory is forward state, not a changelog; the write-up already lives in the decision log, the PR, and the ticket's evidence comment. Appending per session once grew a memory file past what a single read can load — every later session then pays for the whole history or misses half of it. |
 | "It's minor — I'll TODO it / leave it." | Minor known debt is cheapest to fix now, in context. Defer only if the fix needs its own PR — and then it's a ticket, not a TODO. |
 | "The fix is obvious — no need to reproduce first." | Obvious fixes are right most of the time; the rest cost hours. Repro test first. |
 | "Docs can follow in the next PR." | Documentation is code. Same PR. |
