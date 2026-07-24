@@ -162,6 +162,30 @@ function DeceasedControls({
   actions: ProfileActions;
 }) {
   const [dialog, setDialog] = useState<"none" | "mark" | "clear">("none");
+  const [error, setError] = useState<string | null>(null);
+
+  const open = (which: "mark" | "clear") => {
+    setError(null);
+    setDialog(which);
+  };
+
+  // Removing the deceased mark re-creates the Ghost member (Ghost-first), so — like a
+  // reinstate — it can collide with an existing unlinked account at this email
+  // (`invalid`, OFC-316) or hit a transient Ghost outage (`ghost_failed`). Previously
+  // this reverse was fire-and-forget and surfaced nothing; capture the outcome so the
+  // admin sees why the mark did not clear.
+  const clear = async () => {
+    setDialog("none");
+    setError(null);
+    const outcome = await actions.setDeceased(false);
+    if (outcome.status === "invalid") {
+      setError(
+        "This brother’s email already exists in the newsletter system (PBE News) under an account not linked to the Address Book. An administrator must reconcile that account before the deceased mark can be removed.",
+      );
+    } else if (outcome.status === "ghost_failed") {
+      setError("The newsletter system couldn’t be updated. Nothing changed — please try again.");
+    }
+  };
 
   return (
     <ControlRow
@@ -174,11 +198,17 @@ function DeceasedControls({
     >
       {deceased ? (
         <div className="flex flex-wrap gap-2">
-          <SecondaryButton onClick={() => setDialog("mark")}>Edit memorial details</SecondaryButton>
-          <SecondaryButton onClick={() => setDialog("clear")}>Remove deceased mark</SecondaryButton>
+          <SecondaryButton onClick={() => open("mark")}>Edit memorial details</SecondaryButton>
+          <SecondaryButton onClick={() => open("clear")}>Remove deceased mark</SecondaryButton>
         </div>
       ) : (
-        <SecondaryButton onClick={() => setDialog("mark")}>Mark as deceased…</SecondaryButton>
+        <SecondaryButton onClick={() => open("mark")}>Mark as deceased…</SecondaryButton>
+      )}
+
+      {error && (
+        <p className="mt-2 text-[length:var(--text-body-sm)] text-destructive" role="alert">
+          {error}
+        </p>
       )}
 
       {dialog === "mark" && (
@@ -197,8 +227,7 @@ function DeceasedControls({
           cancelLabel="Cancel"
           onCancel={() => setDialog("none")}
           onConfirm={() => {
-            void actions.setDeceased(false);
-            setDialog("none");
+            void clear();
           }}
         >
           This clears the In Memoriam treatment for <strong>{name}</strong> and restores their
@@ -228,6 +257,14 @@ function DebrotherControl({
     const outcome = await actions.setDebrothered(!debrothered);
     if (outcome.status === "ghost_failed") {
       setError("The newsletter system couldn’t be updated. Nothing changed — please try again.");
+    } else if (outcome.status === "invalid") {
+      // Reinstate re-creates the Ghost member and collided with an existing account at
+      // this email that Book isn’t linked to (OFC-316). Nothing changed; it needs an
+      // admin to reconcile the Ghost account, not a retry — so a distinct message from
+      // the transient `ghost_failed` above. Only the reverse (reinstate) can 422 here.
+      setError(
+        "This brother’s email already exists in the newsletter system (PBE News) under an account not linked to the Address Book. An administrator must reconcile that account before they can be reinstated.",
+      );
     } else if (outcome.status === "last_admin") {
       setError(
         "This is the only administrator, so they can’t be de-brothered. Assign another administrator first.",

@@ -4,6 +4,7 @@ import {
   fetchProfile,
   fetchProfiles,
   patchProfile,
+  putDebrothered,
   setReauthHandler,
   setUnauthorizedHandler,
 } from "./api.js";
@@ -207,5 +208,35 @@ describe("api re-auth-and-retry seam (OFC-236 / D109)", () => {
     await expect(fetchProfiles()).rejects.toBeInstanceOf(ApiError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(unauthorized).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * Reinstate re-creates the Ghost member, so it can 422 on a duplicate-email collision
+ * with an unlinked Ghost account (the Book↔Ghost drift, OFC-316). The de-brother path
+ * must surface that as the `invalid` outcome — the way the deceased path already does —
+ * rather than letting it fall through to a thrown ApiError the control can't render. A
+ * transient Ghost outage stays `ghost_failed` (retryable), keeping the two distinct.
+ */
+describe("putDebrothered duplicate-email collision (OFC-316)", () => {
+  it("maps a 422 to `invalid` carrying the reconcile issues, not a thrown error", async () => {
+    const issues = [
+      { field: "email", message: "This email address already exists in PBE News (Ghost)…" },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(422, { error: "validation_failed", issues })),
+    );
+
+    await expect(putDebrothered(5136, false)).resolves.toEqual({ status: "invalid", issues });
+  });
+
+  it("still maps a 502 to `ghost_failed` — a transient outage, distinct from the collision", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse(502, { error: "ghost_create_failed" })),
+    );
+
+    await expect(putDebrothered(5136, false)).resolves.toEqual({ status: "ghost_failed" });
   });
 });

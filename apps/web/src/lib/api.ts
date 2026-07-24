@@ -449,6 +449,14 @@ export async function putDebrothered(
       etag: response.headers.get("ETag") ?? "",
     };
   }
+  // A reinstate re-creates the Ghost member; a `422` means its email collides with an
+  // existing unlinked Ghost member (the Book↔Ghost drift — OFC-316). Surface it as
+  // `invalid` with the reconcile issue, the same way `putDeceased` does, rather than
+  // letting it fall through to a thrown error the control can't render.
+  if (response.status === 422) {
+    const body = await response.json().catch(() => ({}));
+    return { status: "invalid", issues: (body.issues as ValidationIssue[]) ?? [] };
+  }
   if (response.status === 502) {
     return { status: "ghost_failed" };
   }
