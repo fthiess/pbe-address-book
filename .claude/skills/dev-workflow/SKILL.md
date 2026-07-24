@@ -89,6 +89,7 @@ The gates erode through plausible-sounding exceptions, not open defiance. The us
 | "I'm autonomous, but this PR is clean — merging it unblocks the next one." | Autonomous sessions never merge. The stop-at-PR is an integration serialization point, not a quality verdict — Forrest merges the batch in his chosen order and live-tests once. |
 | "I'll file the Linear ticket at close-out." | File it when discovered. Close-out verifies tickets exist; it doesn't remember them for you. |
 | "This session's full write-up is worth keeping — append it to memory." | Memory is forward state, not a changelog; the write-up already lives in the decision log, the PR, and the ticket's evidence comment. Appending per session once grew a memory file past what a single read can load — every later session then pays for the whole history or misses half of it. |
+| "Setting up a worktree is overhead — the other session probably won't touch my files." | Sessions sharing a checkout clobber branches and staged state, not just files. Worktree setup is one command; untangling two sessions' interleaved work is an afternoon. If another session *may* be active, that's already the trigger. |
 | "It's minor — I'll TODO it / leave it." | Minor known debt is cheapest to fix now, in context. Defer only if the fix needs its own PR — and then it's a ticket, not a TODO. |
 | "The fix is obvious — no need to reproduce first." | Obvious fixes are right most of the time; the rest cost hours. Repro test first. |
 | "Docs can follow in the next PR." | Documentation is code. Same PR. |
@@ -117,13 +118,24 @@ When the tracker accumulates new Todo tickets, schedule them in a dedicated **tr
 
 A triage run by a scheduled Routine follows these same conventions — see "Autonomous sessions" below for what changes when Forrest isn't present.
 
+## Parallel sessions and worktrees
+
+Two sessions editing one checkout clobber each other — a branch switch, a formatter pass, or a reset in one silently destroys the other's uncommitted work. The rule:
+
+- **If another session may be active in this repo, do not edit the main checkout.** Create a git worktree (`git worktree add .claude/worktrees/<session-slug> -b <branch>`) and do all work there. The main checkout belongs to whichever session was there first — when in doubt, assume that isn't you.
+- **Autonomous sessions use a worktree unconditionally.** An unattended session can never verify it's alone, so it must assume it isn't. Don't wait to be told.
+- Worktree landmines, each learned from a real detour:
+  - **Absolute paths bite.** Inside a worktree, an absolute path to the main repo tree edits the WRONG checkout. Every Read/Edit/Write must target the worktree path.
+  - **Run `npm install` inside the worktree.** A Node worktree without its own `node_modules` resolves workspace packages UP into the main checkout, so package-source edits silently don't build (while app-source edits do — maximally confusing).
+  - **Remove the worktree at close-out** (`git worktree remove`), and on Windows verify the directory is actually gone — locked `node_modules` files can leave a husk behind.
+
 ## Autonomous sessions (Routine-triggered)
 
 Some work runs without Forrest present: a scheduled Routine triages the backlog and spawns implementation sessions. The gates don't relax when he's away — they move:
 
 1. **Triage automates the work, not the decision.** The Routine reads every candidate ticket in full, drafts the groupings, session labels, and per-ticket guidance comments per the triage conventions above — then **posts the proposed schedule to Forrest and stops**. His one approval of the schedule satisfies Gate 1 for every session it spawns: the approved schedule plus each ticket's guidance comment *is* the plan. No implementation session starts before that approval.
 2. **Spawned sessions run the full loop unattended** — branch, build, gate green, code review at the depth the change warrants, remediate — and **stop with the PR ready. Never merge** (Gate 4). With Forrest absent there is no live-testing between merges, and parallel PRs landing on a moving `main` compound; the batch waits for him to review, merge in his chosen order, and live-test once.
-3. **Concurrency follows surface affinity** — the same affinity triage already computed. Sessions on disjoint surfaces may run in parallel; sessions touching the same surface run serially, each starting from the prior session's PR outcome. Never stack PRs across autonomous sessions.
+3. **Concurrency follows surface affinity** — the same affinity triage already computed. Sessions on disjoint surfaces may run in parallel; sessions touching the same surface run serially, each starting from the prior session's PR outcome. Never stack PRs across autonomous sessions. Every spawned session works in its own worktree (see "Parallel sessions and worktrees" — unconditional for autonomous sessions), never the shared checkout.
 4. **Degrade loudly, never silently.** Cloud/headless environments may lack interactively-authenticated MCP servers (Linear) or the `/code-review` plugin. If Linear is unreachable, record what would have been ticket updates in the PR description and say so; if `/code-review` is absent, say so in the PR and run its five-agent methodology manually (Gate 3). A missing tool changes the mechanics, never the standard.
 
 ## Model & effort guidance

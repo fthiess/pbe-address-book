@@ -6,6 +6,8 @@ Members-only directory web app for the ~700 living brothers of Phi Beta Epsilon 
 
 Sessions follow the committed **`dev-workflow` skill** (`.claude/skills/dev-workflow/`) — invoke `/dev-workflow` before starting any task that changes code or docs. The short version: discuss and plan first, wait for explicit approval; all work on a feature branch → PR; `/code-review` for deep changes, CI-green suffices for shallow follow-ups; merge per the skill's **tiered Gate 4** — interactive non-deep changes may merge on green CI + clean review (**active for this repo**: CI enforces the full gate and branch protection requires it, D141/OFC-297), while deep changes, dependency upgrades, anything touching data shape or the Ghost auth bridge, and every autonomous-session PR still wait for **Forrest's explicit OK**. Merging to main auto-deploys staging, so a merge is a deploy.
 
+**Parallel sessions:** if another session may be concurrently active in this repo — and in any autonomous session, always assume one is — do **not** edit the main checkout. Create a git worktree under `.claude/worktrees/` and do all work there. The skill's "Parallel sessions and worktrees" section carries the landmines (absolute paths hit the wrong checkout; run `npm install` inside the worktree; remove it at close-out).
+
 ## Stack
 
 npm-workspaces monorepo, TypeScript end-to-end with one shared `Profile` type (D3):
