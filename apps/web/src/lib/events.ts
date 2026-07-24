@@ -54,7 +54,12 @@ export function resultBucket(count: number): ResultBucket {
  *  is a one-off lookup vs a bulk pull, not the exact size. */
 export type RowCountBucket = "1" | "2-10" | "11-100" | "101+";
 
-/** Bucket an export row count (the Export button is disabled at zero rows). */
+/**
+ * Bucket an export row count. **Callers report only non-empty exports** (see
+ * `ActionBar`), so the domain is ≥ 1; the `<= 1` floor is a defensive backstop, not
+ * a claim that zero can't occur — a stale all-deleted selection *can* leave the
+ * Export button enabled with zero rows, which is exactly why the caller guards.
+ */
 export function rowCountBucket(count: number): RowCountBucket {
   if (count <= 1) return "1";
   if (count <= 10) return "2-10";

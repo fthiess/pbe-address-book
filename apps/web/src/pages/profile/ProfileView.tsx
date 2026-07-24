@@ -64,6 +64,10 @@ export function ProfileView({
   // prev/next navigation through the roster counts each. `Own` distinguishes a
   // brother reading his own record from viewing another's; the id itself never
   // travels (P6), and `$current_url` is stripped by BLOCKED_PROPERTIES.
+  // No StrictMode dedup ref (unlike some sibling effects): the dev-only double-invoke
+  // is inert — analytics is a no-op without a token in dev (D140) and a production
+  // build doesn't double-invoke — so a guard engineered to still allow the intended
+  // per-record re-fire would add fragility for no real gain.
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on `record.id` change is the intent — count each viewed record; the id is never read into the event.
   useEffect(() => {
     trackProfileViewed(viewer.isOwner);
