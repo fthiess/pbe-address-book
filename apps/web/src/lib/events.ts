@@ -30,6 +30,13 @@
  * Neither this file nor that one is sufficient alone (N125).
  */
 
+// Type-only imports — erased at compile, so this module stays runtime-free and
+// node-testable. They keep the event property vocabularies (role, banner severity,
+// theme, font scale) tied to their single source of truth rather than duplicated.
+import type { BannerSeverity, Role } from "@pbe/shared";
+import type { FontScale } from "./fontScale.js";
+import type { ThemeMode } from "./theme.js";
+
 // ---------------------------------------------------------------------------
 // Closed property vocabularies
 // ---------------------------------------------------------------------------
@@ -260,6 +267,54 @@ export interface EventProperties {
   "Export Performed": { Scope: ExportScope; "Row Count": RowCountBucket };
   /** The below-`md` "Options" fold was opened (N92) — phone use, finally measured. */
   "Mobile Options Opened": NoProperties;
+
+  // --- 7a-4 follow-up (OFC-315) ---------------------------------------------
+  // All P6-clean: a role, a boolean, a setting value, or admin-authored public
+  // banner copy — never a brother's id/name/value. The brother-status events
+  // below are attributed to the acting staffer but never say *which* brother.
+
+  /** A staff member entered "View as" role-preview — the impersonated role, not a
+   *  person (View As previews a role, never a specific brother). */
+  "View As Started": { Role: Role };
+  /** A staff member exited "View as" — the role being left. */
+  "View As Ended": { Role: Role };
+  /** An admin downloaded a database backup. */
+  "Backup Downloaded": NoProperties;
+  /** An admin ran the Ghost alignment audit. */
+  "Alignment Audit Run": NoProperties;
+  /** An admin ran the email bounce report. */
+  "Bounce Report Run": NoProperties;
+  /** The site-wide system banner was set or cleared. `Message`/`Severity` ride a
+   *  *set* only. The message is admin-authored copy shown publicly to every member
+   *  (D117), so it is not brother PII — the one free-text property in the taxonomy,
+   *  captured on Forrest's explicit call. */
+  "System Banner Changed": { Active: boolean; Severity?: BannerSeverity; Message?: string };
+  /** An admin deleted a bug report — count only, no report id or content. */
+  "Bug Report Deleted": NoProperties;
+  /** The masthead "Report a bug" control was opened. */
+  "Report a Bug Clicked": NoProperties;
+  /** The masthead PBE News link was clicked. */
+  "PBE News Link Clicked": NoProperties;
+  /** The masthead crest/wordmark (the "home" affordance) was clicked. */
+  "Masthead Logo Clicked": NoProperties;
+  /** The Profile page's "← Directory" affordance was clicked. */
+  "Directory Link Clicked": NoProperties;
+  /** The font-size control changed — the chosen scale, a display preference. */
+  "Text Size Changed": { Size: FontScale };
+  /** The theme control changed — the chosen mode, a display preference. */
+  "Theme Changed": { Theme: ThemeMode };
+  /** A brother's deceased flag was raised or cleared (staff action). `Deceased`
+   *  gives the direction; **no pointer to which brother** (P6 — same posture as
+   *  `Profile Saved {Own:false}`). */
+  "Deceased Status Changed": { Deceased: boolean };
+  /** A brother was de-brothered or reinstated (admin action). Direction only, never
+   *  *whom* (P6). */
+  "Debrother Status Changed": { Debrothered: boolean };
+  /** A brother's Book role was changed (admin action) — the new and previous role,
+   *  never *whose* role (P6). */
+  "Role Changed": { Role: Role; From: Role };
+  /** A brother record was deleted (admin action) — count only, never *whom* (P6). */
+  "Brother Deleted": NoProperties;
 }
 
 /** The name of any Book analytics event. */

@@ -3,6 +3,7 @@ import { BANNER_SEVERITIES, type BannerSeverity } from "@pbe/shared";
 import { useState } from "react";
 import { useBanner } from "../../auth/BannerContext.js";
 import { type Banner, SystemBanner } from "../../components/SystemBanner.js";
+import { trackSystemBannerChanged } from "../../lib/analytics.js";
 import { saveBanner } from "../../lib/api.js";
 import { cn } from "../../lib/utils.js";
 import { ADMIN_BTN_PRIMARY, ADMIN_BTN_SECONDARY, AdminCard, MegaphoneIcon } from "./AdminCard.js";
@@ -45,8 +46,17 @@ export function BannerCard() {
   };
 
   const onSet = (message: string, severity: BannerSeverity) =>
-    runWrite(() => saveBanner({ active: true, message: message.trim(), severity }), "saved");
-  const onClear = () => runWrite(() => saveBanner({ active: false }), "cleared");
+    runWrite(async () => {
+      const trimmed = message.trim();
+      await saveBanner({ active: true, message: trimmed, severity });
+      // Public broadcast copy, not brother PII (D117) — captured on success only.
+      trackSystemBannerChanged(true, severity, trimmed);
+    }, "saved");
+  const onClear = () =>
+    runWrite(async () => {
+      await saveBanner({ active: false });
+      trackSystemBannerChanged(false);
+    }, "cleared");
 
   return (
     <AdminCard

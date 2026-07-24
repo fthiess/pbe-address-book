@@ -5,20 +5,37 @@ import {
   identifyMember,
   resetIdentity,
   setAnalyticsClient,
+  trackAlignmentAuditRun,
+  trackBackupDownloaded,
+  trackBounceReportRun,
+  trackBrotherDeleted,
   trackBrotherStarred,
   trackBrotherUnstarred,
+  trackBugReportDeleted,
   trackColumnLayoutChanged,
   trackColumnsReset,
   trackConsentToggleChanged,
+  trackDebrotherStatusChanged,
+  trackDeceasedStatusChanged,
+  trackDirectoryLinkClicked,
   trackExportPerformed,
   trackFilterApplied,
   trackHelpOpened,
+  trackMastheadLogoClicked,
   trackMobileOptionsOpened,
   trackPageView,
+  trackPbeNewsLinkClicked,
   trackProfileSaved,
   trackProfileViewed,
+  trackReportABugClicked,
+  trackRoleChanged,
   trackSearchPerformed,
   trackSignedIn,
+  trackSystemBannerChanged,
+  trackTextSizeChanged,
+  trackThemeChanged,
+  trackViewAsEnded,
+  trackViewAsStarted,
 } from "./analytics.js";
 
 function fakeClient() {
@@ -266,6 +283,111 @@ describe("7a-4 feature events (D145) — names/buckets only, never whom (P6)", (
       trackHelpOpened("t");
       trackExportPerformed("view", 5);
       trackMobileOptionsOpened();
+    }).not.toThrow();
+  });
+});
+
+describe("7a-4 follow-up events (OFC-315) — roles/settings/booleans only, never whom (P6)", () => {
+  it("View As Started / Ended carry the role, never a person", () => {
+    trackViewAsStarted("brother");
+    trackViewAsEnded("manager");
+
+    expect(client.track).toHaveBeenNthCalledWith(1, "View As Started", { Role: "brother" });
+    expect(client.track).toHaveBeenNthCalledWith(2, "View As Ended", { Role: "manager" });
+  });
+
+  it("the admin-tools actions carry no properties", () => {
+    trackBackupDownloaded();
+    trackAlignmentAuditRun();
+    trackBounceReportRun();
+    trackBugReportDeleted();
+
+    expect(client.track).toHaveBeenNthCalledWith(1, "Backup Downloaded", {});
+    expect(client.track).toHaveBeenNthCalledWith(2, "Alignment Audit Run", {});
+    expect(client.track).toHaveBeenNthCalledWith(3, "Bounce Report Run", {});
+    expect(client.track).toHaveBeenNthCalledWith(4, "Bug Report Deleted", {});
+  });
+
+  it("System Banner Changed carries severity + message on a set", () => {
+    trackSystemBannerChanged(true, "warning", "Site maintenance tonight");
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("System Banner Changed", {
+      Active: true,
+      Severity: "warning",
+      Message: "Site maintenance tonight",
+    });
+  });
+
+  it("System Banner Changed carries only Active:false on a clear (no stale message)", () => {
+    trackSystemBannerChanged(false);
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("System Banner Changed", {
+      Active: false,
+    });
+  });
+
+  it("the chrome/nav clicks carry no properties", () => {
+    trackReportABugClicked();
+    trackPbeNewsLinkClicked();
+    trackMastheadLogoClicked();
+    trackDirectoryLinkClicked();
+
+    expect(client.track).toHaveBeenNthCalledWith(1, "Report a Bug Clicked", {});
+    expect(client.track).toHaveBeenNthCalledWith(2, "PBE News Link Clicked", {});
+    expect(client.track).toHaveBeenNthCalledWith(3, "Masthead Logo Clicked", {});
+    expect(client.track).toHaveBeenNthCalledWith(4, "Directory Link Clicked", {});
+  });
+
+  it("Text Size / Theme carry the chosen setting value", () => {
+    trackTextSizeChanged("large");
+    trackThemeChanged("dark");
+
+    expect(client.track).toHaveBeenNthCalledWith(1, "Text Size Changed", { Size: "large" });
+    expect(client.track).toHaveBeenNthCalledWith(2, "Theme Changed", { Theme: "dark" });
+  });
+
+  it("the brother-status actions carry direction/role but NEVER a brother's identity", () => {
+    trackDeceasedStatusChanged(true);
+    trackDebrotherStatusChanged(false);
+    trackRoleChanged("manager", "brother");
+    trackBrotherDeleted();
+
+    expect(client.track).toHaveBeenNthCalledWith(1, "Deceased Status Changed", { Deceased: true });
+    expect(client.track).toHaveBeenNthCalledWith(2, "Debrother Status Changed", {
+      Debrothered: false,
+    });
+    expect(client.track).toHaveBeenNthCalledWith(3, "Role Changed", {
+      Role: "manager",
+      From: "brother",
+    });
+    expect(client.track).toHaveBeenNthCalledWith(4, "Brother Deleted", {});
+
+    // The load-bearing P6 guarantee for the status actions: not one of them carries
+    // an id, a name, or anything pointing at *which* brother was acted on.
+    for (const call of client.track.mock.calls) {
+      expect(JSON.stringify(call[1])).not.toMatch(/\d/);
+      expect(JSON.stringify(call[1])).not.toMatch(/id|name|email/i);
+    }
+  });
+
+  it("every follow-up wrapper is inert with no client registered", () => {
+    setAnalyticsClient(null);
+    expect(() => {
+      trackViewAsStarted("brother");
+      trackViewAsEnded("brother");
+      trackBackupDownloaded();
+      trackAlignmentAuditRun();
+      trackBounceReportRun();
+      trackSystemBannerChanged(true, "info", "x");
+      trackBugReportDeleted();
+      trackReportABugClicked();
+      trackPbeNewsLinkClicked();
+      trackMastheadLogoClicked();
+      trackDirectoryLinkClicked();
+      trackTextSizeChanged("normal");
+      trackThemeChanged("system");
+      trackDeceasedStatusChanged(false);
+      trackDebrotherStatusChanged(true);
+      trackRoleChanged("admin", "manager");
+      trackBrotherDeleted();
     }).not.toThrow();
   });
 });

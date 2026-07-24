@@ -1,5 +1,6 @@
 import type { Role, ValidationIssue } from "@pbe/shared";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
+import { trackRoleChanged } from "../../lib/analytics.js";
 import type { DeceasedFacts, StatusWriteOutcome } from "../../lib/api.js";
 import type { ProfileRecord } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
@@ -322,6 +323,9 @@ function RoleControl({ record, actions }: { record: ProfileRecord; actions: Prof
       setMessage({ text: outcome.message, isError: true });
       return;
     }
+    // New and previous role, never whose (P6; 7a-4 follow-up). `role` still holds
+    // the previous value here — `setRole` updates it just below.
+    trackRoleChanged(outcome.role, role);
     setRole(outcome.role);
     setMessage({
       text: `Role set to ${ROLE_OPTIONS.find((option) => option.value === outcome.role)?.label}.`,

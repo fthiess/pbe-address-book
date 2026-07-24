@@ -1,5 +1,6 @@
 import { Monitor, Moon, Sun } from "lucide-react";
 import type { ReactNode } from "react";
+import { trackThemeChanged } from "../lib/analytics.js";
 import type { ThemeMode } from "../lib/theme.js";
 import { cn } from "../lib/utils.js";
 import { useTheme } from "./ThemeProvider.js";
@@ -28,7 +29,12 @@ export function ThemeToggle() {
             type="button"
             aria-label={option.label}
             aria-pressed={active}
-            onClick={() => setMode(option.mode)}
+            onClick={() => {
+              if (option.mode !== mode) {
+                trackThemeChanged(option.mode);
+              }
+              setMode(option.mode);
+            }}
             className={cn(
               // ≥24px target (WCAG 2.5.8); active option gets the raised surface.
               "grid size-7 place-items-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring",

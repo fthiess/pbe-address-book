@@ -11,6 +11,11 @@ import {
 import { useSession } from "../auth/SessionContext.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
 import {
+  trackBrotherDeleted,
+  trackDebrotherStatusChanged,
+  trackDeceasedStatusChanged,
+} from "../lib/analytics.js";
+import {
   ApiError,
   type DeceasedFacts,
   changeRole,
@@ -287,6 +292,8 @@ export function ProfileContainer() {
         setEtag(outcome.etag);
         applyProfileToRoster(outcome.profile);
         setToast(deceased ? "Marked as deceased." : "Deceased mark removed.");
+        // Direction only, never which brother (P6; 7a-4 follow-up).
+        trackDeceasedStatusChanged(deceased);
       }
       return outcome;
     },
@@ -301,6 +308,7 @@ export function ProfileContainer() {
         setEtag(outcome.etag);
         applyProfileToRoster(outcome.profile);
         setToast(debrothered ? "Brother de-brothered." : "Brother reinstated.");
+        trackDebrotherStatusChanged(debrothered);
       }
       return outcome;
     },
@@ -327,6 +335,9 @@ export function ProfileContainer() {
   const removeProfile = useCallback(async () => {
     const outcome = await deleteProfile(id);
     if (outcome.status === "ok") {
+      // Count only, never which brother (P6; 7a-4 follow-up). Fired before the SPA
+      // pop-navigation, which does not reload, so the event still flushes.
+      trackBrotherDeleted();
       // The Directory refetches on remount, so the just-deleted brother is gone.
       popToDirectory();
     }

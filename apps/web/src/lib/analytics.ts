@@ -1,4 +1,4 @@
-import type { Role } from "@pbe/shared";
+import type { BannerSeverity, Role } from "@pbe/shared";
 import {
   type EventName,
   type EventProperties,
@@ -9,6 +9,8 @@ import {
   resultBucket,
   rowCountBucket,
 } from "./events.js";
+import type { FontScale } from "./fontScale.js";
+import type { ThemeMode } from "./theme.js";
 
 /**
  * The analytics seam (D137/D138, Phase 7a-2; taxonomy fleshed out in 7a-4, D145) —
@@ -276,4 +278,115 @@ export function trackExportPerformed(scope: ExportScope, rowCount: number): void
  */
 export function trackMobileOptionsOpened(): void {
   emit("Mobile Options Opened", {});
+}
+
+// ---------------------------------------------------------------------------
+// 7a-4 follow-up events (OFC-315). Same P6 discipline: a role, a boolean, a
+// setting value, or admin-authored public banner copy — never a brother's
+// identity. The brother-status wrappers are attributed to the acting staffer but
+// carry no pointer to which brother.
+// ---------------------------------------------------------------------------
+
+/** A staff member entered "View as" role-preview (7a-4 follow-up). `role` is the
+ *  previewed role, never a person — View As previews a role, not a specific brother
+ *  (N31). ⚠ Fires just before a hard reload; delivery relies on Mixpanel's pagehide
+ *  flush (verified at live-test). */
+export function trackViewAsStarted(role: Role): void {
+  emit("View As Started", { Role: role });
+}
+
+/** A staff member exited "View as" — the role being left (7a-4 follow-up). */
+export function trackViewAsEnded(role: Role): void {
+  emit("View As Ended", { Role: role });
+}
+
+/** An admin downloaded a database backup (7a-4 follow-up). */
+export function trackBackupDownloaded(): void {
+  emit("Backup Downloaded", {});
+}
+
+/** An admin ran the Ghost alignment audit (7a-4 follow-up). */
+export function trackAlignmentAuditRun(): void {
+  emit("Alignment Audit Run", {});
+}
+
+/** An admin ran the email bounce report (7a-4 follow-up). */
+export function trackBounceReportRun(): void {
+  emit("Bounce Report Run", {});
+}
+
+/**
+ * The site-wide system banner was set or cleared (7a-4 follow-up). On a *set*,
+ * `severity` and `message` ride along; on a *clear* only `Active: false` is sent.
+ * The message is admin-authored copy shown publicly to every member (D117) — not
+ * brother PII, and the only free-text property in the taxonomy (Forrest's call).
+ */
+export function trackSystemBannerChanged(
+  active: boolean,
+  severity?: BannerSeverity,
+  message?: string,
+): void {
+  emit(
+    "System Banner Changed",
+    active ? { Active: true, Severity: severity, Message: message } : { Active: false },
+  );
+}
+
+/** An admin deleted a bug report (7a-4 follow-up) — count only, no id or content. */
+export function trackBugReportDeleted(): void {
+  emit("Bug Report Deleted", {});
+}
+
+/** The masthead "Report a bug" control was opened (7a-4 follow-up). */
+export function trackReportABugClicked(): void {
+  emit("Report a Bug Clicked", {});
+}
+
+/** The masthead PBE News link was clicked (7a-4 follow-up). */
+export function trackPbeNewsLinkClicked(): void {
+  emit("PBE News Link Clicked", {});
+}
+
+/** The masthead crest/wordmark was clicked (7a-4 follow-up). */
+export function trackMastheadLogoClicked(): void {
+  emit("Masthead Logo Clicked", {});
+}
+
+/** The Profile page's "← Directory" affordance was clicked (7a-4 follow-up). */
+export function trackDirectoryLinkClicked(): void {
+  emit("Directory Link Clicked", {});
+}
+
+/** The font-size preference changed (7a-4 follow-up) — the chosen scale. */
+export function trackTextSizeChanged(size: FontScale): void {
+  emit("Text Size Changed", { Size: size });
+}
+
+/** The theme preference changed (7a-4 follow-up) — the chosen mode. */
+export function trackThemeChanged(theme: ThemeMode): void {
+  emit("Theme Changed", { Theme: theme });
+}
+
+/** A brother's deceased flag was raised or cleared (7a-4 follow-up, staff action).
+ *  `deceased` is the direction; **no pointer to which brother** (P6). */
+export function trackDeceasedStatusChanged(deceased: boolean): void {
+  emit("Deceased Status Changed", { Deceased: deceased });
+}
+
+/** A brother was de-brothered or reinstated (7a-4 follow-up, admin action).
+ *  Direction only, never *whom* (P6). */
+export function trackDebrotherStatusChanged(debrothered: boolean): void {
+  emit("Debrother Status Changed", { Debrothered: debrothered });
+}
+
+/** A brother's Book role was changed (7a-4 follow-up, admin action) — the new and
+ *  previous role, never *whose* (P6). */
+export function trackRoleChanged(role: Role, from: Role): void {
+  emit("Role Changed", { Role: role, From: from });
+}
+
+/** A brother record was deleted (7a-4 follow-up, admin action) — count only, never
+ *  *whom* (P6). */
+export function trackBrotherDeleted(): void {
+  emit("Brother Deleted", {});
 }
