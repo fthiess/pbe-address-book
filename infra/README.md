@@ -108,8 +108,10 @@ longer-retention bucket" is aspirational until then. Like the other two scripts 
 is **Forrest-run** (it makes live IAM / sink / alert changes) and idempotent.
 
 ```bash
-# from the repo root, authenticated as a project owner, with the beta components
-PROJECT_ID=pbe-book-staging REGION=us-central1 ALERT_EMAIL=fthiess@gmail.com \
+# from the repo root, authenticated as a project owner, with the beta components.
+# ALERT_EMAIL is read from environments/staging.env (its single home); override here
+# only to redirect. Optionally set LOG_READER_PRINCIPAL to grant an assumer (below).
+PROJECT_ID=pbe-book-staging REGION=us-central1 \
 bash infra/provision-observability.sh
 ```
 
@@ -133,7 +135,18 @@ Two design points worth keeping in view:
   targets that bucket, the view contains audit entries and nothing else; the SA
   cannot read the diagnostic stream or any other logs. It is **keyless** — consumers
   impersonate it (the Linter's D58/§5.2 off-Ghost-path pattern), never a downloaded
-  key in this public repo's blast radius.
+  key in this public repo's blast radius. **Who may assume it is a separate grant:**
+  set `LOG_READER_PRINCIPAL` (a full IAM member string, e.g. `user:you@example.com`)
+  to grant `roles/iam.serviceAccountTokenCreator` on the SA — paired with SA creation
+  the way `setup-wif.sh` pairs the deployer SA with its `workloadIdentityUser`
+  binding. It is **unset by default**: no consumer is built yet (the D91 local-model
+  agent, OFC-214), so the SA has no assumer until one is named — an announced gap,
+  not a silent one.
+- **Idempotent, and it *converges*.** Re-running reconciles every resource to the
+  script's declared values — including the alert policy (edited `DENIAL_BURST_THRESHOLD`
+  or a changed `ALERT_EMAIL` is applied to the existing policy, not skipped). The
+  file/`staging.env` is the source of truth, so a threshold tuned only in the console
+  is overwritten on the next run — tune it in `DENIAL_BURST_THRESHOLD`, not the console.
 - **D91 stops at the SA.** The script provisions the reader identity and **does
   not** connect it to any cloud LLM. The planned log-reader agent is first-party /
   on-premise / **local-model** only — no audit content egresses to an external LLM.

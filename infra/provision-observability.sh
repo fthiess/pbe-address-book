@@ -73,6 +73,15 @@ AUDIT_RETENTION_DAYS="${AUDIT_RETENTION_DAYS:-90}"   # P16 — 3 months.
 # The dedicated, keyless log-reader identity (D58/§5.2 pattern; D91 constraint).
 READER_SA_NAME="${READER_SA_NAME:-book-log-reader}"
 READER_SA_EMAIL="${READER_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+# WHO may assume the keyless reader (keyless impersonation). A full IAM member
+# string — e.g. `user:you@example.com` or
+# `serviceAccount:agent@proj.iam.gserviceaccount.com`. UNSET by default: no consumer
+# exists yet (the D91 local-model log-reader agent is unbuilt, OFC-214), so no
+# principal is wired to impersonate it. Set it to grant a real assumer (e.g. an
+# operator who runs the synthetic-denial test's log queries). Pairing SA creation
+# with an assume-grant mirrors how setup-wif.sh pairs the deployer SA with its
+# workloadIdentityUser binding — an SA nobody can assume is only half-provisioned.
+LOG_READER_PRINCIPAL="${LOG_READER_PRINCIPAL:-}"
 
 # Log-based metric names (their Monitoring metric type becomes
 # logging.googleapis.com/user/<name>). Kept distinct on purpose (N126): a Ghost-side
@@ -86,7 +95,11 @@ METRIC_JWKS="${METRIC_JWKS:-book_auth_jwks_failure}"
 # itself. DENIAL_BURST_THRESHOLD is the count of denials per 5-minute window above
 # which the alert trips — a deliberately conservative starting point to TUNE against
 # the real denial baseline once the metric has history (staging has ~none).
-ALERT_EMAIL="${ALERT_EMAIL:-fthiess@gmail.com}"
+# ALERT_EMAIL is the ONE place the recipient lives: `environments/staging.env`
+# (the OFC-84 single-source-of-truth this script sources above). No personal
+# address is hardcoded as a fallback here — empty means "not configured", and the
+# channel step below aborts with a clear message rather than inventing a recipient.
+ALERT_EMAIL="${ALERT_EMAIL:-}"
 ALERT_CHANNEL_NAME="${ALERT_CHANNEL_NAME:-Book staging alerts (email)}"
 DENIAL_POLICY_NAME="${DENIAL_POLICY_NAME:-Book — sign-in denial burst (staging)}"
 DENIAL_BURST_THRESHOLD="${DENIAL_BURST_THRESHOLD:-10}"
@@ -206,14 +219,41 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --condition="expression=resource.name==\"${AUDIT_VIEW}\",title=audit-view-only,description=Read only the Book audit stream (OFC-300/D91)" \
   >/dev/null
 
+#    Pair the SA with an ASSUMER, so it is actually usable (keyless impersonation),
+#    the way setup-wif.sh grants workloadIdentityUser on the deployer SA. Optional
+#    and OFF by default: no consumer is built yet (OFC-214), so absent a
+#    LOG_READER_PRINCIPAL nobody can impersonate the reader — a deliberately-deferred,
+#    announced gap, not a silent one. Granting a human/local principal impersonation
+#    does NOT touch D91 (that forbids wiring a *cloud LLM*, not provisioning access).
+if [[ -n "${LOG_READER_PRINCIPAL}" ]]; then
+  echo "==> Granting ${LOG_READER_PRINCIPAL} impersonation of ${READER_SA_NAME} (serviceAccountTokenCreator)"
+  gcloud iam service-accounts add-iam-policy-binding "${READER_SA_EMAIL}" \
+    --member="${LOG_READER_PRINCIPAL}" \
+    --role="roles/iam.serviceAccountTokenCreator" --project "${PROJECT_ID}" >/dev/null
+else
+  echo "    (note: LOG_READER_PRINCIPAL unset — the reader SA has no assumer yet; set it"
+  echo "     to a member string to grant keyless impersonation. Deferred to OFC-214.)"
+fi
+
 # 5. The email notification channel (Cloud Monitoring, beta track). Idempotent by
 #    lookup: a create with no dedupe would mint a duplicate channel every run, so we
-#    find an existing email channel for this address first and reuse it.
+#    find an existing email channel for this address first and reuse it. The list and
+#    the `head` are split across two substitutions on purpose: piping gcloud into
+#    `head` under `set -o pipefail` and papering over it with `|| true` would mask a
+#    REAL list failure (a transient error, or the Monitoring API not yet propagated
+#    after step 0 enabled it) as "none found" — and then create a DUPLICATE. Split, a
+#    gcloud failure aborts loudly; only a genuinely empty result falls through to create.
+if [[ -z "${ALERT_EMAIL}" ]]; then
+  echo "!! ALERT_EMAIL is empty. Set it (environments/staging.env carries it) so the" >&2
+  echo "   alert has a recipient — aborting rather than creating a channel with none." >&2
+  exit 1
+fi
 echo "==> Ensuring email notification channel for ${ALERT_EMAIL}"
-CHANNEL_NAME="$(gcloud beta monitoring channels list \
+CHANNEL_MATCHES="$(gcloud beta monitoring channels list \
   --project "${PROJECT_ID}" \
   --filter="type=email AND labels.email_address=${ALERT_EMAIL}" \
-  --format="value(name)" | head -n1 || true)"
+  --format="value(name)")"
+CHANNEL_NAME="$(printf '%s\n' "${CHANNEL_MATCHES}" | head -n1)"
 if [[ -z "${CHANNEL_NAME}" ]]; then
   echo "    creating channel ${ALERT_CHANNEL_NAME}"
   CHANNEL_NAME="$(gcloud beta monitoring channels create \
@@ -228,16 +268,24 @@ echo "    channel: ${CHANNEL_NAME}"
 
 # 6. The sign-in-denial burst alert policy (Cloud Monitoring, GA track). Threshold on
 #    the denial metric: more than DENIAL_BURST_THRESHOLD denials summed over a rolling
-#    5-minute window trips it. Idempotent by displayName lookup. Written to a temp
-#    YAML (like provision-staging.sh's lifecycle file) and created --policy-from-file.
-EXISTING_POLICY="$(gcloud monitoring policies list \
+#    5-minute window trips it. Written to a temp YAML (like provision-staging.sh's
+#    lifecycle file). CONVERGES on re-run, like the bucket/sink/metrics above and per
+#    the OFC-72 lesson (a create-only guard silently ignores edited config): the file
+#    is the source of truth, so an edited DENIAL_BURST_THRESHOLD *and* a changed
+#    ALERT_EMAIL (a freshly-created channel) are APPLIED to the existing policy —
+#    threshold via --policy-from-file, recipient via --set-notification-channels — not
+#    skipped. A threshold tuned only in the console is therefore overwritten on the
+#    next run; tune it HERE, in DENIAL_BURST_THRESHOLD, not the console. The list/head
+#    are split (not `| head || true`) for the same reason as the channel step above:
+#    so a transient list failure aborts rather than masquerading as "no policy" and
+#    creating a duplicate.
+POLICY_MATCHES="$(gcloud monitoring policies list \
   --project "${PROJECT_ID}" \
   --filter="displayName=\"${DENIAL_POLICY_NAME}\"" \
-  --format="value(name)" | head -n1 || true)"
-if [[ -z "${EXISTING_POLICY}" ]]; then
-  echo "==> Creating alert policy: ${DENIAL_POLICY_NAME} (>${DENIAL_BURST_THRESHOLD}/5min)"
-  POLICY_FILE="$(mktemp)"
-  cat >"${POLICY_FILE}" <<YAML
+  --format="value(name)")"
+EXISTING_POLICY="$(printf '%s\n' "${POLICY_MATCHES}" | head -n1)"
+POLICY_FILE="$(mktemp)"
+cat >"${POLICY_FILE}" <<YAML
 displayName: "${DENIAL_POLICY_NAME}"
 combiner: OR
 conditions:
@@ -256,16 +304,20 @@ conditions:
 alertStrategy:
   autoClose: 1800s
 YAML
+if [[ -z "${EXISTING_POLICY}" ]]; then
+  echo "==> Creating alert policy: ${DENIAL_POLICY_NAME} (>${DENIAL_BURST_THRESHOLD}/5min → ${ALERT_EMAIL})"
   gcloud monitoring policies create \
     --project "${PROJECT_ID}" \
     --policy-from-file="${POLICY_FILE}" \
     --notification-channels="${CHANNEL_NAME}"
-  rm -f "${POLICY_FILE}"
 else
-  echo "==> Alert policy already exists (${EXISTING_POLICY}); leaving as-is."
-  echo "    (To change the threshold, edit it in the console or delete + re-run — this"
-  echo "     script does not overwrite an existing policy's tuned settings.)"
+  echo "==> Converging alert policy ${EXISTING_POLICY} (>${DENIAL_BURST_THRESHOLD}/5min → ${ALERT_EMAIL})"
+  gcloud monitoring policies update "${EXISTING_POLICY}" \
+    --project "${PROJECT_ID}" \
+    --policy-from-file="${POLICY_FILE}" \
+    --set-notification-channels="${CHANNEL_NAME}"
 fi
+rm -f "${POLICY_FILE}"
 
 echo
 echo "==> Done. Provisioned:"
@@ -273,6 +325,7 @@ echo "    audit bucket : ${AUDIT_BUCKET} (${LOG_LOCATION}, ${AUDIT_RETENTION_DAY
 echo "    sink         : ${AUDIT_SINK}  [filter: logType=audit, ${SERVICE}]"
 echo "    metrics      : ${METRIC_DENIED}, ${METRIC_JWKS}"
 echo "    log-reader SA: ${READER_SA_EMAIL}  (keyless; view-scoped; D91 local-model only)"
+echo "    reader assumer: ${LOG_READER_PRINCIPAL:-<none — set LOG_READER_PRINCIPAL to grant impersonation>}"
 echo "    alert        : \"${DENIAL_POLICY_NAME}\" → ${ALERT_EMAIL}"
 echo
 echo "    LIVE TEST (fire synthetic denials, watch the alert trip) — see infra/README.md,"
