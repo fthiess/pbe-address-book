@@ -1,3 +1,4 @@
+import { trackTextSizeChanged } from "../lib/analytics.js";
 import type { FontScale } from "../lib/fontScale.js";
 import { cn } from "../lib/utils.js";
 import { useFontSize } from "./FontSizeProvider.js";
@@ -29,7 +30,12 @@ export function FontSizeToggle() {
             type="button"
             aria-label={option.label}
             aria-pressed={active}
-            onClick={() => setScale(option.scale)}
+            onClick={() => {
+              if (option.scale !== scale) {
+                trackTextSizeChanged(option.scale);
+              }
+              setScale(option.scale);
+            }}
             className={cn(
               // ≥24px target (WCAG 2.5.8); active option gets the raised surface.
               "grid size-7 place-items-center rounded-full font-semibold leading-none outline-none focus-visible:ring-2 focus-visible:ring-ring",

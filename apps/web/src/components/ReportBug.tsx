@@ -2,6 +2,7 @@ import { MAX_BUG_REPORT_DESCRIPTION } from "@pbe/shared";
 import { Bug } from "lucide-react";
 import { useCallback, useId, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+import { trackReportABugClicked } from "../lib/analytics.js";
 import { fileBugReport } from "../lib/api.js";
 import { collectClientContext } from "../lib/clientContext.js";
 import { APP_VERSION } from "../lib/version.js";
@@ -39,7 +40,10 @@ export function ReportBug() {
       <button
         ref={triggerRef}
         type="button"
-        onClick={() => setOpen(true)}
+        onClick={() => {
+          trackReportABugClicked();
+          setOpen(true);
+        }}
         className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
       >
         {/* `sr-only` (not `hidden`) keeps the label in the accessibility tree on a

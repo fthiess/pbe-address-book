@@ -1,6 +1,7 @@
 import { getHelpEntry } from "@pbe/help-content";
 import type { AdminBugReport } from "@pbe/shared";
 import { useEffect, useMemo, useState } from "react";
+import { trackBugReportDeleted } from "../../lib/analytics.js";
 import { deleteBugReport, fetchBugReports, markBugReportsReviewed } from "../../lib/api.js";
 import { AdminCard, BugIcon } from "./AdminCard.js";
 import { formatForCopy, formatTimestamp } from "./bugReportFormat.js";
@@ -78,6 +79,7 @@ export function BugReportsCard() {
     setReports((rs) => rs.filter((r) => r.id !== id));
     try {
       await deleteBugReport(id);
+      trackBugReportDeleted();
     } catch {
       // Re-insert only THIS report (not a stale whole-list snapshot, which could
       // resurrect a row a concurrent delete already removed), keeping newest-first.

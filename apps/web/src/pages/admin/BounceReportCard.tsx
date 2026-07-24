@@ -1,5 +1,6 @@
 import { getHelpEntry } from "@pbe/help-content";
 import { useState } from "react";
+import { trackBounceReportRun } from "../../lib/analytics.js";
 import { ApiError, fetchBounceReport } from "../../lib/api.js";
 import { saveBlob } from "../../lib/utils.js";
 import { ADMIN_BTN_SECONDARY, AdminCard, MailWarningIcon } from "./AdminCard.js";
@@ -32,6 +33,7 @@ export function BounceReportCard() {
       );
       setCount(report.rows.length);
       setSkipped(report.skipped);
+      trackBounceReportRun();
       setStatus("done");
     } catch (error) {
       setStatus(error instanceof ApiError && error.status === 503 ? "unconfigured" : "error");

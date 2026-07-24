@@ -4,6 +4,7 @@ import { type ReactNode, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useBanner } from "../auth/BannerContext.js";
 import { useSession } from "../auth/SessionContext.js";
+import { trackMastheadLogoClicked, trackPbeNewsLinkClicked } from "../lib/analytics.js";
 import { PBE_NEWS_URL } from "../lib/externalLinks.js";
 import type { Me } from "../lib/types.js";
 import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
@@ -92,6 +93,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
           <Link
             to="/"
             state={{ reset: true }}
+            onClick={() => trackMastheadLogoClicked()}
             className="flex min-w-0 items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <img src="/crest.svg" alt="" aria-hidden="true" className="size-7 shrink-0" />
@@ -113,6 +115,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
               href={PBE_NEWS_URL}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => trackPbeNewsLinkClicked()}
               aria-label="PBE News (opens in a new tab)"
               className="inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring"
             >

@@ -1,5 +1,6 @@
 import { getHelpEntry } from "@pbe/help-content";
 import { useState } from "react";
+import { trackAlignmentAuditRun } from "../../lib/analytics.js";
 import { ApiError, fetchGhostAudit } from "../../lib/api.js";
 import { saveBlob } from "../../lib/utils.js";
 import { ADMIN_BTN_SECONDARY, AdminCard, SyncIcon } from "./AdminCard.js";
@@ -30,6 +31,7 @@ export function GhostAuditCard() {
         `book-ghost-audit-${date}.md`,
       );
       setCount(report.discrepancies.length);
+      trackAlignmentAuditRun();
       setStatus("done");
     } catch (error) {
       // 503 = Ghost not configured (a calm, distinct message, not a scary error).

@@ -1,5 +1,6 @@
 import { getHelpEntry } from "@pbe/help-content";
 import { useState } from "react";
+import { trackBackupDownloaded } from "../../lib/analytics.js";
 import { downloadBackup } from "../../lib/api.js";
 import { ADMIN_BTN_SECONDARY, AdminCard, DownloadIcon } from "./AdminCard.js";
 
@@ -17,6 +18,7 @@ export function BackupCard() {
     setStatus("working");
     try {
       await downloadBackup();
+      trackBackupDownloaded();
       setStatus("done");
     } catch {
       setStatus("error");

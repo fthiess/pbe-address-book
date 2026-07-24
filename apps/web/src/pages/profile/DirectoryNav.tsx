@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Link } from "react-router-dom";
+import { trackDirectoryLinkClicked } from "../../lib/analytics.js";
 import { cn } from "../../lib/utils.js";
 import type { DirectoryNav as DirectoryNavModel, StepDirection } from "./directory-nav.js";
 
@@ -76,11 +77,18 @@ export function DirectoryNav({
   return (
     <div className="mb-3 flex items-center justify-between gap-3">
       {nav.delta > 0 ? (
-        <button type="button" onClick={onBack} className={BACK_CLASS}>
+        <button
+          type="button"
+          onClick={() => {
+            trackDirectoryLinkClicked();
+            onBack();
+          }}
+          className={BACK_CLASS}
+        >
           <span aria-hidden="true">←</span> Directory
         </button>
       ) : (
-        <Link to="/" className={BACK_CLASS}>
+        <Link to="/" onClick={() => trackDirectoryLinkClicked()} className={BACK_CLASS}>
           <span aria-hidden="true">←</span> Directory
         </Link>
       )}
