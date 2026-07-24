@@ -1,6 +1,7 @@
 import { type Role, profilesToCsv } from "@pbe/shared";
 import { Link } from "react-router-dom";
 import { ControlHelp } from "../../components/ControlHelp.js";
+import { trackExportPerformed } from "../../lib/analytics.js";
 import { notifyExport } from "../../lib/api.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { saveBlob } from "../../lib/utils.js";
@@ -53,6 +54,15 @@ export function ActionBar({
     const csv = profilesToCsv(exportRows, role);
     downloadCsv(csv);
     void notifyExport(scope, exportRows.length);
+    // Usage-shape view alongside the D92 security audit ping (7a-4): scope + a
+    // bucketed row count, never the exported rows. Guarded on a non-empty export: a
+    // stale selection whose brothers were all deleted mid-session leaves the button
+    // enabled with zero rows (ActionBar's own selectedCount-vs-selectedRows caveat),
+    // and a zero-row export is a no-op, not a usage event — the guard also keeps a 0
+    // out of rowCountBucket.
+    if (exportRows.length > 0) {
+      trackExportPerformed(scope, exportRows.length);
+    }
   };
 
   return (

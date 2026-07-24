@@ -6,6 +6,7 @@ import {
   REAUTH_WINDOW_NAME,
   useSession,
 } from "../auth/SessionContext.js";
+import { trackSignedIn } from "../lib/analytics.js";
 import { ApiError, completeSignIn } from "../lib/api.js";
 
 /** API-SPEC §2 denial codes → reassuring, actionable copy. */
@@ -70,6 +71,13 @@ export function AuthCallback() {
           window.close();
           return;
         }
+        // A completed fresh, top-level sign-in (the re-auth popup returned above) —
+        // the funnel end 7a-2 left open. Fired here rather than in the identify
+        // effect so it counts real sign-ins, not every authenticated mount. It runs
+        // before the identify() the app shell fires on mount, so it lands on the
+        // anonymous device id; Simplified ID Merge folds it into the brother once
+        // identify() resolves the uuid (N123).
+        trackSignedIn();
         await refresh();
         navigate("/", { replace: true });
       })

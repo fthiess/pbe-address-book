@@ -1,6 +1,7 @@
 import * as Popover from "@radix-ui/react-popover";
 import { CircleHelp } from "lucide-react";
 import type { ReactNode } from "react";
+import { trackHelpOpened } from "../lib/analytics.js";
 
 /**
  * The `?` toggle-tip (PRD §5.9; CODING-PROJECT-PLAN §Phase 6) — the app's one
@@ -17,7 +18,14 @@ import type { ReactNode } from "react";
  */
 export function HelpToggleTip({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <Popover.Root>
+    // Count only opens (7a-4) — the control's help `title`, never brother data.
+    <Popover.Root
+      onOpenChange={(open) => {
+        if (open) {
+          trackHelpOpened(title);
+        }
+      }}
+    >
       <Popover.Trigger
         aria-label={`Help: ${title}`}
         className="inline-grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:text-[var(--primary-emphasis)]"

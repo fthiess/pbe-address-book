@@ -9,9 +9,10 @@ import { useSession } from "../auth/SessionContext.js";
 import { ClearButton } from "../components/ClearButton.js";
 import { ControlHelp } from "../components/ControlHelp.js";
 import { LoadingOverlay } from "../components/LoadingOverlay.js";
+import { trackMobileOptionsOpened } from "../lib/analytics.js";
 import { fetchProfiles } from "../lib/api.js";
 import type { DirectoryProfile } from "../lib/types.js";
-import { useSearchTracking } from "../lib/useAnalytics.js";
+import { useFilterTracking, useSearchTracking } from "../lib/useAnalytics.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
 import { useHistoryFlag } from "../lib/useHistoryFlag.js";
 import { useMediaQuery } from "../lib/useMediaQuery.js";
@@ -228,6 +229,9 @@ export function Directory() {
   // a filter hiding the matches is a different question. Gated on `profiles` being
   // loaded, so a `?q=…` deep link doesn't report a match against an empty index.
   useSearchTracking(q, matchedIds?.size ?? 0, searchSettled, profiles !== null);
+  // Report each filter dimension the moment it's engaged — dimension names only,
+  // never the selected values (P6; 7a-4). See useFilterTracking.
+  useFilterTracking(filters.filters);
 
   // The export scope for a non-empty selection: every selected brother across the
   // *whole* dataset — not just the current view — so a disjoint set built across
@@ -417,7 +421,13 @@ export function Directory() {
               type="button"
               aria-expanded={optionsOpen}
               aria-controls={optionsRegionId}
-              onClick={() => setOptionsOpen((v) => !v)}
+              onClick={() => {
+                const next = !optionsOpen;
+                setOptionsOpen(next);
+                if (next) {
+                  trackMobileOptionsOpened();
+                }
+              }}
               className="flex w-full items-center justify-between gap-2 rounded-xl border border-border bg-card px-4 py-3 text-left text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span className="flex items-center gap-2">

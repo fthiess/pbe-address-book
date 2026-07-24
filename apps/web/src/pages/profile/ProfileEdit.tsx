@@ -4,6 +4,8 @@ import { TriangleAlert } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useBlocker } from "react-router-dom";
 import { ControlHelp } from "../../components/ControlHelp.js";
+import { trackProfileSaved } from "../../lib/analytics.js";
+import { fieldGroupsChanged } from "../../lib/events.js";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { AddressEditor } from "./AddressEditor.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
@@ -159,6 +161,8 @@ export function ProfileEdit({
     //    photo-only Save never fires a no-op PATCH (and never re-verifies, N42).
     const patch = form.patch();
     const textChanged = Object.keys(patch).length > 0;
+    // Captured before the headshot write clears the staged crop below (7a-4).
+    const photoChanged = stagedHeadshot != null;
 
     // Clearing a previously-usable email locks the brother out of sign-in to both
     // the Address Book and PBE News — the Ghost bridge resolves login by email — the
@@ -223,6 +227,12 @@ export function ProfileEdit({
         }
         setStagedHeadshot(null);
       }
+
+      // A save that fully succeeded (7a-4/D145): which coarse field groups changed
+      // and whether it was the brother's own record or a staff edit — never a field
+      // value (P6). Fired only here, on full success, so a text-saved-photo-failed
+      // partial (which returned above) isn't counted as a clean save.
+      trackProfileSaved(fieldGroupsChanged(Object.keys(patch), photoChanged), viewer.isOwner);
 
       // A photo-only Save doesn't re-verify (N42), so only claim verification when
       // the owner actually changed textual content.

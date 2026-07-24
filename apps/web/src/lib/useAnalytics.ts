@@ -1,7 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { useLocation, useMatches } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
-import { identifyMember, trackPageView, trackSearchPerformed } from "./analytics.js";
+import type { DirectoryFilters } from "../pages/directory/filters.js";
+import {
+  identifyMember,
+  trackFilterApplied,
+  trackPageView,
+  trackSearchPerformed,
+} from "./analytics.js";
+import { type FilterDimensionKey, activeFilterKeys } from "./events.js";
 
 /**
  * How long the query must stop changing before a search counts as "performed".
@@ -129,6 +136,18 @@ export function useSearchTracking(
   const lastReported = useRef<string | null>(null);
   // The report that is armed but not yet sent, readable by the unmount flush.
   const pending = useRef<{ query: string; count: number } | null>(null);
+  // Whether the *previous* reported search came back empty, so the next one can
+  // carry `After Empty` — the retry-vs-give-up signal (OFC-296 #8). Compared and
+  // updated only; never sent as anything but the boolean.
+  const lastReportedEmpty = useRef(false);
+
+  // Report a settled search and roll the empty-latch forward for the next one.
+  // Stable (touches only refs and a module function), so listing it in the effect
+  // deps below doesn't change when they run.
+  const report = useCallback((count: number) => {
+    trackSearchPerformed(count, lastReportedEmpty.current);
+    lastReportedEmpty.current = count <= 0;
+  }, []);
 
   useEffect(() => {
     const trimmed = query.trim();
@@ -139,21 +158,48 @@ export function useSearchTracking(
     const timer = window.setTimeout(() => {
       lastReported.current = trimmed;
       pending.current = null;
-      trackSearchPerformed(matchCount);
+      report(matchCount);
     }, SEARCH_SETTLE_MS);
     return () => window.clearTimeout(timer);
-  }, [query, matchCount, settled, datasetReady]);
+  }, [query, matchCount, settled, datasetReady, report]);
 
-  // Unmount only (empty deps), so this fires when the brother leaves the Directory
-  // — typically by clicking a search result — and not on every dependency change.
+  // Effectively unmount-only: `report` is the sole dep and never changes identity, so
+  // this fires when the brother leaves the Directory — typically by clicking a search
+  // result — and not on every dependency change.
   useEffect(() => {
     return () => {
       const armed = pending.current;
       if (armed && lastReported.current !== armed.query) {
         lastReported.current = armed.query;
         pending.current = null;
-        trackSearchPerformed(armed.count);
+        report(armed.count);
       }
     };
-  }, []);
+  }, [report]);
+}
+
+/**
+ * Report `Filter Applied` the moment a directory filter dimension becomes engaged
+ * (7a-4). The signal OFC-296 wants is "which filters earn their place", so this
+ * fires on the **inactive → active** transition of each dimension — not on every
+ * keystroke into an already-active text filter — by diffing the active-dimension
+ * set against the previous render's. Only the dimension *name* is ever sent
+ * ({@link trackFilterApplied}), never the value the brother typed or chose (P6).
+ *
+ * A `?classYear=1984` deep link is a legitimately-engaged filter, so it reports once
+ * on arrival; clearing then re-engaging a dimension reports it again, which is the
+ * intended "used the filter" count.
+ */
+export function useFilterTracking(filters: DirectoryFilters): void {
+  const prevActive = useRef<Set<FilterDimensionKey>>(new Set());
+
+  useEffect(() => {
+    const active = activeFilterKeys(filters as unknown as Record<string, unknown>);
+    for (const key of active) {
+      if (!prevActive.current.has(key)) {
+        trackFilterApplied(key);
+      }
+    }
+    prevActive.current = active;
+  }, [filters]);
 }

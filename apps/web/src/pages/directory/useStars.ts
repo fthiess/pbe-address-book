@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
+import { trackBrotherStarred, trackBrotherUnstarred } from "../../lib/analytics.js";
 import { addStar as apiAddStar, removeStar as apiRemoveStar } from "../../lib/api.js";
 
 /**
@@ -51,6 +52,14 @@ export function useStarsState(initial: readonly number[]): Stars {
 
   const toggle = useCallback((id: number) => {
     const willStar = !starsRef.current.has(id);
+    // Count the star/un-star (7a-4; Forrest's OFC-296 note) on the intent, at the
+    // same level as the write so React's double-invoked state updater can't fire it
+    // twice. **No id** — that a star happened is the signal, never *whom* (P6).
+    if (willStar) {
+      trackBrotherStarred();
+    } else {
+      trackBrotherUnstarred();
+    }
     const gen = ++genRef.current;
     const flip = (add: boolean) =>
       setStars((prev) => {
