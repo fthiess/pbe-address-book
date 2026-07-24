@@ -10,6 +10,7 @@ import type { AuditLog } from "../audit/audit-log.js";
 import type { ProfileCache } from "../data/cache.js";
 import type { ProfileStore } from "../data/profiles.js";
 import { AuditingGhostLifecycle } from "../identity/ghost-audit-lifecycle.js";
+import { GhostDuplicateEmailError } from "../identity/ghost-lifecycle.js";
 import type { GhostCreateResult, GhostLifecycle } from "../identity/ghost-lifecycle.js";
 import type { SessionService } from "../identity/session-store.js";
 import { projectRecord } from "../projection/projection.js";
@@ -260,6 +261,18 @@ function registerDeceased(app: FastifyInstance, deps: StatusRouteDeps): void {
                 p.created = await auditedGhost.createMember(profileForDeceasedReverse(p.current));
               }
             } catch (cause) {
+              // A duplicate-email collision on the re-create (reverse) is a permanent,
+              // admin-resolvable condition, not a transient outage: let the typed error
+              // propagate so the route maps it to a 422 on `email` with the reconcile
+              // message (Option B — OFC-232/276/316), instead of flattening it into a
+              // generic ghost_create_failed 502 that reads as "try again". Mirrors
+              // `pushGhostUpdate` / `runEmailGhostLifecycle`. A raise (delete) never
+              // raises this, so the guard is a no-op there. Every other cause still
+              // aborts clean via GhostStepError (Book untouched, N65) — the abort-clean
+              // contract the wrapping was built for is preserved.
+              if (cause instanceof GhostDuplicateEmailError) {
+                throw cause;
+              }
               throw new GhostStepError(
                 raising ? "ghost_delete_failed" : "ghost_create_failed",
                 cause,
@@ -398,6 +411,18 @@ function registerDebrother(app: FastifyInstance, deps: StatusRouteDeps): void {
                 p.created = await auditedGhost.createMember(p.current);
               }
             } catch (cause) {
+              // A duplicate-email collision on the re-create (reverse) is a permanent,
+              // admin-resolvable condition, not a transient outage: let the typed error
+              // propagate so the route maps it to a 422 on `email` with the reconcile
+              // message (Option B — OFC-232/276/316), instead of flattening it into a
+              // generic ghost_create_failed 502 that reads as "try again". Mirrors
+              // `pushGhostUpdate` / `runEmailGhostLifecycle`. A raise (delete) never
+              // raises this, so the guard is a no-op there. Every other cause still
+              // aborts clean via GhostStepError (Book untouched, N65) — the abort-clean
+              // contract the wrapping was built for is preserved.
+              if (cause instanceof GhostDuplicateEmailError) {
+                throw cause;
+              }
               throw new GhostStepError(
                 raising ? "ghost_delete_failed" : "ghost_create_failed",
                 cause,

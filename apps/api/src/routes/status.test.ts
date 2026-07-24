@@ -301,6 +301,29 @@ describe("PUT /api/profiles/:id/deceased", () => {
     await ctx.app.close();
   });
 
+  it("surfaces a duplicate-email collision on deceased reverse as 422 on email, not a generic 502 (OFC-316)", async () => {
+    // The reverse re-creates the Ghost member; when that email already exists in Ghost
+    // under a member Book is not linked to (a Book↔Ghost drift), Ghost answers 422 and
+    // createMember raises the typed GhostDuplicateEmailError. That must reach the client
+    // as a 422 on `email` carrying the reconcile message — exactly as the PATCH email
+    // path does (OFC-232/276) — not be flattened into a generic ghost_create_failed 502
+    // that wrongly invites a retry. Book stays untouched (abort-clean, N65).
+    const ctx = await buildStatusServer(new FailingGhostLifecycle("duplicate"));
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5003/deceased",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { deceased: false },
+    });
+    expect(response.statusCode).toBe(422);
+    const body = response.json();
+    expect(body.error).toBe("validation_failed");
+    expect(body.issues?.[0]?.field).toBe("email");
+    // Abort-clean: the deceased mark never cleared.
+    expect(ctx.cache.getById(5003)?.deceased.isDeceased).toBe(true);
+    await ctx.app.close();
+  });
+
   it("deletes the Ghost member first on a raise, dropping the id (OFC-232)", async () => {
     const ghost = new RecordingGhostLifecycle();
     const ctx = await buildStatusServer(ghost);
@@ -510,6 +533,28 @@ describe("PUT /api/profiles/:id/debrothered", () => {
     });
     expect(response.statusCode).toBe(502);
     expect(response.json()).toEqual({ error: "ghost_create_failed" });
+    expect(ctx.cache.getById(5004)?.debrothered.isDebrothered).toBe(true);
+    await ctx.app.close();
+  });
+
+  it("surfaces a duplicate-email collision on reinstate as 422 on email, not a generic 502 (OFC-316)", async () => {
+    // Reinstate re-creates the Ghost member. When that email still exists in Ghost under
+    // a member Book is not linked to (the Book↔Ghost drift that stranded reinstate on
+    // staging), Ghost answers 422 and createMember raises GhostDuplicateEmailError. It
+    // must surface as a 422 on `email` with the reconcile message — like the PATCH path
+    // (OFC-232/276) — not be flattened into ghost_create_failed, which reads as a
+    // transient outage and wrongly invites a retry. Book untouched: still de-brothered.
+    const ctx = await buildStatusServer(new FailingGhostLifecycle("duplicate"));
+    const response = await ctx.app.inject({
+      method: "PUT",
+      url: "/api/profiles/5004/debrothered",
+      headers: { cookie: await ctx.cookieFor(9001, "admin") },
+      payload: { debrothered: false },
+    });
+    expect(response.statusCode).toBe(422);
+    const body = response.json();
+    expect(body.error).toBe("validation_failed");
+    expect(body.issues?.[0]?.field).toBe("email");
     expect(ctx.cache.getById(5004)?.debrothered.isDebrothered).toBe(true);
     await ctx.app.close();
   });
