@@ -104,6 +104,27 @@ ALERT_CHANNEL_NAME="${ALERT_CHANNEL_NAME:-Book staging alerts (email)}"
 DENIAL_POLICY_NAME="${DENIAL_POLICY_NAME:-Book — sign-in denial burst (staging)}"
 DENIAL_BURST_THRESHOLD="${DENIAL_BURST_THRESHOLD:-10}"
 
+# A freshly-created service account is not immediately visible to the IAM policy
+# system, so a binding that references it can fail with "does not exist" for several
+# seconds after creation (eventual consistency). retry_iam re-runs such a command,
+# pausing for propagation. Observed live on the very first cold provision: the
+# view-CONDITIONED project binding below consistently loses this race on a cold
+# create (the sibling provision-staging.sh's unconditioned binding usually wins it,
+# but the race is the same). The command's noisy stdout (the whole IAM policy dump)
+# is suppressed; stderr (real errors) and this helper's own progress stay visible.
+retry_iam() {
+  local attempt=1 max=8
+  until "$@" >/dev/null; do
+    if (( attempt >= max )); then
+      echo "!! IAM command still failing after ${max} attempts: $*" >&2
+      return 1
+    fi
+    echo "    (attempt ${attempt}/${max} failed — waiting 8s for IAM propagation…)" >&2
+    sleep 8
+    attempt=$(( attempt + 1 ))
+  done
+}
+
 echo "==> Project ${PROJECT_ID} | region ${REGION} | audit bucket ${AUDIT_BUCKET} (${LOG_LOCATION}, ${AUDIT_RETENTION_DAYS}d)"
 gcloud config set project "${PROJECT_ID}" >/dev/null
 
@@ -213,11 +234,10 @@ if ! gcloud iam service-accounts describe "${READER_SA_EMAIL}" --project "${PROJ
 fi
 AUDIT_VIEW="projects/${PROJECT_ID}/locations/${LOG_LOCATION}/buckets/${AUDIT_BUCKET}/views/_AllLogs"
 echo "==> Granting ${READER_SA_NAME} view-scoped read on the audit bucket (viewAccessor, conditioned)"
-gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
+retry_iam gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
   --member="serviceAccount:${READER_SA_EMAIL}" \
   --role="roles/logging.viewAccessor" \
-  --condition="expression=resource.name==\"${AUDIT_VIEW}\",title=audit-view-only,description=Read only the Book audit stream (OFC-300/D91)" \
-  >/dev/null
+  --condition="expression=resource.name==\"${AUDIT_VIEW}\",title=audit-view-only,description=Read only the Book audit stream (OFC-300/D91)"
 
 #    Pair the SA with an ASSUMER, so it is actually usable (keyless impersonation),
 #    the way setup-wif.sh grants workloadIdentityUser on the deployer SA. Optional
@@ -227,9 +247,9 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
 #    does NOT touch D91 (that forbids wiring a *cloud LLM*, not provisioning access).
 if [[ -n "${LOG_READER_PRINCIPAL}" ]]; then
   echo "==> Granting ${LOG_READER_PRINCIPAL} impersonation of ${READER_SA_NAME} (serviceAccountTokenCreator)"
-  gcloud iam service-accounts add-iam-policy-binding "${READER_SA_EMAIL}" \
+  retry_iam gcloud iam service-accounts add-iam-policy-binding "${READER_SA_EMAIL}" \
     --member="${LOG_READER_PRINCIPAL}" \
-    --role="roles/iam.serviceAccountTokenCreator" --project "${PROJECT_ID}" >/dev/null
+    --role="roles/iam.serviceAccountTokenCreator" --project "${PROJECT_ID}"
 else
   echo "    (note: LOG_READER_PRINCIPAL unset — the reader SA has no assumer yet; set it"
   echo "     to a member string to grant keyless impersonation. Deferred to OFC-214.)"
