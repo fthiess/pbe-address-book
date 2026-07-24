@@ -1,7 +1,8 @@
 import { type EmergencyContact, formatClassYear, formatConstitutionId } from "@pbe/shared";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Avatar } from "../../components/Avatar.js";
+import { trackProfileViewed } from "../../lib/analytics.js";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { CourseChip } from "../directory/Chips.js";
 import { StarButton } from "../directory/RowControls.js";
@@ -58,6 +59,15 @@ export function ProfileView({
   const name = canonicalName(record);
   const deceased = record.deceased?.isDeceased === true;
   const restricted = seesRestricted(viewer);
+
+  // Count profile views (7a-4; Forrest's OFC-296 note), keyed on the record so
+  // prev/next navigation through the roster counts each. `Own` distinguishes a
+  // brother reading his own record from viewing another's; the id itself never
+  // travels (P6), and `$current_url` is stripped by BLOCKED_PROPERTIES.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on `record.id` change is the intent — count each viewed record; the id is never read into the event.
+  useEffect(() => {
+    trackProfileViewed(viewer.isOwner);
+  }, [record.id, viewer.isOwner]);
   // The roster→Canonical-Name map, resolved once and shared by the Relationships
   // links (Big/Little Brothers) and the verification read-out's verifier name
   // (§5.7.4; OFC-208). Null until the roster loads.

@@ -4,10 +4,21 @@ import {
   __resetAnalyticsStateForTests,
   identifyMember,
   resetIdentity,
-  resultBucket,
   setAnalyticsClient,
+  trackBrotherStarred,
+  trackBrotherUnstarred,
+  trackColumnLayoutChanged,
+  trackColumnsReset,
+  trackConsentToggleChanged,
+  trackExportPerformed,
+  trackFilterApplied,
+  trackHelpOpened,
+  trackMobileOptionsOpened,
   trackPageView,
+  trackProfileSaved,
+  trackProfileViewed,
   trackSearchPerformed,
+  trackSignedIn,
 } from "./analytics.js";
 
 function fakeClient() {
@@ -132,27 +143,129 @@ describe("trackPageView (P6)", () => {
   });
 });
 
-describe("resultBucket / trackSearchPerformed (P6)", () => {
-  it.each([
-    [0, "0"],
-    [1, "1"],
-    [2, "2-10"],
-    [10, "2-10"],
-    [11, "11+"],
-    [700, "11+"],
-  ])("buckets %i as %s", (count, expected) => {
-    expect(resultBucket(count)).toBe(expected);
-  });
-
-  it("treats a negative count defensively as empty", () => {
-    expect(resultBucket(-1)).toBe("0");
-  });
-
-  it("sends the bucket and nothing else — no query text, no matched ids", () => {
-    trackSearchPerformed(3);
+describe("trackSearchPerformed (P6)", () => {
+  it("sends the bucket and the after-empty flag — no query text, no matched ids", () => {
+    trackSearchPerformed(3, false);
 
     expect(client.track).toHaveBeenCalledExactlyOnceWith("Search Performed", {
       "Result Count": "2-10",
+      "After Empty": false,
     });
+  });
+
+  it("carries `After Empty: true` when the prior search returned nothing", () => {
+    trackSearchPerformed(0, true);
+
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Search Performed", {
+      "Result Count": "0",
+      "After Empty": true,
+    });
+  });
+
+  it("never sends a raw count, only a bucket", () => {
+    trackSearchPerformed(1, false);
+    const [, props] = client.track.mock.calls[0] ?? [];
+    expect(props?.["Result Count"]).toBe("1");
+    expect(JSON.stringify(props)).not.toMatch(/\b(700|42)\b/);
+  });
+});
+
+describe("7a-4 feature events (D145) — names/buckets only, never whom (P6)", () => {
+  it("Signed In carries no properties", () => {
+    trackSignedIn();
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Signed In", {});
+  });
+
+  it("Profile Viewed carries only Own — never a record id or name", () => {
+    trackProfileViewed(false);
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Profile Viewed", { Own: false });
+
+    const [, props] = client.track.mock.calls[0] ?? [];
+    expect(Object.keys(props ?? {})).toEqual(["Own"]);
+    expect(JSON.stringify(props)).not.toMatch(/\d/); // no id leaked
+  });
+
+  it("Profile Saved carries the field-group labels and Own — never a field value", () => {
+    trackProfileSaved(["contact", "photo"], true);
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Profile Saved", {
+      "Field Groups": ["contact", "photo"],
+      Own: true,
+    });
+  });
+
+  it("Consent Toggle Changed carries the toggle key and its new state", () => {
+    trackConsentToggleChanged("profile.privacy.shareEmail", false);
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Consent Toggle Changed", {
+      Toggle: "profile.privacy.shareEmail",
+      Enabled: false,
+    });
+  });
+
+  it("Brother Starred / Un-starred carry NO identity at all", () => {
+    trackBrotherStarred();
+    trackBrotherUnstarred();
+
+    expect(client.track).toHaveBeenNthCalledWith(1, "Brother Starred", {});
+    expect(client.track).toHaveBeenNthCalledWith(2, "Brother Un-starred", {});
+    // The whole point of Forrest's OFC-296 note: usage without the viewed identity.
+    for (const call of client.track.mock.calls) {
+      expect(call[1]).toEqual({});
+    }
+  });
+
+  it("Filter Applied maps a filter key to its dimension label, never a value", () => {
+    trackFilterApplied("major"); // UI "course"
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Filter Applied", {
+      Dimension: "Course",
+    });
+  });
+
+  it("Column Layout Changed carries the column key (a field name) and visibility", () => {
+    trackColumnLayoutChanged("email", true);
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Column Layout Changed", {
+      Column: "email",
+      Shown: true,
+    });
+  });
+
+  it("Columns Reset carries no properties", () => {
+    trackColumnsReset();
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Columns Reset", {});
+  });
+
+  it("Help Opened carries the help topic only", () => {
+    trackHelpOpened("Class Year");
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Help Opened", { Topic: "Class Year" });
+  });
+
+  it("Export Performed carries scope and a bucketed row count, never the rows", () => {
+    trackExportPerformed("selection", 42);
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Export Performed", {
+      Scope: "selection",
+      "Row Count": "11-100",
+    });
+  });
+
+  it("Mobile Options Opened carries no properties", () => {
+    trackMobileOptionsOpened();
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Mobile Options Opened", {});
+  });
+
+  it("every 7a-4 wrapper is inert with no client registered", () => {
+    setAnalyticsClient(null);
+    expect(() => {
+      trackSignedIn();
+      trackProfileViewed(true);
+      trackProfileSaved(["contact"], true);
+      trackConsentToggleChanged("k", true);
+      trackBrotherStarred();
+      trackBrotherUnstarred();
+      trackFilterApplied("classYear");
+      trackColumnLayoutChanged("email", false);
+      trackColumnsReset();
+      trackHelpOpened("t");
+      trackExportPerformed("view", 5);
+      trackMobileOptionsOpened();
+    }).not.toThrow();
   });
 });

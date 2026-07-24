@@ -1,8 +1,18 @@
 import type { Role } from "@pbe/shared";
+import {
+  type EventName,
+  type EventProperties,
+  type ExportScope,
+  FILTER_DIMENSIONS,
+  type FieldGroup,
+  type FilterDimensionKey,
+  resultBucket,
+  rowCountBucket,
+} from "./events.js";
 
 /**
- * The analytics seam (D137/D138, Phase 7a-2) — all of Book's Mixpanel *logic*,
- * with none of Mixpanel's *code*.
+ * The analytics seam (D137/D138, Phase 7a-2; taxonomy fleshed out in 7a-4, D145) —
+ * all of Book's Mixpanel *logic*, with none of Mixpanel's *code*.
  *
  * The real client lives in `analyticsClient.ts`, which imports `mixpanel-browser`
  * and registers itself here at startup. This module deliberately imports nothing
@@ -104,6 +114,17 @@ export function resetIdentity(): void {
 }
 
 /**
+ * The one place an event reaches the client, typed against the {@link EventProperties}
+ * catalog in `events.ts`. Every wrapper below funnels through here, so a wrong event
+ * name or a property the registry doesn't sanction is a **compile error** — the
+ * typed guardrail OFC-296 asked the registry to provide. Inert until a client
+ * registers (a token-less dev/CI/e2e build), exactly like the rest of this module.
+ */
+function emit<E extends EventName>(event: E, properties: EventProperties[E]): void {
+  client?.track(event, properties);
+}
+
+/**
  * A page view, keyed on the **route pattern** — `/brother/:id`, never
  * `/brother/5247`.
  *
@@ -116,40 +137,143 @@ export function resetIdentity(): void {
  * `$current_url` the library would otherwise staple onto this very event.
  */
 export function trackPageView(routePattern: string): void {
-  client?.track("Page View", { "Route Pattern": routePattern });
+  emit("Page View", { "Route Pattern": routePattern });
 }
 
 /**
- * Bucket a result count. Buckets rather than the raw number because a count of
- * exactly 1, attached to an identified brother at a known instant, is a sharper
- * signal about *who was looked up* than this event needs in order to answer the
- * question it exists to answer ("does search find people, or come back empty?").
+ * A completed **fresh** sign-in (7a-4) — the funnel end the 7a-2 skeleton left open,
+ * and the only way to measure *active* members against the ~700 living brothers.
+ * Fired once per real sign-in at the OAuth callback, not on every authenticated
+ * mount. Role and Constitution ID already ride as user properties (D88), so it
+ * needs none of its own.
  */
-export function resultBucket(count: number): string {
-  if (count <= 0) return "0";
-  if (count === 1) return "1";
-  if (count <= 10) return "2-10";
-  return "11+";
+export function trackSignedIn(): void {
+  emit("Signed In", {});
 }
 
 /**
- * The walking skeleton's one real feature event (D138) — proof that non-page-view
- * events work end to end.
+ * A brother record was opened (7a-4; Forrest's OFC-296 note). `own` says whether a
+ * brother is looking at his *own* record or someone else's — never *whose*, so the
+ * "is the directory used to look people up?" question is answered without recording
+ * a viewed identity (P6). The record id sits in the URL (`/brother/5247`) and is
+ * kept out of the event by `BLOCKED_PROPERTIES` stripping `$current_url`.
+ */
+export function trackProfileViewed(own: boolean): void {
+  emit("Profile Viewed", { Own: own });
+}
+
+/**
+ * A profile save that fully succeeded (7a-4) — the highest-value product question:
+ * do brothers actually maintain their own records? Reports the coarse
+ * {@link FieldGroup}s that changed and whether it was the brother's own record or a
+ * staff edit; **never a field value** (P6). `groups` comes from
+ * {@link import("./events.js").fieldGroupsChanged} over the save's patch keys.
+ */
+export function trackProfileSaved(groups: FieldGroup[], own: boolean): void {
+  emit("Profile Saved", { "Field Groups": groups, Own: own });
+}
+
+/**
+ * A privacy/consent switch flipped (7a-4) — the toggle's registry key and its new
+ * state. A brother's own choice about his own data, so no P6 problem; directly feeds
+ * the year-old defaults debate (D45 → D89 → D93) that has run on first principles
+ * with zero data on what brothers actually choose.
+ */
+export function trackConsentToggleChanged(toggle: string, enabled: boolean): void {
+  emit("Consent Toggle Changed", { Toggle: toggle, Enabled: enabled });
+}
+
+/**
+ * A brother was starred (7a-4; Forrest's OFC-296 note). **No id, no name** — that a
+ * star happened is the signal; *whom* it was is precisely what P6 keeps out. The
+ * event fires on the optimistic flip (the intent), which may later revert on a
+ * failed write — the rare over-count is worth not depending on the round-trip.
+ */
+export function trackBrotherStarred(): void {
+  emit("Brother Starred", {});
+}
+
+/** A brother was un-starred (7a-4) — the complement of {@link trackBrotherStarred};
+ *  id-less for the same P6 reason. */
+export function trackBrotherUnstarred(): void {
+  emit("Brother Un-starred", {});
+}
+
+/**
+ * The Directory's settled name search (D138's proof-of-life event, extended in 7a-4).
  *
  * Carries **no query text and no result ids**: what a brother typed, and whom it
  * matched, are precisely what P6 keeps out of the event stream. Only the shape of
- * the outcome travels.
+ * the outcome travels — a bucketed count, and `afterEmpty`: whether this search
+ * immediately followed one that returned nothing. That distinguishes "the search is
+ * broken" (empty, gives up) from "he isn't in the book" (empty, refines, finds),
+ * which is the more actionable finding (OFC-296 #8, done as a property rather than a
+ * second event).
  *
  * ⚠ The Directory mirrors its search box into the URL as `?q=` (D31/N15), so the
  * query text *does* sit in `window.location.href` while this fires. It is kept out
- * of the payload by `BLOCKED_PROPERTIES` stripping `$current_url` — omitting it
- * from the call below is only half the job (N125).
+ * of the payload by `BLOCKED_PROPERTIES` stripping `$current_url` — omitting it from
+ * the call is only half the job (N125).
  *
- * `resultCount` is the **name-search match count**, not the count of rows on
- * screen: the filters, the starred-only toggle and the deceased default narrow the
- * view further (D36/D38/D39), and folding those in would report "search found
- * nothing" for a search that found forty brothers the filters then hid.
+ * `resultCount` is the **name-search match count**, not the count of rows on screen:
+ * the filters, the starred-only toggle and the deceased default narrow the view
+ * further (D36/D38/D39), and folding those in would report "search found nothing"
+ * for a search that found forty brothers the filters then hid.
  */
-export function trackSearchPerformed(resultCount: number): void {
-  client?.track("Search Performed", { "Result Count": resultBucket(resultCount) });
+export function trackSearchPerformed(resultCount: number, afterEmpty: boolean): void {
+  emit("Search Performed", {
+    "Result Count": resultBucket(resultCount),
+    "After Empty": afterEmpty,
+  });
+}
+
+/**
+ * A directory filter dimension was engaged (7a-4) — **the dimension name only**
+ * (via {@link FILTER_DIMENSIONS}), never the selected value, which would narrow
+ * toward *whom* the brother is looking for (P6). Tells which filters earn their
+ * place in the panel. The filter values live in the URL query and are kept off the
+ * event by `BLOCKED_PROPERTIES` stripping `$current_url`.
+ */
+export function trackFilterApplied(dimension: FilterDimensionKey): void {
+  emit("Filter Applied", { Dimension: FILTER_DIMENSIONS[dimension] });
+}
+
+/**
+ * A column was shown or hidden in the lens picker (7a-4) — the column key (a schema
+ * field *name* like `email`, not brother data) and its new visibility. Answers
+ * whether the default lens is right or everyone re-derives their own (D30/D33).
+ */
+export function trackColumnLayoutChanged(column: string, shown: boolean): void {
+  emit("Column Layout Changed", { Column: column, Shown: shown });
+}
+
+/** The column lens was reset to defaults (7a-4). */
+export function trackColumnsReset(): void {
+  emit("Columns Reset", {});
+}
+
+/**
+ * A help toggle-tip opened (7a-4) — the control's help title. D53/D111 built a
+ * layered help system nothing yet measures; `topic` is a static control name, never
+ * brother data.
+ */
+export function trackHelpOpened(topic: string): void {
+  emit("Help Opened", { Topic: topic });
+}
+
+/**
+ * A staff CSV export ran (7a-4) — its scope and a bucketed row count. Already
+ * audited server-side for security (D92); this is the low-volume, staff-only
+ * usage-shape view.
+ */
+export function trackExportPerformed(scope: ExportScope, rowCount: number): void {
+  emit("Export Performed", { Scope: scope, "Row Count": rowCountBucket(rowCount) });
+}
+
+/**
+ * The below-`md` "Options" disclosure fold was opened (7a-4; N92). The audience
+ * skews 60+ and phone use has been assumed rather than measured.
+ */
+export function trackMobileOptionsOpened(): void {
+  emit("Mobile Options Opened", {});
 }

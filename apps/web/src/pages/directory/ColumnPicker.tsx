@@ -1,5 +1,6 @@
 import { Columns3 } from "lucide-react";
 import { useId, useRef } from "react";
+import { trackColumnLayoutChanged, trackColumnsReset } from "../../lib/analytics.js";
 import { useDetailsAutoClose } from "../../lib/useDetailsAutoClose.js";
 import type { ColumnGroup } from "./grid-model.js";
 import type { ColumnLens } from "./useColumnLens.js";
@@ -62,7 +63,13 @@ export function ColumnPicker({ lens }: { lens: ColumnLens }) {
                     <input
                       type="checkbox"
                       checked={lens.isVisible(column.key)}
-                      onChange={() => lens.toggle(column.key)}
+                      onChange={() => {
+                        // The column key is a schema field *name* (e.g. `email`),
+                        // not brother data (7a-4). New visibility is the negation of
+                        // the current one.
+                        trackColumnLayoutChanged(column.key, !lens.isVisible(column.key));
+                        lens.toggle(column.key);
+                      }}
                       className="size-4 accent-[var(--primary)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     />
                     <span>{column.label}</span>
@@ -75,7 +82,10 @@ export function ColumnPicker({ lens }: { lens: ColumnLens }) {
         <div className="mt-1 border-t border-border pt-1">
           <button
             type="button"
-            onClick={lens.reset}
+            onClick={() => {
+              trackColumnsReset();
+              lens.reset();
+            }}
             className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:outline-none"
           >
             Reset to default columns

@@ -1,6 +1,7 @@
 import { Lock } from "lucide-react";
 import { useId } from "react";
 import { ControlHelp } from "../../components/ControlHelp.js";
+import { trackConsentToggleChanged } from "../../lib/analytics.js";
 import { cn } from "../../lib/utils.js";
 import { activeConsequence, switchCopy } from "./consent.js";
 
@@ -43,7 +44,16 @@ export function ConsentSwitch({
         aria-checked={value}
         aria-labelledby={labelId}
         disabled={locked}
-        onClick={() => onChange?.(!value)}
+        onClick={() => {
+          if (!onChange) {
+            return;
+          }
+          // A brother's own choice about his own data — the toggle key and its new
+          // state, no P6 concern (7a-4/D145). Only actionable switches emit; the
+          // read-only/locked manager view has no `onChange` and stays silent.
+          trackConsentToggleChanged(entryKey, !value);
+          onChange(!value);
+        }}
         className={cn(
           "relative mt-0.5 inline-flex h-6 w-[42px] shrink-0 items-center rounded-full outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring",
           value ? "bg-primary" : "bg-[var(--track)]",

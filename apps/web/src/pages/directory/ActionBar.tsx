@@ -1,6 +1,7 @@
 import { type Role, profilesToCsv } from "@pbe/shared";
 import { Link } from "react-router-dom";
 import { ControlHelp } from "../../components/ControlHelp.js";
+import { trackExportPerformed } from "../../lib/analytics.js";
 import { notifyExport } from "../../lib/api.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { saveBlob } from "../../lib/utils.js";
@@ -53,6 +54,9 @@ export function ActionBar({
     const csv = profilesToCsv(exportRows, role);
     downloadCsv(csv);
     void notifyExport(scope, exportRows.length);
+    // The usage-shape view alongside the D92 security audit ping (7a-4): scope and a
+    // bucketed row count, never the exported rows themselves.
+    trackExportPerformed(scope, exportRows.length);
   };
 
   return (
