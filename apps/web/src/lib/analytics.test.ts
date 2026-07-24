@@ -368,6 +368,25 @@ describe("7a-4 follow-up events (OFC-315) — roles/settings/booleans only, neve
     }
   });
 
+  it("a throwing client.track never propagates — analytics can't break the app action", () => {
+    // Wrappers fire inside mutation success paths, so emit() must swallow a Mixpanel
+    // throw; otherwise a surrounding catch would misreport a successful write (N132).
+    const throwing = {
+      identify: vi.fn(),
+      peopleSet: vi.fn(),
+      track: vi.fn(() => {
+        throw new Error("mixpanel exploded");
+      }),
+      reset: vi.fn(),
+    } satisfies AnalyticsClient;
+    setAnalyticsClient(throwing);
+
+    expect(() => trackBrotherDeleted()).not.toThrow();
+    expect(() => trackSystemBannerChanged(true, "info", "x")).not.toThrow();
+    expect(() => trackProfileSaved(["contact"], true)).not.toThrow();
+    expect(throwing.track).toHaveBeenCalled();
+  });
+
   it("every follow-up wrapper is inert with no client registered", () => {
     setAnalyticsClient(null);
     expect(() => {

@@ -123,7 +123,16 @@ export function resetIdentity(): void {
  * registers (a token-less dev/CI/e2e build), exactly like the rest of this module.
  */
 function emit<E extends EventName>(event: E, properties: EventProperties[E]): void {
-  client?.track(event, properties);
+  try {
+    client?.track(event, properties);
+  } catch {
+    // Analytics is strictly fire-and-forget: many wrappers fire *inside* a mutation's
+    // success path (a profile save, a status change, a banner write), so a throw from
+    // Mixpanel here must never propagate into — or abort — the app action that
+    // triggered it (a surrounding `catch` would then misreport a successful write as
+    // failed). Swallow it; a lost event is always preferable to a broken action.
+    // (N132 review remediation.)
+  }
 }
 
 /**

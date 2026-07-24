@@ -4,12 +4,7 @@ import { type ReactNode, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useBanner } from "../auth/BannerContext.js";
 import { useSession } from "../auth/SessionContext.js";
-import {
-  trackMastheadLogoClicked,
-  trackPbeNewsLinkClicked,
-  trackViewAsEnded,
-  trackViewAsStarted,
-} from "../lib/analytics.js";
+import { trackMastheadLogoClicked, trackPbeNewsLinkClicked } from "../lib/analytics.js";
 import { PBE_NEWS_URL } from "../lib/externalLinks.js";
 import type { Me } from "../lib/types.js";
 import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
@@ -185,10 +180,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                           // Explicit name so the control is unambiguous to a screen
                           // reader even read out of its visual "View as" grouping.
                           aria-label={`View as ${ROLE_LABEL[role]}`}
-                          onClick={() => {
-                            trackViewAsStarted(role);
-                            void viewAs(role);
-                          }}
+                          onClick={() => void viewAs(role)}
                           className={`${MENU_ITEM} justify-between disabled:cursor-default disabled:opacity-100`}
                         >
                           <span>{ROLE_LABEL[role]}</span>
@@ -203,10 +195,7 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                     {me.impersonating && (
                       <button
                         type="button"
-                        onClick={() => {
-                          trackViewAsEnded(me.role);
-                          void stopViewingAs();
-                        }}
+                        onClick={() => void stopViewingAs()}
                         className={`${MENU_ITEM} font-medium text-primary`}
                       >
                         Stop viewing as {ROLE_LABEL[me.role]}

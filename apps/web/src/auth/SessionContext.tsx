@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { resetIdentity } from "../lib/analytics.js";
+import { resetIdentity, trackViewAsEnded, trackViewAsStarted } from "../lib/analytics.js";
 import {
   ApiError,
   impersonate as apiImpersonate,
@@ -177,6 +177,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const statusRef = useRef(state.status);
   statusRef.current = state.status;
 
+  // A ref mirror of the effective (possibly-impersonated) role, so `stopViewingAs`
+  // can record which role is being exited without closing over stale state (7a-4).
+  const effectiveRoleRef = useRef<Role | null>(
+    state.status === "authenticated" ? state.me.role : null,
+  );
+  effectiveRoleRef.current = state.status === "authenticated" ? state.me.role : null;
+
   // The app-wide 401 handler (OFC-193). A mid-session 401 means the cookie stopped
   // resolving to a live session — flip to signed-out and drop the cached roster from
   // the heap (D95), so the whole app (Directory, Profile, and any open Admin page)
@@ -294,11 +301,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const viewAs = useCallback(async (role: Role) => {
     await apiImpersonate(role);
+    // On success only, and right before the reload — like `resetIdentity` on
+    // sign-out, this is a session-transition analytics event owned here (7a-4). The
+    // reload's pagehide flush delivers it (verified at live-test; no proxy yet, D140).
+    trackViewAsStarted(role);
     window.location.reload();
   }, []);
 
   const stopViewingAs = useCallback(async () => {
     await apiStopImpersonating();
+    const exited = effectiveRoleRef.current;
+    if (exited) {
+      trackViewAsEnded(exited);
+    }
     window.location.reload();
   }, []);
 
