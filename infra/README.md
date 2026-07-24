@@ -97,6 +97,102 @@ For production later, tighten `storage.admin` to `objectAdmin` on the
 `run-sources-*` bucket and give Cloud Build a dedicated minimal SA rather than
 reusing the Compute Engine default.
 
+## Observability — audit retention, metrics, alerting, log-reader SA (7a-3c)
+
+[`provision-observability.sh`](provision-observability.sh) makes Book's three log
+streams (audit / diagnostic / access — ENGINEERING-DESIGN §6.1) actually *observed*.
+The streams already emit distinguishable structured JSON (`logType`, `severity`,
+`action`); until this script runs, nothing routes, retains, measures, or alerts on
+them — `audit-log.ts`'s claim that `logType:"audit"` "routes this stream to its
+longer-retention bucket" is aspirational until then. Like the other two scripts it
+is **Forrest-run** (it makes live IAM / sink / alert changes) and idempotent.
+
+```bash
+# from the repo root, authenticated as a project owner, with the beta components.
+# ALERT_EMAIL is read from environments/staging.env (its single home); override here
+# only to redirect. Optionally set LOG_READER_PRINCIPAL to grant an assumer (below).
+PROJECT_ID=pbe-book-staging REGION=us-central1 \
+bash infra/provision-observability.sh
+```
+
+It spans **two** project-native GCP products — no new Book dependency:
+
+- **Cloud Logging** — a user-defined **audit bucket** with **90-day retention**
+  (P16, aligned with the backup/headshot windows); a **sink** routing
+  `jsonPayload.logType="audit"` (from this service) into it; two **log-based
+  counter metrics** (`book_auth_signin_denied`, `book_auth_jwks_failure` — kept
+  distinct so a Ghost JWKS outage can't inflate the denial metric and a forged-token
+  burst can't hide in the JWKS one, N126); and the keyless **log-reader SA**.
+- **Cloud Monitoring** — an **email notification channel** and a **sign-in-denial
+  burst alert policy**. Cloud Monitoring's own infrastructure sends the email; Book
+  has no mail wiring and is not involved.
+
+Two design points worth keeping in view:
+
+- **Least-privilege read (not project-wide `logging.viewer`).** The log-reader SA
+  gets `roles/logging.viewAccessor` **conditioned to the audit bucket's `_AllLogs`
+  view** — true "viewer over the audit stream" only. Because only the audit sink
+  targets that bucket, the view contains audit entries and nothing else; the SA
+  cannot read the diagnostic stream or any other logs. It is **keyless** — consumers
+  impersonate it (the Linter's D58/§5.2 off-Ghost-path pattern), never a downloaded
+  key in this public repo's blast radius. **Who may assume it is a separate grant:**
+  set `LOG_READER_PRINCIPAL` (a full IAM member string, e.g. `user:you@example.com`)
+  to grant `roles/iam.serviceAccountTokenCreator` on the SA — paired with SA creation
+  the way `setup-wif.sh` pairs the deployer SA with its `workloadIdentityUser`
+  binding. It is **unset by default**: no consumer is built yet (the D91 local-model
+  agent, OFC-214), so the SA has no assumer until one is named — an announced gap,
+  not a silent one.
+- **Idempotent, and it *converges*.** Re-running reconciles every resource to the
+  script's declared values — including the alert policy (edited `DENIAL_BURST_THRESHOLD`
+  or a changed `ALERT_EMAIL` is applied to the existing policy, not skipped). The
+  file/`staging.env` is the source of truth, so a threshold tuned only in the console
+  is overwritten on the next run — tune it in `DENIAL_BURST_THRESHOLD`, not the console.
+- **D91 stops at the SA.** The script provisions the reader identity and **does
+  not** connect it to any cloud LLM. The planned log-reader agent is first-party /
+  on-premise / **local-model** only — no audit content egresses to an external LLM.
+  Wiring a cloud model to this SA would violate D91 and must be a separate, explicit
+  decision (this is the crux any future alerting-to-Slack/Claude flow, OFC-214, must
+  reconcile).
+
+For production later, rerun with the prod project/region and a prod `ALERT_EMAIL`;
+the retention horizon and least-privilege posture carry over unchanged.
+
+### Verifying observability (7a-3c) — the synthetic-denial live test
+
+The alert has a synthesizable signal today: a burst of denied sign-ins. After the
+API is deployed and has served at least one request (so the audit stream exists):
+
+1. **Fire a burst of denials.** Each `POST /api/auth/session` with a bogus
+   token/state is a denied sign-in (`401`) and emits one `auth.signin` `denied`
+   audit line. Fire more than the threshold (default **10 per 5-minute window**):
+   ```bash
+   for i in $(seq 1 15); do \
+     curl -s -o /dev/null -X POST https://pbe-book-staging.web.app/api/auth/session \
+       -H 'content-type: application/json' -d '{"token":"x","state":"y"}'; \
+   done
+   ```
+2. **Confirm the audit lines landed** (and are routed) in Logs Explorer or the CLI:
+   ```bash
+   gcloud logging read \
+     'jsonPayload.logType="audit" AND jsonPayload.action="auth.signin" AND jsonPayload.outcome="denied"' \
+     --project pbe-book-staging --freshness=10m --limit=20
+   ```
+3. **Watch the metric climb, then the alert trip.** Cloud Monitoring evaluates the
+   `book_auth_signin_denied` metric over the 5-minute window; when the summed count
+   crosses the threshold the policy fires and Cloud Monitoring emails `ALERT_EMAIL`.
+   (Metric ingestion + evaluation lags a couple of minutes — this is not instant.)
+4. **Confirm retention routing.** The same denial lines should appear when reading
+   the audit bucket's view, proving the sink routes `logType=audit` there:
+   ```bash
+   gcloud logging read 'jsonPayload.logType="audit"' \
+     --project pbe-book-staging --bucket=audit-logs --location=us-central1 \
+     --view=_AllLogs --limit=5
+   ```
+
+The **JWKS** metric (`book_auth_jwks_failure`) has no synthesizable staging signal
+(it needs Ghost's JWKS endpoint to actually fault), so it is provisioned as a metric
+without an alert for now — see the deferred watchdogs (OFC tickets) filed with 7a-3c.
+
 ## Architecture invariants the playbook encodes
 
 - Cloud Run: `--max-instances=1 --min-instances=0` — single authoritative
