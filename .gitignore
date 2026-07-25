@@ -38,3 +38,9 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Offline-restore artifacts (7b-3): the pre-restore safety snapshot, the restore
+# report and the Ghost discrepancy report. Every one of them contains the whole
+# member directory — REAL PII in a PUBLIC repo. The tool defaults here; keep the
+# ignore even if you point --out-dir elsewhere.
+restore-artifacts/

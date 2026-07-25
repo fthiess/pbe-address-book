@@ -6,6 +6,7 @@ import type { ImageStore, StoredImage } from "../data/images.js";
 export { InMemoryBannerStore } from "../data/banner.js";
 export { InMemoryBackupSource } from "../data/backup.js";
 export { InMemoryBackupStore } from "../data/backup-store.js";
+export { InMemoryRestoreTarget } from "../data/restore-executor.js";
 export { InMemoryBugReportStore } from "../data/bug-reports.js";
 import {
   INITIAL_CONCURRENCY_TOKEN,

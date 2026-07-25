@@ -1,7 +1,7 @@
 import type { Role } from "@pbe/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditLog } from "../audit/audit-log.js";
-import type { BackupData } from "../data/backup.js";
+import { BACKUP_SNAPSHOT_VERSION, type BackupData, deriveImageManifest } from "../data/backup.js";
 import { ProfileCache } from "../data/cache.js";
 import { SESSION_COOKIE } from "../identity/session-cookie.js";
 import type { IdentityProvider, Session } from "../identity/types.js";
@@ -118,15 +118,21 @@ describe("GET /api/admin/backup", () => {
     expect(denied).not.toHaveProperty("targetId");
   });
 
-  it("returns the versioned envelope of the live collections for an admin", async () => {
+  it("returns the version-2 envelope of the live collections for an admin", async () => {
+    // 7b-3 unified the envelopes: the download emits the same shape as the
+    // automated snapshot, manifest included, so everything downstream reads one
+    // thing (the question D147 parked for the session that first read both).
     const response = await get(await ctx.cookieFor(5001, "admin"));
     expect(response.statusCode).toBe(200);
     const body = response.json();
     expect(body).toMatchObject({
-      version: 1,
+      version: BACKUP_SNAPSHOT_VERSION,
       generatedAt: FIXED_NOW.toISOString(),
       collections: SAMPLE,
     });
+    // The manifest is derived from the profiles in hand, so it costs the download
+    // nothing and makes the archive a complete statement of what to restore.
+    expect(body.images).toEqual(deriveImageManifest(SAMPLE.profiles));
   });
 
   it("frames the response as a dated download attachment, no-store", async () => {

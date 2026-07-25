@@ -123,12 +123,14 @@ export function deriveImageManifest(profiles: readonly CollectionSnapshot[]): Im
 }
 
 /**
- * The envelope version of an **automated** snapshot (D63/7b-2): the manual D52
- * download's `collections` plus the `images` manifest. The manual download stays at
- * version 1 (`collections` only) for now — unifying the two envelopes is a real
- * simplification for the restore that consumes them, but it changes a shipped
- * admin feature's output, so it is left as an open call for 7b-3 (OFC-326), the
- * session that actually reads both.
+ * The snapshot envelope version: `collections` plus the `images` manifest.
+ *
+ * Both producers emit it as of 7b-3. It shipped in 7b-2 for the automated job only,
+ * with the manual D52 download left at version 1 (`collections` alone) and the
+ * unification parked for the session that would first read both (D147). That
+ * session built the restore, and it is unified here — see `routes/backup.ts`. The
+ * restore still *reads* version 1, so archives downloaded before the change stay
+ * restorable; nothing produces one any more.
  */
 export const BACKUP_SNAPSHOT_VERSION = 2;
 

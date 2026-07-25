@@ -194,7 +194,16 @@ fi
 #    visible in the ordinary Logs Explorer (which reads `_Default`) — the small
 #    double-storage is negligible at Book's volume and keeps audit lines from
 #    vanishing out of the default view. We intentionally add NO `_Default` exclusion.
-AUDIT_FILTER="jsonPayload.logType=\"audit\" AND resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${SERVICE}\""
+#    SECOND CLAUSE (7b-3): the offline restore's forensic privileged-roster entry
+#    (D101) is written by the operator tool, not by the service — the restore runs
+#    with Book DOWN, so there is no `cloud_run_revision` to attribute it to and the
+#    first clause would drop it on the floor. The tool writes it to its own log name
+#    with the same `logType:"audit"` label; matching on `logName` keeps the retained
+#    stream complete without loosening the resource guard on Book's own lines. The
+#    log name is `RESTORE_LOG_NAME` in `apps/api/src/tools/restore.ts` — the two
+#    MUST agree, or the entry is written and silently never retained.
+RESTORE_LOG="projects/${PROJECT_ID}/logs/book-restore"
+AUDIT_FILTER="jsonPayload.logType=\"audit\" AND ((resource.type=\"cloud_run_revision\" AND resource.labels.service_name=\"${SERVICE}\") OR logName=\"${RESTORE_LOG}\")"
 BUCKET_DEST="logging.googleapis.com/projects/${PROJECT_ID}/locations/${LOG_LOCATION}/buckets/${AUDIT_BUCKET}"
 if ! gcloud logging sinks describe "${AUDIT_SINK}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
   echo "==> Creating sink ${AUDIT_SINK} → ${AUDIT_BUCKET}"

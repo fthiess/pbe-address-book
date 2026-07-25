@@ -270,6 +270,97 @@ This is a backup-integrity backstop, **not** an availability monitor — it is u
 down" is a separate instrument: a Cloud Monitoring uptime check against
 `/api/health` (OFC-329).
 
+## Restoring from a backup (7b-3) — the procedure
+
+The most destructive operation in Book: it **replaces** `profiles`, `users` and
+`config` with the snapshot's contents, deleting anything the snapshot does not
+name (D63's "be exactly this snapshot", D101's offline model). Read D150/N137
+before running it in anger. The stand-up-from-nothing DR runbook — restoring into
+a *new* environment — is 7b-4 (OFC-333); this is the procedure it will call.
+
+**Preview first. Always.** A dry run validates the snapshot, computes the exact
+plan the real run would execute, and reports how the admin roster would change,
+without writing anything anywhere:
+
+```bash
+# from the repo root, after `gcloud auth application-default login`
+npm run restore --workspace apps/api -- \
+  --object latest --project pbe-book-staging --dry-run
+```
+
+If structural validation fails, **stop** — the snapshot is corrupt or tampered
+with, and every issue is printed at once so one pass tells you everything wrong
+with it. Try an older snapshot (`gcloud storage ls gs://<project>-backups/backups/`,
+then `--object backups/<name>.json`).
+
+Then the real thing, in order:
+
+1. **Take Book down** (D118 — the edge swap; every path serves the static page):
+   ```bash
+   PROJECT_ID=pbe-book-staging ./infra/maintenance-on.sh
+   ```
+   The restore refuses to run until this is in place. `--force` skips the check,
+   for an environment that has no Hosting at all.
+
+2. **Restore.** `--confirm` must repeat the project id — it is the typed
+   acknowledgment, and there is no other way to write:
+   ```bash
+   npm run restore --workspace apps/api -- \
+     --object latest --project pbe-book-staging --confirm pbe-book-staging
+   ```
+   Before its first delete the tool writes a **safety snapshot** of the current
+   data into `./restore-artifacts/`. That file is the undo, and it is the only
+   place the pre-restore admin roster survives — `--no-safety-snapshot` forfeits
+   both.
+
+3. **Force a cold start.** ⚠ **The restore is invisible until you do this.** The
+   cache hydrates only on cold start (there is no Firestore listener), so until
+   the instance is replaced Book serves — and would write against — the data that
+   is no longer there. Same image, new revision:
+   ```bash
+   gcloud run services describe pbe-book-api --region us-central1 \
+     --project pbe-book-staging --format='value(spec.template.spec.containers[0].image)'
+   gcloud run deploy pbe-book-api --image <that-image> \
+     --region us-central1 --project pbe-book-staging
+   ```
+   Confirm the `N profiles cached` line in the startup log.
+
+4. **Bring Book back up:**
+   ```bash
+   PROJECT_ID=pbe-book-staging ./infra/maintenance-off.sh
+   ```
+
+5. **Work the Ghost discrepancy report.** The tool ran the reconciliation (D99)
+   immediately and wrote `*-ghost-audit.json` into the artifacts directory — a
+   rollback can leave Ghost *ahead* of Book. Repair each row by **re-saving that
+   brother in Book**, which pushes the fix to Ghost synchronously (D96) and is
+   audited like any other edit. There is deliberately no bulk re-push (D150;
+   OFC-332).
+
+6. **Check the forensic entry landed.** The restore's privileged-roster entry
+   (D101) is written by the tool to its own Cloud Logging log and routed into the
+   3-month audit bucket:
+   ```bash
+   gcloud logging read 'logName="projects/pbe-book-staging/logs/book-restore"' \
+     --project pbe-book-staging --freshness=1h --limit=5
+   ```
+   If delivery failed, the run said so and the entry is in the artifacts — the
+   restore still succeeded; deliver it by hand.
+
+⚠ **The artifacts are the whole member directory in plaintext** — safety
+snapshot, restore report, Ghost report. `restore-artifacts/` is gitignored (this
+repo is public), but keep the files off shared storage and delete them once the
+restore is confirmed good.
+
+⚠ **On staging, a deploy undoes a restore.** Every deploy wipe-reseeds `profiles`
+and `users` (N18/N90), so a restore test there must not be followed by a merge to
+`main` until you have finished looking at it.
+
+⚠ **The log name is load-bearing.** `RESTORE_LOG_NAME` in
+`apps/api/src/tools/restore.ts` and the second clause of `AUDIT_FILTER` in
+`provision-observability.sh` must agree, or the forensic entry is written and
+silently never retained.
+
 ## Architecture invariants the playbook encodes
 
 - Cloud Run: `--max-instances=1 --min-instances=0` — single authoritative

@@ -1,13 +1,11 @@
 import type { FastifyInstance, preHandlerHookHandler } from "fastify";
 import type { AuditLog } from "../audit/audit-log.js";
 import type { BackupSource } from "../data/backup.js";
+import { buildBackupSnapshot } from "../data/backup.js";
 import { readRateLimit } from "../security/rate-limit.js";
 import { requireEffectiveAdmin } from "./privileged-support.js";
 import type { Clock } from "./profiles.js";
 import { traceId } from "./trace.js";
-
-/** The backup envelope wire version — bumped if the archive shape ever changes. */
-const BACKUP_VERSION = 1;
 
 export interface BackupRoutesConfig {
   gate: preHandlerHookHandler;
@@ -18,11 +16,24 @@ export interface BackupRoutesConfig {
 
 /**
  * `GET /api/admin/backup` — download a complete database backup (D63; API-SPEC §7),
- * **admin only** at the caller's effective role (N31). The MVP export (Phase 5a-1)
- * is the JSON of the live Firestore collections, served as a download attachment;
- * the image-object bundle and the nightly automated job are Phase 7. The admin is
- * the **custodian** of the downloaded archive (D101; USER-MANUAL). Audited
+ * **admin only** at the caller's effective role (N31). The JSON of the live
+ * Firestore collections, served as a download attachment. The admin is the
+ * **custodian** of the downloaded archive (D101; USER-MANUAL). Audited
  * (`backup.download`, D61) — a whole-database action, so no single `targetId`.
+ *
+ * ENVELOPE VERSION 2 (7b-3). This download emitted envelope **1** (`collections`
+ * alone) while the automated job emitted **2** (`collections` + the derived image
+ * manifest); D147 parked the divergence for 7b-3, the session that first reads
+ * both. It is closed here in the direction of one envelope: the download now shares
+ * `buildBackupSnapshot`, so both producers emit the same shape and everything
+ * downstream — the restore, and D102's integrity job next — reads one thing. The
+ * manifest costs nothing to add, being pure derivation from the profiles already in
+ * hand, and it makes the manual archive a *complete* statement of what to restore
+ * rather than one that silently omits which image versions belong with it. The
+ * restore still reads version 1, so archives downloaded before this change remain
+ * restorable — the custodian of an off-platform copy does not have to know a wire
+ * version changed. Nothing client-side parses the body (the SPA streams it to
+ * disk), so the change is invisible in the UI.
  */
 export function registerBackupRoutes(app: FastifyInstance, config: BackupRoutesConfig): void {
   const { gate, backupSource, audit, clock } = config;
@@ -51,7 +62,7 @@ export function registerBackupRoutes(app: FastifyInstance, config: BackupRoutesC
       return reply
         .header("Content-Disposition", `attachment; filename="${filename}"`)
         .header("Cache-Control", "no-store")
-        .send({ version: BACKUP_VERSION, generatedAt: now.toISOString(), collections });
+        .send(buildBackupSnapshot(collections, now));
     },
   );
 }

@@ -65,6 +65,17 @@ export type AuditAction =
   // endpoint triggers a read of every brother's data and a probe of it belongs in
   // the forensic stream for the same reason OFC-190 put the admin download's there.
   | "backup.auto"
+  // The offline restore (D101; 7b-3) — the **forensic privileged-roster** entry.
+  // Like `backup.auto` it has no human actor in the session sense: it is written by
+  // the operator tool, not by a request, so `actorId` is absent. Because roles are
+  // Book-internal, the Ghost reconciliation audit cannot see a role change, so a
+  // restore would otherwise alter who is an admin with no trace anywhere; this
+  // entry states the **resulting** roster (`adminIds`/`managerIds`, always
+  // computable from the restored data) and the **delta** against the prior roster
+  // when it was readable. It prevents nothing — role restore is verbatim and
+  // ungated, Forrest's call — but it makes a planted or fat-fingered admin visible
+  // for later review at zero cost.
+  | "restore"
   | "banner.set"
   | "bug.report"
   // A push of a Book mutation to the external Ghost member record (7a-3a). Emitted
@@ -168,6 +179,27 @@ export interface AuditEntry {
    * `allowNewsletterEmail`); create/delete carry no diff.
    */
   op?: GhostPushOp;
+  /**
+   * The privileged roster a `restore` leaves behind (D101) — the Constitution IDs
+   * holding `admin` and `manager` in the restored data, after the same hydration
+   * normalization Book applies on cold start. Constitution IDs, not values, so
+   * these stay within the §1.4 boundary on the same footing as `targetId`, which
+   * has always carried an id. `count` alongside them is the *usable*-admin total
+   * (D129), which is the number that answers "can anyone actually administer after
+   * this?" — a roster of three deceased admins is not two spare admins.
+   */
+  adminIds?: readonly number[];
+  managerIds?: readonly number[];
+  /**
+   * How the `admin` tier changed relative to the pre-restore roster — the plant or
+   * fat-finger this entry exists to surface. Present only when the prior state was
+   * readable (D101's own condition): after the collections are replaced it is not,
+   * so these come from the safety snapshot the restore takes before its first
+   * delete. Manager-tier movement is reported in the restore report rather than
+   * here; the audit entry carries the tier D101 names.
+   */
+  adminIdsAdded?: readonly number[];
+  adminIdsRemoved?: readonly number[];
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
   trace?: string;
 }
@@ -228,6 +260,10 @@ export class AuditLog {
       ...(entry.sessionsRevoked !== undefined ? { sessionsRevoked: entry.sessionsRevoked } : {}),
       ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
       ...(entry.op !== undefined ? { op: entry.op } : {}),
+      ...(entry.adminIds !== undefined ? { adminIds: entry.adminIds } : {}),
+      ...(entry.managerIds !== undefined ? { managerIds: entry.managerIds } : {}),
+      ...(entry.adminIdsAdded !== undefined ? { adminIdsAdded: entry.adminIdsAdded } : {}),
+      ...(entry.adminIdsRemoved !== undefined ? { adminIdsRemoved: entry.adminIdsRemoved } : {}),
       ...(entry.trace !== undefined ? { trace: entry.trace } : {}),
     });
   }
