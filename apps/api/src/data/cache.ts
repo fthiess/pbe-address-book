@@ -106,8 +106,20 @@ function buildIndexes(profiles: readonly Profile[]): {
  * privacy toggles fail **closed** (all off) when absent/corrupt, so an
  * unrecoverable record hides its contact fields from peers rather than exposing
  * them. Greenfield seed-on-deploy data never needs this; it is pure defense.
+ *
+ * **Exported for the offline restore (7b-3).** The restore's forensic
+ * privileged-roster entry (D101) states who holds a privileged role *after* the
+ * restore, which is a claim about the roster Book will actually hold once it
+ * cold-hydrates — so the tool must apply this exact normalization (an unrecognized
+ * `role` failing closed to `brother`, a missing `deceased`/`debrothered` defaulting
+ * to false) rather than reading the raw documents. A second, near-identical
+ * normalizer would let the audit entry disagree with the running system, which is
+ * the one thing a forensic record must never do.
  */
-function normalizeHydratedProfile(raw: Profile, log: (message: string) => void): Profile | null {
+export function normalizeHydratedProfile(
+  raw: Profile,
+  log: (message: string) => void,
+): Profile | null {
   if (!Number.isInteger(raw.id) || raw.id <= 0) {
     log("ProfileCache: skipping a Firestore document with no valid Constitution id");
     return null;

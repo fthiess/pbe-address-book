@@ -38,3 +38,11 @@ Thumbs.db
 # Logs
 *.log
 npm-debug.log*
+
+# Offline-restore artifacts (7b-3): the pre-restore safety snapshot (the whole
+# member directory in plaintext — REAL PII in a PUBLIC repo), the restore report,
+# the forensic audit entry and the Ghost discrepancy report. Unanchored, so it
+# matches at any depth: the tool's default out-dir is relative to the working
+# directory, and the documented invocation (`npm run restore --workspace apps/api`)
+# runs with cwd `apps/api/`, so they land in `apps/api/restore-artifacts/`.
+restore-artifacts/

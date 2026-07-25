@@ -4,6 +4,15 @@
  * to `stdout`** — no logging SDK, captured by Cloud Logging for free, following
  * the project's "progress to stdout, errors to stderr" convention.
  *
+ * ONE ACTION DOES NOT ARRIVE BY THAT TRANSPORT. The offline restore (`restore`,
+ * 7b-3/D150) runs with Book **down**, from an operator's machine, so there is no
+ * service stdout to capture: the tool builds its entry through this same
+ * {@link AuditLog} — a capturing sink instead of the stdout one, so the record
+ * shape cannot drift — and writes it to Cloud Logging itself under its own log
+ * name. The audit sink's filter carries a second clause for that log name so the
+ * entry still lands in the retained bucket. The *shape* is this file's; only the
+ * transport differs.
+ *
  * THE DISCIPLINE — identifiers and field *names*, never field *values*. An entry
  * records *that* brother #5247's `email`/`phone` changed and *who* changed them,
  * never the address itself. Logs persist under different access controls than the
@@ -65,6 +74,17 @@ export type AuditAction =
   // endpoint triggers a read of every brother's data and a probe of it belongs in
   // the forensic stream for the same reason OFC-190 put the admin download's there.
   | "backup.auto"
+  // The offline restore (D101; 7b-3) — the **forensic privileged-roster** entry.
+  // Like `backup.auto` it has no human actor in the session sense: it is written by
+  // the operator tool, not by a request, so `actorId` is absent. Because roles are
+  // Book-internal, the Ghost reconciliation audit cannot see a role change, so a
+  // restore would otherwise alter who is an admin with no trace anywhere; this
+  // entry states the **resulting** roster (`adminIds`/`managerIds`, always
+  // computable from the restored data) and the **delta** against the prior roster
+  // when it was readable. It prevents nothing — role restore is verbatim and
+  // ungated, Forrest's call — but it makes a planted or fat-fingered admin visible
+  // for later review at zero cost.
+  | "restore"
   | "banner.set"
   | "bug.report"
   // A push of a Book mutation to the external Ghost member record (7a-3a). Emitted
@@ -94,10 +114,11 @@ export interface AuditEntry {
   /**
    * The acting brother's Constitution ID (the session identity). **Optional** for
    * two distinct reasons. Some security events *precede* identity resolution — a
-   * denied or JWKS-failed sign-in (`auth.*`) has no established actor yet. And one
-   * action has no human actor at all: `backup.auto` is triggered by Cloud Scheduler
-   * (7b-2), so there is no brother to name. Every brother-initiated mutation
-   * carries it.
+   * denied or JWKS-failed sign-in (`auth.*`) has no established actor yet. And two
+   * actions have no human actor in the session sense: `backup.auto` is triggered by
+   * Cloud Scheduler (7b-2), and `restore` is written by the offline operator tool
+   * rather than by a request (7b-3) — in neither case is there a brother to name.
+   * Every brother-initiated mutation carries it.
    */
   actorId?: number;
   /**
@@ -120,7 +141,11 @@ export interface AuditEntry {
    * actor's real role is `actorId`'s; this records which projection they assumed.
    */
   targetRole?: string;
-  /** The row count of an `export` (D92) — a count, never the exported data. */
+  /**
+   * A count, never the data it counts. The row count of an `export` (D92); the
+   * snapshot's profile count on `backup.auto` (7b-2); the **usable**-admin total on
+   * a `restore` (7b-3 — see {@link adminIds}).
+   */
   count?: number;
   /**
    * The caller's effective role on an `export` (OFC-117) — a role name, within the
@@ -168,6 +193,27 @@ export interface AuditEntry {
    * `allowNewsletterEmail`); create/delete carry no diff.
    */
   op?: GhostPushOp;
+  /**
+   * The privileged roster a `restore` leaves behind (D101) — the Constitution IDs
+   * holding `admin` and `manager` in the restored data, after the same hydration
+   * normalization Book applies on cold start. Constitution IDs, not values, so
+   * these stay within the §1.4 boundary on the same footing as `targetId`, which
+   * has always carried an id. `count` alongside them is the *usable*-admin total
+   * (D129), which is the number that answers "can anyone actually administer after
+   * this?" — a roster of three deceased admins is not two spare admins.
+   */
+  adminIds?: readonly number[];
+  managerIds?: readonly number[];
+  /**
+   * How the `admin` tier changed relative to the pre-restore roster — the plant or
+   * fat-finger this entry exists to surface. Present only when the prior state was
+   * readable (D101's own condition): after the collections are replaced it is not,
+   * so these come from the safety snapshot the restore takes before its first
+   * delete. Manager-tier movement is reported in the restore report rather than
+   * here; the audit entry carries the tier D101 names.
+   */
+  adminIdsAdded?: readonly number[];
+  adminIdsRemoved?: readonly number[];
   /** The request-correlation id (`X-Cloud-Trace-Context`), when available (D99). */
   trace?: string;
 }
@@ -228,6 +274,10 @@ export class AuditLog {
       ...(entry.sessionsRevoked !== undefined ? { sessionsRevoked: entry.sessionsRevoked } : {}),
       ...(entry.reason !== undefined ? { reason: entry.reason } : {}),
       ...(entry.op !== undefined ? { op: entry.op } : {}),
+      ...(entry.adminIds !== undefined ? { adminIds: entry.adminIds } : {}),
+      ...(entry.managerIds !== undefined ? { managerIds: entry.managerIds } : {}),
+      ...(entry.adminIdsAdded !== undefined ? { adminIdsAdded: entry.adminIdsAdded } : {}),
+      ...(entry.adminIdsRemoved !== undefined ? { adminIdsRemoved: entry.adminIdsRemoved } : {}),
       ...(entry.trace !== undefined ? { trace: entry.trace } : {}),
     });
   }

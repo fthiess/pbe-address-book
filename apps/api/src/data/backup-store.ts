@@ -104,6 +104,17 @@ export interface BackupStore {
    * snapshot names are ignored.
    */
   latest(): Promise<BackupSnapshotRef | null>;
+  /**
+   * The body of one snapshot object, for the offline restore (D101; 7b-3) and the
+   * integrity job that follows it (D102). Added here rather than left to the
+   * operator's `gsutil cat` so "the latest backup" resolves through the same
+   * {@link latest} ordering the staleness check uses — an operator eyeballing
+   * timestamps under duress is exactly where the wrong object gets picked.
+   *
+   * Reading is within the runtime service account's `objectViewer` grant, and the
+   * seam still has no delete: nothing in Book removes a backup (D147).
+   */
+  read(name: string): Promise<string>;
 }
 
 /**
@@ -147,6 +158,11 @@ export class GcsBackupStore implements BackupStore {
     const [files] = await this.bucket().getFiles({ prefix: BACKUP_OBJECT_PREFIX });
     return newestSnapshot(files.map((file) => file.name));
   }
+
+  async read(name: string): Promise<string> {
+    const [body] = await this.bucket().file(name).download();
+    return body.toString("utf-8");
+  }
 }
 
 /** An in-memory {@link BackupStore} double for tests. */
@@ -170,6 +186,16 @@ export class InMemoryBackupStore implements BackupStore {
 
   async latest(): Promise<BackupSnapshotRef | null> {
     return newestSnapshot([...this.objects.keys()]);
+  }
+
+  async read(name: string): Promise<string> {
+    const body = this.objects.get(name);
+    if (body === undefined) {
+      // Mirrors GCS's 404 rather than resolving `undefined`, so a test that reads a
+      // name that was never written fails the way the real store fails.
+      throw new Error(`backup object not found: ${name}`);
+    }
+    return body;
   }
 }
 

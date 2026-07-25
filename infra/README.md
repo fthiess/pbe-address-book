@@ -270,6 +270,157 @@ This is a backup-integrity backstop, **not** an availability monitor — it is u
 down" is a separate instrument: a Cloud Monitoring uptime check against
 `/api/health` (OFC-329).
 
+## Restoring from a backup (7b-3) — the procedure
+
+The most destructive operation in Book: it **replaces** `profiles`, `users` and
+`config` with the snapshot's contents, deleting anything the snapshot does not
+name (D63's "be exactly this snapshot", D101's offline model). Read D150/N137
+before running it in anger. The stand-up-from-nothing DR runbook — restoring into
+a *new* environment — is 7b-4 (OFC-333); this is the procedure it will call.
+
+**Preview first. Always.** A dry run validates the snapshot, computes the exact
+plan the real run would execute, and reports how the admin roster would change,
+without writing anything anywhere:
+
+```bash
+# from the repo root, after `gcloud auth application-default login`
+npm run restore --workspace apps/api -- \
+  --object latest --project pbe-book-staging --dry-run
+```
+
+If structural validation fails, **stop** — the snapshot is corrupt or tampered
+with, and every issue is printed at once so one pass tells you everything wrong
+with it. Try an older snapshot (`gcloud storage ls gs://<project>-backups/backups/`,
+then `--object backups/<name>.json`).
+
+Then the real thing, in order:
+
+1. **Take Book down** (D118 — the edge swap):
+   ```bash
+   PROJECT_ID=pbe-book-staging ./infra/maintenance-on.sh
+   ```
+   The restore refuses to run until this is in place. `--force` skips the check,
+   for an environment that has no Hosting at all.
+
+   ⚠ **If `firebase login` has never been run on this machine**, the script fails
+   with "No authorized accounts". The Firebase CLI also accepts **ADC**, which
+   `gcloud auth application-default login` has already set up:
+   ```bash
+   GOOGLE_APPLICATION_CREDENTIALS="$APPDATA/gcloud/application_default_credentials.json" \
+     PROJECT_ID=pbe-book-staging ./infra/maintenance-on.sh
+   ```
+
+   ⚠ **Maintenance does not cover the site root** (OFC-334). Hosting serves a
+   matching static file in preference to the rewrite, and the maintenance config
+   publishes `apps/web/dist`, so `/` still returns the real SPA while every path
+   with no file behind it returns the maintenance page. Verify with a path that
+   cannot be a file — `curl -s https://<host>/api/health` should return the
+   maintenance HTML, not JSON. (The restore's pre-flight probes exactly that, for
+   exactly this reason.)
+
+2. **Restore.** `--confirm` must repeat the project id — it is the typed
+   acknowledgment, and there is no other way to write:
+   ```bash
+   npm run restore --workspace apps/api -- \
+     --object latest --project pbe-book-staging --confirm pbe-book-staging
+   ```
+   Before its first delete the tool writes a **safety snapshot** of the current
+   data into `./restore-artifacts/`. That file is the undo, and it is the only
+   place the pre-restore admin roster survives — `--no-safety-snapshot` forfeits
+   both.
+
+3. **Force a cold start.** ⚠ **The restore is invisible until you do this.** The
+   cache hydrates only on cold start (there is no Firestore listener), so until
+   the instance is replaced Book serves — and would write against — the data that
+   is no longer there. Same image, new revision:
+   ```bash
+   gcloud run services describe pbe-book-api --region us-central1 \
+     --project pbe-book-staging --format='value(spec.template.spec.containers[0].image)'
+   gcloud run deploy pbe-book-api --image <that-image> \
+     --region us-central1 --project pbe-book-staging
+   ```
+   Confirm the `N profiles cached` line in the startup log.
+
+4. **Bring Book back up:**
+   ```bash
+   PROJECT_ID=pbe-book-staging ./infra/maintenance-off.sh
+   ```
+
+5. **Work the Ghost discrepancy report.** The tool ran the reconciliation (D99)
+   immediately and wrote `*-ghost-audit.json` into the artifacts directory — a
+   rollback can leave Ghost *ahead* of Book. Repair each row by **re-saving that
+   brother in Book**, which pushes the fix to Ghost synchronously (D96) and is
+   audited like any other edit. There is deliberately no bulk re-push (D150;
+   OFC-332).
+
+6. **Check the forensic entry landed — in the retained bucket, not just anywhere.**
+   The restore's privileged-roster entry (D101) is written by the tool to its own
+   Cloud Logging log. Two separate things can go wrong, so check both, exactly as
+   the 7a-3c verification above splits them:
+   ```bash
+   # (a) the entry exists at all
+   gcloud logging read 'logName="projects/pbe-book-staging/logs/book-restore"' \
+     --project pbe-book-staging --freshness=1h --limit=5
+
+   # (b) the SINK ROUTED IT to the 3-month audit bucket — this is the one that
+   #     catches a stale AUDIT_FILTER, and (a) passes whether or not it did
+   gcloud logging read 'jsonPayload.action="restore"' --project pbe-book-staging \
+     --bucket=audit-logs --location=us-central1 --view=_AllLogs --limit=5
+   ```
+   If (a) is empty, delivery failed — the run said so, and the entry is in the
+   artifacts; the restore still succeeded, so deliver it by hand. If (a) has it and
+   (b) does not, the sink filter is stale: see the prerequisite below.
+
+⚠ **One-time prerequisite, per environment: re-run `provision-observability.sh`.**
+The audit sink's filter gained a second clause in 7b-3 so it routes the restore
+tool's log alongside the service's own audit lines. That script is Forrest-run, not
+deploy-run (D144) — so **an environment provisioned before 7b-3 keeps the
+one-clause filter until it is re-run**, and every forensic restore entry is written
+and then silently dropped from the retained stream. The script converges on re-run,
+so this is safe to do at any time and costs nothing if already applied:
+
+```bash
+# from the repo root, authenticated as a project owner
+PROJECT_ID=pbe-book-staging ./infra/provision-observability.sh
+```
+
+This is the same drift class PR #16 hit on the image bucket and #146 on the backup
+bucket: a script-only change that never reached the live resource. Verify with step
+6(b) above rather than assuming. *(Applied to staging on 2026-07-25 and verified by
+the 7b-3 live test — the filter was indeed still the one-clause version, so this was
+not a hypothetical.)*
+
+### The procedure, as actually exercised (7b-3, 2026-07-25)
+
+The whole loop above was run against staging for real, by manufacturing a disaster
+and undoing it — 50 profiles deleted, one record corrupted, a usable admin demoted,
+and a document added that the snapshot does not contain. The restore brought all
+1,200 profiles back, un-corrupted the record, re-promoted the admin, deleted the
+interloper as the run's single "stale" removal, reported `adminIdsAdded: [5004]` in
+the forensic entry, and logged `1200 profiles cached` on the forced cold start.
+Re-running it twice more changed nothing (0 deletes, empty delta), which is the
+idempotence a partially-failed restore depends on.
+
+Worth knowing before you do it under pressure: **the first real run found four
+defects that every offline test had passed over** — see DECISIONS **N138**. If you
+are reading this because something is on fire, the procedure works; if you are
+reading it to plan 7b-4, N138 is the argument for why that job needs to run the
+real thing on a schedule rather than a simulation of it.
+
+⚠ **The artifacts are the whole member directory in plaintext** — safety
+snapshot, restore report, Ghost report. `restore-artifacts/` is gitignored (this
+repo is public), but keep the files off shared storage and delete them once the
+restore is confirmed good.
+
+⚠ **On staging, a deploy undoes a restore.** Every deploy wipe-reseeds `profiles`
+and `users` (N18/N90), so a restore test there must not be followed by a merge to
+`main` until you have finished looking at it.
+
+⚠ **The log name is load-bearing.** `RESTORE_LOG_NAME` in
+`apps/api/src/tools/restore.ts` and the second clause of `AUDIT_FILTER` in
+`provision-observability.sh` must agree, or the forensic entry is written and
+silently never retained.
+
 ## Architecture invariants the playbook encodes
 
 - Cloud Run: `--max-instances=1 --min-instances=0` — single authoritative
