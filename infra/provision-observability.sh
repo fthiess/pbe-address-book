@@ -90,6 +90,20 @@ LOG_READER_PRINCIPAL="${LOG_READER_PRINCIPAL:-}"
 # the JWKS metric.
 METRIC_DENIED="${METRIC_DENIED:-book_auth_signin_denied}"
 METRIC_JWKS="${METRIC_JWKS:-book_auth_jwks_failure}"
+# The nightly backup's signals (D63/D102; 7b-2).
+#   - book_backup_stale   Book's own PRE-FLIGHT staleness line: the job ran, read
+#                         the bucket, and found the newest snapshot older than its
+#                         threshold. Emitted before the export, so it survives a
+#                         run that is about to be killed (the whole reason the
+#                         check is pre-flight rather than post-hoc).
+#   - book_backup_failed  the job ran and produced no snapshot.
+#   - book_backup_ok      successful runs. Powers dashboards, and is the series a
+#                         metric-ABSENCE policy would watch — see the DEFERRED
+#                         note at the end of this file for why that policy is not
+#                         provisioned yet (23.5h cap vs a 24h schedule).
+METRIC_BACKUP_STALE="${METRIC_BACKUP_STALE:-book_backup_stale}"
+METRIC_BACKUP_FAILED="${METRIC_BACKUP_FAILED:-book_backup_failed}"
+METRIC_BACKUP_OK="${METRIC_BACKUP_OK:-book_backup_ok}"
 
 # Alerting. The notification channel is an email channel Cloud Monitoring delivers
 # itself. DENIAL_BURST_THRESHOLD is the count of denials per 5-minute window above
@@ -103,6 +117,10 @@ ALERT_EMAIL="${ALERT_EMAIL:-}"
 ALERT_CHANNEL_NAME="${ALERT_CHANNEL_NAME:-Book staging alerts (email)}"
 DENIAL_POLICY_NAME="${DENIAL_POLICY_NAME:-Book — sign-in denial burst (staging)}"
 DENIAL_BURST_THRESHOLD="${DENIAL_BURST_THRESHOLD:-10}"
+# One policy, two conditions (OR): the backup is stale, or a run failed outright.
+# Both are counts of Book's own log lines, so they fire on presence — no
+# missing-data semantics involved.
+BACKUP_POLICY_NAME="${BACKUP_POLICY_NAME:-Book — nightly backup problem (staging)}"
 
 # A freshly-created service account is not immediately visible to the IAM policy
 # system, so a binding that references it can fail with "does not exist" for several
@@ -204,6 +222,20 @@ create_or_update_metric() {
 create_or_update_metric "${METRIC_DENIED}" \
   "Book: auth.signin denials (7a-3c burst-alert source)" \
   "jsonPayload.logType=\"audit\" AND jsonPayload.action=\"auth.signin\" AND jsonPayload.outcome=\"denied\" AND resource.labels.service_name=\"${SERVICE}\""
+# The nightly backup (7b-2). The staleness line is on the DIAGNOSTIC stream (it is
+# an operational fault, not a mutation), matched on its constant `message` — the
+# constant is exported from `routes/backup-job.ts` as BACKUP_STALE_MESSAGE, so if
+# it is ever reworded, reword it here in the same change or this metric silently
+# counts nothing. The other two are audit-stream outcomes of `backup.auto`.
+create_or_update_metric "${METRIC_BACKUP_STALE}" \
+  "Book: nightly backup pre-flight found the history stale (D63/D102)" \
+  "jsonPayload.logType=\"diagnostic\" AND jsonPayload.message=\"backup staleness threshold exceeded\" AND resource.labels.service_name=\"${SERVICE}\""
+create_or_update_metric "${METRIC_BACKUP_FAILED}" \
+  "Book: a nightly backup run produced no snapshot (D63/D102)" \
+  "jsonPayload.logType=\"audit\" AND jsonPayload.action=\"backup.auto\" AND jsonPayload.outcome=\"error\" AND resource.labels.service_name=\"${SERVICE}\""
+create_or_update_metric "${METRIC_BACKUP_OK}" \
+  "Book: a nightly backup run wrote a snapshot (D63/D102)" \
+  "jsonPayload.logType=\"audit\" AND jsonPayload.action=\"backup.auto\" AND jsonPayload.outcome=\"ok\" AND resource.labels.service_name=\"${SERVICE}\""
 # A JWKS transport fault (auth.jwks) — a Ghost-side availability problem, kept OUT of
 # the denial metric on purpose. Metric now; its alert is deferred (no synthesizable
 # signal on staging — see the DEFERRED note).
@@ -339,14 +371,132 @@ else
 fi
 rm -f "${POLICY_FILE}"
 
+# 7. The nightly-backup alert (D63/D102; 7b-2). One policy, two OR'd conditions —
+#    "the history is stale" and "a run failed" — because both mean the same thing
+#    to the recipient (the backup needs a human) and two separate emails for one
+#    incident is noise. Same create/converge shape as the denial policy above.
+#
+#    ⚠ THRESHOLD IS `> 0`, i.e. any occurrence. These are not burst signals like
+#    sign-in denials; one stale night is already the RPO promise broken, and the
+#    job only runs once a day, so there is no volume to average over.
+#
+#    ⚠ EXPECT THIS TO FIRE THE FIRST TIME A PAUSED STAGING SCHEDULE IS RESUMED.
+#    Staging's job sits idle between test sessions, so its first run back legitimately
+#    finds a stale history. That is the alert working, not a misconfiguration — do
+#    not tune it away.
+BACKUP_POLICY_MATCHES="$(gcloud monitoring policies list \
+  --project "${PROJECT_ID}" \
+  --filter="displayName=\"${BACKUP_POLICY_NAME}\"" \
+  --format="value(name)")"
+EXISTING_BACKUP_POLICY="$(printf '%s\n' "${BACKUP_POLICY_MATCHES}" | head -n1)"
+BACKUP_POLICY_FILE="$(mktemp)"
+cat >"${BACKUP_POLICY_FILE}" <<YAML
+displayName: "${BACKUP_POLICY_NAME}"
+combiner: OR
+conditions:
+  - displayName: "backup history is stale (pre-flight check)"
+    conditionThreshold:
+      filter: 'metric.type="logging.googleapis.com/user/${METRIC_BACKUP_STALE}" AND resource.type="cloud_run_revision"'
+      aggregations:
+        - alignmentPeriod: 3600s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: 0
+      duration: 0s
+      trigger:
+        count: 1
+  - displayName: "a backup run produced no snapshot"
+    conditionThreshold:
+      filter: 'metric.type="logging.googleapis.com/user/${METRIC_BACKUP_FAILED}" AND resource.type="cloud_run_revision"'
+      aggregations:
+        - alignmentPeriod: 3600s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: 0
+      duration: 0s
+      trigger:
+        count: 1
+alertStrategy:
+  # Longer than the denial policy's 30 min: a backup incident is resolved by a
+  # human doing something, and the next signal is up to a day away, so an
+  # auto-close that beats the next run would hide an unresolved problem.
+  autoClose: 172800s
+YAML
+if [[ -z "${EXISTING_BACKUP_POLICY}" ]]; then
+  echo "==> Creating alert policy: ${BACKUP_POLICY_NAME} → ${ALERT_EMAIL}"
+  gcloud monitoring policies create \
+    --project "${PROJECT_ID}" \
+    --policy-from-file="${BACKUP_POLICY_FILE}" \
+    --notification-channels="${CHANNEL_NAME}"
+else
+  echo "==> Converging alert policy ${EXISTING_BACKUP_POLICY} → ${ALERT_EMAIL}"
+  gcloud monitoring policies update "${EXISTING_BACKUP_POLICY}" \
+    --project "${PROJECT_ID}" \
+    --policy-from-file="${BACKUP_POLICY_FILE}" \
+    --set-notification-channels="${CHANNEL_NAME}"
+fi
+rm -f "${BACKUP_POLICY_FILE}"
+
 echo
 echo "==> Done. Provisioned:"
 echo "    audit bucket : ${AUDIT_BUCKET} (${LOG_LOCATION}, ${AUDIT_RETENTION_DAYS}d retention)"
 echo "    sink         : ${AUDIT_SINK}  [filter: logType=audit, ${SERVICE}]"
-echo "    metrics      : ${METRIC_DENIED}, ${METRIC_JWKS}"
+echo "    metrics      : ${METRIC_DENIED}, ${METRIC_JWKS},"
+echo "                   ${METRIC_BACKUP_STALE}, ${METRIC_BACKUP_FAILED}, ${METRIC_BACKUP_OK}"
 echo "    log-reader SA: ${READER_SA_EMAIL}  (keyless; view-scoped; D91 local-model only)"
 echo "    reader assumer: ${LOG_READER_PRINCIPAL:-<none — set LOG_READER_PRINCIPAL to grant impersonation>}"
-echo "    alert        : \"${DENIAL_POLICY_NAME}\" → ${ALERT_EMAIL}"
+echo "    alerts       : \"${DENIAL_POLICY_NAME}\" → ${ALERT_EMAIL}"
+echo "                   \"${BACKUP_POLICY_NAME}\" → ${ALERT_EMAIL}"
 echo
 echo "    LIVE TEST (fire synthetic denials, watch the alert trip) — see infra/README.md,"
 echo "    section \"Verifying observability (7a-3c)\"."
+echo
+echo "    NOT PROVISIONED — the \"backup never ran at all\" backstop. Cloud Monitoring's"
+echo "    metric-absence condition caps its trigger window at 23.5h, which is SHORTER"
+echo "    than the 24h gap between successful daily runs, so such a policy would fire"
+echo "    every day on a perfectly healthy schedule. See the DEFERRED note in this file."
+
+# ---------------------------------------------------------------------------
+# DEFERRED — signals this script deliberately does NOT alert on yet, and why.
+# (Referenced from the header and from the metric definitions above.)
+#
+# 1. auth.jwks failures (7a-3c). The metric exists; no alert. Ghost-staging does
+#    not produce a synthesizable JWKS outage, so a threshold would be guesswork.
+#    Tracked in OFC-310 item 4, which is independently doable.
+#
+# 2. The D99 daily health-check watchdogs (OFC-310 items 1–3). Blocked on the D99
+#    health-check job itself, which is unbuilt — there is no signal to alert on.
+#
+# 3. "The nightly backup never ran at all" (7b-2). This is the R21 failure D102
+#    names, and it is the one thing Book's own pre-flight staleness check cannot
+#    see, because that check only runs if Book runs: a paused or deleted Scheduler
+#    job, lapsed billing, or a deleted service leaves it unexecuted and silent.
+#
+#    The natural instrument is a metric-ABSENCE policy over ${METRIC_BACKUP_OK}.
+#    It does not work at a daily cadence, for a reason that is arithmetic rather
+#    than configuration: **Cloud Monitoring caps a metric-absence trigger window at
+#    23.5 hours** (Monitoring docs, "Create alerting policies on metric absence"),
+#    while successful daily runs are 24 hours apart. Any such policy would go off
+#    every single day on a perfectly healthy schedule — the worst kind of alert,
+#    the kind that trains its recipient to ignore it. (A second, independent
+#    obstacle: absence conditions require the series to have produced at least one
+#    point after the policy was installed, so the policy is inert on a fresh
+#    environment until the first successful backup arms it.)
+#
+#    Three ways out, none of them free, none chosen here:
+#      (a) Run the backup TWICE daily. Successful points land 12h apart, so a ~20h
+#          absence window fires only after two consecutive misses. Costs one extra
+#          small object per day (~a cent a month at Book's size) and improves the
+#          effective RPO from ~24h to ~12h, better than D102 promises. The
+#          simplest fix, and it makes the backstop a plain absence policy.
+#      (b) Alert on Cloud Scheduler's own job metrics (failed attempt counts).
+#          Catches "the job ran and got a non-2xx" — but NOT a paused or deleted
+#          job, which emits nothing, so it does not actually close this gap.
+#      (c) Leave it to 7b-4. D102's ephemeral integrity job restores "the latest
+#          backup" on a weekly cadence and would notice a ten-day-old snapshot on
+#          its own. Correct, but slower, and it leaves the gap open through 7b-3.
+#
+#    Forrest's call — see the 7b-2 session notes / OFC-327.
+# ---------------------------------------------------------------------------

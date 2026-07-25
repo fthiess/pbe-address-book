@@ -1,21 +1,24 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { RosterUnavailableError, type RosterVerifier } from "../identity/google-oidc.js";
+import {
+  ServiceIdentityUnavailableError,
+  type ServiceIdentityVerifier,
+} from "../identity/google-oidc.js";
 import { ROSTER_CONTRACT_VERSION, registerRosterRoutes } from "./roster.js";
 
-const acceptAll: RosterVerifier = { verify: async () => {} };
-const rejectAll: RosterVerifier = {
+const acceptAll: ServiceIdentityVerifier = { verify: async () => {} };
+const rejectAll: ServiceIdentityVerifier = {
   verify: async () => {
     throw new Error("nope");
   },
 };
-const unavailable: RosterVerifier = {
+const unavailable: ServiceIdentityVerifier = {
   verify: async () => {
-    throw new RosterUnavailableError("jwks unreachable");
+    throw new ServiceIdentityUnavailableError("jwks unreachable");
   },
 };
 
-async function build(verifier?: RosterVerifier): Promise<FastifyInstance> {
+async function build(verifier?: ServiceIdentityVerifier): Promise<FastifyInstance> {
   const app = Fastify({ logger: false });
   registerRosterRoutes(app, { verifier });
   await app.ready();

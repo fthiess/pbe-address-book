@@ -9,17 +9,25 @@ import {
 } from "./jwt-verify.js";
 
 /**
- * Google service-account OIDC verification for the Linter roster endpoint
- * (DECISIONS D58/D78; ENGINEERING-DESIGN §5.2). The Linter authenticates with a
- * short-lived **Google-signed** identity token (not the Ghost session cookie); the
- * roster endpoint verifies it **in-code**, requiring `iss` = Google, `aud` = Book,
- * **and `sub` = the exact pinned Linter service account** — the subject pin is
- * essential, since issuer + audience alone would accept any Google-issued token for
- * that audience.
+ * Google service-account OIDC verification — Book's auth path for **callers that
+ * are services, not browsers** (DECISIONS D58/D78; ENGINEERING-DESIGN §5.2). Such a
+ * caller authenticates with a short-lived **Google-signed** identity token (not the
+ * Ghost session cookie), and the route verifies it **in-code**, requiring
+ * `iss` = Google, `aud` = Book, **and `sub` = the exact pinned service account** —
+ * the subject pin is essential, since issuer + audience alone would accept any
+ * Google-issued token for that audience.
+ *
+ * TWO CONSUMERS, ONE VERIFIER. The pattern was established by the PBE News Linter's
+ * roster feed (`GET /api/roster`, D58/D78) and is now also how Cloud Scheduler
+ * authenticates the nightly backup job (`POST /api/internal/backup`, D63/7b-2).
+ * They differ only in *which* service account is pinned and which audience is
+ * expected — both configured per instance — so this module is deliberately generic
+ * and names nothing after either caller. A second copy of these claim checks is
+ * exactly the drift OFC-225 consolidated away.
  *
  * The signature + algorithm pin + kid-resolve are the **shared** {@link verifyRsJwt}
  * skeleton (OFC-225), the same one the Ghost members check uses, so the security-
- * critical logic cannot drift between the two auth paths. Only the registered-claim
+ * critical logic cannot drift between the auth paths. Only the registered-claim
  * checks live here. Google signs identity tokens with RS256 over 2048-bit keys.
  */
 
@@ -41,17 +49,23 @@ export function createGoogleKeyResolver(jwksUrl: string = GOOGLE_JWKS_URL): Goog
   };
 }
 
-/** The seam the roster route depends on: verify a bearer token or throw. */
-export interface RosterVerifier {
+/** The seam a service-authenticated route depends on: verify a bearer token or throw. */
+export interface ServiceIdentityVerifier {
   /** Resolve if the token is a valid, subject-pinned Google identity token; else throw. */
   verify(token: string): Promise<void>;
 }
 
 export interface GoogleOidcVerifierDeps {
   keyResolver: GoogleKeyResolver;
-  /** Expected `aud` — Book's roster audience. */
+  /** Expected `aud` — the audience this Book endpoint was configured with. */
   audience: string;
-  /** Expected `sub` — the exact Linter service account (the essential pin, D78). */
+  /**
+   * Expected `sub` — the exact calling service account (the essential pin, D78).
+   *
+   * ⚠ A Google OIDC token's `sub` is the service account's **numeric unique ID**,
+   * not its email — `gcloud iam service-accounts describe SA --format='value(uniqueId)'`.
+   * Configuring the email here fails every token with "unexpected subject".
+   */
   subject: string;
   /** Accepted issuers; defaults to Google's two canonical forms. */
   issuers?: string[];
@@ -59,28 +73,28 @@ export interface GoogleOidcVerifierDeps {
   algorithms?: string[];
 }
 
-/** Thrown on a genuine verification failure (bad token); the roster route maps it to `401`. */
-export class RosterAuthError extends Error {
+/** Thrown on a genuine verification failure (bad token); routes map it to `401`. */
+export class ServiceIdentityAuthError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "RosterAuthError";
+    this.name = "ServiceIdentityAuthError";
   }
 }
 
 /**
  * Thrown on a **transient** failure to resolve Google's signing key (JWKS
- * unreachable / rate-limited); the roster route maps it to a retryable `503` so the
- * Linter backs off and retries rather than treating a valid token as permanently
- * rejected (OFC-223).
+ * unreachable / rate-limited); routes map it to a retryable `503` so the caller
+ * backs off and retries rather than treating a valid token as permanently rejected
+ * (OFC-223).
  */
-export class RosterUnavailableError extends Error {
+export class ServiceIdentityUnavailableError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "RosterUnavailableError";
+    this.name = "ServiceIdentityUnavailableError";
   }
 }
 
-export class GoogleOidcVerifier implements RosterVerifier {
+export class GoogleOidcVerifier implements ServiceIdentityVerifier {
   constructor(private readonly deps: GoogleOidcVerifierDeps) {}
 
   async verify(token: string): Promise<void> {
@@ -94,10 +108,10 @@ export class GoogleOidcVerifier implements RosterVerifier {
       }));
     } catch (error) {
       if (error instanceof JwtKeyResolutionError) {
-        throw new RosterUnavailableError(error.message);
+        throw new ServiceIdentityUnavailableError(error.message);
       }
       if (error instanceof JwtVerifyError) {
-        throw new RosterAuthError(error.message);
+        throw new ServiceIdentityAuthError(error.message);
       }
       throw error;
     }
@@ -105,24 +119,24 @@ export class GoogleOidcVerifier implements RosterVerifier {
     // Registered-claim checks: iss / aud / sub (the pin) / exp / nbf.
     const issuers = this.deps.issuers ?? GOOGLE_ISSUERS;
     if (typeof payload.iss !== "string" || !issuers.includes(payload.iss)) {
-      throw new RosterAuthError("unexpected issuer");
+      throw new ServiceIdentityAuthError("unexpected issuer");
     }
     const aud = payload.aud;
     const audMatches = Array.isArray(aud)
       ? aud.includes(this.deps.audience)
       : aud === this.deps.audience;
     if (!audMatches) {
-      throw new RosterAuthError("unexpected audience");
+      throw new ServiceIdentityAuthError("unexpected audience");
     }
     if (payload.sub !== this.deps.subject) {
-      throw new RosterAuthError("unexpected subject");
+      throw new ServiceIdentityAuthError("unexpected subject");
     }
     const nowSec = Date.now() / 1000;
     if (typeof payload.exp !== "number" || payload.exp + JWT_CLOCK_SKEW_SEC < nowSec) {
-      throw new RosterAuthError("token expired");
+      throw new ServiceIdentityAuthError("token expired");
     }
     if (typeof payload.nbf === "number" && payload.nbf - JWT_CLOCK_SKEW_SEC > nowSec) {
-      throw new RosterAuthError("token not yet valid");
+      throw new ServiceIdentityAuthError("token not yet valid");
     }
   }
 }

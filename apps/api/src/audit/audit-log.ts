@@ -56,6 +56,15 @@ export type AuditAction =
   | "role.change"
   | "export"
   | "backup.download"
+  // The nightly automated backup (D63/D102; 7b-2). The one audited action with **no
+  // human actor at all** — Cloud Scheduler triggers it, so `actorId` is absent by
+  // nature rather than because identity had not yet resolved. `ok` carries the
+  // snapshot's profile `count`; `error` records that the job ran and produced no
+  // snapshot (a continuity fact, which is why it belongs in the 3-month-retained
+  // stream, not only in diagnostics); `denied` records a refused call, because this
+  // endpoint triggers a read of every brother's data and a probe of it belongs in
+  // the forensic stream for the same reason OFC-190 put the admin download's there.
+  | "backup.auto"
   | "banner.set"
   | "bug.report"
   // A push of a Book mutation to the external Ghost member record (7a-3a). Emitted
@@ -83,10 +92,12 @@ export type AuditOutcome = "ok" | "denied" | "error";
 export interface AuditEntry {
   action: AuditAction;
   /**
-   * The acting brother's Constitution ID (the session identity). **Optional**
-   * because some security events precede identity resolution: a denied or
-   * JWKS-failed sign-in (`auth.*`) has no established actor. Every mutation action
-   * carries it; only pre-authentication events omit it.
+   * The acting brother's Constitution ID (the session identity). **Optional** for
+   * two distinct reasons. Some security events *precede* identity resolution — a
+   * denied or JWKS-failed sign-in (`auth.*`) has no established actor yet. And one
+   * action has no human actor at all: `backup.auto` is triggered by Cloud Scheduler
+   * (7b-2), so there is no brother to name. Every brother-initiated mutation
+   * carries it.
    */
   actorId?: number;
   /**

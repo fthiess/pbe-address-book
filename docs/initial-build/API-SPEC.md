@@ -242,13 +242,13 @@ These are admin-only. The bulk-operations surface was reshaped in the resolution
 
 | Endpoint | Method | Status | Purpose |
 |---|---|---|---|
-| `/api/admin/backup` | GET | MVP | Download a full database backup (text + images); a daily automated backup also runs server-side (decision D63). The admin is **custodian** of the downloaded archive (decision D101; USER-MANUAL). |
+| `/api/admin/backup` | GET | MVP | Download a full database backup (text + images); the daily automated backup runs separately, over `POST /api/internal/backup` (§8.2, decision D63). The admin is **custodian** of the downloaded archive (decision D101; USER-MANUAL). |
 | `/api/admin/ghost-audit` | GET | MVP | Run the **Book / Ghost alignment audit** (decisions D55/D99/N69) and return the discrepancy report (shape below). **Read-only into Book in every category** (N69, amending D103 — it resolves nothing). The same audit runs on a schedule inside the consolidated health-check job (decision D99). Renamed from `POST /api/admin/sync-ghost` (read-only ⇒ `GET`; nothing is "synced"). |
 | `/api/admin/bounce-report` | GET | MVP | Run the **email-bounce report** and return per-brother bounce aggregates (decision D120, as amended by N69 — its own endpoint, not riding the audit). Reuses the `export-bounces.js` join. |
 | `/api/admin/import` | — | **deferred (post-MVP)** | Online bulk-CSV upsert is **removed from MVP** (no online bulk-write path, decision D100, amending D52/D68); a MITAA-specific import is backlogged. Any rare bulk reconciliation is an **offline** operator task, not an online endpoint. |
 | `/api/admin/restore` | — | **offline (no API endpoint)** | Restore is an **offline maintenance event** (decisions D100/D101): Book goes hard-down, the three collections are replaced from a **structurally-validated** backup (cycle/ID-uniqueness/email-uniqueness/reference-integrity), and the single instance cold-hydrates on restart. Operator tooling, not an online endpoint. |
 
-**Backup envelope (`GET /api/admin/backup` response).** As shipped in Phase 5a-1 the download is **JSON-only** — the collections snapshot — served as a dated download attachment (`Content-Disposition: attachment; filename="book-backup-YYYY-MM-DD.json"`, `no-store`) and audited as `backup.download` (decisions D63/N58). The body is `{ "version": 1, "generatedAt": "<ISO>", "collections": { "profiles": [{ "id": "<docId>", "data": { … } }], "users": [ … ], "config": [ … ] } }` — each collection is an array of `{ id, data }` documents so a restore is a faithful, key-preserving replay. The `bugReports` collection (decision D121) is **not** in the backup: it is transient triage data an admin clears (like `sessions`/`authNonces`), not part of the durable directory a restore reconstructs. The **image-object bundle** (the zipped headshots/thumbnails, decision D63) and the **nightly automated backup** are Phase 7 (ENGINEERING-DESIGN §6.3), not this endpoint.
+**Backup envelope (`GET /api/admin/backup` response).** As shipped in Phase 5a-1 the download is **JSON-only** — the collections snapshot — served as a dated download attachment (`Content-Disposition: attachment; filename="book-backup-YYYY-MM-DD.json"`, `no-store`) and audited as `backup.download` (decisions D63/N58). The body is `{ "version": 1, "generatedAt": "<ISO>", "collections": { "profiles": [{ "id": "<docId>", "data": { … } }], "users": [ … ], "config": [ … ] } }` — each collection is an array of `{ id, data }` documents so a restore is a faithful, key-preserving replay. The `bugReports` collection (decision D121) is **not** in the backup: it is transient triage data an admin clears (like `sessions`/`authNonces`), not part of the durable directory a restore reconstructs. The **image-object bundle** (the zipped headshots/thumbnails, decision D63) remains outstanding. The **nightly automated backup** shipped in Phase 7b-2 as its own service-authenticated endpoint — `POST /api/internal/backup`, §8.2 — not as a mode of this one.
 
 **Reconciliation audit — discrepancy-report shape (`GET /api/admin/ghost-audit` response).** The audit (decisions D55/D99) is **read-only into Book in every category** — decision N69 removed D103's scoped newsletter write-back, so it reports differences and **changes nothing**. It returns a list of discrepancies, each tagged by category; the SPA formats it into a Markdown download (nothing is rendered in the UI — N69):
 
@@ -270,9 +270,13 @@ These are admin-only. The bulk-operations surface was reshaped in the resolution
 
 Both endpoints are admin-only at effective role (N31), `no-store`, and fail closed with **`503 { "error": "ghost_unconfigured" }`** when the Ghost Admin API is not configured, or **`502 { "error": "ghost_read_failed" }`** when a Ghost read fails.
 
-## 8. First-party service access: the Linter roster
+## 8. Service-authenticated endpoints (non-browser callers)
 
-The one non-browser, first-party consumer — the **PBE News Linter** — reads a names-and-years roster over a dedicated endpoint authenticated **not** by the Book session cookie but by a **Google service-account identity token** (decision D58; ENGINEERING-DESIGN §5.2). This is the single exception to §1.2's cookie-only rule. It is read-only and exposes no contact or restricted data.
+Two endpoints are called by **services rather than browsers**, and are authenticated **not** by the Book session cookie but by a **Google service-account identity token** (decision D58; ENGINEERING-DESIGN §5.2). These are the exceptions to §1.2's cookie-only rule. Both verify the token in-code against Google's JWKS requiring **issuer = Google**, **audience = the value that deployment was configured with**, **and subject = one exact pinned service account** — the subject pin is essential, since issuer + audience alone would accept *any* Google-issued token for that audience. Both share one verifier implementation (`identity/google-oidc.ts`); they differ only in which account is pinned. The Book session cookie is **not** accepted on either, and a service-account token is **not** accepted anywhere else.
+
+> **The pinned `sub` is the service account's numeric unique ID, not its email** — that is what Google puts in an OIDC token's `sub`. Configuring the email rejects every token.
+
+### 8.1 The Linter roster
 
 ### `GET /api/roster`
 - **Auth:** a GCP **service-account OIDC identity token** in `Authorization: Bearer <token>`, **verified in-code against Google's JWKS** requiring **issuer = Google**, **audience = Book**, **and subject = the exact `linter` service account** (decision D78, amending D58). The earlier "Cloud Run front-door IAM" option is **dropped**: `run.invoker` is enforced per-*service*, and this same service hosts the **unauthenticated** sign-in endpoint (`/api/auth/session`), so requiring IAM would also lock out sign-in and `/api/profiles`. The **subject pin is essential** — issuer+audience alone would accept *any* Google-issued token for that audience. The verification mirrors the Ghost-JWKS check, with Google as a second trusted issuer; the `linter` SA stays least-privileged. The Book session cookie is **not** accepted here, and this service-account token is **not** accepted on any other endpoint.
@@ -288,6 +292,28 @@ The one non-browser, first-party consumer — the **PBE News Linter** — reads 
   (Here `middleName`, `fullLegalName`, and `mugName` are simply absent for this brother.)
 - **MVP scope — stub only.** For the initial release this endpoint is implemented as a **stub that returns no roster data** — it authenticates the caller and responds `200 { "contractVersion": 1, "roster": [] }`, establishing the contract and the auth path so the Linter project can build against them, but it serves real roster data only once the Linter integration is actually wired up (decision D58).
 - **Errors:** `401` / `403` if the service-account token is missing, invalid, wrong-audience, or not an authorized invoker.
+
+### 8.2 The nightly automated backup
+
+Cloud Scheduler triggers the daily whole-database backup over this endpoint (decision D63; DR posture D102; ENGINEERING-DESIGN §6.3). It is a **trigger, not a data surface** — it returns counts, never records.
+
+#### `POST /api/internal/backup`
+- **Auth:** a GCP **service-account OIDC identity token** in `Authorization: Bearer <token>`, subject-pinned to the **backup-scheduler** service account (a different account from the Linter's, verified by the same code). Book's in-code check is the *whole* gate: the Cloud Run service is `--allow-unauthenticated` because Firebase Hosting fronts it (decision D126), so platform IAM is not enforcing anything here.
+- **Why an endpoint at all:** Book runs `max-instances=1` with scale-to-zero (decision D83), so there is usually no process alive to hold a timer — an in-process cron would never fire. The schedule has to come from outside. (Cloud Scheduler reaches Cloud Run on the `run.app` URL, not a custom domain, so the job targets the service directly rather than the Hosting origin.)
+- **Behavior:** (1) a **pre-flight staleness check** — read the newest snapshot in the backup bucket and, if it is older than 36 hours, emit an alertable diagnostic line; (2) export the three durable collections; (3) derive the image-version manifest; (4) write one timestamped snapshot object. Audited as `backup.auto` (`ok` carries the profile count; `error` records that a run produced no snapshot; `denied` records a refused call, since this endpoint triggers a read of every brother's data).
+- **The staleness check never blocks the backup.** It runs *before* the export deliberately: a post-hoc failure record only exists if the failure path gets to run, and an OOM or a killed container writes nothing — so an after-the-fact detector goes quiet exactly when the thing it watches is dying. A stale history is a reason to take today's snapshot, not to skip it. On the first-ever run there is no prior snapshot; that takes a distinct informational path, so a new environment does not alarm on day one.
+- **Response 200:** `{ "object": "backups/2026-07-25T03-10-00-000Z.json", "generatedAt": "<ISO>", "profiles": 1199, "images": 412 }`
+- **Snapshot object (version 2)** — written to `gs://<BACKUP_BUCKET>/backups/<ISO-8601 with `:`/`.` as `-`>.json`, plain JSON:
+  ```json
+  { "version": 2, "generatedAt": "<ISO>",
+    "collections": { "profiles": [ … ], "users": [ … ], "config": [ … ] },
+    "images": [ { "id": 5247, "version": "<headshotVersion>",
+                  "headshotKey": "headshots/5247/<v>.webp",
+                  "thumbnailKey": "thumbnails/5247/<v>.webp" } ] }
+  ```
+  `collections` is exactly the §7 download's shape. `images` is the **image-version manifest** (decision D63): images are never copied into a backup — GCS object versioning preserves them (decision D8) — so the manifest is how a restore pins the right object versions. It is derived purely from the profiles snapshot, since the object key embeds `headshotVersion`; verifying that those objects still exist is the integrity job's business (decision D102), not the backup's. The manual §7 download remains at `version: 1` (`collections` only); whether to unify the two envelopes is an open call for the restore work that consumes them.
+- **Object names sort lexicographically by time**, which is how "the latest backup" is identified — there is deliberately no `latest.json` pointer to drift, and no "last backup at" record outside the bucket.
+- **Errors:** `401` (missing or invalid token — audited), `503` (not configured for this deployment, or a transient Google-JWKS failure — retryable), `500` (the export or the write failed; audited as `backup.auto` `error`).
 
 ## 9. Deferred: external / third-party API
 
