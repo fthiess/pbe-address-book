@@ -166,6 +166,34 @@ jobs:
           printf '%s' '{ "rule": [ { "action": { "type": "Delete" }, "condition": { "daysSinceNoncurrentTime": 90 } } ] }' > /tmp/img-lifecycle.json
           gcloud storage buckets update "gs://$IMAGE_BUCKET" --lifecycle-file=/tmp/img-lifecycle.json
 
+      # The same reconciliation for the BACKUP bucket (7b-2, D147/D101), for the
+      # same reason and by the same precedent: its IAM and lifecycle also live only
+      # in infra/provision-staging.sh, so without this a future change to either
+      # would sit in the script and never reach the live bucket — exactly the 4c-1
+      # drift above, whose symptom here would be far quieter than 500ing uploads
+      # (backups would keep succeeding while silently over-retaining PII, or the
+      # runtime SA would lose write access and the job would start failing).
+      #
+      # ⚠ objectCreator + objectViewer, never objectAdmin: Book must be unable to
+      # DELETE or OVERWRITE a snapshot, so a compromised API cannot destroy backup
+      # history (D101 "backup-as-crown-jewels"). If this line ever grows to
+      # objectAdmin to "fix" something, that property is gone.
+      #
+      # Guarded on the bucket existing: a deploy must not fail merely because a
+      # freshly-cloned environment has not been provisioned yet.
+      - name: Reconcile backup bucket (IAM + lifecycle, D147/D101)
+        run: |
+          if ! gcloud storage buckets describe "gs://$BACKUP_BUCKET" >/dev/null 2>&1; then
+            echo "gs://$BACKUP_BUCKET does not exist yet — run infra/provision-staging.sh. Skipping."
+            exit 0
+          fi
+          gcloud storage buckets add-iam-policy-binding "gs://$BACKUP_BUCKET" \
+            --member="serviceAccount:$RUNTIME_SA" --role="roles/storage.objectCreator" --quiet
+          gcloud storage buckets add-iam-policy-binding "gs://$BACKUP_BUCKET" \
+            --member="serviceAccount:$RUNTIME_SA" --role="roles/storage.objectViewer" --quiet
+          printf '%s' '{ "rule": [ { "action": { "type": "Delete" }, "condition": { "age": 90 } } ] }' > /tmp/backup-lifecycle.json
+          gcloud storage buckets update "gs://$BACKUP_BUCKET" --lifecycle-file=/tmp/backup-lifecycle.json
+
       # Mirror the freshly-seeded fake profiles into ghost-staging as real Ghost
       # members, so the Book→Ghost write path (5b-1) can be tested end-to-end (D72,
       # ghost-staging only). A delta reconcile scoped to `book-seed`-labelled members

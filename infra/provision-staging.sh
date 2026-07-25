@@ -81,6 +81,27 @@ GHOST_BRIDGE_TARGET="${GHOST_BRIDGE_TARGET:-staging}"
 GHOST_ADMIN_API_URL="${GHOST_ADMIN_API_URL:-https://staging.pbe400.org/ghost/api/admin}"
 GHOST_NEWSLETTER_ID="${GHOST_NEWSLETTER_ID:-6a3ebdd8415f8e0001858cb0}"
 
+# A freshly-created service account is not immediately visible to the rest of GCP:
+# for several seconds after creation, commands that reference it can fail with
+# "does not exist" (eventual consistency). provision-observability.sh learned this
+# the hard way on its first cold provision and carries the same helper; this is the
+# sibling copy, kept local because the two scripts are run independently and
+# neither sources the other. With `set -e` an un-retried loss of that race aborts
+# the whole provisioning run, so retrying is the difference between a cold run that
+# works and one that fails halfway.
+retry_gcp() {
+  local attempt=1 max=8
+  until "$@"; do
+    if (( attempt >= max )); then
+      echo "!! command still failing after ${max} attempts: $*" >&2
+      return 1
+    fi
+    echo "    (attempt ${attempt}/${max} failed — waiting 8s for propagation…)" >&2
+    sleep 8
+    attempt=$(( attempt + 1 ))
+  done
+}
+
 echo "==> Project ${PROJECT_ID} | region ${REGION} | bucket ${IMAGE_BUCKET}"
 
 # 1. Project (create only if absent; the id is permanent and globally unique).
@@ -211,8 +232,15 @@ fi
 # The `sub` claim Book pins is the service account's NUMERIC UNIQUE ID, not its
 # email — configuring the email fails every token with "unexpected subject".
 # Derived live here so provisioning is always self-consistent…
-BACKUP_SUBJECT_LIVE="$(gcloud iam service-accounts describe "${BACKUP_SA_EMAIL}" \
-  --project "${PROJECT_ID}" --format='value(uniqueId)')"
+# Retried: on a cold run this `describe` immediately follows the account's own
+# creation and can lose the propagation race described at the top of this file.
+BACKUP_SUBJECT_LIVE=""
+read_backup_subject() {
+  BACKUP_SUBJECT_LIVE="$(gcloud iam service-accounts describe "${BACKUP_SA_EMAIL}" \
+    --project "${PROJECT_ID}" --format='value(uniqueId)' 2>/dev/null)"
+  [[ -n "${BACKUP_SUBJECT_LIVE}" ]]
+}
+retry_gcp read_backup_subject
 if [[ -z "${BACKUP_SUBJECT_LIVE}" ]]; then
   echo "ERROR: could not read the uniqueId of ${BACKUP_SA_EMAIL}." >&2
   exit 1
@@ -331,7 +359,9 @@ else
 fi
 # --attempt-deadline 600s: the export is seconds at Book's size, but a cold start
 # plus a slow Firestore read should not be recorded as a failure.
-gcloud scheduler jobs "${SCHEDULER_VERB}" http "${BACKUP_JOB_NAME}" \
+# Retried for the same propagation reason: this references BACKUP_SA_EMAIL as the
+# OIDC token minter, and on a cold run that account is minutes old at most.
+retry_gcp gcloud scheduler jobs "${SCHEDULER_VERB}" http "${BACKUP_JOB_NAME}" \
   --location="${REGION}" --project "${PROJECT_ID}" \
   --schedule="${BACKUP_SCHEDULE}" \
   --time-zone="${BACKUP_TIME_ZONE}" \

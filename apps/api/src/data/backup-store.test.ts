@@ -55,6 +55,24 @@ describe("backup object naming", () => {
   it("returns null for a well-shaped but impossible instant", () => {
     expect(parseBackupObjectName("backups/2026-13-45T99-99-99-999Z.json")).toBeNull();
   });
+
+  it("returns null for a date JavaScript would silently ROLL OVER", () => {
+    // `new Date("2026-04-31T…")` is not Invalid Date — it is May 1. A NaN check
+    // alone therefore accepts calendar dates that cannot exist, and `latest()`
+    // ranks by the parsed value, so such a name could be crowned "newest" and
+    // move the staleness check's reference point. April 31, February 30, and
+    // February 29 in a non-leap year are the three shapes that slip past width
+    // validation.
+    for (const impossible of [
+      "backups/2026-04-31T03-00-00-000Z.json",
+      "backups/2026-02-30T03-00-00-000Z.json",
+      "backups/2026-02-29T03-00-00-000Z.json",
+    ]) {
+      expect(parseBackupObjectName(impossible)).toBeNull();
+    }
+    // …but a real leap day in a real leap year is a legitimate instant.
+    expect(parseBackupObjectName("backups/2024-02-29T03-00-00-000Z.json")).not.toBeNull();
+  });
 });
 
 describe("InMemoryBackupStore", () => {

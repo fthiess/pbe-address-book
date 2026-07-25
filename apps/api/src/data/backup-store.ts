@@ -70,7 +70,19 @@ export function parseBackupObjectName(name: string): Date | null {
   }
   const [, date, hh, mm, ss, ms] = match;
   const parsed = new Date(`${date}T${hh}:${mm}:${ss}.${ms}Z`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  // Round-trip, rather than trusting `Date` to have rejected a bad instant. The
+  // regex only constrains each component's WIDTH, and `Date` silently ROLLS OVER
+  // an impossible-but-well-shaped calendar date instead of refusing it:
+  // `new Date("2026-04-31T…")` is May 1, not Invalid Date. Without this check a
+  // name Book could never have written would be accepted as a snapshot — and,
+  // because `latest()` ranks by exactly this value, a rolled-over date could be
+  // crowned "newest" and quietly move the staleness check's reference point.
+  // Regenerating the canonical name and demanding an exact match is the cheapest
+  // total guard: anything `backupObjectName` would not itself produce is not ours.
+  return backupObjectName(parsed) === name ? parsed : null;
 }
 
 /** A snapshot that exists in the bucket: its object name and the instant it names. */

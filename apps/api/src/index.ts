@@ -128,13 +128,27 @@ function resolveGhostReader(): (GhostReader & GhostMemberLookup) | undefined {
   return new GhostAdminReader({ apiUrl: GHOST_ADMIN_API_URL, adminApiKey: GHOST_ADMIN_API_KEY });
 }
 
+/**
+ * ONE Google JWKS resolver, shared by every service-identity verifier below.
+ * `createGoogleKeyResolver` wraps a `createRemoteJWKSet` with its own key cache
+ * and refresh cooldown, so building one per verifier would mean two independent
+ * caches fetching the same Google key set — twice the outbound requests and two
+ * different answers possible across a key rotation. Built lazily, so a deployment
+ * that configures neither verifier opens no JWKS machinery at all.
+ */
+let googleKeyResolver: ReturnType<typeof createGoogleKeyResolver> | undefined;
+function sharedGoogleKeyResolver() {
+  googleKeyResolver ??= createGoogleKeyResolver();
+  return googleKeyResolver;
+}
+
 /** Build the roster verifier when the Linter identity is configured, else undefined. */
 function resolveRosterVerifier(): ServiceIdentityVerifier | undefined {
   if (!ROSTER_AUDIENCE || !ROSTER_LINTER_SUBJECT) {
     return undefined;
   }
   return new GoogleOidcVerifier({
-    keyResolver: createGoogleKeyResolver(),
+    keyResolver: sharedGoogleKeyResolver(),
     audience: ROSTER_AUDIENCE,
     subject: ROSTER_LINTER_SUBJECT,
   });
@@ -146,7 +160,7 @@ function resolveBackupInvokerVerifier(): ServiceIdentityVerifier | undefined {
     return undefined;
   }
   return new GoogleOidcVerifier({
-    keyResolver: createGoogleKeyResolver(),
+    keyResolver: sharedGoogleKeyResolver(),
     audience: BACKUP_AUDIENCE,
     subject: BACKUP_INVOKER_SUBJECT,
   });
