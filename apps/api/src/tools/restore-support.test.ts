@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PrivilegedRoster, RosterDelta } from "../data/restore.js";
 import {
   DEFAULT_OUT_DIR,
+  MAINTENANCE_PROBE_PATH,
   buildRestoreAuditEntry,
   isMaintenancePage,
   parseArgs,
@@ -114,6 +115,16 @@ describe("isMaintenancePage", () => {
 
   it("does not mistake the running SPA for it", () => {
     expect(isMaintenancePage('<div id="root"></div><title>PBE Book</title>')).toBe(false);
+  });
+
+  it("probes a path that cannot be a static file", () => {
+    // Measured on staging during the 7b-3 live test: with maintenance genuinely
+    // deployed, the bare origin still serves the SPA, because Firebase Hosting
+    // prefers a matching static file over a rewrite and `apps/web/dist` still
+    // contains index.html (OFC-334). Probing the root would therefore report
+    // "Book is up" during every real maintenance window and refuse every restore.
+    // Nothing under `/api/` can be a static file, which is what makes it honest.
+    expect(MAINTENANCE_PROBE_PATH.startsWith("/api/")).toBe(true);
   });
 });
 

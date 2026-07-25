@@ -295,12 +295,28 @@ then `--object backups/<name>.json`).
 
 Then the real thing, in order:
 
-1. **Take Book down** (D118 — the edge swap; every path serves the static page):
+1. **Take Book down** (D118 — the edge swap):
    ```bash
    PROJECT_ID=pbe-book-staging ./infra/maintenance-on.sh
    ```
    The restore refuses to run until this is in place. `--force` skips the check,
    for an environment that has no Hosting at all.
+
+   ⚠ **If `firebase login` has never been run on this machine**, the script fails
+   with "No authorized accounts". The Firebase CLI also accepts **ADC**, which
+   `gcloud auth application-default login` has already set up:
+   ```bash
+   GOOGLE_APPLICATION_CREDENTIALS="$APPDATA/gcloud/application_default_credentials.json" \
+     PROJECT_ID=pbe-book-staging ./infra/maintenance-on.sh
+   ```
+
+   ⚠ **Maintenance does not cover the site root** (OFC-334). Hosting serves a
+   matching static file in preference to the rewrite, and the maintenance config
+   publishes `apps/web/dist`, so `/` still returns the real SPA while every path
+   with no file behind it returns the maintenance page. Verify with a path that
+   cannot be a file — `curl -s https://<host>/api/health` should return the
+   maintenance HTML, not JSON. (The restore's pre-flight probes exactly that, for
+   exactly this reason.)
 
 2. **Restore.** `--confirm` must repeat the project id — it is the typed
    acknowledgment, and there is no other way to write:
@@ -370,7 +386,26 @@ PROJECT_ID=pbe-book-staging ./infra/provision-observability.sh
 
 This is the same drift class PR #16 hit on the image bucket and #146 on the backup
 bucket: a script-only change that never reached the live resource. Verify with step
-6(b) above rather than assuming.
+6(b) above rather than assuming. *(Applied to staging on 2026-07-25 and verified by
+the 7b-3 live test — the filter was indeed still the one-clause version, so this was
+not a hypothetical.)*
+
+### The procedure, as actually exercised (7b-3, 2026-07-25)
+
+The whole loop above was run against staging for real, by manufacturing a disaster
+and undoing it — 50 profiles deleted, one record corrupted, a usable admin demoted,
+and a document added that the snapshot does not contain. The restore brought all
+1,200 profiles back, un-corrupted the record, re-promoted the admin, deleted the
+interloper as the run's single "stale" removal, reported `adminIdsAdded: [5004]` in
+the forensic entry, and logged `1200 profiles cached` on the forced cold start.
+Re-running it twice more changed nothing (0 deletes, empty delta), which is the
+idempotence a partially-failed restore depends on.
+
+Worth knowing before you do it under pressure: **the first real run found four
+defects that every offline test had passed over** — see DECISIONS **N138**. If you
+are reading this because something is on fire, the procedure works; if you are
+reading it to plan 7b-4, N138 is the argument for why that job needs to run the
+real thing on a schedule rather than a simulation of it.
 
 ⚠ **The artifacts are the whole member directory in plaintext** — safety
 snapshot, restore report, Ghost report. `restore-artifacts/` is gitignored (this

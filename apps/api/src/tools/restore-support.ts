@@ -221,6 +221,19 @@ export function parseArgs(argv: readonly string[]): {
 export const MAINTENANCE_MARKER = "Down for maintenance";
 
 /**
+ * The path the pre-flight probes — deliberately **not** the origin root.
+ *
+ * `firebase.maintenance.json` publishes `apps/web/dist`, which still contains
+ * `index.html` and every built asset, and Firebase Hosting prefers a matching
+ * static file over a rewrite. So while Book is "down", the bare origin still serves
+ * the real SPA and only paths with no file behind them land on `/maintenance.html`
+ * (measured on staging during the 7b-3 live test — the D118 gap itself is OFC-334).
+ * Nothing under `/api/` can be a static file, so this path is governed by the
+ * rewrite while maintenance is on and answered by Cloud Run when it is off.
+ */
+export const MAINTENANCE_PROBE_PATH = "/api/health";
+
+/**
  * Whether the origin is serving the maintenance page (D118/N69 swapped the whole
  * Hosting config, so *every* path returns it). The pre-flight refuses a restore
  * when this is false: replacing the three collections underneath a live instance

@@ -1,10 +1,8 @@
 #!/usr/bin/env tsx
-import { execFile } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
-import { promisify } from "node:util";
-import { initializeApp } from "firebase-admin/app";
+import { applicationDefault, initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { AuditLog } from "../audit/audit-log.js";
 import { planGhostAudit } from "../audit/ghost-audit.js";
@@ -26,6 +24,7 @@ import {
 import { GhostAdminReader } from "../identity/ghost-reader.js";
 import {
   LATEST_OBJECT,
+  MAINTENANCE_PROBE_PATH,
   buildRestoreAuditEntry,
   isMaintenancePage,
   parseArgs,
@@ -63,13 +62,12 @@ import {
  * D100's "whole-database work is external operator tooling".
  *
  * Usage (from the repo root, authenticated with `gcloud auth application-default
- * login` and, for the audit delivery, `gcloud auth login`):
+ * login`; the forensic entry is delivered with those same credentials, so no `gcloud`
+ * binary is needed):
  *
  *   npm run restore --workspace apps/api -- --object latest --project <id> --dry-run
  *   npm run restore --workspace apps/api -- --object latest --project <id> --confirm <id>
  */
-
-const execFileAsync = promisify(execFile);
 
 /**
  * The Cloud Logging log name the forensic entry is written to (D101/7b-3, Forrest's
@@ -106,7 +104,8 @@ function printHelp(): void {
       "  --confirm <id>       Must equal the target project id. Required to write anything.",
       "  --bucket <name>      Backup bucket (default: <project>-backups).",
       "  --out-dir <path>     Where artifacts are written (default: ./restore-artifacts).",
-      "  --hosting-url <url>  Origin probed for the maintenance page (default: https://<project>.web.app).",
+      "  --hosting-url <url>  Origin whose /api/health is probed for the maintenance page",
+      "                       (default: https://<project>.web.app).",
       "  --dry-run            Validate and print the plan; write nothing, anywhere.",
       "  --force              Skip the maintenance-page pre-flight (ephemeral environments).",
       "  --allow-emulator     Permit running against FIRESTORE_EMULATOR_HOST.",
@@ -169,9 +168,20 @@ async function loadSnapshotText(
  * it accepts writes into the collections being replaced. `--force` is the documented
  * way to say "this environment has no Hosting", and it is one word.
  */
-async function probeMaintenance(url: string): Promise<boolean | null> {
+async function probeMaintenance(origin: string): Promise<boolean | null> {
   try {
-    const response = await fetch(url, { redirect: "follow" });
+    // Probe `/api/health`, NOT the origin root. `firebase.maintenance.json`
+    // publishes `apps/web/dist`, which still contains `index.html` and every built
+    // asset, and Firebase Hosting serves a matching **static file** in preference
+    // to a rewrite — so during maintenance the bare origin still returns the real
+    // SPA, and only paths with no file behind them reach `/maintenance.html`
+    // (measured on staging, 7b-3 live test; the D118 gap is filed as OFC-334).
+    // A path under `/api/` can never be a static file, so it is governed by the
+    // rewrite in maintenance and answered by Cloud Run when Book is up — which
+    // makes it the only honest probe of the state this pre-flight cares about.
+    const response = await fetch(`${origin.replace(/\/+$/, "")}${MAINTENANCE_PROBE_PATH}`, {
+      redirect: "follow",
+    });
     return isMaintenancePage(await response.text());
   } catch {
     return null;
@@ -179,24 +189,45 @@ async function probeMaintenance(url: string): Promise<boolean | null> {
 }
 
 /**
- * Deliver the forensic entry to Cloud Logging via `gcloud`, which the runbook has
- * the operator authenticated with already — no new dependency, and no service-account
- * key to hand a laptop. A delivery failure is reported and does **not** fail the
- * run: the restore has already happened by this point, so exiting non-zero would
- * misrepresent the state of the database. The entry is printed and written to the
- * artifacts either way, so it is never lost — only, in that case, not retained.
+ * Deliver the forensic entry to Cloud Logging, over the REST API with the same
+ * Application Default Credentials the rest of the run already uses.
+ *
+ * WHY NOT `gcloud logging write`, WHICH IS WHAT THE RUNBOOK OTHERWISE ASSUMES. Two
+ * live-test failures in a row, both platform-specific and neither visible from any
+ * test that can run offline. The Google Cloud SDK ships `gcloud.cmd` on Windows, so
+ * `execFile("gcloud", …)` fails `ENOENT`; naming `gcloud.cmd` explicitly then fails
+ * `EINVAL`, because Node refuses to spawn a `.cmd` without a shell (the
+ * CVE-2024-27980 mitigation) — and running it *through* a shell would put a JSON
+ * payload through `cmd.exe`'s quoting rules, which is a bug waiting to happen on
+ * exactly the forensic record that must not be mangled. Calling the API directly
+ * removes the shell, the platform difference, and the dependency on `gcloud` being
+ * on the operator's PATH at all, at the cost of about fifteen lines.
+ *
+ * A delivery failure is reported and does **not** fail the run: the restore has
+ * already happened by this point, so exiting non-zero would misrepresent the state
+ * of the database. The entry is printed and archived first either way, so it is
+ * never lost — only, in that case, not retained.
  */
 async function deliverAuditEntry(record: string, projectId: string): Promise<string> {
   try {
-    await execFileAsync("gcloud", [
-      "logging",
-      "write",
-      RESTORE_LOG_NAME,
-      record,
-      "--payload-type=json",
-      "--severity=INFO",
-      `--project=${projectId}`,
-    ]);
+    const token = await applicationDefault().getAccessToken();
+    const response = await fetch("https://logging.googleapis.com/v2/entries:write", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        logName: `projects/${projectId}/logs/${RESTORE_LOG_NAME}`,
+        // `global` is the honest resource: this entry did not come from a Cloud Run
+        // revision, which is the whole reason the audit sink needed a second clause.
+        resource: { type: "global" },
+        entries: [{ severity: "INFO", jsonPayload: JSON.parse(record) }],
+      }),
+    });
+    if (!response.ok) {
+      return `NOT delivered to Cloud Logging (HTTP ${response.status}: ${(await response.text()).slice(0, 200)}). The entry is in the artifacts; deliver it by hand.`;
+    }
     return `delivered to Cloud Logging (log "${RESTORE_LOG_NAME}", project ${projectId}).`;
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
@@ -288,6 +319,16 @@ const outDir = resolve(options.outDir);
 const startedAt = new Date();
 
 console.log(`==> Target project: ${projectId}`);
+
+// Initialize the SDK BEFORE the snapshot is loaded, because `--object` reads the
+// backup bucket through `getStorage()`, which throws `app/no-app` without it — the
+// documented primary invocation (`--object latest`) died here on its first real
+// run, having passed every unit and emulator test, because nothing that exercises
+// GCS can run offline. This is only SDK configuration: it opens no connection and
+// makes no call, so validation still completes before the tool touches Firestore
+// or the bucket in any way that could change something.
+initializeApp({ projectId });
+
 const { text: snapshotText, source } = await loadSnapshotText(options.file, options.object, bucket);
 console.log(`==> Snapshot source: ${source}`);
 
@@ -320,7 +361,6 @@ if (validation.errors.length > 0) {
   process.exit(1);
 }
 
-initializeApp({ projectId });
 const db = getFirestore();
 const target = new FirestoreRestoreTarget(db);
 
