@@ -308,9 +308,18 @@ if [[ -z "${ALERT_EMAIL}" ]]; then
   exit 1
 fi
 echo "==> Ensuring email notification channel for ${ALERT_EMAIL}"
+# ⚠ The right-hand sides MUST be quoted. Unquoted, the Monitoring filter parser
+# reads a bare word as a possible FIELD reference, and `type=email` is ambiguous
+# between the literal string "email" and a field called `email`; it now rejects the
+# whole filter with INVALID_ARGUMENT rather than guessing. This filter was written
+# unquoted in 7a-3c and worked at the time — the parser tightened afterwards, and
+# the failure surfaced on the first re-run (7b-2, 2026-07-25). It aborts the script
+# at `set -e`, BEFORE any alert policy is created, so the symptom is "the metrics
+# exist but nothing alerts on them" — silent in exactly the way alerting must not
+# be. Quote every RHS in a Monitoring filter, even ones that look obviously literal.
 CHANNEL_MATCHES="$(gcloud beta monitoring channels list \
   --project "${PROJECT_ID}" \
-  --filter="type=email AND labels.email_address=${ALERT_EMAIL}" \
+  --filter="type=\"email\" AND labels.email_address=\"${ALERT_EMAIL}\"" \
   --format="value(name)")"
 CHANNEL_NAME="$(printf '%s\n' "${CHANNEL_MATCHES}" | head -n1)"
 if [[ -z "${CHANNEL_NAME}" ]]; then
