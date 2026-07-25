@@ -196,7 +196,14 @@ without an alert for now — see the deferred watchdogs (OFC tickets) filed with
 ## Architecture invariants the playbook encodes
 
 - Cloud Run: `--max-instances=1 --min-instances=0` — single authoritative
-  instance, scale-to-zero cost floor (D83).
+  instance, scale-to-zero cost floor (D83). **Both levels are pinned (OFC-209):**
+  `--max-instances` is *revision*-level only, and a new service carries a
+  platform-default *service*-level umbrella of **20** that no gcloud flag clears
+  (`gcloud run services update --max-instances=1` does not touch it — verified on
+  577.0.0). The script pins it via the v2 REST `scaling.maxInstanceCount` PATCH so
+  the console reports "Max: 1" and the invariant is enforced at both levels. Don't
+  substitute `--scaling=1`: that is MANUAL mode, which pins one instance running
+  permanently and destroys the scale-to-zero floor. A deploy preserves the pin.
 - **No Cloud CDN and no external load balancer** — member images are app-served
   from the private bucket (D126).
 - Cloud Run: `--memory 1Gi` — the headshot pipeline decodes uploaded images with

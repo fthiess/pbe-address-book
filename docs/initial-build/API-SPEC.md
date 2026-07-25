@@ -301,7 +301,7 @@ Three small surfaces added in the post-resolution amendments pass (decisions D11
 The current site-wide system banner, fetched by the SPA on load and rendered across the top of every page (decision D117).
 - **Auth:** any authenticated user.
 - **Response 200:** `{ "active": true, "message": "Scheduled maintenance Sunday 2–3 am ET.", "severity": "warning" }`, or `{ "active": false }` when none is set.
-- **Caching:** short-lived/revalidated; the banner is global and carries no PII. Independent of Ghost's announcement bar (decision D117).
+- **Caching:** the handler sets `no-cache` (short-lived/revalidated — the banner is global and carries no PII), but the **delivered** header through Firebase Hosting is `no-store`, because the blanket `/api/**` rule that enforces D95 covers this endpoint too (decision **D146**). Accepted rather than special-cased: the route sets no `ETag`, so `no-cache` never produced a `304` and never saved bytes, and "reflect an admin's set/clear promptly" is satisfied at least as strongly by `no-store`. Independent of Ghost's announcement bar (decision D117).
 
 ### `PUT /api/admin/banner`
 Set or clear the system banner (decision D117).

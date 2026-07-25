@@ -157,6 +157,32 @@ gcloud run deploy "${SERVICE}" \
   "${SECRET_FLAG[@]}" \
   --allow-unauthenticated --quiet
 
+# 7b. Pin the SERVICE-level max-instances to 1 as well (OFC-209).
+#
+# `--max-instances` above is REVISION-level only — gcloud documents it as "for
+# this Revision", and running `gcloud run services update --max-instances=1`
+# leaves the service-level value untouched (verified on gcloud 577.0.0, which is
+# why the ticket's proposed one-liner does not work). A freshly created service
+# carries a platform-default service-level umbrella of 20, so the console reports
+# "Scaling: Auto (Min: 0, Max: 20)" while D83 says one instance.
+#
+# It is inert in practice — no revision may exceed 1, so the umbrella can never be
+# reached — but leaving it at 20 means the console misreports the architecture and
+# a future revision-level regression would have 19 instances of headroom to run
+# into. The v2 REST `ServiceScaling.maxInstanceCount` field is the only lever that
+# sets it; a PATCH with an update mask leaves scalingMode AUTOMATIC (scale-to-zero
+# intact — do NOT reach for `--scaling=1`, which is MANUAL mode and pins one
+# instance permanently, destroying D83's cost floor).
+#
+# Verified 7b-1: a full deploy rollover succeeds with the service capped at 1, and
+# `gcloud run deploy` does NOT reset it — so this converges once and stays.
+echo "==> Pinning service-level max-instances to 1 (OFC-209)"
+curl -s -X PATCH \
+  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "Content-Type: application/json" \
+  "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/services/${SERVICE}?updateMask=scaling.maxInstanceCount" \
+  -d '{"scaling":{"maxInstanceCount":1}}' >/dev/null
+
 echo "==> Cloud Run URL:"
 gcloud run services describe "${SERVICE}" --region "${REGION}" --project "${PROJECT_ID}" \
   --format="value(status.url)"
