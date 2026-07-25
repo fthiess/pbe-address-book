@@ -151,6 +151,46 @@ Three environments, by design (`CODING-PROJECT-PLAN.md` §4):
 The `DevIdentityProvider` is locked out of production by four independent
 layers (D108) and must never run anywhere near it.
 
+### Measuring delivery performance against staging (the OFC-286 recipe)
+
+Deliberately **not** a CI gate and **not** a dependency (DECISIONS D74/N134): with a
+scale-to-zero backend the noise would train us to ignore it. This is the recipe to
+reach for when the byte budget goes red, a UAT tester reports a slow load, or a
+delivery ticket needs before/after numbers.
+
+Two conditions are load-bearing, or the numbers are noise: the run must be
+**authenticated** (everything of interest is behind the session gate — an
+unauthenticated run measures the signed-out shell), and the instance must be
+**warm** (Cloud Run is `max-instances=1` with scale-to-zero, so a cold start makes
+TTFB bimodal). Staging already seeds the full 1,200-profile dataset on every
+deploy, so there is no loading step.
+
+```bash
+# 1. A real __session cookie: sign in to pbe-book-staging.web.app, then copy the
+#    value from DevTools -> Application -> Cookies. It is a credential — keep it
+#    out of the repo. Write the header file somewhere temporary:
+#      {"Cookie":"__session=<value>"}
+# 2. Warm the instance.
+curl -s -o /dev/null https://pbe-book-staging.web.app/api/profiles -H "Cookie: __session=<value>"
+```
+
+`chrome-launcher` cannot spawn Chrome on this Windows setup (`spawn UNKNOWN`), so
+host the browser with Playwright's Chromium and point Lighthouse at its debug port
+rather than letting it launch its own:
+
+```bash
+node -e "require('playwright').chromium.launch({args:['--remote-debugging-port=9222','--no-sandbox']}).then(()=>new Promise(r=>setTimeout(r,900000)))" &
+npx lighthouse@12 https://pbe-book-staging.web.app/ --port=9222 \
+  --extra-headers=/tmp/lh-headers.json --only-categories=performance \
+  --output=json --output=html --output-path=/tmp/lh-directory
+```
+
+Lighthouse's default mobile preset already simulates **Slow 4G + 4× CPU**, which is
+the intended profile. Read the output as a **findings list, not a score**, and
+ignore the accessibility section — it duplicates the `@axe-core/playwright` gate,
+and the real a11y work is the three-layer audit (D67/D79). The 7b-1 baseline
+numbers, and what they found, are in DECISIONS **N134**.
+
 ## CI/CD
 
 Every push runs `ci.yml` — the same `verify:gate` you run locally (format,
