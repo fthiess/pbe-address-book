@@ -45,6 +45,41 @@ SERVICE="${SERVICE:-pbe-book-api}"
 SA_NAME="${SA_NAME:-book-api}"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 
+# The automated daily backup (D63/D101/D102; 7b-2). The bucket holds off-platform
+# PII and is treated as crown jewels: ACL-restricted, never public, GCS default
+# encryption at rest, and snapshots aged out at BACKUP_RETENTION_DAYS (P16 — the
+# same 3-month horizon as the audit log and superseded headshot versions).
+BACKUP_BUCKET="${BACKUP_BUCKET:-${PROJECT_ID}-backups}"
+BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-90}"
+BACKUP_SA_NAME="${BACKUP_SA_NAME:-book-backup-scheduler}"
+BACKUP_SA_EMAIL="${BACKUP_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
+BACKUP_JOB_NAME="${BACKUP_JOB_NAME:-book-daily-backup}"
+# TWICE daily, 03:10 and 15:10 UTC (D149). Cron is in BACKUP_TIME_ZONE.
+#
+# Not chosen for RPO — at Book's write volume (~2 edits/month, D102) the expected
+# loss between any of these cadences is a fraction of one edit. Two things decide
+# it. First, in a system that can go months without a write, the backup's real job
+# is to EXERCISE THE PIPELINE: each run re-proves Firestore is readable, the
+# service account still holds its grants, the bucket exists, the schedule fires,
+# and the last deploy did not break the path. The failure that actually hurts a
+# low-write system is a backup that broke in March and is discovered in September.
+# Second, and concretely: 12h between successful runs is what makes the external
+# metric-ABSENCE alert constructible at all, since Cloud Monitoring caps its
+# trigger window at 23.5h and a 24h cadence therefore cannot be watched that way
+# (D148 → D149).
+#
+# The two runs are exactly 12h apart on purpose — an uneven split would make the
+# longer gap the one both thresholds have to tolerate, costing detection speed for
+# no benefit.
+BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-10 3,15 * * *}"
+BACKUP_TIME_ZONE="${BACKUP_TIME_ZONE:-Etc/UTC}"
+# The `aud` Book requires in the scheduler's OIDC token. A deliberately FIXED
+# logical string, not the Cloud Run URL: the URL is not known until after the
+# service is deployed, but the deploy needs this value in its environment — and
+# Book verifies the claim itself (the service is --allow-unauthenticated because
+# Hosting fronts it), so nothing downstream requires it to be a real address.
+BACKUP_AUDIENCE="${BACKUP_AUDIENCE:-https://${PROJECT_ID}.example/api/internal/backup}"
+
 # Ghost auth-bridge config (Phase 1b). Defaults target the SELF-HOSTED
 # ghost-staging at staging.pbe400.org (D72, amended — auth is tested against an
 # isolated open-source Ghost, not live pbe400.org). GHOST_BRIDGE_TARGET selects
@@ -60,6 +95,27 @@ GHOST_BRIDGE_TARGET="${GHOST_BRIDGE_TARGET:-staging}"
 # Cloud Run deploy via --set-secrets below. These two are non-secret.
 GHOST_ADMIN_API_URL="${GHOST_ADMIN_API_URL:-https://staging.pbe400.org/ghost/api/admin}"
 GHOST_NEWSLETTER_ID="${GHOST_NEWSLETTER_ID:-6a3ebdd8415f8e0001858cb0}"
+
+# A freshly-created service account is not immediately visible to the rest of GCP:
+# for several seconds after creation, commands that reference it can fail with
+# "does not exist" (eventual consistency). provision-observability.sh learned this
+# the hard way on its first cold provision and carries the same helper; this is the
+# sibling copy, kept local because the two scripts are run independently and
+# neither sources the other. With `set -e` an un-retried loss of that race aborts
+# the whole provisioning run, so retrying is the difference between a cold run that
+# works and one that fails halfway.
+retry_gcp() {
+  local attempt=1 max=8
+  until "$@"; do
+    if (( attempt >= max )); then
+      echo "!! command still failing after ${max} attempts: $*" >&2
+      return 1
+    fi
+    echo "    (attempt ${attempt}/${max} failed — waiting 8s for propagation…)" >&2
+    sleep 8
+    attempt=$(( attempt + 1 ))
+  done
+}
 
 echo "==> Project ${PROJECT_ID} | region ${REGION} | bucket ${IMAGE_BUCKET}"
 
@@ -83,6 +139,7 @@ echo "==> Enabling APIs"
 gcloud services enable \
   run.googleapis.com firestore.googleapis.com storage.googleapis.com \
   cloudbuild.googleapis.com artifactregistry.googleapis.com \
+  cloudscheduler.googleapis.com \
   --project "${PROJECT_ID}"
 
 # 4. Firestore — native mode, single region. The location is PERMANENT.
@@ -137,6 +194,86 @@ gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
 gcloud storage buckets add-iam-policy-binding "gs://${IMAGE_BUCKET}" \
   --member="serviceAccount:${SA_EMAIL}" --role="roles/storage.objectAdmin" >/dev/null
 
+# 6b. The automated-backup bucket (D63/D101; 7b-2). Same private posture as the
+#     image bucket — uniform access, public access PREVENTED — because it holds a
+#     full copy of every brother's record. Object versioning is deliberately OFF:
+#     snapshots are write-once under unique timestamped names, so there is nothing
+#     to supersede, and versioning would only defeat the lifecycle rule below.
+if ! gcloud storage buckets describe "gs://${BACKUP_BUCKET}" >/dev/null 2>&1; then
+  echo "==> Creating private backup bucket gs://${BACKUP_BUCKET}"
+  gcloud storage buckets create "gs://${BACKUP_BUCKET}" \
+    --location="${REGION}" --uniform-bucket-level-access --public-access-prevention \
+    --project "${PROJECT_ID}"
+fi
+
+# 6c. Retention: delete snapshots at BACKUP_RETENTION_DAYS (P16/D101 — 3 months).
+#     This is the ONLY thing that deletes a backup; Book has no delete path at all
+#     (see the BackupStore seam), which is why the runtime SA below never gets
+#     objectAdmin. Converges on re-run, so an edited horizon is actually applied.
+echo "==> Setting ${BACKUP_RETENTION_DAYS}-day lifecycle on gs://${BACKUP_BUCKET}"
+BACKUP_LIFECYCLE_FILE="$(mktemp)"
+cat >"${BACKUP_LIFECYCLE_FILE}" <<JSON
+{ "rule": [ { "action": { "type": "Delete" }, "condition": { "age": ${BACKUP_RETENTION_DAYS} } } ] }
+JSON
+gcloud storage buckets update "gs://${BACKUP_BUCKET}" \
+  --lifecycle-file="${BACKUP_LIFECYCLE_FILE}" --project "${PROJECT_ID}"
+rm -f "${BACKUP_LIFECYCLE_FILE}"
+
+# 6d. The runtime SA's access to the backup bucket: CREATE and READ, never ADMIN.
+#     - objectCreator: write the nightly snapshot.
+#     - objectViewer:  list/read for the pre-flight staleness check, whose only
+#                      input is what is actually in the bucket.
+#     Together these still cannot DELETE or OVERWRITE an existing object, so a
+#     compromised API cannot destroy backup history — the one property that makes
+#     the bucket a recovery asset rather than another thing an attacker owns
+#     (D101 "backup-as-crown-jewels"). Read access adds nothing to the blast
+#     radius: the API already holds the same PII in memory.
+echo "==> Granting ${SA_NAME} objectCreator+objectViewer on gs://${BACKUP_BUCKET}"
+gcloud storage buckets add-iam-policy-binding "gs://${BACKUP_BUCKET}" \
+  --member="serviceAccount:${SA_EMAIL}" --role="roles/storage.objectCreator" >/dev/null
+gcloud storage buckets add-iam-policy-binding "gs://${BACKUP_BUCKET}" \
+  --member="serviceAccount:${SA_EMAIL}" --role="roles/storage.objectViewer" >/dev/null
+
+# 6e. The Cloud Scheduler identity that triggers the nightly backup. A dedicated
+#     service account with NO project roles: it never touches Firestore or GCS
+#     itself, it only mints an OIDC token that Book verifies in-code (D58/D78, the
+#     Linter-roster pattern). Its authority is exactly "may ask Book to back up".
+if ! gcloud iam service-accounts describe "${BACKUP_SA_EMAIL}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "==> Creating service account ${BACKUP_SA_EMAIL}"
+  gcloud iam service-accounts create "${BACKUP_SA_NAME}" \
+    --display-name="Book nightly backup (Cloud Scheduler)" --project "${PROJECT_ID}"
+fi
+
+# The `sub` claim Book pins is the service account's NUMERIC UNIQUE ID, not its
+# email — configuring the email fails every token with "unexpected subject".
+# Derived live here so provisioning is always self-consistent…
+# Retried: on a cold run this `describe` immediately follows the account's own
+# creation and can lose the propagation race described at the top of this file.
+BACKUP_SUBJECT_LIVE=""
+read_backup_subject() {
+  BACKUP_SUBJECT_LIVE="$(gcloud iam service-accounts describe "${BACKUP_SA_EMAIL}" \
+    --project "${PROJECT_ID}" --format='value(uniqueId)' 2>/dev/null)"
+  [[ -n "${BACKUP_SUBJECT_LIVE}" ]]
+}
+retry_gcp read_backup_subject
+if [[ -z "${BACKUP_SUBJECT_LIVE}" ]]; then
+  echo "ERROR: could not read the uniqueId of ${BACKUP_SA_EMAIL}." >&2
+  exit 1
+fi
+# …but the GitHub deploy workflow builds its Cloud Run environment from
+# environments/staging.env alone and cannot run gcloud, so the value has to be
+# recorded there too (the same shape as WIF_PROVIDER's baked-in project number).
+# Warn LOUDLY on drift rather than silently papering over it: a stale value here
+# means the next CI deploy ships a service that rejects every scheduler token,
+# and the backup stops with no other symptom.
+if [[ "${BACKUP_INVOKER_SUBJECT:-}" != "${BACKUP_SUBJECT_LIVE}" ]]; then
+  echo "!! BACKUP_INVOKER_SUBJECT in environments/staging.env is '${BACKUP_INVOKER_SUBJECT:-<unset>}'"
+  echo "!! but ${BACKUP_SA_EMAIL} has uniqueId '${BACKUP_SUBJECT_LIVE}'."
+  echo "!! This run deploys the correct value, but the next CI deploy will NOT."
+  echo "!! Update environments/staging.env: BACKUP_INVOKER_SUBJECT=${BACKUP_SUBJECT_LIVE}"
+fi
+BACKUP_INVOKER_SUBJECT="${BACKUP_SUBJECT_LIVE}"
+
 # 7. Deploy the API to Cloud Run (built remotely by Cloud Build from ./Dockerfile).
 # The Ghost Admin key rides from Secret Manager via --set-secrets, but only if the
 # secret exists (it is created out-of-band); otherwise deploy without it (the app
@@ -153,7 +290,7 @@ gcloud run deploy "${SERVICE}" \
   --service-account "${SA_EMAIL}" \
   --max-instances 1 --min-instances 0 \
   --memory 1Gi \
-  --set-env-vars "IMAGE_BUCKET=${IMAGE_BUCKET},GHOST_JWKS_URL=${GHOST_JWKS_URL},GHOST_JWT_ISSUER=${GHOST_JWT_ISSUER},GHOST_JWT_AUDIENCE=${GHOST_JWT_AUDIENCE},GHOST_BRIDGE_URL=${GHOST_BRIDGE_URL},GHOST_BRIDGE_TARGET=${GHOST_BRIDGE_TARGET},GHOST_ADMIN_API_URL=${GHOST_ADMIN_API_URL},GHOST_NEWSLETTER_ID=${GHOST_NEWSLETTER_ID}" \
+  --set-env-vars "IMAGE_BUCKET=${IMAGE_BUCKET},GHOST_JWKS_URL=${GHOST_JWKS_URL},GHOST_JWT_ISSUER=${GHOST_JWT_ISSUER},GHOST_JWT_AUDIENCE=${GHOST_JWT_AUDIENCE},GHOST_BRIDGE_URL=${GHOST_BRIDGE_URL},GHOST_BRIDGE_TARGET=${GHOST_BRIDGE_TARGET},GHOST_ADMIN_API_URL=${GHOST_ADMIN_API_URL},GHOST_NEWSLETTER_ID=${GHOST_NEWSLETTER_ID},BACKUP_BUCKET=${BACKUP_BUCKET},BACKUP_AUDIENCE=${BACKUP_AUDIENCE},BACKUP_INVOKER_SUBJECT=${BACKUP_INVOKER_SUBJECT}" \
   "${SECRET_FLAG[@]}" \
   --allow-unauthenticated --quiet
 
@@ -205,8 +342,50 @@ fi
 echo "    service-level max-instances = 1 (confirmed)"
 
 echo "==> Cloud Run URL:"
-gcloud run services describe "${SERVICE}" --region "${REGION}" --project "${PROJECT_ID}" \
-  --format="value(status.url)"
+SERVICE_URL="$(gcloud run services describe "${SERVICE}" --region "${REGION}" --project "${PROJECT_ID}" \
+  --format="value(status.url)")"
+echo "    ${SERVICE_URL}"
+
+# 7c. The nightly backup schedule (D63/D102; 7b-2). Cloud Scheduler is the external
+#     clock Book cannot be: under D83 the service is scaled to zero, so there is no
+#     process alive to hold an in-process timer, and an in-process cron would simply
+#     never fire.
+#
+#     TARGET is the run.app URL, NOT the Hosting domain — Cloud Scheduler invokes
+#     Cloud Run "on the run.app URL, not on custom domains" (Cloud Scheduler docs,
+#     "Create a job"), and going direct also skips a hop that has nothing to add.
+#
+#     AUTH is an OIDC token for BACKUP_SA_EMAIL with `aud` = BACKUP_AUDIENCE, which
+#     Book verifies in-code against its own pinned subject + audience. Note the
+#     service is --allow-unauthenticated (Hosting fronts it, D126), so Cloud Run's
+#     platform IAM is NOT the gate here — Book's in-code check is the whole gate,
+#     exactly as for the Linter roster.
+#
+#     Converges on re-run (create vs update), per the OFC-72 lesson that a
+#     create-only guard silently ignores edited config: an edited schedule, time
+#     zone, or audience is APPLIED, not skipped. Tune them HERE, not in the console.
+if ! gcloud scheduler jobs describe "${BACKUP_JOB_NAME}" \
+      --location="${REGION}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "==> Creating Cloud Scheduler job ${BACKUP_JOB_NAME} (${BACKUP_SCHEDULE} ${BACKUP_TIME_ZONE})"
+  SCHEDULER_VERB=create
+else
+  echo "==> Converging Cloud Scheduler job ${BACKUP_JOB_NAME} (${BACKUP_SCHEDULE} ${BACKUP_TIME_ZONE})"
+  SCHEDULER_VERB=update
+fi
+# --attempt-deadline 600s: the export is seconds at Book's size, but a cold start
+# plus a slow Firestore read should not be recorded as a failure.
+# Retried for the same propagation reason: this references BACKUP_SA_EMAIL as the
+# OIDC token minter, and on a cold run that account is minutes old at most.
+retry_gcp gcloud scheduler jobs "${SCHEDULER_VERB}" http "${BACKUP_JOB_NAME}" \
+  --location="${REGION}" --project "${PROJECT_ID}" \
+  --schedule="${BACKUP_SCHEDULE}" \
+  --time-zone="${BACKUP_TIME_ZONE}" \
+  --uri="${SERVICE_URL}/api/internal/backup" \
+  --http-method=POST \
+  --oidc-service-account-email="${BACKUP_SA_EMAIL}" \
+  --oidc-token-audience="${BACKUP_AUDIENCE}" \
+  --attempt-deadline=600s \
+  --description="Book nightly whole-database backup (D63/D102, OFC-327)"
 
 # 8. Firebase Hosting — serves the SPA and rewrites /api,/img to Cloud Run, so
 #    the whole app is one origin with no load balancer or CDN (D126).
@@ -228,6 +407,10 @@ npx firebase deploy --only hosting,firestore:rules --project "${PROJECT_ID}"
 echo
 echo "==> Done. Staging URLs:"
 echo "    SPA:  https://${PROJECT_ID}.web.app"
+echo "    Backups: gs://${BACKUP_BUCKET}/backups/  (${BACKUP_RETENTION_DAYS}d retention)"
+echo "      schedule ${BACKUP_JOB_NAME}: ${BACKUP_SCHEDULE} ${BACKUP_TIME_ZONE}"
+echo "      run it now:  gcloud scheduler jobs run ${BACKUP_JOB_NAME} --location=${REGION} --project=${PROJECT_ID}"
+echo "      alerting for it is provisioned by infra/provision-observability.sh"
 echo "    Seed fake data (staging only):"
 echo "      GOOGLE_CLOUD_PROJECT=${PROJECT_ID} npm run seed:staging --workspace tools/fake-data"
 echo "    CI deploys (keyless, on merge to main) are set up separately — see infra/setup-wif.sh"

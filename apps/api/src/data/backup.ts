@@ -1,3 +1,4 @@
+import { headshotObjectKey, thumbnailObjectKey } from "@pbe/shared";
 import type { Firestore } from "firebase-admin/firestore";
 
 /**
@@ -62,4 +63,90 @@ export class InMemoryBackupSource implements BackupSource {
   async export(): Promise<BackupData> {
     return this.data;
   }
+}
+
+/**
+ * One brother's headshot objects, as pinned by a snapshot (D63's "image-version
+ * manifest"). Images are **not** re-copied into each backup — GCS object versioning
+ * (D8) already preserves their history — so what a restore needs is a pointer to
+ * exactly the right object versions, which is what this is.
+ */
+export interface ImageManifestEntry {
+  /** The brother's Constitution ID. */
+  id: number;
+  /** The opaque `headshotVersion` token live at snapshot time (N42/R16). */
+  version: string;
+  /** The full-size object key, e.g. `headshots/5247/3.webp`. */
+  headshotKey: string;
+  /** The 96×96 thumbnail object key. */
+  thumbnailKey: string;
+}
+
+/**
+ * Derive the image-version manifest from an already-taken `profiles` snapshot.
+ *
+ * WHY THIS IS PURE DERIVATION, AND NOT A BUCKET LISTING (7b-2, Forrest's call).
+ * The object key shape is `headshots/{id}/{version}.webp` and `headshotVersion` is
+ * already a field on every profile document, so the profiles snapshot *already*
+ * pins the exact objects — a manifest built from anything else would be a second,
+ * drift-capable statement of the same fact. Making it explicit still earns its
+ * place: it hands the offline restore (D101/7b-3) and the integrity job (D102/7b-4)
+ * a flat list instead of making each re-derive key construction, and it survives a
+ * future change to the key shape as a record of what the keys *were*.
+ *
+ * It deliberately does **not** consult GCS. Enriching entries with live generation
+ * numbers or checksums would make taking a backup depend on a bucket listing
+ * succeeding, and verifying that the objects a manifest names actually exist is
+ * precisely what D102's integrity job is for: **7b-2 records intent, 7b-4 verifies
+ * reality.**
+ *
+ * Brothers with no headshot are simply absent (~two thirds of the roster carries
+ * no photo). A document missing either flag or the version token is skipped rather
+ * than emitted with a half-built key.
+ */
+export function deriveImageManifest(profiles: readonly CollectionSnapshot[]): ImageManifestEntry[] {
+  const manifest: ImageManifestEntry[] = [];
+  for (const { data } of profiles) {
+    const id = data.id;
+    const version = data.headshotVersion;
+    if (data.hasHeadshot !== true || typeof id !== "number" || typeof version !== "string") {
+      continue;
+    }
+    manifest.push({
+      id,
+      version,
+      headshotKey: headshotObjectKey(id, version),
+      thumbnailKey: thumbnailObjectKey(id, version),
+    });
+  }
+  return manifest;
+}
+
+/**
+ * The envelope version of an **automated** snapshot (D63/7b-2): the manual D52
+ * download's `collections` plus the `images` manifest. The manual download stays at
+ * version 1 (`collections` only) for now — unifying the two envelopes is a real
+ * simplification for the restore that consumes them, but it changes a shipped
+ * admin feature's output, so it is left as an open call for 7b-3 (OFC-326), the
+ * session that actually reads both.
+ */
+export const BACKUP_SNAPSHOT_VERSION = 2;
+
+/** A complete automated snapshot, as serialized into one bucket object. */
+export interface BackupSnapshot {
+  version: typeof BACKUP_SNAPSHOT_VERSION;
+  /** When the snapshot was taken — the same instant its object name encodes. */
+  generatedAt: string;
+  collections: BackupData;
+  images: ImageManifestEntry[];
+}
+
+/** Build the snapshot envelope for `collections`, taken at `at`. */
+export function buildBackupSnapshot(collections: BackupData, at: Date): BackupSnapshot {
+  return {
+    version: BACKUP_SNAPSHOT_VERSION,
+    generatedAt: at.toISOString(),
+    collections,
+    images: deriveImageManifest(collections.profiles),
+  };
 }

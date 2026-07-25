@@ -31,7 +31,7 @@ import {
 } from "./identity/ghost-reader.js";
 import {
   GoogleOidcVerifier,
-  type RosterVerifier,
+  type ServiceIdentityVerifier,
   createGoogleKeyResolver,
 } from "./identity/google-oidc.js";
 import { NonceStore } from "./identity/nonce-store.js";
@@ -75,6 +75,19 @@ const ROSTER_AUDIENCE = process.env.ROSTER_AUDIENCE;
 const ROSTER_LINTER_SUBJECT = process.env.ROSTER_LINTER_SUBJECT;
 
 /**
+ * The nightly backup job's Cloud Scheduler identity (D63/7b-2) — the same
+ * subject-pinned Google-OIDC pattern as the roster above, pinned to a *different*
+ * service account. Both must be set for `POST /api/internal/backup` to accept a
+ * token; the bucket (`BACKUP_BUCKET`, read in `server.ts`) must also be set for it
+ * to have anywhere to write. Any of the three missing → the route fails closed.
+ *
+ * ⚠ `BACKUP_INVOKER_SUBJECT` is the service account's **numeric unique ID**, not
+ * its email — that is what Google puts in an OIDC token's `sub`.
+ */
+const BACKUP_AUDIENCE = process.env.BACKUP_AUDIENCE;
+const BACKUP_INVOKER_SUBJECT = process.env.BACKUP_INVOKER_SUBJECT;
+
+/**
  * Build the real Ghost Admin client when configured, else undefined (→ stub). When
  * the Admin key IS set, `GHOST_NEWSLETTER_ID` must be too — the `GhostAdminLifecycle`
  * constructor throws without it, so a half-configured deploy fails fast at startup
@@ -115,15 +128,41 @@ function resolveGhostReader(): (GhostReader & GhostMemberLookup) | undefined {
   return new GhostAdminReader({ apiUrl: GHOST_ADMIN_API_URL, adminApiKey: GHOST_ADMIN_API_KEY });
 }
 
+/**
+ * ONE Google JWKS resolver, shared by every service-identity verifier below.
+ * `createGoogleKeyResolver` wraps a `createRemoteJWKSet` with its own key cache
+ * and refresh cooldown, so building one per verifier would mean two independent
+ * caches fetching the same Google key set — twice the outbound requests and two
+ * different answers possible across a key rotation. Built lazily, so a deployment
+ * that configures neither verifier opens no JWKS machinery at all.
+ */
+let googleKeyResolver: ReturnType<typeof createGoogleKeyResolver> | undefined;
+function sharedGoogleKeyResolver() {
+  googleKeyResolver ??= createGoogleKeyResolver();
+  return googleKeyResolver;
+}
+
 /** Build the roster verifier when the Linter identity is configured, else undefined. */
-function resolveRosterVerifier(): RosterVerifier | undefined {
+function resolveRosterVerifier(): ServiceIdentityVerifier | undefined {
   if (!ROSTER_AUDIENCE || !ROSTER_LINTER_SUBJECT) {
     return undefined;
   }
   return new GoogleOidcVerifier({
-    keyResolver: createGoogleKeyResolver(),
+    keyResolver: sharedGoogleKeyResolver(),
     audience: ROSTER_AUDIENCE,
     subject: ROSTER_LINTER_SUBJECT,
+  });
+}
+
+/** Build the backup-job verifier when the scheduler identity is configured, else undefined. */
+function resolveBackupInvokerVerifier(): ServiceIdentityVerifier | undefined {
+  if (!BACKUP_AUDIENCE || !BACKUP_INVOKER_SUBJECT) {
+    return undefined;
+  }
+  return new GoogleOidcVerifier({
+    keyResolver: sharedGoogleKeyResolver(),
+    audience: BACKUP_AUDIENCE,
+    subject: BACKUP_INVOKER_SUBJECT,
   });
 }
 
@@ -168,6 +207,7 @@ async function main(): Promise<void> {
     ghostLifecycle: resolveGhostLifecycle(),
     ghostReader,
     rosterVerifier: resolveRosterVerifier(),
+    backupInvokerVerifier: resolveBackupInvokerVerifier(),
   });
 
   const address = await app.listen({ port, host: "0.0.0.0" });
@@ -176,7 +216,10 @@ async function main(): Promise<void> {
   diagnosticLog.info(
     `Book API (production) listening at ${address} — ${profileCache.size} profiles cached; ` +
       `Ghost iss=${GHOST_JWT_ISSUER} aud=${GHOST_JWT_AUDIENCE} bridge=${GHOST_BRIDGE_URL} target=${GHOST_BRIDGE_TARGET}; ` +
-      `ghost-admin=${GHOST_ADMIN_API_URL ? "configured" : "stub"} roster=${ROSTER_AUDIENCE ? "configured" : "unconfigured"}`,
+      `ghost-admin=${GHOST_ADMIN_API_URL ? "configured" : "stub"} roster=${ROSTER_AUDIENCE ? "configured" : "unconfigured"} ` +
+      // Both halves reported, because either one missing fails the job closed —
+      // and a silently-unconfigured backup is the R21 failure D102 names.
+      `backup=${BACKUP_AUDIENCE && BACKUP_INVOKER_SUBJECT ? "configured" : "unconfigured"}/${process.env.BACKUP_BUCKET ? "bucket" : "no-bucket"}`,
   );
 }
 

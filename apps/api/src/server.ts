@@ -4,6 +4,7 @@ import cookie from "@fastify/cookie";
 import Fastify, { type FastifyError, type FastifyInstance } from "fastify";
 import { AuditLog } from "./audit/audit-log.js";
 import { DiagnosticLog } from "./audit/diagnostic-log.js";
+import { type BackupStore, GcsBackupStore } from "./data/backup-store.js";
 import type { BackupSource } from "./data/backup.js";
 import type { BannerStore } from "./data/banner.js";
 import type { BugReportStore } from "./data/bug-reports.js";
@@ -13,13 +14,14 @@ import type { ProfileStore } from "./data/profiles.js";
 import type { AdminUserStore } from "./data/users.js";
 import { type GhostLifecycle, StubGhostLifecycle } from "./identity/ghost-lifecycle.js";
 import type { GhostReader } from "./identity/ghost-reader.js";
-import type { RosterVerifier } from "./identity/google-oidc.js";
+import type { ServiceIdentityVerifier } from "./identity/google-oidc.js";
 import type { NonceService } from "./identity/nonce-store.js";
 import { type SessionCookieConfig, requireSession } from "./identity/session-cookie.js";
 import type { SessionService } from "./identity/session-store.js";
 import type { IdentityProvider } from "./identity/types.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { type GhostBridgeConfig, registerAuthRoutes } from "./routes/auth.js";
+import { registerBackupJobRoutes } from "./routes/backup-job.js";
 import { registerBackupRoutes } from "./routes/backup.js";
 import { registerBannerRoutes } from "./routes/banner.js";
 import { registerBugReportRoutes } from "./routes/bug-reports.js";
@@ -56,8 +58,24 @@ export interface BuildServerOptions {
   adminUsers: AdminUserStore;
   /** The system-banner singleton store (D117) behind `GET /api/banner` + the admin set/clear. */
   bannerStore: BannerStore;
-  /** The whole-database backup read seam (D63) behind `GET /api/admin/backup`. */
+  /**
+   * The whole-database backup read seam (D63), shared by the D52 admin download
+   * and the nightly automated job.
+   */
   backupSource: BackupSource;
+  /**
+   * The automated-backup snapshot object store (D63/D101; 7b-2) behind
+   * `POST /api/internal/backup`. Defaults to a {@link GcsBackupStore} over
+   * `BACKUP_BUCKET`; tests inject an in-memory double. With the bucket unset the
+   * store is present but unconfigured, so the job route fails closed with `503`.
+   */
+  backupStore?: BackupStore;
+  /**
+   * The subject-pinned Google-OIDC verifier for the Cloud Scheduler identity that
+   * triggers the nightly backup (D63/7b-2). Omitted when the automated backup is
+   * not configured — the route then fails closed with `503`.
+   */
+  backupInvokerVerifier?: ServiceIdentityVerifier;
   /** The bug-report store (D121) behind the file POST and the admin review queue. */
   bugReportStore: BugReportStore;
   /** The API build id (commit SHA) stamped onto filed bug reports; defaults to "dev". */
@@ -100,7 +118,7 @@ export interface BuildServerOptions {
    * Omitted when the Linter integration is not configured — the route then fails
    * closed with `503`.
    */
-  rosterVerifier?: RosterVerifier;
+  rosterVerifier?: ServiceIdentityVerifier;
 }
 
 /**
@@ -310,6 +328,20 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
   registerImageRoutes(app, { cache: options.profileCache, gate, imageStore });
   registerBannerRoutes(app, { gate, bannerStore: options.bannerStore, audit, clock });
   registerBackupRoutes(app, { gate, backupSource: options.backupSource, audit, clock });
+  registerBackupJobRoutes(app, {
+    verifier: options.backupInvokerVerifier,
+    // Constructed only when a bucket is actually configured, so that `undefined`
+    // is the single, exact signal the route's fail-closed `503` keys on. A store
+    // built over an unset bucket would be truthy and then throw at call time,
+    // surfacing a misconfiguration as a `500` from the export path instead.
+    backupStore:
+      options.backupStore ??
+      (process.env.BACKUP_BUCKET ? new GcsBackupStore(process.env.BACKUP_BUCKET) : undefined),
+    backupSource: options.backupSource,
+    audit,
+    diagnostics,
+    clock,
+  });
   registerBugReportRoutes(app, {
     gate,
     bugReportStore: options.bugReportStore,

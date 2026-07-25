@@ -14,9 +14,10 @@ GCS bucket, whose name is globally unique (so it carries the environment).
 
 [`provision-staging.sh`](provision-staging.sh) builds an environment from
 scratch: project → billing → APIs → Firestore (native, regional) → private image
-bucket → least-privilege runtime service account → Cloud Run deploy. It is
-parameterized and idempotent where cheap to be, so it can recreate or converge an
-environment.
+bucket → private backup bucket → least-privilege runtime service account →
+backup-scheduler service account → Cloud Run deploy → the backup schedule. It
+is parameterized and idempotent where cheap to be, so it can recreate or converge
+an environment.
 
 ```bash
 # from the repo root, authenticated as an owner of the billing account
@@ -192,6 +193,82 @@ API is deployed and has served at least one request (so the audit stream exists)
 The **JWKS** metric (`book_auth_jwks_failure`) has no synthesizable staging signal
 (it needs Ghost's JWKS endpoint to actually fault), so it is provisioned as a metric
 without an alert for now — see the deferred watchdogs (OFC tickets) filed with 7a-3c.
+
+## The automated backup (7b-2)
+
+`provision-staging.sh` creates the backup bucket, its 90-day lifecycle rule, the
+`book-backup-scheduler` service account, and a Cloud Scheduler job that POSTs to
+`/api/internal/backup` twice daily (03:10 and 15:10 UTC) with an OIDC token.
+`provision-observability.sh` adds the three log-based metrics and both alert
+policies.
+
+**Why twice daily and not once (D149).** Not for RPO — at ~2 edits/month the
+expected loss between any of these cadences is a fraction of one edit. Two other
+reasons decide it. In a system that can go months without a write, the backup's
+real job is to *exercise the pipeline*: each run re-proves Firestore is readable,
+the service account holds its grants, the bucket exists, and the last deploy did
+not break the path — the failure that hurts a low-write system is a backup that
+broke in March and is found in September. And concretely, 12h between healthy runs
+is what makes the metric-absence alert possible at all: Cloud Monitoring caps that
+trigger window at 23.5h, so a 24h cadence cannot be watched for absence. Trimming
+back to daily would silently delete that alert, not just coarsen it.
+
+**Why an endpoint and not a cron:** Cloud Run is scaled to zero (D83), so no
+process is alive to hold a timer. The schedule has to come from outside.
+
+**The one configuration value that will bite you.** Book pins the scheduler's
+`sub` claim, and a Google OIDC token's `sub` is the service account's **numeric
+unique ID**, not its email. `provision-staging.sh` derives the live value for its
+own deploy and warns if `environments/staging.env` disagrees — but the GitHub
+deploy workflow cannot run `gcloud` and trusts `staging.env` alone, so a stale
+value there means the next CI deploy ships a service that rejects every scheduler
+token, and backups stop with no symptom until the staleness alert fires a day
+later. Read the correct value with:
+
+```bash
+gcloud iam service-accounts describe book-backup-scheduler@pbe-book-staging.iam.gserviceaccount.com --project pbe-book-staging --format='value(uniqueId)'
+```
+
+### Verifying the backup (7b-2) — force a run
+
+```bash
+gcloud scheduler jobs run book-daily-backup --location=us-central1 --project=pbe-book-staging
+```
+
+Then confirm, in order:
+
+1. **A snapshot object landed.** `gcloud storage ls gs://pbe-book-staging-backups/backups/`
+   — one new `<ISO>.json`, with colons replaced by dashes.
+2. **It carries the manifest.** Download it and check `version: 2`, non-empty
+   `collections.profiles`, and an `images` entry per brother with a headshot.
+3. **The audit line exists:**
+   ```bash
+   gcloud logging read 'jsonPayload.logType="audit" AND jsonPayload.action="backup.auto"' --project pbe-book-staging --freshness=10m --limit=5
+   ```
+4. **The staleness detector works.** Because staging's schedule sits paused
+   between test sessions, the *first* run after a gap legitimately reports a stale
+   history and trips the alert — that is the detector working, not a
+   misconfiguration. To see the line:
+   ```bash
+   gcloud logging read 'jsonPayload.logType="diagnostic" AND jsonPayload.message="backup staleness threshold exceeded"' --project pbe-book-staging --freshness=1h --limit=5
+   ```
+   Run the job a second time immediately afterwards and the line should be
+   **absent**, because the snapshot from step 1 is now minutes old.
+
+5. **The absence backstop is armed.** `provision-observability.sh` creates a
+   metric-absence policy that fires when no successful backup has been recorded in
+   20 hours — the only detector that sees a job which never ran at all. ⚠ It is
+   **inert until the first successful backup**, because Monitoring needs one data
+   point before it can call a series absent, so do not read early silence on a
+   fresh environment as health. And ⚠ its window is **arithmetically coupled to
+   the twice-daily cadence**: it must exceed the 12h gap between healthy runs and
+   stay under Monitoring's 23.5h ceiling. Moving the schedule back to daily does
+   not coarsen this alert, it **deletes** it (D148 → D149).
+
+This is a backup-integrity backstop, **not** an availability monitor — it is up to
+20 hours slow and exercises only the Firestore-read/GCS-write/OIDC path. "Book is
+down" is a separate instrument: a Cloud Monitoring uptime check against
+`/api/health` (OFC-329).
 
 ## Architecture invariants the playbook encodes
 
