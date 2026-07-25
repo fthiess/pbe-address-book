@@ -54,9 +54,24 @@ BACKUP_RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-90}"
 BACKUP_SA_NAME="${BACKUP_SA_NAME:-book-backup-scheduler}"
 BACKUP_SA_EMAIL="${BACKUP_SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
 BACKUP_JOB_NAME="${BACKUP_JOB_NAME:-book-daily-backup}"
-# 03:10 UTC — off Book's (already negligible) traffic, and early enough that a
-# failed run is visible to a human the same day. Cron is in BACKUP_TIME_ZONE.
-BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-10 3 * * *}"
+# TWICE daily, 03:10 and 15:10 UTC (D149). Cron is in BACKUP_TIME_ZONE.
+#
+# Not chosen for RPO — at Book's write volume (~2 edits/month, D102) the expected
+# loss between any of these cadences is a fraction of one edit. Two things decide
+# it. First, in a system that can go months without a write, the backup's real job
+# is to EXERCISE THE PIPELINE: each run re-proves Firestore is readable, the
+# service account still holds its grants, the bucket exists, the schedule fires,
+# and the last deploy did not break the path. The failure that actually hurts a
+# low-write system is a backup that broke in March and is discovered in September.
+# Second, and concretely: 12h between successful runs is what makes the external
+# metric-ABSENCE alert constructible at all, since Cloud Monitoring caps its
+# trigger window at 23.5h and a 24h cadence therefore cannot be watched that way
+# (D148 → D149).
+#
+# The two runs are exactly 12h apart on purpose — an uneven split would make the
+# longer gap the one both thresholds have to tolerate, costing detection speed for
+# no benefit.
+BACKUP_SCHEDULE="${BACKUP_SCHEDULE:-10 3,15 * * *}"
 BACKUP_TIME_ZONE="${BACKUP_TIME_ZONE:-Etc/UTC}"
 # The `aud` Book requires in the scheduler's OIDC token. A deliberately FIXED
 # logical string, not the Cloud Run URL: the URL is not known until after the

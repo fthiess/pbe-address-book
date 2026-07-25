@@ -54,12 +54,18 @@ import { traceId } from "./trace.js";
 /**
  * How old the newest snapshot may be before the pre-flight check raises the alarm.
  *
- * On a daily schedule the normal age at check time is ~24h, so **36h means at least
- * one scheduled run was missed**, with 12 hours of slack for clock drift, a shifted
- * schedule, and Scheduler's own retries. Tightening this below ~25h would alert on
- * an ordinary run.
+ * The schedule runs **twice daily** (D149), so the normal age at check time is
+ * ~12h and **20h means one scheduled run was missed**, with 8 hours of slack for
+ * clock drift, a shifted schedule, and Scheduler's own retries. Tightening this
+ * below ~13h would alert on an ordinary run; loosening it past 24h would need two
+ * consecutive misses before saying anything.
+ *
+ * Deliberately the same 20h the external absence policy uses
+ * (`infra/provision-observability.sh`), so the two detectors agree on what
+ * "overdue" means — they watch different failures, and it would be confusing for
+ * them to disagree about the threshold as well as the mechanism.
  */
-export const BACKUP_STALE_AFTER_MS = 36 * 60 * 60 * 1000;
+export const BACKUP_STALE_AFTER_MS = 20 * 60 * 60 * 1000;
 
 /** The constant `message` of the alertable staleness line (the alert filter keys on it). */
 export const BACKUP_STALE_MESSAGE = "backup staleness threshold exceeded";

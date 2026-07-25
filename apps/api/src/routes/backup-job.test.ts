@@ -268,10 +268,10 @@ describe("POST /api/internal/backup — the pre-flight staleness check", () => {
     expect(staleness(ctx.logged)).toBeUndefined();
   });
 
-  it("stays quiet when yesterday's snapshot is present (the normal ~24h age)", async () => {
-    const yesterday = new Date(NOW.getTime() - 24 * 60 * 60 * 1000);
+  it("stays quiet at the normal ~12h age (the twice-daily cadence, D149)", async () => {
+    const lastRun = new Date(NOW.getTime() - 12 * 60 * 60 * 1000);
     const ctx = await build({
-      store: new InMemoryBackupStore([[backupObjectName(yesterday), "{}"]]),
+      store: new InMemoryBackupStore([[backupObjectName(lastRun), "{}"]]),
     });
     app = ctx.app;
     await run(app);
@@ -279,6 +279,19 @@ describe("POST /api/internal/backup — the pre-flight staleness check", () => {
     expect(ctx.logged).not.toContainEqual(
       expect.objectContaining({ message: BACKUP_BOOTSTRAP_MESSAGE }),
     );
+  });
+
+  it("alerts once a single run has been missed (~24h age)", async () => {
+    // The threshold's whole purpose: on a twice-daily schedule one missed run
+    // puts the newest snapshot at ~24h, which must be loud. If a cadence change
+    // ever makes this test fail, BACKUP_STALE_AFTER_MS needs rethinking with it.
+    const oneMissed = new Date(NOW.getTime() - 24 * 60 * 60 * 1000);
+    const ctx = await build({
+      store: new InMemoryBackupStore([[backupObjectName(oneMissed), "{}"]]),
+    });
+    app = ctx.app;
+    await run(app);
+    expect(staleness(ctx.logged)).toMatchObject({ severity: "ERROR" });
   });
 
   it("alerts at ERROR when a scheduled run was missed", async () => {

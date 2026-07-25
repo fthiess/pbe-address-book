@@ -97,10 +97,9 @@ METRIC_JWKS="${METRIC_JWKS:-book_auth_jwks_failure}"
 #                         run that is about to be killed (the whole reason the
 #                         check is pre-flight rather than post-hoc).
 #   - book_backup_failed  the job ran and produced no snapshot.
-#   - book_backup_ok      successful runs. Powers dashboards, and is the series a
-#                         metric-ABSENCE policy would watch — see the DEFERRED
-#                         note at the end of this file for why that policy is not
-#                         provisioned yet (23.5h cap vs a 24h schedule).
+#   - book_backup_ok      successful runs. Powers dashboards, and is the series
+#                         the metric-ABSENCE policy watches (D149) — the ONLY
+#                         detector that can see a job which never ran at all.
 METRIC_BACKUP_STALE="${METRIC_BACKUP_STALE:-book_backup_stale}"
 METRIC_BACKUP_FAILED="${METRIC_BACKUP_FAILED:-book_backup_failed}"
 METRIC_BACKUP_OK="${METRIC_BACKUP_OK:-book_backup_ok}"
@@ -121,6 +120,14 @@ DENIAL_BURST_THRESHOLD="${DENIAL_BURST_THRESHOLD:-10}"
 # Both are counts of Book's own log lines, so they fire on presence — no
 # missing-data semantics involved.
 BACKUP_POLICY_NAME="${BACKUP_POLICY_NAME:-Book — nightly backup problem (staging)}"
+# The separate ABSENCE policy (D149) — the only detector for a job that never ran.
+# Its window must sit ABOVE the 12h gap between healthy twice-daily runs and BELOW
+# Cloud Monitoring's hard 23.5h ceiling; 20h means one missed run, matching the
+# in-app pre-flight threshold (BACKUP_STALE_AFTER_MS) so the two agree on
+# "overdue". Raising the cadence back to daily would make this UNUSABLE, not just
+# less sensitive — 24h between healthy points exceeds any window Monitoring allows.
+BACKUP_ABSENT_POLICY_NAME="${BACKUP_ABSENT_POLICY_NAME:-Book — no successful backup (staging)}"
+BACKUP_ABSENT_SECONDS="${BACKUP_ABSENT_SECONDS:-72000}"   # 20h; hard ceiling 84600 (23.5h)
 
 # A freshly-created service account is not immediately visible to the IAM policy
 # system, so a binding that references it can fail with "does not exist" for several
@@ -439,6 +446,66 @@ else
 fi
 rm -f "${BACKUP_POLICY_FILE}"
 
+# 8. The backup ABSENCE policy (D149) — the backstop for the one failure Book
+#    cannot report about itself. Every other detector here is a count of a log line
+#    Book emitted, which means all of them are silent when Book never runs: a
+#    paused or deleted Scheduler job, lapsed billing, a service that will not
+#    start. Only the absence of successful-backup events sees that, and D102 names
+#    it (R21) as the failure that matters.
+#
+#    ⚠ THE WINDOW IS LOAD-BEARING AND CADENCE-COUPLED. Cloud Monitoring caps a
+#    metric-absence trigger at 23.5h. It must also exceed the gap between healthy
+#    runs or it fires on a working system. With the twice-daily schedule that gap
+#    is 12h, leaving a usable band of 12h–23.5h; 20h sits in it and means "one run
+#    missed". **If the backup ever returns to a daily cadence this policy becomes
+#    impossible, not merely coarse** — 24h between healthy points exceeds every
+#    window Monitoring permits, which is exactly why the cadence is twice daily
+#    (D148 → D149). Change one, revisit the other.
+#
+#    ⚠ IT ARMS ITSELF, LATE. Absence conditions need the series to produce at least
+#    one point after the policy is installed, so on a fresh environment this is
+#    INERT until the first successful backup. Do not read early silence as health;
+#    confirm a snapshot actually landed (infra/README.md's verification steps).
+ABSENT_POLICY_MATCHES="$(gcloud monitoring policies list \
+  --project "${PROJECT_ID}" \
+  --filter="displayName=\"${BACKUP_ABSENT_POLICY_NAME}\"" \
+  --format="value(name)")"
+EXISTING_ABSENT_POLICY="$(printf '%s\n' "${ABSENT_POLICY_MATCHES}" | head -n1)"
+ABSENT_POLICY_FILE="$(mktemp)"
+cat >"${ABSENT_POLICY_FILE}" <<YAML
+displayName: "${BACKUP_ABSENT_POLICY_NAME}"
+combiner: OR
+conditions:
+  - displayName: "no successful backup in ${BACKUP_ABSENT_SECONDS}s"
+    conditionAbsent:
+      filter: 'metric.type="logging.googleapis.com/user/${METRIC_BACKUP_OK}" AND resource.type="cloud_run_revision"'
+      aggregations:
+        - alignmentPeriod: 300s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      duration: ${BACKUP_ABSENT_SECONDS}s
+      trigger:
+        count: 1
+alertStrategy:
+  # Matches the sibling backup policy: a human has to act, and the next signal is
+  # up to 12h away, so a short auto-close would hide an unresolved outage.
+  autoClose: 172800s
+YAML
+if [[ -z "${EXISTING_ABSENT_POLICY}" ]]; then
+  echo "==> Creating alert policy: ${BACKUP_ABSENT_POLICY_NAME} (>${BACKUP_ABSENT_SECONDS}s silent → ${ALERT_EMAIL})"
+  gcloud monitoring policies create \
+    --project "${PROJECT_ID}" \
+    --policy-from-file="${ABSENT_POLICY_FILE}" \
+    --notification-channels="${CHANNEL_NAME}"
+else
+  echo "==> Converging alert policy ${EXISTING_ABSENT_POLICY} (>${BACKUP_ABSENT_SECONDS}s silent → ${ALERT_EMAIL})"
+  gcloud monitoring policies update "${EXISTING_ABSENT_POLICY}" \
+    --project "${PROJECT_ID}" \
+    --policy-from-file="${ABSENT_POLICY_FILE}" \
+    --set-notification-channels="${CHANNEL_NAME}"
+fi
+rm -f "${ABSENT_POLICY_FILE}"
+
 echo
 echo "==> Done. Provisioned:"
 echo "    audit bucket : ${AUDIT_BUCKET} (${LOG_LOCATION}, ${AUDIT_RETENTION_DAYS}d retention)"
@@ -449,14 +516,13 @@ echo "    log-reader SA: ${READER_SA_EMAIL}  (keyless; view-scoped; D91 local-mo
 echo "    reader assumer: ${LOG_READER_PRINCIPAL:-<none — set LOG_READER_PRINCIPAL to grant impersonation>}"
 echo "    alerts       : \"${DENIAL_POLICY_NAME}\" → ${ALERT_EMAIL}"
 echo "                   \"${BACKUP_POLICY_NAME}\" → ${ALERT_EMAIL}"
+echo "                   \"${BACKUP_ABSENT_POLICY_NAME}\" (>${BACKUP_ABSENT_SECONDS}s) → ${ALERT_EMAIL}"
 echo
 echo "    LIVE TEST (fire synthetic denials, watch the alert trip) — see infra/README.md,"
 echo "    section \"Verifying observability (7a-3c)\"."
 echo
-echo "    NOT PROVISIONED — the \"backup never ran at all\" backstop. Cloud Monitoring's"
-echo "    metric-absence condition caps its trigger window at 23.5h, which is SHORTER"
-echo "    than the 24h gap between successful daily runs, so such a policy would fire"
-echo "    every day on a perfectly healthy schedule. See the DEFERRED note in this file."
+echo "    NOTE: the absence policy is INERT until the first successful backup arms it"
+echo "    (Monitoring needs one data point before it can call the series absent)."
 
 # ---------------------------------------------------------------------------
 # DEFERRED — signals this script deliberately does NOT alert on yet, and why.
@@ -469,34 +535,24 @@ echo "    every day on a perfectly healthy schedule. See the DEFERRED note in th
 # 2. The D99 daily health-check watchdogs (OFC-310 items 1–3). Blocked on the D99
 #    health-check job itself, which is unbuilt — there is no signal to alert on.
 #
-# 3. "The nightly backup never ran at all" (7b-2). This is the R21 failure D102
-#    names, and it is the one thing Book's own pre-flight staleness check cannot
-#    see, because that check only runs if Book runs: a paused or deleted Scheduler
-#    job, lapsed billing, or a deleted service leaves it unexecuted and silent.
+# 3. RESOLVED, recorded here because the constraint outlives the fix (D148 → D149,
+#    OFC-328). "The nightly backup never ran at all" IS now alerted on, by the
+#    absence policy in step 8 — but only because the backup cadence was changed to
+#    twice daily to make it possible. **Cloud Monitoring caps a metric-absence
+#    trigger window at 23.5 hours** (Monitoring docs, "Create alerting policies on
+#    metric absence"), so a 24h cadence cannot be watched for absence at all: the
+#    window would have to be shorter than the healthy gap between runs and would
+#    fire every day on a working system. Anyone tempted to trim the cadence back to
+#    daily is silently deleting this alert, not merely making it coarser.
 #
-#    The natural instrument is a metric-ABSENCE policy over ${METRIC_BACKUP_OK}.
-#    It does not work at a daily cadence, for a reason that is arithmetic rather
-#    than configuration: **Cloud Monitoring caps a metric-absence trigger window at
-#    23.5 hours** (Monitoring docs, "Create alerting policies on metric absence"),
-#    while successful daily runs are 24 hours apart. Any such policy would go off
-#    every single day on a perfectly healthy schedule — the worst kind of alert,
-#    the kind that trains its recipient to ignore it. (A second, independent
-#    obstacle: absence conditions require the series to have produced at least one
-#    point after the policy was installed, so the policy is inert on a fresh
-#    environment until the first successful backup arms it.)
-#
-#    Three ways out, none of them free, none chosen here:
-#      (a) Run the backup TWICE daily. Successful points land 12h apart, so a ~20h
-#          absence window fires only after two consecutive misses. Costs one extra
-#          small object per day (~a cent a month at Book's size) and improves the
-#          effective RPO from ~24h to ~12h, better than D102 promises. The
-#          simplest fix, and it makes the backstop a plain absence policy.
-#      (b) Alert on Cloud Scheduler's own job metrics (failed attempt counts).
-#          Catches "the job ran and got a non-2xx" — but NOT a paused or deleted
-#          job, which emits nothing, so it does not actually close this gap.
-#      (c) Leave it to 7b-4. D102's ephemeral integrity job restores "the latest
-#          backup" on a weekly cadence and would notice a ten-day-old snapshot on
-#          its own. Correct, but slower, and it leaves the gap open through 7b-3.
-#
-#    Forrest's call — see the 7b-2 session notes / OFC-327.
+# 4. "Book is down" as a user-facing availability signal. The absence policy above
+#    is a genuine liveness backstop, but it is NOT an availability monitor and
+#    should not be read as one: it is up to 20 hours slow, it exercises only the
+#    Firestore-read + GCS-write + OIDC path rather than sign-in / projection /
+#    Hosting / the SPA, and it can fire without an outage (a stale
+#    BACKUP_INVOKER_SUBJECT 401s the endpoint while Book is perfectly healthy).
+#    The right instrument is a Cloud Monitoring UPTIME CHECK against /api/health,
+#    which polls every 1–5 minutes from multiple regions. Filed separately — it
+#    deserves its own pass on what to probe and where to alert, and it may absorb
+#    part of D99's unbuilt health-check job (OFC-310 items 1–3).
 # ---------------------------------------------------------------------------
