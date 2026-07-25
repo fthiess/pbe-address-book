@@ -187,6 +187,24 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     reply.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'");
     reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
     reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+    // The `Cache-Control` FLOOR (7b-1 / OFC-212). Uncacheable is the correct
+    // default for every response this service emits: `/api` is per-caller,
+    // session-scoped, and usually PII (D95), and the two responses that *are*
+    // cacheable (the D126 image objects, the banner) say so explicitly. A
+    // handler's own value therefore always wins — this only fills the gap.
+    //
+    // It exists because a missing header is NOT neutral in production: Firebase
+    // Hosting stamps its own `max-age=600` onto a header-less `/api/**` rewrite
+    // response (measured on staging; the mechanism behind OFC-192, where a
+    // per-role 404 was replayed from disk cache for ten minutes). Setting
+    // `no-store` per handler leaves exactly the branches nobody thought about —
+    // Fastify's built-in not-found handler, a thrown 5xx — carrying the default.
+    // Note this floor cannot fix the 2xx PII paths: Hosting OVERRIDES a backend
+    // `Cache-Control` on 2xx rewrite responses, so those are fixed in
+    // `firebase.json` (see the `/api/**` rule there); the two work together.
+    if (!reply.hasHeader("Cache-Control")) {
+      reply.header("Cache-Control", "no-store");
+    }
     return payload;
   });
   // Awaited before the routes register so the plugin's onRoute hook is in place to
