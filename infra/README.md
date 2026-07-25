@@ -337,15 +337,40 @@ Then the real thing, in order:
    audited like any other edit. There is deliberately no bulk re-push (D150;
    OFC-332).
 
-6. **Check the forensic entry landed.** The restore's privileged-roster entry
-   (D101) is written by the tool to its own Cloud Logging log and routed into the
-   3-month audit bucket:
+6. **Check the forensic entry landed — in the retained bucket, not just anywhere.**
+   The restore's privileged-roster entry (D101) is written by the tool to its own
+   Cloud Logging log. Two separate things can go wrong, so check both, exactly as
+   the 7a-3c verification above splits them:
    ```bash
+   # (a) the entry exists at all
    gcloud logging read 'logName="projects/pbe-book-staging/logs/book-restore"' \
      --project pbe-book-staging --freshness=1h --limit=5
+
+   # (b) the SINK ROUTED IT to the 3-month audit bucket — this is the one that
+   #     catches a stale AUDIT_FILTER, and (a) passes whether or not it did
+   gcloud logging read 'jsonPayload.action="restore"' --project pbe-book-staging \
+     --bucket=audit-logs --location=us-central1 --view=_AllLogs --limit=5
    ```
-   If delivery failed, the run said so and the entry is in the artifacts — the
-   restore still succeeded; deliver it by hand.
+   If (a) is empty, delivery failed — the run said so, and the entry is in the
+   artifacts; the restore still succeeded, so deliver it by hand. If (a) has it and
+   (b) does not, the sink filter is stale: see the prerequisite below.
+
+⚠ **One-time prerequisite, per environment: re-run `provision-observability.sh`.**
+The audit sink's filter gained a second clause in 7b-3 so it routes the restore
+tool's log alongside the service's own audit lines. That script is Forrest-run, not
+deploy-run (D144) — so **an environment provisioned before 7b-3 keeps the
+one-clause filter until it is re-run**, and every forensic restore entry is written
+and then silently dropped from the retained stream. The script converges on re-run,
+so this is safe to do at any time and costs nothing if already applied:
+
+```bash
+# from the repo root, authenticated as a project owner
+PROJECT_ID=pbe-book-staging ./infra/provision-observability.sh
+```
+
+This is the same drift class PR #16 hit on the image bucket and #146 on the backup
+bucket: a script-only change that never reached the live resource. Verify with step
+6(b) above rather than assuming.
 
 ⚠ **The artifacts are the whole member directory in plaintext** — safety
 snapshot, restore report, Ghost report. `restore-artifacts/` is gitignored (this

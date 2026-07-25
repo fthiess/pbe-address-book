@@ -110,6 +110,11 @@ function printHelp(): void {
       "  --dry-run            Validate and print the plan; write nothing, anywhere.",
       "  --force              Skip the maintenance-page pre-flight (ephemeral environments).",
       "  --allow-emulator     Permit running against FIRESTORE_EMULATOR_HOST.",
+      "  --allow-duplicate-emails",
+      "                       Downgrade a CROSS-PROFILE duplicate email from a refusal to a",
+      "                       warning. For an archive of a state Book already tolerates (D97:",
+      "                       those brothers' sign-ins fail closed until an admin de-dups) —",
+      "                       not for a snapshot you have reason to distrust.",
       "  --skip-ghost-audit   Do not run the post-restore Ghost reconciliation.",
       "  --no-safety-snapshot Do not archive the current data first (also loses the roster delta).",
       "  --help,-h            Show this help and exit.",
@@ -153,8 +158,16 @@ async function loadSnapshotText(
 /**
  * Is the origin serving the maintenance page? `null` means the probe itself failed
  * — a refused connection or a DNS failure, which is *consistent* with a down
- * environment but does not prove the edge swap happened, so it is reported as
- * unknown rather than quietly treated as a pass.
+ * environment but does not prove the edge swap happened.
+ *
+ * Both `false` and `null` refuse the restore. Treating "I could not tell" as a pass
+ * is what makes a fat-fingered `--hosting-url`, a project whose Hosting site name
+ * differs from `<project>.web.app`, or a momentary network failure silently
+ * equivalent to "Book is down" — and the consequence of getting that wrong is the
+ * whole reason the pre-flight exists: the single instance keeps serving its
+ * pre-restore cache as authoritative (there is no Firestore listener) and any edit
+ * it accepts writes into the collections being replaced. `--force` is the documented
+ * way to say "this environment has no Hosting", and it is one word.
  */
 async function probeMaintenance(url: string): Promise<boolean | null> {
   try {
@@ -297,7 +310,9 @@ console.log(
   `==> Envelope version ${snapshot.version}, taken ${snapshot.generatedAt}, ${snapshot.images.length} image manifest entry(ies).`,
 );
 
-const validation = validateSnapshot(snapshot.collections);
+const validation = validateSnapshot(snapshot.collections, {
+  allowDuplicateEmails: options.allowDuplicateEmails,
+});
 for (const line of renderValidationReport(validation)) {
   console.log(line);
 }
@@ -342,11 +357,12 @@ if (options.force) {
       `${hostingUrl} is not serving the maintenance page. Run infra/maintenance-on.sh first (or --force if this environment has no Hosting).`,
     );
   }
-  console.log(
-    inMaintenance === null
-      ? `==> Maintenance pre-flight: ${hostingUrl} did not answer. Treating as down; confirm it yourself.`
-      : `==> Maintenance pre-flight: ${hostingUrl} is serving the maintenance page.`,
-  );
+  if (inMaintenance === null) {
+    fail(
+      `${hostingUrl} did not answer, so this cannot confirm Book is down — and an unreachable URL is equally consistent with a typo in --hosting-url. Check the URL, or pass --force if this environment has no Hosting.`,
+    );
+  }
+  console.log(`==> Maintenance pre-flight: ${hostingUrl} is serving the maintenance page.`);
 }
 
 await mkdir(outDir, { recursive: true });
@@ -391,6 +407,11 @@ const audit = new AuditLog({
 });
 audit.record(buildRestoreAuditEntry(roster, delta), startedAt.toISOString());
 console.log(`==> Forensic entry: ${auditRecord}`);
+// Archived as its own file BEFORE delivery is attempted, so the promise that the
+// entry "is never lost" holds even if the Ghost reconciliation or the report write
+// fails afterwards — those come later, and a forensic record that depends on two
+// subsequent steps succeeding is not archived, it is hopeful.
+console.log(`==> Forensic entry written to ${await artifact("audit-entry.json", auditRecord)}`);
 console.log(`==> ${await deliverAuditEntry(auditRecord, projectId)}`);
 
 const restoredProfiles = hydrateProfiles(snapshot.collections.profiles);
@@ -417,6 +438,14 @@ const reportPath = await artifact("restore-report.json", {
   projectId,
   source,
   snapshot: { version: snapshot.version, generatedAt: snapshot.generatedAt },
+  // Every guard the operator chose to stand down, recorded where the restore is
+  // reconstructed from afterwards. A waiver that leaves no trace is indistinguishable
+  // from a guard that never fired.
+  waivedGuards: {
+    duplicateEmails: options.allowDuplicateEmails,
+    maintenancePreflight: options.force,
+    safetySnapshot: !options.safetySnapshot,
+  },
   validation,
   plan,
   roster,

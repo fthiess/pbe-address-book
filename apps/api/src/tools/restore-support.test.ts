@@ -48,6 +48,43 @@ describe("parseArgs", () => {
     expect(errors).toContain("--file needs a value.");
   });
 
+  it("never lets a value flag swallow the following flag", () => {
+    // The catastrophe path: `--out-dir "$DIR" --dry-run` with $DIR unset expands to
+    // `--out-dir --dry-run`. A parser that takes the next token whatever it is sets
+    // outDir = "--dry-run", leaves dryRun false, raises nothing — and with a
+    // --confirm already on the line, performs a LIVE restore while its author
+    // believes they asked for a preview.
+    const { options, errors } = parseArgs([
+      "--object",
+      "latest",
+      "--out-dir",
+      "--dry-run",
+      "--confirm",
+      "pbe-book-staging",
+    ]);
+    expect(errors).toContain("--out-dir needs a value.");
+    expect(options.dryRun).toBe(true);
+    expect(options.outDir).toBe(DEFAULT_OUT_DIR);
+  });
+
+  it("still accepts a leading-dash value through the inline form", () => {
+    expect(parseArgs(["--file", "a.json", "--out-dir=-weird"]).options.outDir).toBe("-weird");
+  });
+
+  it("rejects a value stapled to a boolean flag rather than discarding it", () => {
+    // `--dry-run=false` reads to a human as "not a dry run"; silently setting
+    // dryRun = true and dropping the value would be the friendlier wrong answer.
+    const { errors } = parseArgs(["--file", "a.json", "--dry-run=false"]);
+    expect(errors).toContain("--dry-run takes no value (got --dry-run=false).");
+  });
+
+  it("waives duplicate emails only when asked", () => {
+    expect(parseArgs(["--file", "a.json"]).options.allowDuplicateEmails).toBe(false);
+    expect(
+      parseArgs(["--file", "a.json", "--allow-duplicate-emails"]).options.allowDuplicateEmails,
+    ).toBe(true);
+  });
+
   it("requires a snapshot source, and only one", () => {
     expect(parseArgs([]).errors).toContain(
       "Give a snapshot: --file <path> or --object <name|latest>.",

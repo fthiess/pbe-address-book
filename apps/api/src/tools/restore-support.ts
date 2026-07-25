@@ -29,6 +29,21 @@ export interface RestoreOptions {
   /** Skip the maintenance-page pre-flight (the ephemeral-environment case). */
   force: boolean;
   allowEmulator: boolean;
+  /**
+   * Downgrade the cross-profile email-uniqueness rule from a refusal to a warning.
+   *
+   * Exists because D97 anticipates duplicates surviving in live data — it names
+   * fail-closed sign-in resolution as "the backstop for a duplicate slipped in by
+   * the genesis load or a migration" — so a snapshot taken while one existed is a
+   * *legitimate* archive of a state Book tolerates and reports. Without an escape
+   * hatch, one such duplicate anywhere in the roster would make every backup taken
+   * since permanently unrestorable, and would do it during the outage the tool
+   * exists to end. It stays a refusal by default because D101 names email
+   * uniqueness as a structural rule and a *tampered* snapshot is the case that rule
+   * guards; the flag makes proceeding a decision someone took, recorded in the
+   * restore report, rather than a silence.
+   */
+  allowDuplicateEmails: boolean;
   skipGhostAudit: boolean;
   safetySnapshot: boolean;
   help: boolean;
@@ -52,6 +67,7 @@ function defaults(): RestoreOptions {
     dryRun: false,
     force: false,
     allowEmulator: false,
+    allowDuplicateEmails: false,
     skipGhostAudit: false,
     safetySnapshot: true,
     help: false,
@@ -94,8 +110,23 @@ function assign(options: RestoreOptions, flag: string, value: string): void {
   }
 }
 
+/** The flags that take no value — kept beside {@link setBoolean}, which decides them. */
+const BOOLEAN_FLAGS = new Set([
+  "--dry-run",
+  "--force",
+  "--allow-emulator",
+  "--allow-duplicate-emails",
+  "--skip-ghost-audit",
+  "--no-safety-snapshot",
+  "--help",
+  "-h",
+]);
+
 function setBoolean(options: RestoreOptions, flag: string): boolean {
   switch (flag) {
+    case "--allow-duplicate-emails":
+      options.allowDuplicateEmails = true;
+      return true;
     case "--dry-run":
       options.dryRun = true;
       return true;
@@ -125,6 +156,17 @@ function setBoolean(options: RestoreOptions, flag: string): boolean {
  * unrecognized argument is an **error**, never a silent ignore: a mistyped
  * `--dry-runn` that parsed as "no flags given" would run a live restore, which is
  * the worst possible reading of a typo in this particular tool.
+ *
+ * TWO RULES THAT LOOK PEDANTIC AND ARE NOT (added in 7b-3 review). **A value flag
+ * never consumes a token that looks like a flag**, and **a boolean flag rejects an
+ * `=value` suffix** — both because the permissive readings turn a preview into a
+ * live restore. `--out-dir "$DIR" --dry-run` with `$DIR` unset expands to
+ * `--out-dir --dry-run`; a parser that takes the next token whatever it is sets
+ * `outDir = "--dry-run"`, leaves `dryRun` false, raises nothing, and — if
+ * `--confirm` is also present, as it would be in a command the operator copied and
+ * edited — replaces every document in the database while its author believes they
+ * asked for a preview. Refusing costs a legitimate value beginning with `-`, which
+ * the inline `--flag=-value` form still expresses.
  */
 export function parseArgs(argv: readonly string[]): {
   options: RestoreOptions;
@@ -137,13 +179,25 @@ export function parseArgs(argv: readonly string[]): {
     const equals = arg.indexOf("=");
     const flag = equals === -1 ? arg : arg.slice(0, equals);
     if (VALUE_FLAGS.has(flag)) {
-      const inlineValue = equals === -1 ? undefined : arg.slice(equals + 1);
-      const value = inlineValue ?? argv[++index];
-      if (value === undefined || value === "") {
+      let value = equals === -1 ? undefined : arg.slice(equals + 1);
+      if (value === undefined) {
+        const next = argv[index + 1];
+        if (next === undefined || next.startsWith("-")) {
+          errors.push(`${flag} needs a value.`);
+          continue;
+        }
+        value = next;
+        index++;
+      }
+      if (value === "") {
         errors.push(`${flag} needs a value.`);
         continue;
       }
       assign(options, flag, value);
+      continue;
+    }
+    if (BOOLEAN_FLAGS.has(flag) && equals !== -1) {
+      errors.push(`${flag} takes no value (got ${arg}).`);
       continue;
     }
     if (!setBoolean(options, flag)) {

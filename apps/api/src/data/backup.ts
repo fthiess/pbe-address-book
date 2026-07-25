@@ -100,6 +100,12 @@ export interface ImageManifestEntry {
  * precisely what D102's integrity job is for: **7b-2 records intent, 7b-4 verifies
  * reality.**
  *
+ * As of 7b-3 the restore reads the manifest's *count* and nothing more — it
+ * replaces the three Firestore collections and touches no image state, because
+ * resurrecting a superseded GCS generation is the other half of the same 7b-4 job
+ * (OFC-333). So the manifest is still a record of intent with no consumer that acts
+ * on it; the promise above is outstanding, not redeemed.
+ *
  * Brothers with no headshot are simply absent (~two thirds of the roster carries
  * no photo). A document missing either flag or the version token is skipped rather
  * than emitted with a half-built key.

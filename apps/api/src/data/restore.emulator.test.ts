@@ -51,10 +51,14 @@ describe.skipIf(!hasEmulator)("offline restore (emulator)", () => {
     // same exemplar email, and two records sharing one is precisely what the
     // validator refuses (D97's single namespace), so a lazy fixture would fail the
     // round-trip test for a reason that has nothing to do with the restore.
-    batch.set(
-      db.collection("profiles").doc("5001"),
-      makeProfile({ id: 5001, classYear: 1984, email: "b5001@example.test" }),
-    );
+    batch.set(db.collection("profiles").doc("5001"), {
+      ...makeProfile({ id: 5001, classYear: 1984, email: "b5001@example.test" }),
+      // A field the snapshot below does NOT carry. Without one, a `set(…, {merge:
+      // true})` would pass every assertion in this file, and "replacement, not
+      // merge" — the property the executor exists to guarantee — would be untested
+      // against real Firestore, which is the only place it can be honestly proven.
+      adminNote: "pre-restore note",
+    });
     batch.set(
       db.collection("profiles").doc("5002"),
       makeProfile({ id: 5002, role: "admin", email: "b5002@example.test" }),
@@ -113,6 +117,26 @@ describe.skipIf(!hasEmulator)("offline restore (emulator)", () => {
     expect(after.users.map((doc) => doc.id)).toEqual(["5247"]);
     expect(after.profiles.find((doc) => doc.id === "5001")?.data.classYear).toBe(1985);
     expect(after.config[0]?.data.message).toBe("after");
+    // Replacement, not merge: the field the snapshot omits is GONE, not inherited
+    // from the record that happened to sit under this key (D63).
+    expect(after.profiles.find((doc) => doc.id === "5001")?.data.adminNote).toBeUndefined();
+  });
+
+  it("spans Firestore's batch ceiling — more documents than one commit may carry", async () => {
+    // 450 is the executor's chunk size and 500 is Firestore's hard per-batch limit,
+    // so a restore of the real ~1,200-record roster always crosses both. An
+    // off-by-one in the slice arithmetic would drop or duplicate exactly the
+    // documents at a chunk boundary, which no small fixture can catch.
+    const many = Array.from({ length: 460 }, (_, index) => ({
+      id: String(6000 + index),
+      data: { ...makeProfile({ id: 6000 + index, email: `b${6000 + index}@example.test` }) },
+    }));
+    await executeRestore(new FirestoreRestoreTarget(db), { profiles: many, users: [], config: [] });
+
+    const after = await new FirestoreBackupSource(db).export();
+    expect(after.profiles).toHaveLength(460);
+    expect(after.profiles.map((doc) => doc.id).sort()).toContain("6449"); // across the 450 boundary
+    expect(validateSnapshot(after).errors).toEqual([]);
   });
 
   it("round-trips: the restored data re-exports as a snapshot that still validates", async () => {

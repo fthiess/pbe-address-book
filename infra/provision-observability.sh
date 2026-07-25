@@ -184,8 +184,10 @@ else
 fi
 
 # 2. The sink: route the audit stream into that bucket. Filter is the same label the
-#    app writes (audit-log.ts) plus a resource guard so only THIS service's audit
-#    lines match. A same-project log-bucket destination needs NO writer-identity IAM
+#    app writes (audit-log.ts), plus a resource guard so only THIS service's audit
+#    lines match — and, since 7b-3, a second clause for the one audit line that does
+#    not come from the service at all (see SECOND CLAUSE below).
+#    A same-project log-bucket destination needs NO writer-identity IAM
 #    grant (that is only for GCS/BigQuery/Pub-Sub/cross-project sinks), so there is
 #    nothing to bind after creation.
 #

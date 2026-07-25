@@ -4,6 +4,15 @@
  * to `stdout`** — no logging SDK, captured by Cloud Logging for free, following
  * the project's "progress to stdout, errors to stderr" convention.
  *
+ * ONE ACTION DOES NOT ARRIVE BY THAT TRANSPORT. The offline restore (`restore`,
+ * 7b-3/D150) runs with Book **down**, from an operator's machine, so there is no
+ * service stdout to capture: the tool builds its entry through this same
+ * {@link AuditLog} — a capturing sink instead of the stdout one, so the record
+ * shape cannot drift — and writes it to Cloud Logging itself under its own log
+ * name. The audit sink's filter carries a second clause for that log name so the
+ * entry still lands in the retained bucket. The *shape* is this file's; only the
+ * transport differs.
+ *
  * THE DISCIPLINE — identifiers and field *names*, never field *values*. An entry
  * records *that* brother #5247's `email`/`phone` changed and *who* changed them,
  * never the address itself. Logs persist under different access controls than the
@@ -105,10 +114,11 @@ export interface AuditEntry {
   /**
    * The acting brother's Constitution ID (the session identity). **Optional** for
    * two distinct reasons. Some security events *precede* identity resolution — a
-   * denied or JWKS-failed sign-in (`auth.*`) has no established actor yet. And one
-   * action has no human actor at all: `backup.auto` is triggered by Cloud Scheduler
-   * (7b-2), so there is no brother to name. Every brother-initiated mutation
-   * carries it.
+   * denied or JWKS-failed sign-in (`auth.*`) has no established actor yet. And two
+   * actions have no human actor in the session sense: `backup.auto` is triggered by
+   * Cloud Scheduler (7b-2), and `restore` is written by the offline operator tool
+   * rather than by a request (7b-3) — in neither case is there a brother to name.
+   * Every brother-initiated mutation carries it.
    */
   actorId?: number;
   /**
@@ -131,7 +141,11 @@ export interface AuditEntry {
    * actor's real role is `actorId`'s; this records which projection they assumed.
    */
   targetRole?: string;
-  /** The row count of an `export` (D92) — a count, never the exported data. */
+  /**
+   * A count, never the data it counts. The row count of an `export` (D92); the
+   * snapshot's profile count on `backup.auto` (7b-2); the **usable**-admin total on
+   * a `restore` (7b-3 — see {@link adminIds}).
+   */
   count?: number;
   /**
    * The caller's effective role on an `export` (OFC-117) — a role name, within the

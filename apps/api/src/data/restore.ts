@@ -168,6 +168,32 @@ export function parseSnapshot(raw: unknown): ParseResult {
 }
 
 /**
+ * Every document key must be one Firestore will accept as a top-level id — in
+ * practice, non-empty and free of `/`, which would silently address a subcollection
+ * path instead of a document.
+ *
+ * This runs first, and it exists to preserve the property the rest of the tool
+ * depends on: **validate everything before touching anything**. Without it a
+ * tampered `config` id like `systemBanner/x` passes every semantic rule, and then
+ * throws inside `batch.set` — *after* `profiles` and `users` have already been
+ * replaced. The run is re-runnable, so that is a crash rather than corruption, but
+ * a half-applied restore discovered mid-outage is exactly the surprise this tool
+ * is built to not produce.
+ */
+function checkDocumentKeys(collections: BackupData, errors: RestoreIssue[]): void {
+  for (const name of RESTORE_COLLECTIONS) {
+    for (const doc of collections[name]) {
+      if (doc.id.includes("/")) {
+        errors.push({
+          rule: "idUniqueness",
+          message: `\`${name}\` document id "${doc.id}" contains "/", which is not a document key.`,
+        });
+      }
+    }
+  }
+}
+
+/**
  * ID uniqueness (D101). Three distinct faults share the rule: a repeated document
  * key, a `data.id` that is not a positive integer, and — the one a naive check
  * misses — a `data.id` that disagrees with the document key it is stored under.
@@ -239,7 +265,12 @@ function claimEmail(raw: unknown, id: number, index: Map<string, Set<number>>): 
  * Addresses are never quoted into an issue message: the id pair identifies the
  * problem, and an audit-adjacent report is not a place for contact values (D61).
  */
-function checkEmails(profiles: readonly CollectionSnapshot[], errors: RestoreIssue[]): void {
+function checkEmails(
+  profiles: readonly CollectionSnapshot[],
+  errors: RestoreIssue[],
+  warnings: RestoreIssue[],
+  allowDuplicates: boolean,
+): void {
   const index = new Map<string, Set<number>>();
   for (const doc of profiles) {
     const id = doc.data.id;
@@ -249,18 +280,35 @@ function checkEmails(profiles: readonly CollectionSnapshot[], errors: RestoreIss
     const primary = claimEmail(doc.data.email, id, index);
     const alternate = claimEmail(doc.data.alternateEmail, id, index);
     if (primary !== null && primary === alternate) {
+      // Always an error: the write path refuses this on every save, so it cannot
+      // be in an untampered snapshot — unlike the cross-profile case below.
       errors.push({
         rule: "emailUniqueness",
         message: `Profile #${id} uses the same address as both its primary and alternate email.`,
       });
     }
   }
+  // A CROSS-PROFILE collision is a refusal that can be waived, and the distinction
+  // is D97's own. The write path checks only the addresses a patch introduces, and
+  // the genesis load (D57) is outside it entirely, so D97 names fail-closed sign-in
+  // resolution as "the backstop for a duplicate slipped in by the genesis load or a
+  // migration" — i.e. the design expects one to be able to exist, denies those two
+  // brothers' sign-ins, and waits for an admin to de-dup. Refusing outright would
+  // therefore make every backup taken since a duplicate appeared permanently
+  // unrestorable, during the outage this tool exists to end. Default refuse
+  // (D101's rule, and the tampering case it guards); `--allow-duplicate-emails`
+  // downgrades it to a warning, which the report records.
+  const bucket = allowDuplicates ? warnings : errors;
   for (const [, claimants] of index) {
     if (claimants.size > 1) {
       const ids = [...claimants].sort((a, b) => a - b);
-      errors.push({
+      bucket.push({
         rule: "emailUniqueness",
-        message: `One email address is claimed by ${ids.length} profiles: ${ids.map((id) => `#${id}`).join(", ")}.`,
+        message: `One email address is claimed by ${ids.length} profiles: ${ids.map((id) => `#${id}`).join(", ")}.${
+          allowDuplicates
+            ? " Waived by --allow-duplicate-emails; their sign-ins fail closed until an admin de-dups (D97)."
+            : " Re-run with --allow-duplicate-emails if this collision predates the snapshot and you accept it."
+        }`,
       });
     }
   }
@@ -409,15 +457,31 @@ function checkCycles(
  * learn everything wrong with an archive in one run, not discover the next fault
  * after each repair.
  */
-export function validateSnapshot(collections: BackupData): RestoreValidationReport {
+export function validateSnapshot(
+  collections: BackupData,
+  options: { allowDuplicateEmails?: boolean } = {},
+): RestoreValidationReport {
   const errors: RestoreIssue[] = [];
   const warnings: RestoreIssue[] = [];
 
+  checkDocumentKeys(collections, errors);
   const profileIds = checkIds(collections.profiles, "profiles", errors);
   checkIds(collections.users, "users", errors);
-  checkEmails(collections.profiles, errors);
+  checkEmails(collections.profiles, errors, warnings, options.allowDuplicateEmails === true);
   checkReferences(collections, profileIds, errors, warnings);
   checkCycles(collections.profiles, profileIds, errors);
+
+  // An empty roster is never a restore anyone means to perform, and it is what a
+  // truncated download or a half-written file looks like: every other rule passes
+  // vacuously, so without this the tool would cheerfully delete the directory and
+  // report success. There is no override — restore a snapshot that has contents.
+  if (collections.profiles.length === 0) {
+    errors.push({
+      rule: "envelope",
+      message:
+        "The snapshot contains no profiles. Restoring it would empty the directory — refusing; check that the file or object is complete.",
+    });
+  }
 
   return {
     errors,

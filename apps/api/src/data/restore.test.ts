@@ -224,6 +224,7 @@ describe("validateSnapshot — reference integrity", () => {
   it("warns on an unrecognized config singleton, restoring it verbatim", () => {
     const report = validateSnapshot(
       dataset({
+        profiles: [doc({ id: 5001 })],
         config: [
           { id: "systemBanner", data: {} },
           { id: "mystery", data: {} },
@@ -232,6 +233,63 @@ describe("validateSnapshot — reference integrity", () => {
     );
     expect(report.errors).toEqual([]);
     expect(messages(report.warnings)).toContain("mystery");
+  });
+});
+
+describe("validateSnapshot — the refusals that guard against a truncated file", () => {
+  it("refuses a snapshot with no profiles rather than emptying the directory", () => {
+    // Every other rule passes vacuously on an empty roster, so without this the
+    // tool would delete the whole directory and report success.
+    const report = validateSnapshot(dataset({ config: [{ id: "systemBanner", data: {} }] }));
+    expect(messages(report.errors)).toContain("would empty the directory");
+  });
+
+  it("refuses a document key containing a path separator, before anything is written", () => {
+    // A tampered `config` id like `systemBanner/x` passes every semantic rule and
+    // then throws inside batch.set — after profiles and users are already replaced.
+    const report = validateSnapshot(
+      dataset({ profiles: [doc({ id: 5001 })], config: [{ id: "systemBanner/x", data: {} }] }),
+    );
+    expect(messages(report.errors)).toContain('contains "/"');
+  });
+});
+
+describe("validateSnapshot — the duplicate-email waiver", () => {
+  const colliding = () =>
+    dataset({
+      profiles: [
+        doc({ id: 5001, email: "shared@example.test" }),
+        doc({ id: 5002, email: "shared@example.test" }),
+      ],
+    });
+
+  it("refuses by default and names the flag that would waive it", () => {
+    const report = validateSnapshot(colliding());
+    expect(report.errors).toHaveLength(1);
+    expect(messages(report.errors)).toContain("--allow-duplicate-emails");
+  });
+
+  it("downgrades a CROSS-profile collision to a warning when waived", () => {
+    // D97 names fail-closed sign-in as "the backstop for a duplicate slipped in by
+    // the genesis load or a migration" — so a snapshot holding one is a legitimate
+    // archive of a state Book tolerates, and must stay restorable.
+    const report = validateSnapshot(colliding(), { allowDuplicateEmails: true });
+    expect(report.errors).toEqual([]);
+    expect(messages(report.warnings)).toContain("fail closed until an admin de-dups");
+  });
+
+  it("still refuses a record colliding with ITSELF, waiver or not", () => {
+    // The write path refuses this on every save, so it cannot be in an untampered
+    // snapshot — a different claim from the cross-profile case.
+    const report = validateSnapshot(
+      dataset({
+        profiles: [
+          doc({ id: 5001, email: "one@example.test", alternateEmail: "ONE@example.test" }),
+        ],
+      }),
+      { allowDuplicateEmails: true },
+    );
+    expect(messages(report.errors)).toContain("both its primary and alternate");
   });
 });
 
