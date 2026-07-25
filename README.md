@@ -151,12 +151,14 @@ Three environments, by design (`CODING-PROJECT-PLAN.md` §4):
 The `DevIdentityProvider` is locked out of production by four independent
 layers (D108) and must never run anywhere near it.
 
-### Measuring delivery performance against staging (the OFC-286 recipe)
+### Measuring delivery performance (Lighthouse against staging)
 
 Deliberately **not** a CI gate and **not** a dependency (DECISIONS D74/N134): with a
 scale-to-zero backend the noise would train us to ignore it. This is the recipe to
-reach for when the byte budget goes red, a UAT tester reports a slow load, or a
-delivery ticket needs before/after numbers.
+reach for when the byte budget goes red, a UAT tester reports a slow load, a
+delivery ticket needs before/after numbers, or **a new page or feature needs its
+first-load cost measured** — the JS byte budget is a sum over all chunks and cannot
+see the critical path (D74), so this is the only instrument that can.
 
 Two conditions are load-bearing, or the numbers are noise: the run must be
 **authenticated** (everything of interest is behind the session gate — an
@@ -188,8 +190,11 @@ npx lighthouse@12 https://pbe-book-staging.web.app/ --port=9222 \
 Lighthouse's default mobile preset already simulates **Slow 4G + 4× CPU**, which is
 the intended profile. Read the output as a **findings list, not a score**, and
 ignore the accessibility section — it duplicates the `@axe-core/playwright` gate,
-and the real a11y work is the three-layer audit (D67/D79). The 7b-1 baseline
-numbers, and what they found, are in DECISIONS **N134**.
+and the real a11y work is the three-layer audit (D67/D79).
+
+The **baseline to compare against** — the first run of this recipe, its numbers, and
+the three findings it produced — is DECISIONS **N134** (7b-1). Cite that, not a
+ticket: tickets close and archive, the decision log does not.
 
 ## CI/CD
 
