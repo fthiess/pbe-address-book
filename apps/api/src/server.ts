@@ -189,9 +189,15 @@ export async function buildServer(options: BuildServerOptions): Promise<FastifyI
     reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
     // The `Cache-Control` FLOOR (7b-1 / OFC-212). Uncacheable is the correct
     // default for every response this service emits: `/api` is per-caller,
-    // session-scoped, and usually PII (D95), and the two responses that *are*
-    // cacheable (the D126 image objects, the banner) say so explicitly. A
-    // handler's own value therefore always wins — this only fills the gap.
+    // session-scoped, and usually PII (D95). A handler's own value always wins
+    // *here* — this only fills the gap — but note that winning the hook is not
+    // the same as reaching the browser: on the Hosting-fronted path only the
+    // D126 image objects keep a non-`no-store` value, because `firebase.json`'s
+    // `/img/**` rule preserves it. `GET /api/banner` sets `no-cache` and is
+    // nonetheless *delivered* `no-store`, since the blanket `/api/**` rule
+    // covers it too — accepted deliberately (D146, API-SPEC §10): the route
+    // sets no `ETag`, so `no-cache` never produced a `304` and never saved a
+    // byte, and "reflect an admin's set/clear promptly" only gets stronger.
     //
     // It exists because a missing header is NOT neutral in production: Firebase
     // Hosting stamps its own `max-age=600` onto a header-less `/api/**` rewrite

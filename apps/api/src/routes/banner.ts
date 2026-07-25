@@ -38,6 +38,12 @@ export function registerBannerRoutes(app: FastifyInstance, config: BannerRoutesC
     const stored = await bannerStore.get();
     // Short-lived/revalidated (API-SPEC §10): the banner is global and carries no
     // PII, but must reflect an admin's set/clear promptly, so revalidate each load.
+    // ⚠ What the browser actually receives is `no-store`, not this value: the
+    // `/api/**` rule in `firebase.json` that enforces D95 overrides every 2xx
+    // response on the Hosting-fronted path (D146). Accepted rather than carved
+    // out — this route sets no `ETag`, so `no-cache` never yielded a `304`, and
+    // "promptly" is only strengthened. This header still governs direct-to-Cloud-
+    // Run access. Don't "fix" the mismatch by changing this line; see D146.
     reply.header("Cache-Control", "no-cache");
     if (!stored || !stored.active) {
       return { active: false };

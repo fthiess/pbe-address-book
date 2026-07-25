@@ -177,11 +177,32 @@ gcloud run deploy "${SERVICE}" \
 # Verified 7b-1: a full deploy rollover succeeds with the service capped at 1, and
 # `gcloud run deploy` does NOT reset it — so this converges once and stays.
 echo "==> Pinning service-level max-instances to 1 (OFC-209)"
-curl -s -X PATCH \
+# `-f` matters: without it curl exits 0 on a 403/404/500 and the pin would fail
+# SILENTLY, leaving the umbrella at 20 while this script printed success — the
+# very failure mode OFC-209 was filed about. `-S` keeps the error visible under
+# `-s`. With `set -e` a rejected PATCH now aborts provisioning.
+curl -fsS -X PATCH \
   -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "Content-Type: application/json" \
   "https://run.googleapis.com/v2/projects/${PROJECT_ID}/locations/${REGION}/services/${SERVICE}?updateMask=scaling.maxInstanceCount" \
   -d '{"scaling":{"maxInstanceCount":1}}' >/dev/null
+
+# …and confirm it actually landed, rather than trusting a 200. The PATCH returns
+# a long-running operation, so the value can take a moment to be readable; the v1
+# annotation is the same number the console header reports.
+PINNED=""
+for _ in 1 2 3 4 5 6; do
+  PINNED=$(gcloud run services describe "${SERVICE}" --region "${REGION}" --project "${PROJECT_ID}" \
+    --format="value(metadata.annotations['run.googleapis.com/maxScale'])" 2>/dev/null || true)
+  [[ "${PINNED}" == "1" ]] && break
+  sleep 5
+done
+if [[ "${PINNED}" != "1" ]]; then
+  echo "ERROR: service-level max-instances is '${PINNED:-unknown}', expected 1 (OFC-209/D83)." >&2
+  echo "       The revision cap may still be 1, but the service umbrella is not pinned." >&2
+  exit 1
+fi
+echo "    service-level max-instances = 1 (confirmed)"
 
 echo "==> Cloud Run URL:"
 gcloud run services describe "${SERVICE}" --region "${REGION}" --project "${PROJECT_ID}" \
