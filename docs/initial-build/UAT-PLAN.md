@@ -17,6 +17,8 @@ The one piece of real information in the environment is the testers themselves: 
 
 UAT is **Phase 7.7**, strictly after Phases 6 (help + manual), 7 (hardening), and 7.5 (client cache unification). All three are genuine prerequisites: the in-page help must exist so UAT tests whether it actually helps; hardening (analytics, logging, backups, full E2E/a11y, perf-at-scale) should precede a 15-person cohort; and 7.5's byte-efficiency work matters most to exactly the audience being recruited.
 
+**One piece of hardening deliberately follows UAT rather than preceding it:** the D102 ephemeral backup-integrity job, formerly session 7b-4, is now **Phase 7.8**, between UAT and cutover (DECISIONS **D151**, 2026-07-26). The backups and the offline restore themselves are done and live-tested (D147/D149/D150/N138) — what moved is only the job that re-verifies them on a schedule, whose value is highest once production holds real member records rather than staging's fake roster, and which no part of UAT depends on.
+
 A new small **Phase 7.6 — Ghost↔Book theme integration on staging** (§8) precedes it in numbering, but 7.6 has no dependency on 6/7/7.5 and can run any time before UAT.
 
 Several preparation items can — and should — start early, in parallel with the remaining build phases:

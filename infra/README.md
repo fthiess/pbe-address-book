@@ -276,7 +276,8 @@ The most destructive operation in Book: it **replaces** `profiles`, `users` and
 `config` with the snapshot's contents, deleting anything the snapshot does not
 name (D63's "be exactly this snapshot", D101's offline model). Read D150/N137
 before running it in anger. The stand-up-from-nothing DR runbook — restoring into
-a *new* environment — is 7b-4 (OFC-333); this is the procedure it will call.
+a *new* environment — is **Phase 7.8** (OFC-333; D151, deferred there from session
+7b-4 on 2026-07-26); this is the procedure it will call.
 
 **Preview first. Always.** A dry run validates the snapshot, computes the exact
 plan the real run would execute, and reports how the admin roster would change,
@@ -404,8 +405,8 @@ idempotence a partially-failed restore depends on.
 Worth knowing before you do it under pressure: **the first real run found four
 defects that every offline test had passed over** — see DECISIONS **N138**. If you
 are reading this because something is on fire, the procedure works; if you are
-reading it to plan 7b-4, N138 is the argument for why that job needs to run the
-real thing on a schedule rather than a simulation of it.
+reading it to plan **Phase 7.8**, N138 is the argument for why that job needs to
+run the real thing on a schedule rather than a simulation of it.
 
 ⚠ **The artifacts are the whole member directory in plaintext** — safety
 snapshot, restore report, Ghost report. `restore-artifacts/` is gitignored (this
