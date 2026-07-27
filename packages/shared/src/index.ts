@@ -12,7 +12,7 @@ export type {
   VisibilityClass,
 } from "./types.js";
 export { formatConstitutionId, formatClassYear } from "./format.js";
-export { FAKE_ID_FLOOR, DEV_PROFILE_IDS } from "./fake-ids.js";
+export { FAKE_ID_FLOOR, TESTER_ID_FLOOR, DEV_PROFILE_IDS } from "./fake-ids.js";
 export {
   HEADSHOT_SIZE,
   THUMBNAIL_SIZE,

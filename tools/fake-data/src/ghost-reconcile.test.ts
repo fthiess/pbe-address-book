@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type DesiredMember, type ExistingMember, planReconcile } from "./ghost-reconcile.js";
+import {
+  type DesiredMember,
+  type ExistingMember,
+  planReconcile,
+  selectReconcileScope,
+} from "./ghost-reconcile.js";
 
 const desired = (
   profileId: number,
@@ -92,5 +97,83 @@ describe("planReconcile (ghost-staging mirror delta)", () => {
       { profileId: 1, ghostMemberId: "m1" },
       { profileId: 2, ghostMemberId: "m2" },
     ]);
+  });
+});
+
+describe("selectReconcileScope", () => {
+  const member = (id: string, email: string, labels: string[] = []) => ({
+    id,
+    email,
+    name: "Someone '84",
+    subscribed: true,
+    labels: labels.map((name) => ({ name })),
+  });
+
+  it("includes a roster-email member that carries NO label", () => {
+    // The regression this exists for (OFC-248, found in live testing). Ghost enforces
+    // email uniqueness GLOBALLY, but the first cut scoped the existing-set to labelled
+    // members only. A pre-existing unlabelled account holding a roster email — the
+    // operator's own ghost-staging account, from the D72/D154 work — was therefore
+    // invisible to the plan, got planned as a create, and 422'd
+    // "Member already exists".
+    const scope = selectReconcileScope(
+      [member("m1", "operator@example.test"), member("m2", "stranger@example.test")],
+      ["operator@example.test"],
+      "book-uat-tester",
+    );
+
+    expect(scope.map((m) => m.id)).toEqual(["m1"]);
+  });
+
+  it("includes labelled members even when their email has left the roster — the delete scope", () => {
+    const scope = selectReconcileScope(
+      [member("m9", "departed@example.test", ["book-uat-tester"])],
+      ["current@example.test"],
+      "book-uat-tester",
+    );
+
+    expect(scope.map((m) => m.id)).toEqual(["m9"]);
+  });
+
+  it("excludes members that are neither labelled nor in the roster", () => {
+    // The whole safety property: a reconcile can never see, and therefore never
+    // delete, an unrelated ghost-staging member.
+    const scope = selectReconcileScope(
+      [member("m5", "unrelated@example.test")],
+      ["current@example.test"],
+      "book-uat-tester",
+    );
+
+    expect(scope).toEqual([]);
+  });
+
+  it("does not double-count a member that is both labelled and in the roster", () => {
+    const scope = selectReconcileScope(
+      [member("m1", "tester@example.test", ["book-uat-tester"])],
+      ["tester@example.test"],
+      "book-uat-tester",
+    );
+
+    expect(scope).toHaveLength(1);
+  });
+
+  it("matches emails case-insensitively", () => {
+    const scope = selectReconcileScope(
+      [member("m1", "Operator@Example.Test")],
+      ["operator@example.test"],
+      "book-uat-tester",
+    );
+
+    expect(scope.map((m) => m.id)).toEqual(["m1"]);
+  });
+
+  it("matches the label by slug as well as name", () => {
+    const scope = selectReconcileScope(
+      [{ ...member("m9", "departed@example.test"), labels: [{ slug: "book-uat-tester" }] }],
+      [],
+      "book-uat-tester",
+    );
+
+    expect(scope.map((m) => m.id)).toEqual(["m9"]);
   });
 });

@@ -46,6 +46,48 @@ export interface ReconcilePlan {
   matchedLinks: { profileId: number; ghostMemberId: string }[];
 }
 
+/** A Ghost member as listed, carrying whatever labels it holds. */
+export interface LabelledMember extends ExistingMember {
+  readonly labels?: readonly { readonly name?: string; readonly slug?: string }[];
+}
+
+/**
+ * Choose which of ghost-staging's members {@link planReconcile} is allowed to see,
+ * for the **roster** tool (OFC-248). Two disjoint jobs, two different scopes — and
+ * conflating them is a bug this function exists to prevent.
+ *
+ *  - **Matching** must be by **email**, because that is the key Ghost itself
+ *    enforces uniqueness on, globally and regardless of labels.
+ *  - **Deleting** must be by **label**, because the label is the tool's own mark:
+ *    it may only ever remove members it created.
+ *
+ * So the scope is the union: every member holding a roster email, plus every member
+ * carrying the label. A member that is neither is invisible here and therefore can
+ * never be touched — the safety property that makes a delete branch acceptable at
+ * all against a Ghost instance holding real accounts.
+ *
+ * ⚠ **Found in live testing, not by reasoning.** The first cut scoped to labelled
+ * members alone. The operator's own ghost-staging account already existed — created
+ * during the D72 bridge work, long before any label existed — so the plan could not
+ * see it, planned a create, and Ghost answered `422 Member already exists`. Anything
+ * that narrows this scope back to labels alone re-introduces that failure, and it
+ * will only surface against an instance that already has the account.
+ */
+export function selectReconcileScope(
+  allMembers: readonly LabelledMember[],
+  rosterEmails: readonly string[],
+  label: string,
+): ExistingMember[] {
+  const wanted = new Set(rosterEmails.map((e) => normalizeEmail(e)));
+  return allMembers
+    .filter(
+      (m) =>
+        wanted.has(normalizeEmail(m.email)) ||
+        (m.labels ?? []).some((l) => l.name === label || l.slug === label),
+    )
+    .map(({ id, email, name, subscribed }) => ({ id, email, name, subscribed }));
+}
+
 export function planReconcile(
   desired: readonly DesiredMember[],
   existing: readonly ExistingMember[],

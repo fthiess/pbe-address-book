@@ -160,15 +160,9 @@ jobs:
           # image seeder falls back to the eight committed placeholders with a
           # warning — a missing fixture set must never fail a deploy.
           UAT_FIXTURES_BUCKET: ${{ env.UAT_FIXTURES_BUCKET }}
-          STAGING_TESTER_EMAIL: ${{ secrets.STAGING_TESTER_EMAIL }}
         run: |
           npm run seed:staging --workspace tools/fake-data
           npm run seed:staging-images --workspace tools/fake-data
-          if [ -n "$STAGING_TESTER_EMAIL" ]; then
-            npm run link:staging-tester --workspace tools/fake-data
-          else
-            echo "STAGING_TESTER_EMAIL secret not set — skipping tester link."
-          fi
 
       - name: Set up gcloud
         uses: google-github-actions/setup-gcloud@v3
@@ -237,6 +231,37 @@ jobs:
         run: |
           GHOST_ADMIN_API_KEY="$(gcloud secrets versions access latest --secret=ghost-admin-api-key --project="$PROJECT_ID")" \
             npm run mirror:ghost-staging --workspace tools/fake-data
+
+      # Provision the UAT tester cohort (OFC-248/D156) — real-named Book profiles at
+      # TESTER_ID_FLOOR (#9001+) plus their matching ghost-staging members, so each
+      # tester signs in through the real bridge under their own name.
+      #
+      # PLACED HERE, not in the reseed block above, for one mechanical reason: it
+      # needs `gcloud secrets` for the Ghost Admin key, and `Set up gcloud` runs
+      # after the reseed. It must still land BEFORE the Cloud Run deploy so the new
+      # revision cold-starts with the testers' emails in the index — the API builds
+      # that index only at hydration.
+      #
+      # Ordering against the fake-data mirror above is not delicate: the two scopes
+      # are disjoint by construction. The mirror owns `@example.test` members; this
+      # owns members labelled `book-uat-tester`. Neither can see the other's.
+      #
+      # Gated on the roster URI, and skipped along with the rest of the reseed when
+      # STAGING_AUTOSEED=false — during UAT the cohort's own edits must survive a
+      # deploy, and re-running this would replace their profiles with blank ones.
+      #
+      # ⚠ The roster holds REAL names and email addresses. The tool prints ids and
+      # counts only; these logs are world-readable on a public repo.
+      - name: Provision UAT testers (Book profiles + ghost-staging members)
+        if: vars.STAGING_AUTOSEED != 'false' && env.UAT_ROSTER_URI != ''
+        env:
+          GOOGLE_CLOUD_PROJECT: ${{ env.PROJECT_ID }}
+          UAT_ROSTER_URI: ${{ env.UAT_ROSTER_URI }}
+          GHOST_ADMIN_API_URL: ${{ env.GHOST_ADMIN_API_URL }}
+          GHOST_NEWSLETTER_ID: ${{ env.GHOST_NEWSLETTER_ID }}
+        run: |
+          GHOST_ADMIN_API_KEY="$(gcloud secrets versions access latest --secret=ghost-admin-api-key --project="$PROJECT_ID")" \
+            npm run seed:staging-testers --workspace tools/fake-data
 
       # API last: gcloud only needs the token briefly to SUBMIT the Cloud Build
       # (the build then runs server-side as the build SA), so it tolerates the

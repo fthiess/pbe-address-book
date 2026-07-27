@@ -7,8 +7,8 @@
     "seed:run": "tsx src/seed.ts",
     "seed:staging": "tsx src/seed-staging.ts",
     "seed:staging-images": "tsx src/seed-staging-images.ts",
+    "seed:staging-testers": "tsx src/seed-staging-testers.ts",
     "author:thumbnails": "tsx src/author-thumbnails.ts",
-    "link:staging-tester": "tsx src/link-staging-tester.ts",
     "mirror:ghost-staging": "tsx src/mirror-ghost-staging.ts"
   },
   "dependencies": {
