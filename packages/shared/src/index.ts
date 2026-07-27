@@ -14,6 +14,8 @@ export type {
 export { formatConstitutionId, formatClassYear } from "./format.js";
 export { FAKE_ID_FLOOR, DEV_PROFILE_IDS } from "./fake-ids.js";
 export {
+  HEADSHOT_SIZE,
+  THUMBNAIL_SIZE,
   thumbnailObjectKey,
   headshotObjectKey,
   imageUrl,
@@ -21,6 +23,12 @@ export {
   type ImageKind,
   type ParsedImageKey,
 } from "./images.js";
+export {
+  type UatPhotoManifest,
+  uatManifestKey,
+  uatPhotoKey,
+  uatPhotoName,
+} from "./uat-photos.js";
 export { normalizeEmail } from "./email.js";
 export { BANNER_SEVERITIES, type BannerSeverity } from "./banner.js";
 export type {

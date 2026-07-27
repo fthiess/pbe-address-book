@@ -16,6 +16,21 @@
  * Profile page (Phase 4); the thumbnail is the 96² WEBP shown in the Directory.
  */
 
+/**
+ * The stored headshot's edge length in pixels (square) — the Profile-page image.
+ *
+ * Defined here rather than only in the encoder because it is a property of the
+ * *stored artifact*, which more than the encoder depends on: the UAT photo corpus
+ * is prepared once and parked in a bucket indefinitely (OFC-249), and its manifest
+ * records the size it was encoded at so a later change to these numbers is
+ * detectable instead of quietly leaving staging serving wrong-sized fixtures.
+ * `apps/api/src/images/encode.ts` re-exports both for its own callers.
+ */
+export const HEADSHOT_SIZE = 512;
+
+/** The stored Directory thumbnail's edge length in pixels (square). */
+export const THUMBNAIL_SIZE = 96;
+
 /** Bucket object key for a brother's 96² Directory thumbnail. */
 export function thumbnailObjectKey(id: number, version: string): string {
   return `thumbnails/${id}/${version}.webp`;

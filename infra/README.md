@@ -456,6 +456,77 @@ silently never retained.
   authentication is enforced by the app's session layer (D126); staging is fake
   data only (D72).
 
+## The UAT fixtures bucket and the photo corpus (Stage 1.2; OFC-249)
+
+`gs://pbe-book-staging-uat` (`UAT_FIXTURES_BUCKET` in `environments/staging.env`)
+holds the two fixture sets that must never enter this **public** repo: the prepared
+UAT photo corpus, and the tester roster CSV, which carries real brothers' names and
+email addresses. `provision-staging.sh` §6f creates it with the same private posture
+as the other buckets — uniform access, public access prevented.
+
+⚠ **It is a separate bucket from the image bucket on purpose, and must stay that
+way.** The Book runtime service account holds `objectAdmin` on
+`pbe-book-staging-images` so it can write headshots; a roster of real member PII
+parked there would sit inside the running application's blast radius. This bucket
+grants the runtime SA nothing at all. Do not "simplify" it into a prefix on the
+image bucket.
+
+⚠ **Read the redundancy note in §6g before drawing conclusions about access.** The
+CI deployer's bucket-scoped `objectViewer` grant is documentation of intent, not a
+restriction: `setup-wif.sh` already gives it project-level `roles/storage.admin`.
+The property that actually holds is the *absence* of a runtime-SA binding.
+
+### Preparing and uploading the photo corpus
+
+The corpus is ~400 AI-generated 1024² PNG headshots. They are transcoded **once**,
+through the production `encodeHeadshot` — the same code path a real member upload
+takes — into the 512² headshot and 96² thumbnail WEBPs the app serves, and the
+result is what lives in the bucket. Encoding at seed time instead would pull ~540 MB
+to a GitHub runner and run ~800 sharp operations on **every** deploy to recompute a
+byte-identical result; preparing once reduces that to ~12 MB of WEBP the seeder
+copies like any other fixture.
+
+```bash
+# 1. Transcode locally. --out is gitignored (uat-artifacts/); --dry-run previews.
+npm run prepare:uat-photos --workspace apps/api -- \
+  --source "/path/to/book_fake_headshots" --out ./uat-artifacts/uat-photos
+```
+
+```bash
+# 2. Upload the prepared set. This is what seed:staging-images reads.
+gcloud storage rsync -r ./uat-artifacts/uat-photos \
+  gs://pbe-book-staging-uat/uat-photos/prepared --project=pbe-book-staging
+```
+
+```bash
+# 3. Optional: archive the 1024² originals so the prepared set is reproducible
+#    from the bucket alone, without anyone's local copy.
+gcloud storage rsync -r ./book_fake_headshots \
+  gs://pbe-book-staging-uat/uat-photos/originals --project=pbe-book-staging
+```
+
+The upload writes `manifest.json` alongside the derivatives, recording the count and
+the sizes the set was encoded at. That last part is load-bearing: the corpus is
+prepared once and then sits in the bucket indefinitely, so if `HEADSHOT_SIZE` or
+`THUMBNAIL_SIZE` ever change, the seeder compares and **warns** rather than quietly
+serving wrong-sized fixtures. Re-run steps 1 and 2 when that happens.
+
+### How the seeder uses it
+
+`seed:staging-images` reads `UAT_FIXTURES_BUCKET` (passed through by the deploy
+workflow). Assignment is deterministic — profiles in ascending id order, photos in
+ascending index order — so a reseed puts the same face on the same brother; random
+assignment would make "my photo changed" a bug report nobody could reproduce. The
+corpus is smaller than the `hasHeadshot` population (408 against 438), so the lowest
+ids take the real faces and the rest fall back to the eight committed placeholders.
+Faces are never repeated to close the gap: a duplicated face reads as a data
+integrity bug, whereas a placeholder reads as "no photo on file", which is both true
+and what roughly a third of the real membership will show.
+
+**Every failure here is non-fatal.** Bucket unset, manifest missing, download
+failed — each logs a loud warning and falls back to placeholders for the whole
+population. A deploy must not break because an optional fixture set is unreachable.
+
 ## Testing the Book→Ghost write path against ghost-staging (Phase 5b-1)
 
 The write path (create/update/delete a Ghost member) only runs when the Cloud Run

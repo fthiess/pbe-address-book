@@ -64,9 +64,13 @@ Mechanism: **OFC-248**, `seed:staging-testers` — a generalization of the curre
 
 Out of ~1,200 fake profiles, testers should see a directory that looks alive — real-looking faces, not eight recycled placeholders and a sea of initials-silhouettes. Mechanism: **OFC-249**.
 
-- Forrest supplies **~200 AI-generated fake headshots**, square **1024×1024 PNGs** (1024² downscales cleanly through the existing sharp pipeline to the 512² headshot + 96² thumbnail WEBPs; below 512² would upscale).
-- The corpus is uploaded once (manual step) to a **private fixtures prefix in GCS** in the staging project. Like the roster, it never enters the public repo.
-- The image seeder gains an opt-in UAT source: map the corpus deterministically onto the first ~200 `hasHeadshot` fake profiles, encode through the same pipeline as real uploads, fall back to the committed placeholders for the rest, and skip roster-overwritten profiles (testers upload their own photo as a task — their choice whether it's a real one).
+**As built, Stage 1.2** (this section was written against an estimate of ~200 photos and an assumption that testers would overwrite generated profiles; both changed — see D155):
+
+- Forrest supplied **408 AI-generated fake headshots**, square **1024×1024 PNGs**, generated locally in ComfyUI with the Krea 2 model. Each carries a faint "I'M NOT REAL" forehead tattoo, so a face that escapes staging is self-labelling. 1024² downscales cleanly to the 512² headshot + 96² thumbnail WEBPs; below 512² would upscale.
+- They are transcoded **once**, by `prepare:uat-photos` (`apps/api`), through the production `encodeHeadshot` — the same code path a real member upload takes — and the ~12 MB result is uploaded to the private `pbe-book-staging-uat` bucket, along with the 1024² originals for reproducibility. Neither ever enters the public repo. Procedure and commands: `infra/README.md`.
+- `seed:staging-images` gains an opt-in UAT source (`UAT_FIXTURES_BUCKET`), mapping the corpus deterministically onto `hasHeadshot` profiles in ascending id order. The population is **438**, not the ~200 assumed here, so the 408 photos cover the lowest 408 and the remaining 30 keep the committed placeholders. Faces are never repeated to close the gap — a duplicated face reads as a data-integrity bug, a placeholder reads as "no photo on file", which is true and is what about a third of the real membership will show.
+- **Skipping roster profiles is no longer necessary.** Testers are provisioned at their own ids from `TESTER_ID_FLOOR` (#9001+), which the generator never emits, so they carry no `hasHeadshot` and are never dressed with a fake face. Uploading their own photo remains one of their assigned tasks — their choice whether it is a real one.
+- Every failure path falls back to placeholders with a loud warning rather than failing the deploy: an optional fixture set must never be able to break staging.
 
 ## 7. Outbound email — the hard prerequisite
 

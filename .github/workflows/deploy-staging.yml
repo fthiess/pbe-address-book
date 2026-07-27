@@ -156,6 +156,10 @@ jobs:
         env:
           GOOGLE_CLOUD_PROJECT: ${{ env.PROJECT_ID }}
           IMAGE_BUCKET: ${{ env.IMAGE_BUCKET }}
+          # Opt-in realistic UAT faces (OFC-249). Unset, or unreadable, and the
+          # image seeder falls back to the eight committed placeholders with a
+          # warning — a missing fixture set must never fail a deploy.
+          UAT_FIXTURES_BUCKET: ${{ env.UAT_FIXTURES_BUCKET }}
           STAGING_TESTER_EMAIL: ${{ secrets.STAGING_TESTER_EMAIL }}
         run: |
           npm run seed:staging --workspace tools/fake-data
