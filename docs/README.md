@@ -8,7 +8,7 @@ The intent is that the documentation grows the way the product does. Book launch
 
 | Build | Version | Folder | Status | Started | Design completed | Launched |
 |---|---|---|---|---|---|---|
-| Initial build | v1 | [`initial-build/`](initial-build/) | Design complete; implementation not yet begun | 2026-06-02 | 2026-06-07 | *(pending)* |
+| Initial build | v1 | [`initial-build/`](initial-build/) | Implementation in progress | 2026-06-02 | 2026-06-07 | *(in progress)* |
 
 *Future feature builds are added as new rows and sibling folders as they are designed.*
 
@@ -27,6 +27,7 @@ A build folder such as `initial-build/` contains that build's delivered document
 - **`PRE-LAUNCH-TOOLS.md`** — the inventory of one-time migration utilities and external operational tools. *(Graduated from the planning vault at the Session-6c close-out.)*
 - **`UAT-PLAN.md`** — the Phase 7.7 user-acceptance-testing plan: platform and data policy, tester provisioning, execution process, and exit criteria. *(Added 2026-07-14, DECISIONS D132.)*
 - **`CUTOVER-PLAN.md`** — the production cutover plan; a stub accumulating cutover-scope items until it is written at Phase 8 planning. *(Added 2026-07-14, DECISIONS D132.)*
+- **`LAUNCH-SCHEDULE.md`** — the calendar: the Stage 1–5 schedule from pre-UAT through public launch, and the authoritative phase→stage mapping for reading `CODING-PROJECT-PLAN.md`. *(Added 2026-07-26, DECISIONS D152.)*
 - **`visual-design/`** — a set of files containing the detailed visual design of the product, including design tokens, as concrete values — this is the load-bearing artifact. The light + dark sets mapped to the named shadcn/Tailwind CSS variables, the brand accent values, color palette, the type scale, and the spacing / radius / elevation scales.
 - **`history/`** — origin and narrative documents, not referenced by the engineering docs:
   - **`SEED.md`** — the original implementation seed notes the project started from, preserved for historical value.
