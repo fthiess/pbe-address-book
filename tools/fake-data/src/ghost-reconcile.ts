@@ -80,12 +80,40 @@ export function selectReconcileScope(
 ): ExistingMember[] {
   const wanted = new Set(rosterEmails.map((e) => normalizeEmail(e)));
   return allMembers
-    .filter(
-      (m) =>
-        wanted.has(normalizeEmail(m.email)) ||
-        (m.labels ?? []).some((l) => l.name === label || l.slug === label),
-    )
+    .filter((m) => wanted.has(normalizeEmail(m.email)) || memberHasLabel(m, label))
     .map(({ id, email, name, subscribed }) => ({ id, email, name, subscribed }));
+}
+
+/** Whether a listed member carries `label`, by either its name or its slug. */
+export function memberHasLabel(member: LabelledMember, label: string): boolean {
+  return (member.labels ?? []).some((l) => l.name === label || l.slug === label);
+}
+
+/**
+ * The ids of members that are **in the roster but not yet labelled** — adopted
+ * pre-existing accounts that must be updated purely so the label gets attached.
+ *
+ * ⚠ **Why this is separate from {@link planReconcile}'s drift check.** That check
+ * only queues an update when `name` or `subscribed` *differ*. An adopted member
+ * whose name and subscription already match is therefore linked and then left
+ * alone — **never labelled**. On a later run, once its row leaves the roster, it
+ * matches neither the roster emails nor the label, drops out of
+ * {@link selectReconcileScope} entirely, and is never deleted. The result is a
+ * silent hole in the "drop the CSV row and reseed" story that this tool documents
+ * in four places, and it would only ever surface as a member that quietly refused
+ * to go away. Found in code review.
+ */
+export function membersNeedingLabel(
+  allMembers: readonly LabelledMember[],
+  rosterEmails: readonly string[],
+  label: string,
+): Set<string> {
+  const wanted = new Set(rosterEmails.map((e) => normalizeEmail(e)));
+  return new Set(
+    allMembers
+      .filter((m) => wanted.has(normalizeEmail(m.email)) && !memberHasLabel(m, label))
+      .map((m) => m.id),
+  );
 }
 
 export function planReconcile(

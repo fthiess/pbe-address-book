@@ -13,8 +13,10 @@
  *
  * SAFETY: it only ever lists / updates / **deletes** Ghost members whose email is a
  * fake `@example.test` address — the fake-data domain (generate.ts). Real accounts —
- * the tester-linked profile (`link-staging-tester.ts`), your own, the linter's — have
- * real emails and are never touched. This domain scope (rather than a label) also
+ * the UAT testers (`seed-staging-testers.ts`), your own, the linter's — have real
+ * emails and are never touched. That makes this tool's scope and the tester tool's
+ * disjoint by construction: this owns `@example.test`, that owns members labelled
+ * `book-uat-tester`, and neither can see the other's. This domain scope (rather than a label) also
  * catches members the real write path created during testing, so the reset actually
  * cleans them up rather than orphaning them.
  *

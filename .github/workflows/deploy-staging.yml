@@ -142,9 +142,12 @@ jobs:
       # automatic so staging can never drift from the generator (the failure that
       # bit us when the fixture names changed but staging was never re-seeded).
       # Runs BEFORE the Cloud Run deploy so the new revision cold-starts and
-      # hydrates the freshly-seeded data (and re-indexes the tester's email). It
-      # runs on the Node-20 step above, where google-auth-library's STS exchange
-      # works (the Node-24 undici bug that the Firebase pin dodges).
+      # hydrates the freshly-seeded data. It runs on the Node-20 step above, where
+      # google-auth-library's STS exchange works (the Node-24 undici bug that the
+      # Firebase pin dodges).
+      #
+      # It no longer links a tester: that moved to the "Provision UAT testers" step
+      # below, which needs `gcloud secrets` and so cannot live here (OFC-248).
       #
       # TOGGLE: set the repository variable STAGING_AUTOSEED=false to skip this —
       # e.g. during Phase-8 UAT, when real testers' in-progress state on staging
@@ -213,10 +216,16 @@ jobs:
 
       # Mirror the freshly-seeded fake profiles into ghost-staging as real Ghost
       # members, so the Book→Ghost write path (5b-1) can be tested end-to-end (D72,
-      # ghost-staging only). A delta reconcile scoped to `book-seed`-labelled members
-      # and @example.test profiles — safe, and re-running it is the reset. Runs AFTER
-      # the re-seed (needs the seeded profiles + the tester link) and BEFORE the API
-      # deploy (so the new revision cold-starts with the real ids hydrated).
+      # ghost-staging only). A delta reconcile scoped to **@example.test emails** —
+      # safe, and re-running it is the reset. (It was `book-seed`-label-scoped once;
+      # that was dropped because a label scope could not see members the real write
+      # path created, orphaning them on every reset.) Runs AFTER the re-seed, which
+      # it needs for the seeded profiles, and BEFORE the API deploy so the new
+      # revision cold-starts with the real ids hydrated.
+      #
+      # Its scope and the UAT-tester step's below are disjoint by construction: this
+      # owns @example.test addresses, that one owns `book-uat-tester`-labelled
+      # members with real addresses. Neither can see the other's.
       #
       # OPT-IN: only when the repo var STAGING_GHOST_MIRROR=true (and autoseed is on).
       # Off by default so normal deploys neither hit ghost-staging nor depend on it.

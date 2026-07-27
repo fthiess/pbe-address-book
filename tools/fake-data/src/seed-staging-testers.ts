@@ -70,6 +70,7 @@ import { SignJWT } from "jose";
 import {
   type DesiredMember,
   type LabelledMember,
+  membersNeedingLabel,
   planReconcile,
   selectReconcileScope,
 } from "./ghost-reconcile.js";
@@ -275,6 +276,22 @@ async function adminToken(): Promise<string> {
     .sign(secretBytes);
 }
 
+/**
+ * Mask anything email-shaped in a string.
+ *
+ * Ghost's error bodies are echoed into exceptions for diagnosis, and this tool's
+ * requests carry **real brothers' addresses** — so an error body may contain one.
+ * (The duplicate-email `422` observed in live testing does not, but that is one
+ * error shape out of many, and the failure mode here is silent and permanent: a
+ * public Actions log.) `mirror-ghost-staging.ts` echoes bodies unmasked and is
+ * right to, because every address it handles is a fake `@example.test` one; copying
+ * that pattern into a tool that handles real addresses changes the risk, which is
+ * the whole reason this exists.
+ */
+function maskEmails(text: string): string {
+  return text.replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, "<email redacted>");
+}
+
 async function ghost(method: string, path: string, body?: unknown): Promise<unknown> {
   const res = await fetch(`${apiUrl}${path}`, {
     method,
@@ -287,10 +304,40 @@ async function ghost(method: string, path: string, body?: unknown): Promise<unkn
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Ghost ${method} ${path} → ${res.status}: ${text.slice(0, 300)}`);
+    throw new Error(`Ghost ${method} ${path} → ${res.status}: ${maskEmails(text.slice(0, 300))}`);
   }
   const text = await res.text();
   return text ? JSON.parse(text) : undefined;
+}
+
+/**
+ * Ensure the tester label exists BEFORE any concurrent member creation.
+ *
+ * ⚠ **This guard is not optional, and the history says so.** Attaching a label by
+ * name on member creation makes Ghost auto-create it — and a burst of concurrent
+ * creates then races to auto-create the same label, which this project has already
+ * hit once: the `book-seed` label in `mirror-ghost-staging.ts` produced
+ * `500 UPDATE_RELATION "Unable to update nested relation"` on the first mirrored
+ * deploy (fixed in PR #38, refined in PR #39 when attaching by *id* turned out to
+ * 500 differently — Ghost derives the label slug from `label.name`). That machinery
+ * later vanished from the repo when PR #40 dropped label-scoping from the mirror
+ * entirely, which is why nothing resembling it survives to copy.
+ *
+ * So: create the label once, up front, single-threaded; then attach **by name** on
+ * each create, which is the shape PR #39 landed on. An existing label makes this a
+ * no-op. Found by the code review's git-history pass, not by reasoning — the live
+ * run happened not to trip the race, which is exactly how a race behaves.
+ */
+async function ensureTesterLabel(): Promise<void> {
+  const found = (await ghost(
+    "GET",
+    `/labels/?filter=${encodeURIComponent(`slug:${TESTER_LABEL}`)}&limit=1`,
+  )) as { labels?: { id?: string }[] };
+  if (found.labels && found.labels.length > 0) {
+    return;
+  }
+  await ghost("POST", "/labels/", { labels: [{ name: TESTER_LABEL }] });
+  console.log(`Created the "${TESTER_LABEL}" Ghost label (it did not exist yet).`);
 }
 
 interface GhostMember {
@@ -397,11 +444,9 @@ const desired: DesiredMember[] = roster.map((entry, i) => ({
 }));
 
 const allMembers = await listAllMembers();
-const existing = selectReconcileScope(
-  allMembers,
-  desired.map((d) => d.email),
-  TESTER_LABEL,
-);
+const rosterEmails = desired.map((d) => d.email);
+const existing = selectReconcileScope(allMembers, rosterEmails, TESTER_LABEL);
+const needsLabel = membersNeedingLabel(allMembers, rosterEmails, TESTER_LABEL);
 const plan = planReconcile(desired, existing);
 
 console.log(
@@ -421,13 +466,40 @@ if (DRY_RUN) {
   process.exit(0);
 }
 
+// The label must exist before the concurrent create burst — see ensureTesterLabel.
+if (plan.toCreate.length > 0) {
+  await ensureTesterLabel();
+}
+
 const links: { profileId: number; ghostMemberId: string }[] = [...plan.matchedLinks];
 const created = await pool(plan.toCreate, async (m) => ({
   profileId: m.profileId,
   ghostMemberId: await createMember(m),
 }));
 links.push(...created);
-await pool(plan.toUpdate, (u) => updateMember(u.id, u.desired));
+
+// Adopted members — in the roster, matched by email, but not yet carrying the label
+// — must be updated even when `planReconcile` found no name/subscription drift,
+// because the update is what attaches the label. Without this they stay unlabelled
+// and, once their row leaves the roster, become invisible to BOTH scopes and are
+// never cleaned up (see `membersNeedingLabel`).
+const desiredByMemberId = new Map(
+  plan.matchedLinks.map((link) => [
+    link.ghostMemberId,
+    desired.find((d) => d.profileId === link.profileId) as DesiredMember,
+  ]),
+);
+const alreadyUpdating = new Set(plan.toUpdate.map((u) => u.id));
+const labelOnly = [...needsLabel]
+  .filter((id) => !alreadyUpdating.has(id) && desiredByMemberId.has(id))
+  .map((id) => ({ id, desired: desiredByMemberId.get(id) as DesiredMember }));
+if (labelOnly.length > 0) {
+  console.log(
+    `  Labelling ${labelOnly.length} adopted member(s) that matched by email but carried no label.`,
+  );
+}
+
+await pool([...plan.toUpdate, ...labelOnly], (u) => updateMember(u.id, u.desired));
 await pool(plan.toDelete, (id) => deleteMember(id));
 
 if (links.length > 0) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type DesiredMember,
   type ExistingMember,
+  membersNeedingLabel,
   planReconcile,
   selectReconcileScope,
 } from "./ghost-reconcile.js";
@@ -175,5 +176,59 @@ describe("selectReconcileScope", () => {
     );
 
     expect(scope.map((m) => m.id)).toEqual(["m9"]);
+  });
+});
+
+describe("membersNeedingLabel", () => {
+  const member = (id: string, email: string, labels: string[] = []) => ({
+    id,
+    email,
+    name: "Someone '84",
+    subscribed: true,
+    labels: labels.map((name) => ({ name })),
+  });
+
+  it("flags an adopted member that matched by email but carries no label", () => {
+    // The regression this exists for (found in code review). planReconcile only
+    // queues an update when name or subscription DRIFTED, so an adopted member whose
+    // fields already match would never be updated — and the update is what attaches
+    // the label. Unlabelled, it later matches neither scope and is never cleaned up.
+    const needs = membersNeedingLabel(
+      [member("m1", "operator@example.test")],
+      ["operator@example.test"],
+      "book-uat-tester",
+    );
+
+    expect([...needs]).toEqual(["m1"]);
+  });
+
+  it("does not flag a member that already carries the label", () => {
+    const needs = membersNeedingLabel(
+      [member("m1", "tester@example.test", ["book-uat-tester"])],
+      ["tester@example.test"],
+      "book-uat-tester",
+    );
+
+    expect(needs.size).toBe(0);
+  });
+
+  it("does not flag a member outside the roster, however unlabelled", () => {
+    const needs = membersNeedingLabel(
+      [member("m5", "unrelated@example.test")],
+      ["tester@example.test"],
+      "book-uat-tester",
+    );
+
+    expect(needs.size).toBe(0);
+  });
+
+  it("matches roster emails case-insensitively", () => {
+    const needs = membersNeedingLabel(
+      [member("m1", "Operator@Example.Test")],
+      ["operator@example.test"],
+      "book-uat-tester",
+    );
+
+    expect([...needs]).toEqual(["m1"]);
   });
 });

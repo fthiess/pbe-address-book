@@ -186,7 +186,33 @@ describe("parseRoster — field validation", () => {
   });
 
   it("requires something email-shaped", () => {
-    expect(() => parseRoster(csv(",James,Smyth,1984,not-an-email,"))).toThrow(/valid email/);
+    expect(() => parseRoster(csv(",James,Smyth,1984,not-an-email,"))).toThrow(
+      /email column is missing or not email-shaped/,
+    );
+  });
+
+  it("does NOT echo the offending email value — it reaches public CI logs", () => {
+    // The real invariant, asserted rather than merely commented. A malformed row is
+    // a likely hand-editing slip, and the value in an email column is a real
+    // brother's address; this message travels to console.error and, from the deploy
+    // workflow, into a world-readable Actions log on a PUBLIC repo. Found in code
+    // review — the message used to interpolate the raw cell.
+    expect(() => parseRoster(csv(",James,Smyth,1984,jsmyth-at-example,"))).toThrow(
+      expect.objectContaining({
+        message: expect.not.stringContaining("jsmyth-at-example"),
+      }),
+    );
+  });
+
+  it("still names the class year, role and id in their errors — none of them are PII", () => {
+    // The redaction above is scoped deliberately: echoing the bad value is what
+    // makes an error actionable, and a year, a role name and an id carry nothing
+    // sensitive. Only the email column was ever a leak.
+    expect(() => parseRoster(csv(",James,Smyth,84,james@example.test,"))).toThrow(/"84"/);
+    expect(() => parseRoster(csv(",James,Smyth,1984,james@example.test,superuser"))).toThrow(
+      /"superuser"/,
+    );
+    expect(() => parseRoster(csv("nope,James,Smyth,1984,james@example.test,"))).toThrow(/"nope"/);
   });
 
   it("rejects a duplicate email regardless of case — D97 uniqueness", () => {

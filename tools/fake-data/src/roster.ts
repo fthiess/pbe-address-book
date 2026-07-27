@@ -144,7 +144,14 @@ export function parseRoster(csv: string, options: ParseOptions = {}): RosterEntr
       throw new RosterError(`Line ${line}: firstName and lastName are both required.`);
     }
     if (!email || !email.includes("@")) {
-      throw new RosterError(`Line ${line}: a valid email is required (got "${email}").`);
+      // ⚠ Never echo the offending VALUE, only its position. A malformed row is a
+      // likely hand-editing slip, and the value in an email column is a real
+      // brother's address (or something very close to it) — this message reaches
+      // `console.error` and, from the deploy workflow, a world-readable Actions log
+      // on a PUBLIC repo. The line and column are enough to fix the CSV.
+      throw new RosterError(
+        `Line ${line}: the email column is missing or not email-shaped. (Value withheld — it is real PII and this message reaches public CI logs.)`,
+      );
     }
     const emailKey = email.toLowerCase();
     if (takenEmails.has(emailKey)) {
