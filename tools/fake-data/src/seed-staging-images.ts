@@ -231,13 +231,29 @@ await runPooled(assignments, 16, async ({ profileId, source }) => {
   const version = versionById.get(profileId) as string;
   // Both keys get the SAME source so the Directory thumbnail and the Profile
   // headshot show one consistent identity for a given brother.
-  const [thumbnail, headshot] =
-    source.kind === "uat"
-      ? [
-          (corpus as UatCorpus).thumbnails[source.index] as Buffer,
-          (corpus as UatCorpus).headshots[source.index] as Buffer,
-        ]
-      : [thumbFixtures[source.variant] as Buffer, headshotFixtures[source.variant] as Buffer];
+  //
+  // A `uat` assignment can only exist when a corpus was loaded and is long enough
+  // (`planPhotoAssignments` is given `corpus.headshots.length`, and `0` when there
+  // is none), so the lookup below cannot miss. It is checked anyway because the
+  // alternative failure is illegible: an undefined buffer reaches `.save()` and
+  // surfaces as an obscure GCS type error, hundreds of uploads deep, with nothing
+  // pointing back at the corpus. Cheap to assert, expensive to diagnose.
+  let thumbnail: Buffer;
+  let headshot: Buffer;
+  if (source.kind === "uat") {
+    const fromCorpus = corpus?.thumbnails[source.index];
+    const headshotBytes = corpus?.headshots[source.index];
+    if (!fromCorpus || !headshotBytes) {
+      throw new Error(
+        `UAT corpus is missing index ${source.index} (profile #${profileId}) — the manifest's count disagrees with the objects present.`,
+      );
+    }
+    thumbnail = fromCorpus;
+    headshot = headshotBytes;
+  } else {
+    thumbnail = thumbFixtures[source.variant] as Buffer;
+    headshot = headshotFixtures[source.variant] as Buffer;
+  }
 
   await Promise.all([
     bucket.file(thumbnailObjectKey(profileId, version)).save(thumbnail, IMMUTABLE),
