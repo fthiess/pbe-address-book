@@ -9,9 +9,22 @@ name: Deploy staging
 #
 # The paths-ignore carries N82's docs-only skip over from ci.yml's old push
 # trigger: a merge touching only these paths deploys nothing. Scoped deliberately
-# — packages/help-content ships Markdown into the app bundle (D111), so only
-# clearly non-shipped paths are listed; `*.md` matches root-level files only (a
-# single `*` does not cross `/`).
+# — packages/help-content ships Markdown into the app bundle (D111), as does
+# apps/web/src/content, so a blanket `**/*.md` would silently stop shipping real
+# content changes. Only paths whose contents can never enter a build artifact are
+# listed.
+#
+# The Markdown entries come in `X/*.md` + `X/**/*.md` PAIRS. A single `*` does not
+# cross `/`, so `X/*.md` is exactly the directory's own Markdown; `X/**/*.md` covers
+# anything nested below it. The pair is deliberate belt-and-braces: GitHub documents
+# `**` as matching multiple directories but does not state whether it matches ZERO,
+# so one pattern alone might or might not cover `infra/README.md`. Two unambiguous
+# patterns beat one whose semantics we would be guessing at.
+#
+# ⚠ The `infra/` entries must stay narrowed to Markdown — never blanket `infra/**`.
+# The "Load staging environment" step below reads infra/environments/staging.env
+# into $GITHUB_ENV; that is how BACKUP_INVOKER_SUBJECT and the rest reach the
+# service, so a change to it MUST deploy (OFC-336).
 #
 # Auth is via Workload Identity Federation (infra/setup-wif.sh) — GitHub mints a
 # short-lived OIDC token Google trusts only for this repo. There is no JSON key
@@ -23,6 +36,12 @@ on:
       - "docs/**"
       - "*.md"
       - ".claude/**"
+      - "infra/*.md"
+      - "infra/**/*.md"
+      - "tools/*.md"
+      - "tools/**/*.md"
+      - "ghost-bridge/*.md"
+      - "ghost-bridge/**/*.md"
   # Manual re-deploy (e.g. after a config change with no new commit, or to
   # redeploy a commit whose merge skipped the deploy under paths-ignore).
   workflow_dispatch:
