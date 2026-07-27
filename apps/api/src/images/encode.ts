@@ -1,3 +1,4 @@
+import { HEADSHOT_SIZE, THUMBNAIL_SIZE } from "@pbe/shared";
 import sharp from "sharp";
 
 /**
@@ -23,10 +24,14 @@ import sharp from "sharp";
  * defensively even though the crop is already 1:1.
  */
 
-/** The size of the stored headshot object, in pixels (square). */
-export const HEADSHOT_SIZE = 512;
-/** The size of the stored directory thumbnail, in pixels (square). */
-export const THUMBNAIL_SIZE = 96;
+/**
+ * The stored derivative sizes. Both now live in `@pbe/shared`'s `images.ts`
+ * alongside the object-key contract, because the UAT photo corpus is encoded once
+ * and parked in a bucket, and its manifest has to record the sizes it used so a
+ * change here is detectable (OFC-249). Re-exported so this module stays the
+ * obvious import site for the encoder's own callers and its tests.
+ */
+export { HEADSHOT_SIZE, THUMBNAIL_SIZE };
 
 /**
  * The decoded-pixel ceiling (~40 MP) passed to sharp's `limitInputPixels`. A

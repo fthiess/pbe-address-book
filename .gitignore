@@ -46,3 +46,11 @@ npm-debug.log*
 # directory, and the documented invocation (`npm run restore --workspace apps/api`)
 # runs with cwd `apps/api/`, so they land in `apps/api/restore-artifacts/`.
 restore-artifacts/
+
+# Prepared UAT photo fixtures (Stage 1.2, OFC-249): ~15 MB of WEBP derivatives
+# produced by `prepare:uat-photos` and destined for the private UAT fixtures
+# bucket. The faces are synthetic, so this is bulk rather than PII — but the same
+# prefix holds the tester roster, and a corpus of binaries has no business in a
+# source repo either way. Unanchored for the same reason as the line above: the
+# tool's --out is relative to whatever directory it is invoked from.
+uat-artifacts/

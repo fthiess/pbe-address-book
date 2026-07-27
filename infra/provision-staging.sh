@@ -41,6 +41,10 @@ PROJECT_ID="${PROJECT_ID:-pbe-book-staging}"
 REGION="${REGION:-us-central1}"
 BILLING_ACCOUNT="${BILLING_ACCOUNT:-}"
 IMAGE_BUCKET="${IMAGE_BUCKET:-${PROJECT_ID}-images}"
+# Private UAT fixtures (photo corpus + tester roster CSV; OFC-248/OFC-249). Kept
+# apart from IMAGE_BUCKET because the roster is real member PII and the Book runtime
+# SA must have no access to it — see section 6f.
+UAT_FIXTURES_BUCKET="${UAT_FIXTURES_BUCKET:-${PROJECT_ID}-uat}"
 SERVICE="${SERVICE:-pbe-book-api}"
 SA_NAME="${SA_NAME:-book-api}"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -273,6 +277,48 @@ if [[ "${BACKUP_INVOKER_SUBJECT:-}" != "${BACKUP_SUBJECT_LIVE}" ]]; then
   echo "!! Update environments/staging.env: BACKUP_INVOKER_SUBJECT=${BACKUP_SUBJECT_LIVE}"
 fi
 BACKUP_INVOKER_SUBJECT="${BACKUP_SUBJECT_LIVE}"
+
+# 6f. The private UAT fixtures bucket (Stage 1.2; OFC-248/OFC-249). Holds the
+#     prepared UAT photo corpus and the tester roster CSV — the latter carrying real
+#     brothers' names and email addresses, which is why neither may ever enter this
+#     PUBLIC repo. Same private posture as the other two buckets: uniform access,
+#     public access PREVENTED.
+#
+#     ⚠ SEPARATE from IMAGE_BUCKET deliberately, and it must stay that way. The Book
+#     runtime SA holds objectAdmin on the image bucket (needed to write headshots),
+#     so a roster of real member PII parked there would sit inside the running
+#     application's blast radius. This bucket grants the runtime SA NOTHING — the
+#     only reader is CI. Never "simplify" it into a prefix on the image bucket.
+#
+#     No lifecycle rule and no versioning: the contents are hand-curated fixtures
+#     with no natural expiry, replaced by re-upload rather than by accumulation.
+if ! gcloud storage buckets describe "gs://${UAT_FIXTURES_BUCKET}" >/dev/null 2>&1; then
+  echo "==> Creating private UAT fixtures bucket gs://${UAT_FIXTURES_BUCKET}"
+  gcloud storage buckets create "gs://${UAT_FIXTURES_BUCKET}" \
+    --location="${REGION}" --uniform-bucket-level-access --public-access-prevention \
+    --project "${PROJECT_ID}"
+fi
+
+# 6g. Read access for the CI deployer, which runs the seeders (OFC-249's image seed
+#     reads the photo corpus; OFC-248's roster tool reads the CSV).
+#
+#     ⚠ Honest note: this grant is REDUNDANT today. setup-wif.sh gives the deployer
+#     project-level roles/storage.admin, which already covers every bucket in the
+#     project, so this adds no access it does not have. It is here to state intent at
+#     the bucket and to keep the deploy working if that project-wide grant is ever
+#     narrowed — a reasonable future hardening. Do not read it as evidence that the
+#     deployer's access to this bucket is read-only; it is not.
+#
+#     The security property that DOES hold is the absence below it: no binding for
+#     ${SA_EMAIL}. Book's runtime — the internet-facing part — has no path to the
+#     roster at all.
+echo "==> Granting ${DEPLOYER_SA:-<deployer>} objectViewer on gs://${UAT_FIXTURES_BUCKET}"
+if [ -n "${DEPLOYER_SA:-}" ]; then
+  gcloud storage buckets add-iam-policy-binding "gs://${UAT_FIXTURES_BUCKET}" \
+    --member="serviceAccount:${DEPLOYER_SA}" --role="roles/storage.objectViewer" >/dev/null
+else
+  echo "!! DEPLOYER_SA unset (environments/staging.env) — skipping the CI read grant."
+fi
 
 # 7. Deploy the API to Cloud Run (built remotely by Cloud Build from ./Dockerfile).
 # The Ghost Admin key rides from Secret Manager via --set-secrets, but only if the
