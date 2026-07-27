@@ -160,10 +160,6 @@ jobs:
           # image seeder falls back to the eight committed placeholders with a
           # warning — a missing fixture set must never fail a deploy.
           UAT_FIXTURES_BUCKET: ${{ env.UAT_FIXTURES_BUCKET }}
-<<<<<<< HEAD
-=======
-          STAGING_TESTER_EMAIL: ${{ secrets.STAGING_TESTER_EMAIL }}
->>>>>>> origin/main
         run: |
           npm run seed:staging --workspace tools/fake-data
           npm run seed:staging-images --workspace tools/fake-data
