@@ -46,6 +46,76 @@ export interface ReconcilePlan {
   matchedLinks: { profileId: number; ghostMemberId: string }[];
 }
 
+/** A Ghost member as listed, carrying whatever labels it holds. */
+export interface LabelledMember extends ExistingMember {
+  readonly labels?: readonly { readonly name?: string; readonly slug?: string }[];
+}
+
+/**
+ * Choose which of ghost-staging's members {@link planReconcile} is allowed to see,
+ * for the **roster** tool (OFC-248). Two disjoint jobs, two different scopes — and
+ * conflating them is a bug this function exists to prevent.
+ *
+ *  - **Matching** must be by **email**, because that is the key Ghost itself
+ *    enforces uniqueness on, globally and regardless of labels.
+ *  - **Deleting** must be by **label**, because the label is the tool's own mark:
+ *    it may only ever remove members it created.
+ *
+ * So the scope is the union: every member holding a roster email, plus every member
+ * carrying the label. A member that is neither is invisible here and therefore can
+ * never be touched — the safety property that makes a delete branch acceptable at
+ * all against a Ghost instance holding real accounts.
+ *
+ * ⚠ **Found in live testing, not by reasoning.** The first cut scoped to labelled
+ * members alone. The operator's own ghost-staging account already existed — created
+ * during the D72 bridge work, long before any label existed — so the plan could not
+ * see it, planned a create, and Ghost answered `422 Member already exists`. Anything
+ * that narrows this scope back to labels alone re-introduces that failure, and it
+ * will only surface against an instance that already has the account.
+ */
+export function selectReconcileScope(
+  allMembers: readonly LabelledMember[],
+  rosterEmails: readonly string[],
+  label: string,
+): ExistingMember[] {
+  const wanted = new Set(rosterEmails.map((e) => normalizeEmail(e)));
+  return allMembers
+    .filter((m) => wanted.has(normalizeEmail(m.email)) || memberHasLabel(m, label))
+    .map(({ id, email, name, subscribed }) => ({ id, email, name, subscribed }));
+}
+
+/** Whether a listed member carries `label`, by either its name or its slug. */
+export function memberHasLabel(member: LabelledMember, label: string): boolean {
+  return (member.labels ?? []).some((l) => l.name === label || l.slug === label);
+}
+
+/**
+ * The ids of members that are **in the roster but not yet labelled** — adopted
+ * pre-existing accounts that must be updated purely so the label gets attached.
+ *
+ * ⚠ **Why this is separate from {@link planReconcile}'s drift check.** That check
+ * only queues an update when `name` or `subscribed` *differ*. An adopted member
+ * whose name and subscription already match is therefore linked and then left
+ * alone — **never labelled**. On a later run, once its row leaves the roster, it
+ * matches neither the roster emails nor the label, drops out of
+ * {@link selectReconcileScope} entirely, and is never deleted. The result is a
+ * silent hole in the "drop the CSV row and reseed" story that this tool documents
+ * in four places, and it would only ever surface as a member that quietly refused
+ * to go away. Found in code review.
+ */
+export function membersNeedingLabel(
+  allMembers: readonly LabelledMember[],
+  rosterEmails: readonly string[],
+  label: string,
+): Set<string> {
+  const wanted = new Set(rosterEmails.map((e) => normalizeEmail(e)));
+  return new Set(
+    allMembers
+      .filter((m) => wanted.has(normalizeEmail(m.email)) && !memberHasLabel(m, label))
+      .map((m) => m.id),
+  );
+}
+
 export function planReconcile(
   desired: readonly DesiredMember[],
   existing: readonly ExistingMember[],

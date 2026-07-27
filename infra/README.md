@@ -511,6 +511,52 @@ prepared once and then sits in the bucket indefinitely, so if `HEADSHOT_SIZE` or
 `THUMBNAIL_SIZE` ever change, the seeder compares and **warns** rather than quietly
 serving wrong-sized fixtures. Re-run steps 1 and 2 when that happens.
 
+### The tester roster
+
+The same bucket holds `roster/uat-testers.csv` — the UAT tester cohort, and the only
+**real** member PII anywhere in this environment. Columns: `profileId`, `firstName`,
+`lastName`, `classYear`, `email`, `role`; only the names and `email` are required.
+
+```bash
+# Edit locally (keep it OUT of the repo), then upload:
+gcloud storage cp ./pbe_book_uat_roster.csv \
+  gs://pbe-book-staging-uat/roster/uat-testers.csv --project=pbe-book-staging
+```
+
+```bash
+# Preview what a roster change would do — always do this before a real run:
+GOOGLE_CLOUD_PROJECT=pbe-book-staging \
+UAT_ROSTER_URI=gs://pbe-book-staging-uat/roster/uat-testers.csv \
+GHOST_ADMIN_API_URL=https://staging.pbe400.org/ghost/api/admin \
+GHOST_NEWSLETTER_ID=6a3ebdd8415f8e0001858cb0 \
+GHOST_ADMIN_API_KEY="$(gcloud secrets versions access latest --secret=ghost-admin-api-key --project=pbe-book-staging)" \
+  npm run seed:staging-testers --workspace tools/fake-data -- --dry-run
+```
+
+Testers occupy their own id block from `TESTER_ID_FLOOR` (#9001+), so they never
+overwrite a generated fixture. A blank `profileId` is auto-assigned; the first data
+row defaults to `admin` and the rest to `brother`.
+
+**Adding or removing a tester is a CSV edit plus a reseed.** `seed:staging` wipes
+`profiles` before the tool runs, so a dropped row never comes back and its Ghost
+member is deleted as a labelled orphan. Shrinking the cohort back to one person is
+the same operation.
+
+⚠ **Ghost matching is by email, deletion by label** (`book-uat-tester`). Ghost
+enforces email uniqueness globally, so an account that already exists under a roster
+address is adopted rather than duplicated — scoping matching to the label alone
+produces `422 Member already exists`, which is how this was found. Once adopted, a
+member is inside the delete scope; in practice the only such account is the
+operator's own, which is row 1 and never removed.
+
+⚠ **`send_email=false` on member creation is load-bearing.** Since D154
+ghost-staging sends real mail through a verified Mailgun domain, and these are real
+brothers' addresses. A tester must never learn they exist from a provisioning run.
+
+⚠ **During UAT, `STAGING_AUTOSEED=false`** stops the whole reseed, this step
+included — which is the point: a deploy must not replace a tester's in-progress
+profile with a blank one. Roster changes during the window are run by hand.
+
 ### How the seeder uses it
 
 `seed:staging-images` reads `UAT_FIXTURES_BUCKET` (passed through by the deploy
