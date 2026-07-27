@@ -1,6 +1,6 @@
 # PBE Address Book ("Book")
 
-Members-only directory web app for the ~700 living brothers of Phi Beta Epsilon (MIT), sibling to the Ghost newsletter site pbe400.org. The audience skews 60+ and includes slow connections: be byte-frugal, calm, and legible.
+Members-only directory web app for the ~700 living brothers of Phi Beta Epsilon (MIT), sibling to the Ghost newsletter site pbe400.org. The membership spans ages 18 up and is mostly well-connected, but it also includes older brothers, less confident users, and genuinely slow links — design for those **edges**, not as though they were the norm: be byte-frugal, calm, and legible.
 
 ## Development workflow
 
