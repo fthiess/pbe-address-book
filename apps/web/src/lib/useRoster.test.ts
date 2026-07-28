@@ -150,6 +150,45 @@ describe("clearRoster (sign-out, D95)", () => {
 
     expect(__getRosterState()).toEqual({ profiles: null, error: false });
   });
+
+  it("a fetch in flight at sign-out cannot repopulate the cleared store (the D95 race)", async () => {
+    // The race: revalidateRoster() fires on every Directory mount, the fetch has
+    // no AbortController (deliberately — it outlives pages), and sign-out/401
+    // call clearRoster() while it is in flight. The late response must be
+    // DISCARDED — resolving it into the store would put all ~1,166 records of
+    // real PII back on a possibly shared machine after the user signed out.
+    let resolve!: (value: ProfilesResponse) => void;
+    mockFetchProfiles.mockReturnValue(
+      new Promise<ProfilesResponse>((r) => {
+        resolve = r;
+      }),
+    );
+
+    revalidateRoster(); // fetch now in flight
+    clearRoster(); // sign-out lands first
+    resolve(response(ROSTER)); // ...then the response arrives
+    await flush();
+
+    expect(__getRosterState()).toEqual({ profiles: null, error: false });
+  });
+
+  it("a fetch failing after sign-out surfaces no stale error state", async () => {
+    let reject!: (reason: Error) => void;
+    mockFetchProfiles.mockReturnValue(
+      new Promise<ProfilesResponse>((_r, rj) => {
+        reject = rj;
+      }),
+    );
+
+    revalidateRoster();
+    clearRoster();
+    reject(new Error("network"));
+    await flush();
+
+    // Without the fence, the catch would see profiles === null and flag an
+    // error against the signed-out (empty) store.
+    expect(__getRosterState()).toEqual({ profiles: null, error: false });
+  });
 });
 
 describe("applyProfileToRoster (the §5.7.4 fold)", () => {

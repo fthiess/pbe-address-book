@@ -30,13 +30,22 @@ import type { DirectoryProfile, ProfileRecord } from "./types.js";
  */
 
 interface RosterState {
-  /** The roster once loaded; `null` while the first fetch is in flight. */
+  /** The roster once loaded; `null` before the first fetch lands and again after {@link clearRoster}. */
   profiles: DirectoryProfile[] | null;
   error: boolean;
 }
 
 let state: RosterState = { profiles: null, error: false };
 let loading = false;
+/**
+ * The store's clear-generation. `load()` has no AbortController (deliberately —
+ * the fetch outlives pages), so this is what stops a response that was in flight
+ * when {@link clearRoster} ran from repopulating the just-cleared store: sign-out
+ * must actually remove the PII from the heap on a shared machine (D95/OFC-118),
+ * and an unfenced late `200` would silently put all of it back. Bumped by every
+ * clear; a fetch settles into the store only if no clear happened since it began.
+ */
+let epoch = 0;
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -68,19 +77,31 @@ function load(): void {
   loading = true;
   // No AbortController: the fetch deliberately outlives any one page — the store
   // is module-lived, so a response arriving after the starting page unmounted
-  // still serves the next consumer.
+  // still serves the next consumer. The epoch fence below is the boundary that
+  // must NOT be outlived: a clearRoster() (sign-out/401) while this fetch is in
+  // flight makes its outcome unwanted, whatever it is.
+  const startedIn = epoch;
   fetchProfiles()
-    .then((response) => setState({ profiles: response.profiles, error: false }))
+    .then((response) => {
+      if (epoch !== startedIn) {
+        return;
+      }
+      setState({ profiles: response.profiles, error: false });
+    })
     .catch(() => {
       // With retained data, fail silently and keep showing it — a background
       // refresh that breaks must not blank a working Directory. `error` is only
       // ever true when there is nothing to render instead.
-      if (state.profiles === null) {
+      if (epoch === startedIn && state.profiles === null) {
         setState({ profiles: null, error: true });
       }
     })
     .finally(() => {
-      loading = false;
+      // A stale fetch's settle must not clobber `loading` either: after a clear,
+      // a NEW fetch may already own the flag.
+      if (epoch === startedIn) {
+        loading = false;
+      }
     });
 }
 
@@ -149,16 +170,19 @@ export function applyProfileToRoster(record: ProfileRecord): void {
  * Drop the cached roster from the heap. The roster is the full brother-projected
  * dataset (~1,166 records of real PII), held in a module-level singleton for the
  * tab's lifetime; it must not survive a sign-out on a shared/family machine
- * (real-PII discipline, D95). Called from the sign-out path (OFC-118). Emits so
- * any mounted `useRoster` re-renders empty and, if still authenticated, re-fetches.
+ * (real-PII discipline, D95). Called from both signed-out paths — the explicit
+ * sign-out and the app-wide mid-session 401 (OFC-118). Emits so any mounted
+ * `useRoster` re-renders empty; the next authenticated mount re-fetches.
  */
 export function clearRoster(): void {
+  epoch += 1; // discard any in-flight fetch's outcome — see the field's comment
   loading = false;
   setState({ profiles: null, error: false });
 }
 
 /** Reset the module store — for tests, which need a fresh fetch per case. */
 export function __resetRosterCache(): void {
+  epoch += 1;
   state = { profiles: null, error: false };
   loading = false;
 }
