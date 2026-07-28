@@ -7,8 +7,17 @@
  * actually serves) of every JS chunk in the built bundle.
  *
  * The budget is deliberately generous in Phase 0 (the app is a placeholder)
- * and is meant to be tightened as the real surfaces and code-splitting land
- * (Phase 7 verifies delivery at scale). Run via `npm run check:bundle-size`.
+ * and is meant to be tightened as the real surfaces land (Phase 7 verifies
+ * delivery at scale). Run via `npm run check:bundle-size`.
+ *
+ * ⚠ **There is no code-splitting to account for, by decision (D157).** D74's
+ * code-splitting clause was measured across four configurations in Stage 1.3 and
+ * deliberately not implemented: only 21% of the critical path is page-exclusive,
+ * so the best available split was worth 6.2 KB, and the Profile page cannot be
+ * split at all because newsletter deep links make it a co-equal entry point.
+ * A separate critical-path assertion was considered alongside it and dropped with
+ * it. If a future session is tempted to "finish" D74, read D157 first — the
+ * measurement is there so nobody spends the hour twice.
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -30,10 +39,13 @@ const ASSETS_DIR = "apps/web/dist/assets";
 // figure tracks the real thing closely — but it is a floor, not an exact match.
 //
 // The 250 KB was an arbitrary forcing function: a number low enough to require a
-// conversation before the bundle grew again. It did its job (Forrest's call, this
-// session). Phase 7b's Lighthouse baseline (OFC-286) measures the critical path
-// this byte count can't see, and is the right place to re-derive the ceiling from
-// evidence rather than from feel.
+// conversation before the bundle grew again. It did its job (Forrest's call, 7a-2).
+//
+// This total is a **sum over all chunks**, so it cannot see the critical path and
+// cannot score a change to how the bundle is divided. The place to re-derive it
+// from evidence is the Lighthouse baseline (N134) plus the four-configuration
+// decomposition in D157, which measures what is actually on the critical path
+// (223.3 KB of this 256.5 KB total, of which only 21% is page-exclusive).
 const BUDGET_BYTES = 270 * 1024;
 
 let files;

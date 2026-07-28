@@ -196,6 +196,12 @@ The **baseline to compare against** — the first run of this recipe, its number
 the three findings it produced — is DECISIONS **N134** (7b-1). Cite that, not a
 ticket: tickets close and archive, the decision log does not.
 
+For the **composition** of that critical path rather than its timings — what is
+page-exclusive versus shared, and why route code-splitting was measured and then
+declined — see DECISIONS **D157**. It also records the cheap way to decompose the
+bundle without adding a dependency: make each route its own dynamic-import root in
+a throwaway build and read Rollup's own chunk table.
+
 ## CI/CD
 
 Every push runs `ci.yml` — the same `verify:gate` you run locally (format,

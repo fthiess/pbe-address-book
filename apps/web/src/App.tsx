@@ -4,7 +4,12 @@ import { BannerProvider } from "./auth/BannerContext.js";
 import { SessionProvider, useSession } from "./auth/SessionContext.js";
 import { AppShell } from "./components/AppShell.js";
 import { FontSizeProvider } from "./components/FontSizeProvider.js";
-import { LoadingOverlay } from "./components/LoadingOverlay.js";
+import {
+  LoadingOverlay,
+  OVERLAY_DELAY_MS,
+  REASSURANCE_DELAY_MS,
+  WAKE_REASSURANCE,
+} from "./components/LoadingOverlay.js";
 import { MaintenanceOutage } from "./components/MaintenanceOutage.js";
 import { ThemeProvider } from "./components/ThemeProvider.js";
 import { useAnalytics } from "./lib/useAnalytics.js";
@@ -49,11 +54,19 @@ function RootLayout() {
  */
 function GateLayout() {
   const { state, refresh } = useSession();
-  const showOverlay = useDelayedFlag(state.status === "loading", 500);
+  const showOverlay = useDelayedFlag(state.status === "loading", OVERLAY_DELAY_MS);
+  // The session fetch is a tiny response, so a wait this long is a cold instance
+  // rather than transfer time — the one place the wake-the-server line is safe to
+  // state outright (D119's escalation; OFC-324).
+  const showReassurance = useDelayedFlag(state.status === "loading", REASSURANCE_DELAY_MS);
 
   if (state.status === "loading") {
     return showOverlay ? (
-      <LoadingOverlay label="Loading the directory…" />
+      <LoadingOverlay
+        label="Loading the directory…"
+        reassurance={WAKE_REASSURANCE}
+        showReassurance={showReassurance}
+      />
     ) : (
       <div className="min-h-dvh bg-background" />
     );
