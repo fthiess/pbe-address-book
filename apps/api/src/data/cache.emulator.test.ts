@@ -103,6 +103,57 @@ describe.skipIf(!hasEmulator)(
 );
 
 describe.skipIf(!hasEmulator)(
+  "ProfileCache.hydrateFromFirestore — the dataset version token (7.5b)",
+  () => {
+    let db: Firestore;
+
+    beforeAll(async () => {
+      if (getApps().length === 0) {
+        initializeApp({ projectId: "demo-pbe-book" });
+      }
+      db = getFirestore();
+      const batch = db.batch();
+      for (const profile of [makeProfile({ id: 5001 }), makeProfile({ id: 5002 })]) {
+        batch.set(db.collection("profiles").doc(String(profile.id)), profile);
+      }
+      await batch.commit();
+    });
+
+    afterAll(async () => {
+      const snapshot = await db.collection("profiles").get();
+      const batch = db.batch();
+      for (const doc of snapshot.docs) {
+        batch.delete(doc.ref);
+      }
+      await batch.commit();
+    });
+
+    it("is stable across cold starts on unchanged data, and moves when Firestore changes", async () => {
+      // Two independent hydrations of the same data — the cold-start property:
+      // a scale-to-zero restart must mint the SAME token, or every client would
+      // pay a spurious full re-download after each idle period (D159).
+      const first = new ProfileCache();
+      await first.hydrateFromFirestore(db);
+      const second = new ProfileCache();
+      await second.hydrateFromFirestore(db);
+      expect(first.brotherPayload().etag).toMatch(/^[0-9a-f]{16}\.brother$/);
+      expect(second.brotherPayload().etag).toBe(first.brotherPayload().etag);
+
+      // A Firestore write then a fresh hydration: the token must move, so a
+      // client revalidating with the old one pulls the new dataset (the gate's
+      // "a write by another user bumps the dataset version").
+      await db
+        .collection("profiles")
+        .doc("5002")
+        .set(makeProfile({ id: 5002, lastName: "Changed" }));
+      const third = new ProfileCache();
+      await third.hydrateFromFirestore(db);
+      expect(third.brotherPayload().etag).not.toBe(first.brotherPayload().etag);
+    });
+  },
+);
+
+describe.skipIf(!hasEmulator)(
   "ProfileCache.hydrateFromFirestore — malformed records (OFC-91)",
   () => {
     let db: Firestore;

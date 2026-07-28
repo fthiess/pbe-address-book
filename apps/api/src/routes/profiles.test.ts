@@ -102,7 +102,7 @@ async function buildReadServer() {
   });
   const cookieFor = async (role: Role) =>
     `${SESSION_COOKIE}=${await sessionStore.create(sessionFor(role))}`;
-  return { app, cookie: await cookieFor("brother"), cookieFor };
+  return { app, cookie: await cookieFor("brother"), cookieFor, cache };
 }
 
 describe("GET /api/profiles", () => {
@@ -217,6 +217,124 @@ describe("GET /api/profiles", () => {
         expect(p).not.toHaveProperty("ghostMemberId");
       }
     }
+  });
+});
+
+/**
+ * The app-level conditional read (Phase 7.5b, N62/N63/D159). The `ETag` is a
+ * role-qualified content hash of the served JSON; a matching `If-None-Match`
+ * earns an empty `304` that stays `no-store` (this is NOT browser caching —
+ * the SPA holds the data in its heap and handles the status in code).
+ */
+describe("GET /api/profiles conditional read (7.5b)", () => {
+  let app: Awaited<ReturnType<typeof buildReadServer>>["app"];
+  let cookie: string;
+  let cookieFor: Awaited<ReturnType<typeof buildReadServer>>["cookieFor"];
+  let cache: ProfileCache;
+
+  beforeEach(async () => {
+    ({ app, cookie, cookieFor, cache } = await buildReadServer());
+  });
+
+  afterEach(async () => {
+    await app.close();
+  });
+
+  const bulkEtag = async (headers: Record<string, string>): Promise<string> => {
+    const response = await app.inject({ method: "GET", url: "/api/profiles", headers });
+    expect(response.statusCode).toBe(200);
+    return response.headers.etag as string;
+  };
+
+  it("stamps a quoted, role-qualified content-hash ETag on the 200", async () => {
+    const etag = await bulkEtag({ cookie });
+    expect(etag).toMatch(/^"[0-9a-f]{16}\.brother"$/);
+  });
+
+  it("a matching If-None-Match earns an empty 304 that keeps no-store", async () => {
+    const etag = await bulkEtag({ cookie });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/profiles",
+      headers: { cookie, "accept-encoding": "br", "if-none-match": etag },
+    });
+
+    expect(response.statusCode).toBe(304);
+    expect(response.rawPayload.length).toBe(0);
+    expect(response.headers.etag).toBe(etag);
+    // ⚠ D95/N63: the 304 must not soften the cache posture — the token lives in
+    // app code, never in the browser HTTP cache.
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(response.headers["content-encoding"]).toBeUndefined();
+  });
+
+  it("tolerates a weak-prefixed and a listed If-None-Match", async () => {
+    const etag = await bulkEtag({ cookie });
+    for (const header of [`W/${etag}`, `"something-else", ${etag}`]) {
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/profiles",
+        headers: { cookie, "if-none-match": header },
+      });
+      expect(response.statusCode).toBe(304);
+    }
+  });
+
+  it("does not honor a bare `*` — no Book client sends it", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/profiles",
+      headers: { cookie, "if-none-match": "*" },
+    });
+    expect(response.statusCode).toBe(200);
+  });
+
+  it("a stale token gets the full 200 with the current ETag", async () => {
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/profiles",
+      headers: { cookie, "if-none-match": '"0000000000000000.brother"' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.etag).toMatch(/^"[0-9a-f]{16}\.brother"$/);
+  });
+
+  it("is role-qualified: one role's token never 304s another role's projection", async () => {
+    const brotherEtag = await bulkEtag({ cookie });
+    const cookieA = await cookieFor("admin");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/profiles",
+      headers: { cookie: cookieA, "if-none-match": brotherEtag },
+    });
+
+    // Even if the hashes could ever coincide, the role suffix cannot: an admin
+    // holding a brother token must get the full admin projection (N31).
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.etag).toMatch(/\.admin"$/);
+  });
+
+  it("a write bumps the token: the old token forces a full re-download", async () => {
+    const etag = await bulkEtag({ cookie });
+
+    await cache.applyUpdate(makeProfile({ id: 5003, lastName: "Renamed", role: "brother" }), "t2");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/profiles",
+      headers: { cookie, "if-none-match": etag },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers.etag).not.toBe(etag);
+    expect(response.headers.etag).toMatch(/\.brother"$/);
+  });
+
+  it("an unchanged dataset yields the same token across requests (deterministic)", async () => {
+    const first = await bulkEtag({ cookie });
+    const second = await bulkEtag({ cookie });
+    expect(second).toBe(first);
   });
 });
 

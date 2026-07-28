@@ -13,13 +13,15 @@ import type { DirectoryProfile, ProfileRecord } from "./types.js";
  * retires both the double download and the drift between them (ENGINEERING-DESIGN
  * §1.7, N62).
  *
- * Freshness: {@link revalidateRoster} runs on every Directory mount. With data
- * retained it re-fetches **in the background** and swaps atomically on success —
- * the same freshness cadence the Directory's remount refetch gave, but the grid
- * renders instantly from the retained data while it runs. (Phase 7.5b turns this
- * background refetch into an app-level conditional read that usually answers
- * `304`.) A background failure keeps the retained data silently; `error` is only
- * ever true when there is nothing to show.
+ * Freshness: {@link revalidateRoster} runs on every Directory mount and on tab
+ * focus/visibility (7.5b). With data retained it revalidates **in the
+ * background** — an app-level conditional read carrying the store's dataset
+ * token, answered `304` when nothing changed (re-render from the retained
+ * store, no transfer) or `200` + a fresh payload and token (atomic swap). The
+ * token and the data live only in this module's heap over a `no-store`
+ * response; the browser HTTP cache is never involved (D95/N63). A background
+ * failure keeps the retained data silently; `error` is only ever true when
+ * there is nothing to show.
  *
  * Because the Little-Brother list is **derived, not stored**, a save that changes a
  * `bigBrotherId` must be reflected back into this cache, or the *other* brother's
@@ -46,6 +48,14 @@ let loading = false;
  * clear; a fetch settles into the store only if no clear happened since it began.
  */
 let epoch = 0;
+/**
+ * The dataset version token from the last fresh bulk read (7.5b) — the value
+ * revalidations send as `If-None-Match`. Role-qualified by the server, so it is
+ * cleared with the data on {@link clearRoster}: the next viewer on this tab (or
+ * this viewer under a different role) must never revalidate against the prior
+ * viewer's token. Heap-only, like the data it versions (D95/N63).
+ */
+let etag: string | null = null;
 const listeners = new Set<() => void>();
 
 function emit(): void {
@@ -81,12 +91,20 @@ function load(): void {
   // must NOT be outlived: a clearRoster() (sign-out/401) while this fetch is in
   // flight makes its outcome unwanted, whatever it is.
   const startedIn = epoch;
-  fetchProfiles()
-    .then((response) => {
+  // Send the token only when there is retained data to re-render from — a `304`
+  // against an empty store would leave nothing to show.
+  const token = state.profiles !== null ? etag : null;
+  fetchProfiles(token)
+    .then((result) => {
       if (epoch !== startedIn) {
         return;
       }
-      setState({ profiles: response.profiles, error: false });
+      if (result.status === "not-modified") {
+        // The retained store is current; nothing to swap and no bytes were sent.
+        return;
+      }
+      etag = result.etag;
+      setState({ profiles: result.body.profiles, error: false });
     })
     .catch(() => {
       // With retained data, fail silently and keep showing it — a background
@@ -119,19 +137,48 @@ function ensureLoaded(): void {
 /**
  * Revalidate the roster (Phase 7.5a): fired on every Directory mount, replacing
  * the Directory's old unconditional remount refetch. Store empty → the ordinary
- * first load (the D119 overlay path). Data retained → a background full refetch
- * that swaps in fresh data when it arrives, while the caller renders the retained
- * roster immediately. Deduped against any in-flight fetch.
+ * first load (the D119 overlay path). Data retained → a background conditional
+ * read (7.5b: `If-None-Match`, usually answered `304`) that swaps in fresh data
+ * only when something changed, while the caller renders the retained roster
+ * immediately. Deduped against any in-flight fetch.
  */
 export function revalidateRoster(): void {
   load();
+}
+
+/**
+ * Tab-focus revalidation (7.5b, N62): a return to the tab quietly narrows the
+ * cross-user staleness window for the price of a `304` round trip. Armed once,
+ * from the first mounted consumer — module-lived listeners on a module-lived
+ * store, deliberately never removed. Guards: browser only (unit tests run under
+ * node), only when the tab is actually visible, and only with retained data —
+ * an empty store belongs to the mount path (and firing on empty would hit the
+ * API from signed-out tabs).
+ */
+let focusRevalidationArmed = false;
+function armFocusRevalidation(): void {
+  if (focusRevalidationArmed || typeof document === "undefined" || typeof window === "undefined") {
+    return;
+  }
+  focusRevalidationArmed = true;
+  const onWake = (): void => {
+    if (document.visibilityState !== "visible" || state.profiles === null) {
+      return;
+    }
+    load();
+  };
+  document.addEventListener("visibilitychange", onWake);
+  window.addEventListener("focus", onWake);
 }
 
 export type Roster = RosterState;
 
 export function useRoster(): Roster {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
-  useEffect(ensureLoaded, []);
+  useEffect(() => {
+    armFocusRevalidation();
+    ensureLoaded();
+  }, []);
   return snapshot;
 }
 
@@ -177,6 +224,7 @@ export function applyProfileToRoster(record: ProfileRecord): void {
 export function clearRoster(): void {
   epoch += 1; // discard any in-flight fetch's outcome — see the field's comment
   loading = false;
+  etag = null; // the token is role-qualified PII-adjacent state; it goes with the data
   setState({ profiles: null, error: false });
 }
 
@@ -185,6 +233,7 @@ export function __resetRosterCache(): void {
   epoch += 1;
   state = { profiles: null, error: false };
   loading = false;
+  etag = null;
 }
 
 /**

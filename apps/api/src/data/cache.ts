@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { promisify } from "node:util";
 import zlib from "node:zlib";
 import { type Profile, type Role, isUsableAdmin, normalizeEmail } from "@pbe/shared";
@@ -38,6 +39,25 @@ export interface NegotiablePayload {
   readonly br: Buffer;
   /** gzip: the fallback for clients that do not advertise `br`. */
   readonly gzip: Buffer;
+  /**
+   * The bulk read's dataset version token (Phase 7.5b, N62/D159): a truncated
+   * SHA-256 of this payload's exact JSON, suffixed with the role it was projected
+   * for (`{hash}.{role}`). Served as the `ETag` on `GET /api/profiles` and
+   * compared against `If-None-Match` for the app-level `304`. Content-derived on
+   * purpose — it survives cold starts (identical data on a rehydrated instance
+   * yields the identical token, so scale-to-zero never forces a spurious full
+   * re-download), and hashing the *served* JSON makes the token inherently
+   * role-qualified twice over: different projections hash differently, and the
+   * explicit suffix keeps even an accidental cross-role hash collision from
+   * matching. ⚠ Distinct from the per-record `updateTime` `ETag` of D25 — that
+   * one is the write-side `If-Match` concurrency token; never conflate them.
+   */
+  readonly etag: string;
+}
+
+/** The role-qualified dataset version token for one role's serialized payload. */
+function payloadEtag(json: string, role: Role): string {
+  return `${createHash("sha256").update(json, "utf-8").digest("hex").slice(0, 16)}.${role}`;
 }
 
 /** The `GET /api/profiles` envelope (API-SPEC §3). */
@@ -170,13 +190,17 @@ export function normalizeHydratedProfile(
   };
 }
 
-async function compress(json: string, brotliQuality: number): Promise<NegotiablePayload> {
+async function compress(
+  json: string,
+  brotliQuality: number,
+  etag: string,
+): Promise<NegotiablePayload> {
   const raw = Buffer.from(json, "utf-8");
   const [br, gzip] = await Promise.all([
     brotliCompress(raw, { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: brotliQuality } }),
     gzipCompress(raw, { level: zlib.constants.Z_BEST_COMPRESSION }),
   ]);
-  return { json, br, gzip };
+  return { json, br, gzip, etag };
 }
 
 /**
@@ -257,14 +281,21 @@ export class ProfileCache {
     this.staffPayloads.clear();
   }
 
-  /** Project a profile set to a role and precompress the `GET /api/profiles` body. */
+  /**
+   * Project a profile set to a role and precompress the `GET /api/profiles` body.
+   * Every payload-build path funnels through here — {@link load},
+   * {@link rebuildAndSwap}, {@link applyDelete}'s inline rebuild, and the
+   * memoized staff payloads — so the etag (7.5b) re-derives on every swap
+   * automatically; no separate "bump the version" step exists to forget.
+   */
   private projectAndCompress(
     profiles: readonly Profile[],
     role: Role,
     brotliQuality: number,
   ): Promise<NegotiablePayload> {
     const body: ProfilesBody = { profiles: projectForRole(profiles, role), majors: [] };
-    return compress(JSON.stringify(body), brotliQuality);
+    const json = JSON.stringify(body);
+    return compress(json, brotliQuality, payloadEtag(json, role));
   }
 
   /**
