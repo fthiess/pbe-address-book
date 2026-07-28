@@ -1,4 +1,10 @@
-import { type Role, countryName, formatConstitutionId, subdivisionName } from "@pbe/shared";
+import {
+  type Role,
+  compareCourseCodes,
+  countryName,
+  formatConstitutionId,
+  subdivisionName,
+} from "@pbe/shared";
 import type { DirectoryProfile } from "../../lib/types.js";
 
 /**
@@ -73,6 +79,16 @@ export interface GridColumn {
   display: (profile: DirectoryProfile, name: string) => string;
   /** The comparable sort key, or null when the value is absent/unknown. */
   sortValue: (profile: DirectoryProfile) => string | number | null;
+  /**
+   * How to order two **present** sort values, when the column's vocabulary has an
+   * order of its own that neither numeric nor locale comparison reproduces. Omitted
+   * — the case for every column but Course — means the default {@link compareNonNull}.
+   *
+   * Null handling, the direction sign, and the canonical secondary key are NOT this
+   * function's business: it sees only two non-null values and returns their
+   * ascending order, exactly like a plain `Array.sort` comparator.
+   */
+  compare?: (a: string | number, b: string | number) => number;
 }
 
 /** The resize bounds shared by the lens, the resize handle, and auto-fit (N16/N27). */
@@ -180,6 +196,11 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     sortable: true,
     display: (p) => primaryMajor(p) ?? EMPTY,
     sortValue: (p) => primaryMajor(p),
+    // Courses are numbers, so they must sort as numbers: a plain string compare
+    // gives 1, 10, 11, 2 (OFC-290). `compareCourseCodes` is the same comparator the
+    // filter panel's course list and the profile editor's course picker already use
+    // — the Directory was the one place still ordering them as text.
+    compare: (a, b) => compareCourseCodes(String(a), String(b)),
   },
   email: {
     key: "email",
@@ -493,7 +514,8 @@ export function makeComparator(
   }
 
   const column = COLUMNS[key];
-  return (a, b) => compareSortValues(column.sortValue(a), column.sortValue(b), sign, a, b);
+  return (a, b) =>
+    compareSortValues(column.sortValue(a), column.sortValue(b), column.compare, sign, a, b);
 }
 
 /**
@@ -522,7 +544,9 @@ export function sortRows<T extends DirectoryProfile>(
 
   const column = COLUMNS[key];
   const decorated = rows.map((profile) => ({ key: column.sortValue(profile), profile }));
-  decorated.sort((a, b) => compareSortValues(a.key, b.key, sign, a.profile, b.profile));
+  decorated.sort((a, b) =>
+    compareSortValues(a.key, b.key, column.compare, sign, a.profile, b.profile),
+  );
   return decorated.map((entry) => entry.profile);
 }
 
@@ -532,10 +556,15 @@ export function sortRows<T extends DirectoryProfile>(
  * descending sort never floats "unknown" to the top; two nulls fall through to
  * the canonical secondary key. Shared by {@link makeComparator} and
  * {@link sortRows} so their ordering can never drift apart.
+ *
+ * `compare` is the column's own value ordering when it has one (Course), else the
+ * default {@link compareNonNull}. It is consulted only for two present values, so a
+ * column comparator never has to think about nulls or direction.
  */
 function compareSortValues(
   av: string | number | null,
   bv: string | number | null,
+  compare: GridColumn["compare"],
   sign: number,
   a: DirectoryProfile,
   b: DirectoryProfile,
@@ -549,7 +578,7 @@ function compareSortValues(
     }
     return compareCanonical(a, b);
   }
-  const primary = compareNonNull(av, bv) * sign;
+  const primary = (compare ?? compareNonNull)(av, bv) * sign;
   return primary !== 0 ? primary : compareCanonical(a, b);
 }
 
