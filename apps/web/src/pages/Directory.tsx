@@ -15,12 +15,12 @@ import {
   STILL_LOADING_REASSURANCE,
 } from "../components/LoadingOverlay.js";
 import { trackMobileOptionsOpened } from "../lib/analytics.js";
-import { fetchProfiles } from "../lib/api.js";
 import type { DirectoryProfile } from "../lib/types.js";
 import { useFilterTracking, useSearchTracking } from "../lib/useAnalytics.js";
 import { useDelayedFlag } from "../lib/useDelayedFlag.js";
 import { useHistoryFlag } from "../lib/useHistoryFlag.js";
 import { useMediaQuery } from "../lib/useMediaQuery.js";
+import { revalidateRoster, useRoster } from "../lib/useRoster.js";
 import { ActionBar } from "./directory/ActionBar.js";
 import { ColumnPicker } from "./directory/ColumnPicker.js";
 import { DirectoryCards } from "./directory/DirectoryCards.js";
@@ -67,8 +67,11 @@ export function Directory() {
   const myId = state.status === "authenticated" ? state.me.profileId : null;
   const location = useLocation();
 
-  const [profiles, setProfiles] = useState<DirectoryProfile[] | null>(null);
-  const [error, setError] = useState(false);
+  // The one shared roster store (Phase 7.5a, ENGINEERING-DESIGN §1.7): the
+  // Directory renders from the same module-level store the Profile page derives
+  // relationships from, so the two can never drift and a return trip re-renders
+  // instantly from the retained data instead of re-downloading ~1 MB.
+  const { profiles, error } = useRoster();
   const [q, setQ] = useQueryState("q", { defaultValue: "" });
   const [includeDeceased, setIncludeDeceased] = useQueryState(
     "deceased",
@@ -182,16 +185,11 @@ export function Directory() {
     settled: searchSettled,
   } = useNameSearch(nameRecords, q);
 
+  // Revalidate on every Directory mount — the freshness cadence the old
+  // unconditional remount refetch gave, now as a background swap over the shared
+  // store (and, from Phase 7.5b, usually a `304` instead of a full transfer).
   useEffect(() => {
-    const controller = new AbortController();
-    fetchProfiles(controller.signal)
-      .then((response) => setProfiles(response.profiles))
-      .catch(() => {
-        if (!controller.signal.aborted) {
-          setError(true);
-        }
-      });
-    return () => controller.abort();
+    revalidateRoster();
   }, []);
 
   // The render columns: the pinned block (Select for staff, Star, Thumbnail,

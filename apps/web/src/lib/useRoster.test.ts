@@ -1,0 +1,193 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProfilesResponse } from "./types.js";
+
+/**
+ * The unified roster store (Phase 7.5a, ENGINEERING-DESIGN §1.7/N62). Both the
+ * Directory and the Profile page render from this one module singleton, so its
+ * transitions carry the whole app's roster freshness story:
+ *
+ * - first load: empty → data, or empty → error (something to render the error
+ *   page from);
+ * - background revalidation (a Directory remount): retained data renders while a
+ *   fresh copy swaps in — and a background *failure* keeps the retained data
+ *   silently, never blanking a working Directory;
+ * - `clearRoster` on sign-out drops the PII from the heap (D95);
+ * - `applyProfileToRoster` folds a save into the one store both pages read.
+ *
+ * `fetchProfiles` is mocked at the module seam; state is observed through the
+ * test-only `__getRosterState` (node environment — no React rendering here; the
+ * subscription side is exercised by the Playwright specs).
+ */
+
+vi.mock("./api.js", () => ({
+  fetchProfiles: vi.fn(),
+}));
+
+import { fetchProfiles } from "./api.js";
+import {
+  __getRosterState,
+  __resetRosterCache,
+  applyProfileToRoster,
+  clearRoster,
+  revalidateRoster,
+} from "./useRoster.js";
+
+const mockFetchProfiles = vi.mocked(fetchProfiles);
+
+function response(profiles: ProfilesResponse["profiles"]): ProfilesResponse {
+  return { profiles, majors: [] };
+}
+
+const ROSTER = [
+  { id: 5247, firstName: "James", lastName: "Smyth", classYear: 1984 },
+  { id: 5301, firstName: "Alex", lastName: "Chen", classYear: 1999, bigBrotherId: 5247 },
+];
+
+/** Let the mocked fetch's `.then` chain settle. */
+async function flush(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+beforeEach(() => {
+  __resetRosterCache();
+  mockFetchProfiles.mockReset();
+});
+
+afterEach(() => {
+  __resetRosterCache();
+});
+
+describe("roster store — first load", () => {
+  it("loads the roster into the store", async () => {
+    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+
+    revalidateRoster();
+    await flush();
+
+    expect(__getRosterState()).toEqual({ profiles: ROSTER, error: false });
+    expect(mockFetchProfiles).toHaveBeenCalledTimes(1);
+  });
+
+  it("sets the error flag when the first load fails (nothing to render instead)", async () => {
+    mockFetchProfiles.mockRejectedValue(new Error("network"));
+
+    revalidateRoster();
+    await flush();
+
+    expect(__getRosterState()).toEqual({ profiles: null, error: true });
+  });
+
+  it("recovers from a failed first load on the next revalidation (OFC-114: no error latch)", async () => {
+    mockFetchProfiles.mockRejectedValueOnce(new Error("cold 503"));
+    revalidateRoster();
+    await flush();
+    expect(__getRosterState().error).toBe(true);
+
+    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    revalidateRoster();
+    await flush();
+
+    expect(__getRosterState()).toEqual({ profiles: ROSTER, error: false });
+  });
+
+  it("dedupes concurrent revalidations against the in-flight fetch", async () => {
+    let resolve!: (value: ProfilesResponse) => void;
+    mockFetchProfiles.mockReturnValue(
+      new Promise<ProfilesResponse>((r) => {
+        resolve = r;
+      }),
+    );
+
+    revalidateRoster();
+    revalidateRoster();
+    revalidateRoster();
+    expect(mockFetchProfiles).toHaveBeenCalledTimes(1);
+
+    resolve(response(ROSTER));
+    await flush();
+    expect(__getRosterState().profiles).toEqual(ROSTER);
+  });
+});
+
+describe("roster store — background revalidation (7.5a)", () => {
+  const FRESH = [...ROSTER, { id: 5400, firstName: "New", lastName: "Initiate", classYear: 2026 }];
+
+  beforeEach(async () => {
+    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    revalidateRoster();
+    await flush();
+  });
+
+  it("swaps fresh data into the retained store", async () => {
+    mockFetchProfiles.mockResolvedValue(response(FRESH));
+
+    revalidateRoster();
+    // The retained roster stays rendered while the refetch is in flight.
+    expect(__getRosterState().profiles).toEqual(ROSTER);
+    await flush();
+
+    expect(__getRosterState()).toEqual({ profiles: FRESH, error: false });
+  });
+
+  it("keeps the retained data silently when a background refresh fails", async () => {
+    mockFetchProfiles.mockRejectedValue(new Error("network blip"));
+
+    revalidateRoster();
+    await flush();
+
+    // Never blank a working Directory: data kept, no error surfaced.
+    expect(__getRosterState()).toEqual({ profiles: ROSTER, error: false });
+  });
+});
+
+describe("clearRoster (sign-out, D95)", () => {
+  it("drops the roster from the heap", async () => {
+    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    revalidateRoster();
+    await flush();
+
+    clearRoster();
+
+    expect(__getRosterState()).toEqual({ profiles: null, error: false });
+  });
+});
+
+describe("applyProfileToRoster (the §5.7.4 fold)", () => {
+  beforeEach(async () => {
+    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    revalidateRoster();
+    await flush();
+  });
+
+  it("patches a saved record's lean fields in place", () => {
+    applyProfileToRoster({ id: 5301, firstName: "Alexandra", bigBrotherId: 5247 });
+
+    const patched = __getRosterState().profiles?.find((p) => p.id === 5301);
+    expect(patched).toMatchObject({
+      firstName: "Alexandra",
+      lastName: "Chen", // untouched fields survive
+      bigBrotherId: 5247,
+    });
+  });
+
+  it("propagates a cleared bigBrotherId (null → undefined), so the derived Little-Brother edge drops", () => {
+    applyProfileToRoster({ id: 5301, bigBrotherId: null });
+
+    const patched = __getRosterState().profiles?.find((p) => p.id === 5301);
+    expect(patched?.bigBrotherId).toBeUndefined();
+  });
+
+  it("appends a record the roster hasn't seen", () => {
+    applyProfileToRoster({ id: 5500, firstName: "Freshly", lastName: "Added" });
+
+    expect(__getRosterState().profiles?.map((p) => p.id)).toContain(5500);
+  });
+
+  it("is a no-op before the roster has loaded", () => {
+    __resetRosterCache();
+
+    applyProfileToRoster({ id: 5301, firstName: "Ghost" });
+
+    expect(__getRosterState().profiles).toBeNull();
+  });
+});

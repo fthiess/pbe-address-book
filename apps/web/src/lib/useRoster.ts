@@ -3,13 +3,23 @@ import { fetchProfiles } from "./api.js";
 import type { DirectoryProfile, ProfileRecord } from "./types.js";
 
 /**
- * The session-cached brotherhood roster (Phase 4b-1). The Profile page's
- * Big-Brother typeahead and its **derived Little Brothers** both need the whole
- * in-memory dataset (PRD §5.7.4) — `bigBrotherId` is `public`, so the bulk
- * brother-projection already carries every pointer needed to derive the reverse
- * edge. It is loaded once and held in a tiny external store so opening one profile
- * after another reuses a single download — the byte-frugal path the 60+, slow-link
- * audience needs (the directory's own bulk read stays separate for now).
+ * The single in-memory roster store (Phase 4b-1; unified in Phase 7.5a). Both the
+ * Directory and the Profile page subscribe to this one module-level store — the
+ * Directory renders the grid from it, and the Profile page's Big-Brother typeahead
+ * and **derived Little Brothers** compute over it (PRD §5.7.4; `bigBrotherId` is
+ * `public`, so the bulk brother-projection carries every pointer needed to derive
+ * the reverse edge). Before 7.5a the Directory kept its own mount-scoped copy and
+ * re-downloaded the full ~1 MB payload on every remount; unifying the two copies
+ * retires both the double download and the drift between them (ENGINEERING-DESIGN
+ * §1.7, N62).
+ *
+ * Freshness: {@link revalidateRoster} runs on every Directory mount. With data
+ * retained it re-fetches **in the background** and swaps atomically on success —
+ * the same freshness cadence the Directory's remount refetch gave, but the grid
+ * renders instantly from the retained data while it runs. (Phase 7.5b turns this
+ * background refetch into an app-level conditional read that usually answers
+ * `304`.) A background failure keeps the retained data silently; `error` is only
+ * ever true when there is nothing to show.
  *
  * Because the Little-Brother list is **derived, not stored**, a save that changes a
  * `bigBrotherId` must be reflected back into this cache, or the *other* brother's
@@ -56,9 +66,19 @@ function load(): void {
     return;
   }
   loading = true;
+  // No AbortController: the fetch deliberately outlives any one page — the store
+  // is module-lived, so a response arriving after the starting page unmounted
+  // still serves the next consumer.
   fetchProfiles()
     .then((response) => setState({ profiles: response.profiles, error: false }))
-    .catch(() => setState({ profiles: state.profiles, error: true }))
+    .catch(() => {
+      // With retained data, fail silently and keep showing it — a background
+      // refresh that breaks must not blank a working Directory. `error` is only
+      // ever true when there is nothing to render instead.
+      if (state.profiles === null) {
+        setState({ profiles: null, error: true });
+      }
+    })
     .finally(() => {
       loading = false;
     });
@@ -73,6 +93,17 @@ function ensureLoaded(): void {
   if (state.profiles === null && !loading) {
     load();
   }
+}
+
+/**
+ * Revalidate the roster (Phase 7.5a): fired on every Directory mount, replacing
+ * the Directory's old unconditional remount refetch. Store empty → the ordinary
+ * first load (the D119 overlay path). Data retained → a background full refetch
+ * that swaps in fresh data when it arrives, while the caller renders the retained
+ * roster immediately. Deduped against any in-flight fetch.
+ */
+export function revalidateRoster(): void {
+  load();
 }
 
 export type Roster = RosterState;
@@ -130,4 +161,13 @@ export function clearRoster(): void {
 export function __resetRosterCache(): void {
   state = { profiles: null, error: false };
   loading = false;
+}
+
+/**
+ * Read the current store state — for tests only. Unit tests run under the node
+ * environment (no React rendering; see vitest.config.ts), so they exercise the
+ * module functions directly and observe transitions through this getter.
+ */
+export function __getRosterState(): RosterState {
+  return state;
 }
