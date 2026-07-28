@@ -24,6 +24,12 @@ const OWN_ID = 5002;
 
 const WAKE_LINE = "Waking the server — this can take a few seconds.";
 const STILL_LOADING = "Still loading…";
+/**
+ * The session gate's label is deliberately the generic default rather than
+ * "Loading the directory…": this gate wraps every authenticated route, and a
+ * newsletter deep link to `/brother/:id` waits here too (D157).
+ */
+const GENERIC_LABEL = "Loading…";
 
 /** Past the 500 ms overlay threshold, comfortably short of the 3.5 s escalation. */
 const BELOW_ESCALATION_MS = 3000;
@@ -101,7 +107,7 @@ test.describe("Stage 1.3 — D119 overlay escalation (OFC-324)", () => {
 
     // The overlay itself is correct behaviour past 500 ms — it is the *attribution*
     // that was wrong. This is the assertion that fails before the fix.
-    await expect(overlay(page)).toContainText("Loading the directory…");
+    await expect(overlay(page)).toContainText(GENERIC_LABEL);
     await expectNotShowing(page, WAKE_LINE);
   });
 
@@ -113,7 +119,7 @@ test.describe("Stage 1.3 — D119 overlay escalation (OFC-324)", () => {
 
     await page.goto("/");
 
-    await expect(overlay(page)).toContainText("Loading the directory…");
+    await expect(overlay(page)).toContainText(GENERIC_LABEL);
     // Hidden at first...
     await expectNotShowing(page, WAKE_LINE);
     // ...and appears once the wait passes ~3.5 s, while the request is still open.

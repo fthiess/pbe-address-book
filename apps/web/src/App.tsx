@@ -62,11 +62,13 @@ function GateLayout() {
 
   if (state.status === "loading") {
     return showOverlay ? (
-      <LoadingOverlay
-        label="Loading the directory…"
-        reassurance={WAKE_REASSURANCE}
-        showReassurance={showReassurance}
-      />
+      // The label stays generic on purpose. This gate wraps *every* authenticated
+      // route, so it is equally the wait before a brother's profile, the Admin page
+      // or About — and newsletter deep links to `/brother/:id` make Profile a
+      // co-equal entry point (D157), not a detour from the Directory. Naming the
+      // Directory here would tell a newsletter reader they were loading a page they
+      // never asked for: the same class of false statement N140 exists to remove.
+      <LoadingOverlay reassurance={WAKE_REASSURANCE} showReassurance={showReassurance} />
     ) : (
       <div className="min-h-dvh bg-background" />
     );
