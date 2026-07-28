@@ -5,8 +5,9 @@ import { cn } from "../../lib/utils.js";
 /**
  * A small accessible confirmation modal (COMPONENTS.md "Confirmation dialogs").
  * Built on the shared {@link ModalDialog} native-`<dialog>` shell, so the focus
- * trap, Escape-to-cancel, focus-return-to-opener, and backdrop-click-cancel are
- * the platform's. 4a uses the neutral/destructive tones for the discard prompt;
+ * trap, Escape-to-cancel and backdrop-click-cancel are the platform's, and
+ * focus-return-to-opener is the shell's — *not* the platform's, whatever this
+ * comment used to say (N145). 4a uses the neutral/destructive tones for the discard prompt;
  * the soft / deliberate tones (mark-deceased, de-brother) build on this in 4c.
  */
 export function ConfirmDialog({

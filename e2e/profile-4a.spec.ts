@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { type Page, type Route, expect, test } from "@playwright/test";
+import sharp from "sharp";
 
 const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
@@ -114,6 +115,90 @@ test.describe("profile — view mode", () => {
     // The restricted block is visible to the owner.
     await expect(page.getByRole("heading", { name: /Record status/ })).toBeVisible();
     await expect(page.getByRole("link", { name: "Edit profile" })).toBeVisible();
+  });
+
+  test("a brother with no Big or Little Brothers leaves no empty section band (OFC-318)", async ({
+    page,
+  }) => {
+    // The exemplar has no Big Brother and the roster is empty, so Relationships
+    // renders nothing — the case that used to leave its hairline rule behind,
+    // reading as two stacked rules with nothing between them.
+    await mockProfile(page, { meDoc: me("brother", 5247), record: ownerRecord() });
+    await page.goto("/brother/5247");
+    await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Relationships", exact: true })).toHaveCount(0);
+
+    // Count every hairline-ruled block — the full-width section Bands *and* the
+    // two-up Rows, which carry the same classes — and how many render nothing at
+    // all. Deliberately not narrowed to Bands: the rule "chrome only where content
+    // rendered" applies to both. A section that shows nothing must contribute no
+    // chrome; the sections that DO render must still keep theirs, so this fails on
+    // an empty band and equally on a fix that threw the rules away altogether.
+    const bands = await page.evaluate(() => {
+      const all = Array.from(document.querySelectorAll("div.border-t.border-border-hairline"));
+      return { total: all.length, empty: all.filter((el) => !el.textContent?.trim()).length };
+    });
+    expect(bands.empty).toBe(0);
+    expect(bands.total).toBeGreaterThan(0);
+    await expect(page.getByRole("heading", { name: /Professional/ })).toBeVisible();
+  });
+
+  test("the profile photo opens full size, by pointer and by keyboard (OFC-353)", async ({
+    page,
+  }) => {
+    // Serve a real image for `/img/headshots/*`: an `onError` would fall the
+    // component back to the initials avatar, which has nothing to enlarge.
+    const photo = await sharp({
+      create: { width: 512, height: 512, channels: 3, background: { r: 40, g: 80, b: 120 } },
+    })
+      .png()
+      .toBuffer();
+    await page.route("**/img/headshots/**", (route) =>
+      route.fulfill({ contentType: "image/png", body: photo }),
+    );
+    await mockProfile(page, {
+      meDoc: me("brother", 5247),
+      record: { ...ownerRecord(), hasHeadshot: true, headshotVersion: "v1" },
+    });
+    await page.goto("/brother/5247");
+
+    const trigger = page.getByRole("button", { name: "Larger photo of James Smyth" });
+    await expect(trigger).toBeVisible();
+
+    // Keyboard first — the gesture must not be pointer-only (WCAG 2.1.1/D79).
+    await trigger.focus();
+    await page.keyboard.press("Enter");
+    const dialog = page.getByRole("dialog", { name: /James Smyth/ });
+    await expect(dialog).toBeVisible();
+    // The square stored image at its full 512² size, not the header's circular crop.
+    const enlarged = dialog.getByRole("img", { name: "James Smyth" });
+    await expect(enlarged).toHaveAttribute("width", "512");
+
+    // The include is the *element*: ModalDialog is a native <dialog>, whose dialog
+    // role is implicit, so an attribute selector matches nothing (unlike the Radix
+    // crop dialog in headshot-4c1, which renders a literal role="dialog").
+    const results = await new AxeBuilder({ page }).include("dialog").withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
+
+    // Escape closes it and focus returns to the photo that opened it (WCAG 2.4.3).
+    await page.keyboard.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+
+    // ...and the pointer path opens the same dialog.
+    await trigger.click();
+    await expect(page.getByRole("dialog", { name: /James Smyth/ })).toBeVisible();
+    await page.getByRole("button", { name: "Close" }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  });
+
+  test("a brother with no photo offers nothing to enlarge (OFC-353)", async ({ page }) => {
+    // The exemplar has no headshot, so the initials avatar renders — and an avatar
+    // is generated at the size it is drawn, so there is no larger version of it.
+    await mockProfile(page, { meDoc: me("brother", 5247), record: ownerRecord() });
+    await page.goto("/brother/5247");
+    await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Larger photo/ })).toHaveCount(0);
   });
 
   test("a peer sees the public verification read-out but no restricted block or Edit button", async ({
