@@ -1,7 +1,8 @@
-import { headshotObjectKey, imageUrl } from "@pbe/shared";
-import { useEffect, useState } from "react";
+import { HEADSHOT_SIZE, headshotObjectKey, imageUrl } from "@pbe/shared";
+import { useCallback, useEffect, useId, useState } from "react";
 import { Avatar } from "../../components/Avatar.js";
 import { DebrotheredMark } from "../../components/DebrotheredMark.js";
+import { ModalDialog } from "../../components/ModalDialog.js";
 import { MourningBand } from "../../components/MourningBand.js";
 import { useReauthSignal } from "../../lib/reauthSignal.js";
 import type { ProfileRecord } from "../../lib/types.js";
@@ -40,14 +41,23 @@ export function ProfileHeadshot({
   name,
   size = 120,
   responsive = false,
+  enlargeable = false,
 }: {
   record: ProfileRecord;
   name: string;
   size?: number;
   /** Size responsively (96² mobile → 132² desktop) instead of the fixed `size`. */
   responsive?: boolean;
+  /**
+   * Make the photo click/keyboard-openable into the full 512² view (OFC-353).
+   * Off by default — the editor's "current photo" preview is not a viewer, and a
+   * brother with no headshot has nothing to enlarge, so the affordance appears
+   * only where there is a real photo to show.
+   */
+  enlargeable?: boolean;
 }) {
   const [failed, setFailed] = useState(false);
+  const [enlarged, setEnlarged] = useState(false);
   const deceased = record.deceased?.isDeceased === true;
   const debrothered = record.debrothered?.isDebrothered === true;
   const url = headshotUrl(record);
@@ -61,10 +71,17 @@ export function ProfileHeadshot({
   const alt = deceased ? `${name} — In Memoriam` : name;
   const dim = responsive ? "var(--headshot-size)" : `${size}px`;
   const responsiveClass = responsive ? PROFILE_HEADSHOT_RESPONSIVE : undefined;
+  // Only a real, loaded photo can be enlarged: the avatar fallback is generated at
+  // the size it is drawn, so there is no larger version of it to show.
+  const canEnlarge = enlargeable && url !== null && !failed;
+
+  // Closing simply unmounts the dialog; ModalDialog restores focus to this button
+  // itself, after the dialog is gone (see its note on focus return).
+  const close = useCallback(() => setEnlarged(false), []);
 
   // A round, clipping container so the mourning band (a full chord, wider than the
   // circle) is clipped to the rim over both the real photo and the avatar fallback.
-  return (
+  const figure = (
     <span
       className={cn("relative inline-block shrink-0 overflow-hidden rounded-full", responsiveClass)}
       style={{ width: dim, height: dim }}
@@ -72,7 +89,9 @@ export function ProfileHeadshot({
       {url && !failed ? (
         <img
           src={url}
-          alt={alt}
+          // Inside the enlarge button the button carries the accessible name, so
+          // the image must not repeat it.
+          alt={canEnlarge ? "" : alt}
           width={size}
           height={size}
           decoding="async"
@@ -92,5 +111,101 @@ export function ProfileHeadshot({
       {deceased && <MourningBand />}
       {debrothered && <DebrotheredMark />}
     </span>
+  );
+
+  if (!canEnlarge) {
+    return figure;
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setEnlarged(true)}
+        // The button is exactly the photo — no padding, no ring offset that would
+        // clip against the header's edge — so the visible focus ring traces the
+        // circle the reader is about to open (WCAG 2.4.11/2.4.13).
+        className="shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--card)]"
+        aria-label={`Larger photo of ${alt}`}
+      >
+        {figure}
+      </button>
+      {enlarged && (
+        <HeadshotDialog url={url} alt={alt} name={name} deceased={deceased} onClose={close} />
+      )}
+    </>
+  );
+}
+
+/**
+ * The full-size headshot, shown over the page (OFC-353). It is the **square** 512²
+ * stored image rather than the circular crop the page shows — the circle is a
+ * density device for the Directory and the header, and the corners are the only
+ * thing enlarging actually reveals *(Forrest's call, Stage 1.4)*.
+ *
+ * ⚠ **It costs no bytes.** The Profile page already downloads this exact URL for
+ * the 96–132px header photo (the stored artifact is 512² and always has been), so
+ * the dialog re-displays an image the browser has cached under the `immutable`
+ * headshot policy — nothing is fetched when it opens. That is what makes this
+ * feature defensible for a slow-link reader, and it is why the dialog must keep
+ * using {@link headshotUrl} rather than growing a size parameter of its own.
+ *
+ * The shell is the shared {@link ModalDialog}, so focus trap, Escape and page
+ * inerting are the platform's. A deceased brother keeps his memorial status in
+ * both the caption and the image's accessible name — text, never colour alone —
+ * but not the mourning band, which is drawn as a chord of the circle and has no
+ * meaning over a square.
+ */
+function HeadshotDialog({
+  url,
+  alt,
+  name,
+  deceased,
+  onClose,
+}: {
+  url: string;
+  alt: string;
+  name: string;
+  deceased: boolean;
+  onClose: () => void;
+}) {
+  const captionId = useId();
+  return (
+    <ModalDialog labelledBy={captionId} onClose={onClose} className="w-fit max-w-[95vw] p-4">
+      <figure className="m-0">
+        <img
+          src={url}
+          alt={alt}
+          width={HEADSHOT_SIZE}
+          height={HEADSHOT_SIZE}
+          decoding="async"
+          // Square, at its stored size, shrinking on a narrow screen rather than
+          // overflowing it. `h-auto` keeps it square while the width gives way.
+          className="block h-auto w-[min(512px,calc(95vw-2rem))] rounded-[var(--radius-lg)]"
+        />
+        <figcaption
+          id={captionId}
+          className="mt-3 text-center text-[length:var(--text-body)] font-medium"
+        >
+          {name}
+          {deceased && (
+            <span className="block text-[length:var(--text-body-sm)] text-muted-foreground">
+              In Memoriam
+            </span>
+          )}
+        </figcaption>
+      </figure>
+      <div className="mt-3 flex justify-center">
+        <button
+          // biome-ignore lint/a11y/noAutofocus: the platform modal focuses its primary action on open; Close is the only action here (WCAG 2.2 AA).
+          autoFocus
+          type="button"
+          onClick={onClose}
+          className="rounded-[var(--radius-md)] border border-input bg-card px-4 py-2.5 text-[length:var(--text-label)] font-semibold outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          Close
+        </button>
+      </div>
+    </ModalDialog>
   );
 }

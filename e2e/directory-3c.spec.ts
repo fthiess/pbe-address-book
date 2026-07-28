@@ -213,6 +213,61 @@ test.describe("Directory 3c — selection, export, auto-fit (admin)", () => {
     await expect.poll(width).toBeLessThan(widened);
   });
 
+  test("double-click auto-fit shows a long name in full, highlight marks included (OFC-358)", async ({
+    page,
+  }) => {
+    // A Canonical Name at the long end of the real dataset — 30 characters, the
+    // shape auto-fit clipped (the record the ticket was filed against).
+    await gotoDirectory(page, "admin", {
+      profiles: [
+        {
+          id: 5001,
+          firstName: "Babatunde",
+          lastName: "Adamson-Martinet",
+          classYear: 1986,
+          deceased: { isDeceased: false },
+          hasHeadshot: false,
+        },
+      ],
+      majors: [],
+    });
+
+    // Is the Canonical Name link truncated inside its cell? The link carries
+    // `truncate`, so an overflow is exactly its scroll width exceeding its box.
+    const nameClipped = () =>
+      page.evaluate(() => {
+        const link = document.querySelector('th[scope="row"] a');
+        if (!link) {
+          return { found: false, clipped: false };
+        }
+        return { found: true, clipped: link.scrollWidth > link.clientWidth };
+      });
+
+    const resizer = page.getByRole("separator", { name: /resize the name column/i });
+    // Squeeze the column to its minimum so the name certainly overflows...
+    await resizer.focus();
+    for (let i = 0; i < 20; i++) {
+      await page.keyboard.press("ArrowLeft");
+    }
+    const narrowed = await nameClipped();
+    expect(narrowed.found).toBe(true);
+    expect(narrowed.clipped).toBe(true);
+
+    // ...then auto-fit, which must leave the whole name visible. Before the fix the
+    // measurement was taken at the body weight while the cell renders the name at
+    // `font-medium`, so the fitted width came out short and the name still clipped.
+    await resizer.dblclick();
+    await expect.poll(async () => (await nameClipped()).clipped).toBe(false);
+
+    // With a search running the name also carries <mark> spans, each with 1px of
+    // side padding — width the fit has to account for as well.
+    await page.locator("[data-search-ready='true']").waitFor();
+    await page.getByRole("searchbox", { name: /name search/i }).fill("adamson-mar");
+    await expect(page.locator('th[scope="row"] mark').first()).toBeVisible();
+    await resizer.dblclick();
+    await expect.poll(async () => (await nameClipped()).clipped).toBe(false);
+  });
+
   test("double-click auto-fit sizes the Course column to show ALL a brother's chips (OFC-277)", async ({
     page,
   }) => {

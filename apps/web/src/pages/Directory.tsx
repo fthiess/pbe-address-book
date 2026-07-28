@@ -38,6 +38,7 @@ import { collectFilterOptions } from "./directory/filters.js";
 import {
   COLUMNS,
   type ColumnKey,
+  HIGHLIGHTED_COLUMN_KEYS,
   canSelectRows,
   pinnedColumnsForRole,
   sortRows,
@@ -262,10 +263,14 @@ export function Directory() {
       if (column.resizable === false) {
         return;
       }
-      const measure = makeTextMeasurer(gridCellFont());
+      // Measured at the font the column's cells actually render in — which for the
+      // Name column is a heavier weight than the rest of the grid (OFC-358).
+      const measure = makeTextMeasurer(gridCellFont(key));
       // The Course column renders every course as a chip (OFC-269), so it fits to
       // the widest full chip strip, not the primary-only display string (OFC-277);
-      // every other column fits its plain-text display value.
+      // every other column fits its plain-text display value — plus, for the
+      // searched name columns, the padding of any highlight marks drawn in it.
+      const highlighted = HIGHLIGHTED_COLUMN_KEYS.has(key);
       const width =
         key === "major"
           ? autoFitChipStripWidth(
@@ -275,12 +280,15 @@ export function Directory() {
             )
           : autoFitWidth(
               column.label,
-              rows.map((p) => column.display(p, nameOf(p))),
+              rows.map((p) => {
+                const text = column.display(p, nameOf(p));
+                return highlighted ? { text, marks: highlight(text, p.id).length } : { text };
+              }),
               measure,
             );
       lens.setWidth(key, width);
     },
-    [rows, nameOf, lens],
+    [rows, nameOf, highlight, lens],
   );
 
   // Reset clears Name Search, all filters, and the sort — but not the column lens (D38).

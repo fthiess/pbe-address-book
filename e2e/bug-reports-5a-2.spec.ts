@@ -107,6 +107,10 @@ test.describe("Report a bug — filing (any member)", () => {
 
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
+    // Focus must come back to the control that opened the dialog (WCAG 2.4.3) —
+    // it went nowhere until OFC-353 found the same fault in its own dialog: the
+    // page is inert while a native modal is up, so a same-tick focus() is dropped.
+    await expect(page.getByRole("button", { name: "Report a bug" })).toBeFocused();
   });
 
   test("the filing dialog has no a11y violations (axe, WCAG 2.2 AA)", async ({ page }) => {
