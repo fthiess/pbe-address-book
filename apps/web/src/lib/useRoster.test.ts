@@ -178,6 +178,30 @@ describe("clearRoster (sign-out, D95)", () => {
     expect(__getRosterState()).toEqual({ profiles: null, error: false });
   });
 
+  it("a fetch resolving after sign-out cannot leave its token behind either", async () => {
+    // The epoch fence must discard the WHOLE outcome of a cleared-mid-flight
+    // fetch — the role-qualified token included. The token is module-private, so
+    // this is observed the way the app would leak it: if the late `fresh` result
+    // had stashed its etag, the next load after re-sign-in would revalidate with
+    // the prior viewer's token instead of starting unconditional.
+    let resolve!: (value: ProfilesFetchResult) => void;
+    mockFetchProfiles.mockReturnValueOnce(
+      new Promise<ProfilesFetchResult>((r) => {
+        resolve = r;
+      }),
+    );
+
+    revalidateRoster();
+    clearRoster();
+    resolve(fresh(ROSTER, "stale-viewer.admin"));
+    await flush();
+
+    mockFetchProfiles.mockResolvedValue(fresh(ROSTER, "v1.brother"));
+    revalidateRoster();
+    await flush();
+    expect(mockFetchProfiles).toHaveBeenLastCalledWith(null);
+  });
+
   it("a fetch failing after sign-out surfaces no stale error state", async () => {
     let reject!: (reason: Error) => void;
     mockFetchProfiles.mockReturnValue(

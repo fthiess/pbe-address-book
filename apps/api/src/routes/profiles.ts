@@ -99,10 +99,13 @@ export function registerProfileRoutes(app: FastifyInstance, deps: ProfileRouteDe
  * see {@link NegotiablePayload.etag}); a request whose `If-None-Match` matches
  * gets an empty **`304`** instead of the full payload, and the SPA re-renders
  * from its retained heap-only store. ⚠ This deliberately does NOT resurrect
- * D76's browser-cache conditional GET: the response stays `no-store` on every
- * branch — including the `304` — so the browser HTTP cache is never involved;
+ * D76's browser-cache conditional GET: the response sets `no-store` on every
+ * branch — including the `304` — so the browser HTTP cache stays out of it;
  * the token lives in application code on both ends and the data only ever in
- * the JS heap (D95, N63). The role suffix means a "View as" switch can never be
+ * the JS heap (D95, N63). ⚠ The header set here is the direct-to-Cloud-Run
+ * floor; the DELIVERED posture through Firebase Hosting's rewrite is governed
+ * by D146 for 2xx and, for this bodyless 3xx, verified live on staging (N148 —
+ * Hosting's 3xx rewrite handling is measured, not documented). The role suffix means a "View as" switch can never be
  * answered `304` against the other role's projection (N31).
  */
 function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDeps): void {
