@@ -80,6 +80,40 @@ describe("role column (OFC-199)", () => {
   });
 });
 
+describe("major column sort (OFC-290)", () => {
+  // Codes chosen so a lexicographic sort and a course-number sort disagree
+  // everywhere: "10" < "18" < "2" as strings, but 2 < 6-1 < 6-3 < 10 < 18 as courses.
+  const rows = [
+    row({ id: 1, firstName: "A", lastName: "Aa", majors: ["10"] }),
+    row({ id: 2, firstName: "B", lastName: "Bb", majors: ["2"] }),
+    row({ id: 3, firstName: "C", lastName: "Cc", majors: ["6-3"] }),
+    row({ id: 4, firstName: "D", lastName: "Dd", majors: ["6-1"] }),
+    row({ id: 5, firstName: "E", lastName: "Ee", majors: ["18"] }),
+  ];
+
+  it("orders courses by course number, not as strings", () => {
+    expect(order(rows, makeComparator("major", "asc"))).toEqual([2, 4, 3, 1, 5]);
+  });
+
+  it("reverses under a descending sort", () => {
+    expect(order(rows, makeComparator("major", "desc"))).toEqual([5, 1, 3, 4, 2]);
+  });
+
+  it("keeps a brother with no course last in both directions", () => {
+    const withNone = [...rows, row({ id: 6, firstName: "F", lastName: "Ff" })];
+    expect(order(withNone, makeComparator("major", "asc")).at(-1)).toBe(6);
+    expect(order(withNone, makeComparator("major", "desc")).at(-1)).toBe(6);
+  });
+
+  it("sorts on the primary course only (D33), leaving ties to canonical order", () => {
+    const shared = [
+      row({ id: 1, firstName: "Zed", lastName: "Zimmer", majors: ["6-3", "2"] }),
+      row({ id: 2, firstName: "Amy", lastName: "Adams", majors: ["6-3", "18"] }),
+    ];
+    expect(order(shared, makeComparator("major", "asc"))).toEqual([2, 1]);
+  });
+});
+
 describe("makeComparator", () => {
   it("sorts the Name column by canonical order ascending and descending", () => {
     const rows = [
@@ -123,15 +157,16 @@ describe("makeComparator", () => {
 
 describe("sortRows (decorate-sort-undecorate, OFC-104)", () => {
   // A fixture exercising every sort shape: present/absent country keys (the
-  // locale-heavy path), a numeric column, and ties that fall to the canonical key.
+  // locale-heavy path), a numeric column, a column with its own comparator
+  // (Course), and ties that fall to the canonical key.
   const rows = [
-    row({ id: 1, firstName: "Brett", lastName: "Brown", classYear: 1984 }),
-    row({ id: 2, firstName: "Aaron", lastName: "Adams", classYear: 1984 }),
-    row({ id: 3, firstName: "Cyril", lastName: "Clark", classYear: 1980 }),
-    row({ id: 4, firstName: "Zed", lastName: "Zimmer" }), // no classYear → null
+    row({ id: 1, firstName: "Brett", lastName: "Brown", classYear: 1984, majors: ["10"] }),
+    row({ id: 2, firstName: "Aaron", lastName: "Adams", classYear: 1984, majors: ["2"] }),
+    row({ id: 3, firstName: "Cyril", lastName: "Clark", classYear: 1980, majors: ["6-1"] }),
+    row({ id: 4, firstName: "Zed", lastName: "Zimmer" }), // no classYear/course → null
   ];
 
-  const keys: ColumnKey[] = ["name", "classYear", "email", "country"];
+  const keys: ColumnKey[] = ["name", "classYear", "email", "country", "major"];
   const directions: SortDirection[] = ["asc", "desc"];
 
   it("orders identically to makeComparator for every key and direction", () => {

@@ -1,26 +1,55 @@
 import { describe, expect, it } from "vitest";
-import { autoFitChipStripWidth, autoFitWidth, chipStripWidth } from "./autofit.js";
+import { autoFitChipStripWidth, autoFitWidth, chipStripWidth, gridCellFont } from "./autofit.js";
 
 /** A deterministic measurer: width = characters × 10px, so assertions are exact. */
 const measure = (text: string) => text.length * 10;
 
+/** Cells with no search running — the common case, no highlight marks. */
+const plain = (...texts: string[]) => texts.map((text) => ({ text }));
+
 describe("autoFitWidth (N27)", () => {
   it("fits to the widest data value plus cell padding", () => {
     // widest value "Wolfeschlegelstein" (18) × 10 = 180, + 24 padding = 204.
-    const width = autoFitWidth("X", ["Al", "Wolfeschlegelstein", "Bo"], measure);
+    const width = autoFitWidth("X", plain("Al", "Wolfeschlegelstein", "Bo"), measure);
     expect(width).toBe(204);
   });
 
   it("never clips the header label (header chrome included)", () => {
     // Data is tiny; the header "Constitution ID" (15) × 10 + 64 chrome = 214 wins.
-    const width = autoFitWidth("Constitution ID", ["1"], measure);
+    const width = autoFitWidth("Constitution ID", plain("1"), measure);
     expect(width).toBe(214);
   });
 
   it("clamps to the 64–640 bounds", () => {
     expect(autoFitWidth("", [], measure)).toBe(64); // nothing to measure → min
     const huge = "x".repeat(200);
-    expect(autoFitWidth("", [huge], measure)).toBe(640); // 2024 → clamped to max
+    expect(autoFitWidth("", plain(huge), measure)).toBe(640); // 2024 → clamped to max
+  });
+
+  it("allows for each highlight mark's padding (OFC-358)", () => {
+    // "Adamson" (7) × 10 = 70, + 24 padding = 94 unmarked; two marks add 2px each.
+    expect(autoFitWidth("X", plain("Adamson"), measure)).toBe(94);
+    expect(autoFitWidth("X", [{ text: "Adamson", marks: 2 }], measure)).toBe(98);
+  });
+
+  it("fits what a cell renders, not merely what its text measures (OFC-358)", () => {
+    // Same two names, one of them carrying three marks: the fitted column has to
+    // grow by exactly that cell's mark padding, or the highlighted name clips.
+    const marked = autoFitWidth("X", [{ text: "Adams", marks: 3 }, { text: "Brown" }], measure);
+    expect(marked).toBe(autoFitWidth("X", plain("Adams", "Brown"), measure) + 6);
+  });
+});
+
+describe("gridCellFont (OFC-358)", () => {
+  it("measures the Name column at the weight its link renders (font-medium)", () => {
+    // Node has no getComputedStyle, so this exercises the fallback stack — the
+    // weight is the part under test either way.
+    expect(gridCellFont("name")).toBe("500 14px sans-serif");
+  });
+
+  it("measures every other column at the body weight", () => {
+    expect(gridCellFont("email")).toBe("14px sans-serif");
+    expect(gridCellFont()).toBe("14px sans-serif");
   });
 });
 
