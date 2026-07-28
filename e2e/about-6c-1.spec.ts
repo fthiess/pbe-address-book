@@ -104,6 +104,22 @@ test.describe("6c-1 About page (OFC-244)", () => {
     await expect(gitHub.first()).toHaveAttribute("target", "_blank");
   });
 
+  test("the page points at the user manual (OFC-313)", async ({ page }) => {
+    await signedIn(page);
+    await page.goto("/about");
+
+    await expect(page.getByRole("heading", { level: 2, name: "The user manual" })).toBeVisible();
+    // ⚠ OFC-314 will MOVE USER-MANUAL.md out of docs/initial-build/. This assertion
+    // pins the href so that move breaks a test rather than a reader's link — it is
+    // the tripwire the sequencing note on OFC-314 refers to.
+    const manual = page.getByRole("link", { name: /user manual \(opens in a new tab\)/i });
+    await expect(manual).toHaveAttribute(
+      "href",
+      "https://github.com/fthiess/pbe-address-book/blob/main/docs/initial-build/USER-MANUAL.md",
+    );
+    await expect(manual).toHaveAttribute("target", "_blank");
+  });
+
   test("the profile link routes in-app (no full reload) via /brother/me/edit", async ({ page }) => {
     await signedIn(page);
     await page.route(`**/api/profiles/${OWN_ID}`, (route) => route.fulfill({ json: ownProfile }));
