@@ -101,13 +101,11 @@ export function ProfileView({
           </Row>
 
           {/* Professional full width so spouse & courses sit to the right of the
-              employer column (N35); Relationships follows full width. */}
-          <div className="border-t border-border-hairline py-6">
-            <ProfessionalSection record={record} viewer={viewer} />
-          </div>
-          <div className="border-t border-border-hairline py-6">
-            <RelationshipsSection record={record} roster={roster} names={names} />
-          </div>
+              employer column (N35); Relationships follows full width. Each supplies
+              its own Band, so a section with nothing to show contributes no rule
+              either — see Band (OFC-318). */}
+          <ProfessionalSection record={record} viewer={viewer} />
+          <RelationshipsSection record={record} roster={roster} names={names} />
 
           {restricted ? (
             <Row>
@@ -144,6 +142,21 @@ export function ProfileView({
   );
 }
 
+/**
+ * A full-width section band: the hairline rule that separates it from the section
+ * above, plus the page's vertical rhythm (§5.7.1).
+ *
+ * ⚠ It is the **section's own** wrapper, never a wrapper the page puts around a
+ * section — that is the whole point (OFC-318). A band rendered by the page renders
+ * whether or not its section did, so a section that returns `null` used to leave a
+ * rule and 48px of blank space behind it, reading as two stacked rules with nothing
+ * between them. A section that renders nothing must contribute no chrome, and the
+ * only way to guarantee that is for the chrome to be inside the thing that decides.
+ */
+function Band({ children }: { children: React.ReactNode }) {
+  return <div className="border-t border-border-hairline py-6">{children}</div>;
+}
+
 /** A two-up section row: paired at `md`+, single-column below, DOM order = reading order (§5.7.1). */
 function Row({ children }: { children: React.ReactNode }) {
   return (
@@ -168,7 +181,9 @@ function IdentityHeader({
   const stars = useStars();
   return (
     <header className="flex flex-wrap items-start gap-5 px-6 pt-6 sm:px-8">
-      <ProfileHeadshot record={record} name={name} responsive />
+      {/* Click/Enter opens the full 512² photo (OFC-353) — the same image the page
+          has already loaded, so the larger view costs nothing to show. */}
+      <ProfileHeadshot record={record} name={name} responsive enlargeable />
       <div className="min-w-0 flex-1">
         {/* Name + class year stay baseline-aligned together; the personal Star
             toggle sits to their right, centered against the name line (OFC-256).
@@ -312,49 +327,51 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
   const employer = [record.employerName, record.jobTitle].filter(Boolean).join(" — ");
   const showSpouse = managerSeesPrivate(record, viewer, "shareSpousePartner");
   return (
-    <Section title="Professional &amp; personal">
-      <div className="grid gap-x-12 gap-y-4 sm:grid-cols-2">
-        <div className="space-y-4">
-          {employer && <ReadField label="Employer">{employer}</ReadField>}
-          {record.links && record.links.length > 0 && (
-            <ReadField label="Links">
-              <ul className="space-y-1">
-                {record.links.map((link) => (
-                  <li key={`${link.label}-${link.url}`}>
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
-                    >
-                      {link.label || link.url}
-                    </a>
-                  </li>
-                ))}
-              </ul>
-            </ReadField>
-          )}
+    <Band>
+      <Section title="Professional &amp; personal">
+        <div className="grid gap-x-12 gap-y-4 sm:grid-cols-2">
+          <div className="space-y-4">
+            {employer && <ReadField label="Employer">{employer}</ReadField>}
+            {record.links && record.links.length > 0 && (
+              <ReadField label="Links">
+                <ul className="space-y-1">
+                  {record.links.map((link) => (
+                    <li key={`${link.label}-${link.url}`}>
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[var(--primary-emphasis)] underline-offset-2 hover:underline"
+                      >
+                        {link.label || link.url}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </ReadField>
+            )}
+          </div>
+          <div className="space-y-4">
+            {record.spousePartnerName ? (
+              <ReadField label="Spouse / partner">{record.spousePartnerName}</ReadField>
+            ) : (
+              showSpouse && <PrivateMarker label="Spouse / partner" />
+            )}
+            {record.majors && record.majors.length > 0 && (
+              <ReadField label="Courses">
+                <ul className="flex flex-wrap gap-1.5">
+                  {record.majors.map((code) => (
+                    <li key={code}>
+                      <CourseChip code={code} />
+                    </li>
+                  ))}
+                </ul>
+              </ReadField>
+            )}
+          </div>
         </div>
-        <div className="space-y-4">
-          {record.spousePartnerName ? (
-            <ReadField label="Spouse / partner">{record.spousePartnerName}</ReadField>
-          ) : (
-            showSpouse && <PrivateMarker label="Spouse / partner" />
-          )}
-          {record.majors && record.majors.length > 0 && (
-            <ReadField label="Courses">
-              <ul className="flex flex-wrap gap-1.5">
-                {record.majors.map((code) => (
-                  <li key={code}>
-                    <CourseChip code={code} />
-                  </li>
-                ))}
-              </ul>
-            </ReadField>
-          )}
-        </div>
-      </div>
-    </Section>
+      </Section>
+    </Band>
   );
 }
 
@@ -389,28 +406,30 @@ function RelationshipsSection({
   const bigBrotherName = bigBrotherId != null ? (names?.get(bigBrotherId) ?? null) : null;
 
   return (
-    <Section title="Relationships">
-      {bigBrotherId != null && (
-        <ReadField label="Big Brother">
-          <RelationshipLink
-            id={bigBrotherId}
-            name={bigBrotherName ?? "View his profile"}
-            profile={bigBrother}
-          />
-        </ReadField>
-      )}
-      {littles.length > 0 && (
-        <ReadField label="Little Brothers">
-          <ul className="flex flex-wrap gap-x-5 gap-y-2">
-            {littles.map((little) => (
-              <li key={little.id}>
-                <RelationshipLink id={little.id} name={little.name} profile={little.profile} />
-              </li>
-            ))}
-          </ul>
-        </ReadField>
-      )}
-    </Section>
+    <Band>
+      <Section title="Relationships">
+        {bigBrotherId != null && (
+          <ReadField label="Big Brother">
+            <RelationshipLink
+              id={bigBrotherId}
+              name={bigBrotherName ?? "View his profile"}
+              profile={bigBrother}
+            />
+          </ReadField>
+        )}
+        {littles.length > 0 && (
+          <ReadField label="Little Brothers">
+            <ul className="flex flex-wrap gap-x-5 gap-y-2">
+              {littles.map((little) => (
+                <li key={little.id}>
+                  <RelationshipLink id={little.id} name={little.name} profile={little.profile} />
+                </li>
+              ))}
+            </ul>
+          </ReadField>
+        )}
+      </Section>
+    </Band>
   );
 }
 

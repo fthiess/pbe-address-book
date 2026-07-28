@@ -27,18 +27,15 @@ type SubmitState =
  */
 export function ReportBug() {
   const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const close = useCallback(() => {
-    setOpen(false);
-    // Return focus to the trigger, the element that had it before the dialog opened.
-    triggerRef.current?.focus();
-  }, []);
+  // Closing unmounts the dialog; ModalDialog returns focus to this trigger once the
+  // dialog is gone. It used to be done here instead — and never worked, because the
+  // page is inert while the modal is up, so the focus() call was dropped (OFC-353).
+  const close = useCallback(() => setOpen(false), []);
 
   return (
     <>
       <button
-        ref={triggerRef}
         type="button"
         onClick={() => {
           trackReportABugClicked();
