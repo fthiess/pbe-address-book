@@ -40,20 +40,34 @@ export function ModalDialog({
   children: ReactNode;
 }) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const openerRef = useRef<Element | null>(null);
 
   useEffect(() => {
-    // Captured before `showModal()` moves focus into the dialog, so this is the
-    // element the reader actually left behind.
-    const opener = document.activeElement;
     const dialog = dialogRef.current;
+    // Capture the opener only when we are the ones opening the dialog — hence the
+    // `!dialog.open` guard around the capture, not merely around `showModal()`.
+    // ⚠ StrictMode re-runs this effect in development (mount → cleanup → mount)
+    // *without* unmounting the <dialog>, and by the second run focus has already
+    // moved to the dialog's own autofocused control; re-capturing there would
+    // record that control as the "opener" and lose the real one, so focus return
+    // would work in production and silently not in dev — the worst split, since dev
+    // is where anyone would check it by hand.
     if (dialog && !dialog.open) {
+      // Read before `showModal()` moves focus: this is the element the reader left.
+      openerRef.current = document.activeElement;
       try {
         dialog.showModal();
       } catch {
         dialog.open = true;
       }
     }
+    // Registered on every run, including StrictMode's second: the cleanup from the
+    // first run has already been spent by then, so returning early instead would
+    // leave the real unmount with nothing to restore focus with.
     return () => {
+      const opener = openerRef.current;
+      // `isConnected`: an action that removes its own opener (a delete that
+      // navigates away) restores nothing rather than chasing a detached node.
       if (opener instanceof HTMLElement && opener.isConnected) {
         opener.focus();
       }

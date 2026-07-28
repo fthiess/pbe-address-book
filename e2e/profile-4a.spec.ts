@@ -128,10 +128,12 @@ test.describe("profile — view mode", () => {
     await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Relationships", exact: true })).toHaveCount(0);
 
-    // Count the full-width section bands, and how many render nothing at all. A
-    // section that shows nothing must contribute no chrome; the sections that DO
-    // render must still keep theirs, so this fails on both an empty band and on a
-    // fix that threw the rules away altogether.
+    // Count every hairline-ruled block — the full-width section Bands *and* the
+    // two-up Rows, which carry the same classes — and how many render nothing at
+    // all. Deliberately not narrowed to Bands: the rule "chrome only where content
+    // rendered" applies to both. A section that shows nothing must contribute no
+    // chrome; the sections that DO render must still keep theirs, so this fails on
+    // an empty band and equally on a fix that threw the rules away altogether.
     const bands = await page.evaluate(() => {
       const all = Array.from(document.querySelectorAll("div.border-t.border-border-hairline"));
       return { total: all.length, empty: all.filter((el) => !el.textContent?.trim()).length };
