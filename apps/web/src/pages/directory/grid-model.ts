@@ -95,6 +95,18 @@ export interface GridColumn {
 export const MIN_COLUMN_WIDTH = 64;
 export const MAX_COLUMN_WIDTH = 640;
 
+/**
+ * The columns whose cells render the name search's `<mark>` highlights (D35) — the
+ * Canonical Name and the two other searched name fields. Shared by the grid (which
+ * decides whether to render marks) and auto-fit (which must add their padding to a
+ * measured width, OFC-358), so the two can't disagree about which cells carry them.
+ */
+export const HIGHLIGHTED_COLUMN_KEYS: ReadonlySet<ColumnKey> = new Set<ColumnKey>([
+  "name",
+  "fullName",
+  "mugName",
+]);
+
 /** A brother's primary major is the first entry in his (owner-ordered) list (§5.6.1). */
 function primaryMajor(profile: DirectoryProfile): string | null {
   return profile.majors?.[0] ?? null;

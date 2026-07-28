@@ -10,10 +10,16 @@
  * is unit-tested without a canvas; the DOM measurer is a thin adapter.
  */
 
-import { MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from "./grid-model.js";
+import { type ColumnKey, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH } from "./grid-model.js";
 
 /** Horizontal cell chrome to add to a measured data string: the `px-3` padding both sides. */
 const CELL_PADDING = 24;
+/**
+ * A search-highlight `<mark>` carries `px-px` — 1px of padding on each side — so a
+ * highlighted cell renders 2px wider per mark than its text measures (OFC-358).
+ * Small, but auto-fit leaves no slack at all, so unaccounted pixels clip.
+ */
+const MARK_PADDING = 2;
 /**
  * Extra header chrome beyond the label text: the sort glyph, the reorder grip on
  * data columns, and the gaps — so an auto-fit never clips the header itself.
@@ -26,6 +32,19 @@ const CHIP_GAP = 4;
 
 /** A function that returns the rendered pixel width of a string at a fixed font. */
 export type TextMeasurer = (text: string) => number;
+
+/**
+ * What one cell actually renders: its display text, plus how many search-highlight
+ * `<mark>` spans are drawn inside it. The mark count matters because each one adds
+ * {@link MARK_PADDING} of width that measuring the text alone cannot see — so a
+ * column auto-fitted while a search is running would come out short (OFC-358).
+ */
+export interface CellContent {
+  /** The cell's rendered display text. */
+  text: string;
+  /** Highlight marks rendered within that text; absent or 0 for an unsearched cell. */
+  marks?: number;
+}
 
 /**
  * Clamp a column to fit the larger of (its widest data content plus cell padding)
@@ -47,12 +66,12 @@ function fitColumn(headerLabel: string, widestData: number, measure: TextMeasure
  */
 export function autoFitWidth(
   headerLabel: string,
-  values: readonly string[],
+  cells: readonly CellContent[],
   measure: TextMeasurer,
 ): number {
   let widestData = 0;
-  for (const value of values) {
-    const w = measure(value);
+  for (const cell of cells) {
+    const w = measure(cell.text) + (cell.marks ?? 0) * MARK_PADDING;
     if (w > widestData) {
       widestData = w;
     }
@@ -116,12 +135,26 @@ export function makeTextMeasurer(font: string): TextMeasurer {
   return (text: string) => ctx.measureText(text).width;
 }
 
-/** The effective CSS font of the grid body cells, for the measurer (matches `text-sm`). */
-export function gridCellFont(): string {
+/**
+ * The Canonical Name link renders at `font-medium` — weight 500 (DirectoryGrid's
+ * name cell) — where every other cell renders at the body weight. Measuring a name
+ * at 400 under-measures it by a few pixels, which is exactly enough for an
+ * auto-fitted Name column to clip the longest names (OFC-358). ⚠ Keep this in step
+ * with that class: the measurement and the render have to describe the same text.
+ */
+const NAME_CELL_FONT_WEIGHT = 500;
+
+/**
+ * The effective CSS font of a column's body cells, for the measurer (matches
+ * `text-sm`). Pass the column key so the Name column is measured at the weight it
+ * actually renders; omit it for the body weight every other column uses.
+ */
+export function gridCellFont(key?: ColumnKey): string {
+  const weight = key === "name" ? `${NAME_CELL_FONT_WEIGHT} ` : "";
   if (typeof getComputedStyle === "undefined" || typeof document === "undefined") {
-    return "14px sans-serif";
+    return `${weight}14px sans-serif`;
   }
   const body = getComputedStyle(document.body);
   // The grid is 14px (`text-sm`) in the body font stack, regardless of body size.
-  return `14px ${body.fontFamily || "sans-serif"}`;
+  return `${weight}14px ${body.fontFamily || "sans-serif"}`;
 }
