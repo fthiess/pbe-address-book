@@ -36,6 +36,7 @@ import { entryNavState, newStashId, putDirectoryStash } from "../profile/directo
 import { CourseChips, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { Selection } from "./SelectionContext.js";
+import { HIGHLIGHTED_COLUMN_KEYS } from "./grid-model.js";
 import type { ColumnKey, GridColumn } from "./grid-model.js";
 import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
@@ -827,8 +828,9 @@ function Cell({
 
   const value = column.display(profile, name);
   // The other searched name fields (Full Name, Mug Name) carry highlight marks
-  // too, so a match on them is visible when their column is shown (D35).
-  const searchable = column.key === "fullName" || column.key === "mugName";
+  // too, so a match on them is visible when their column is shown (D35). The set is
+  // shared with auto-fit, which has to allow for those marks' width (OFC-358).
+  const searchable = HIGHLIGHTED_COLUMN_KEYS.has(column.key);
   return (
     <td aria-colindex={colIndex} className={cn(common, "text-muted-foreground")}>
       <span className="block truncate">
