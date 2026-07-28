@@ -217,6 +217,8 @@ A substantial architectural change deliberately deferred out of the feature phas
 
 *Later scheduled by: D152 — **Stage 1.5**, the last session of Stage 1, running pre-UAT on Forrest's call. Scope is **OFC-179 alone**; the absorbed OFC-68 and OFC-119 fall to Stage 5. Dates and rationale in `LAUNCH-SCHEDULE.md`.*
 
+**Status — BUILT in Stage 1.5 (2026-07-28), two PRs as anticipated.** 7.5a (PR #162, merged): the unified store — decisions **N147** (incl. the epoch fence that makes `clearRoster`'s sign-out guarantee real under the new mount-revalidation). 7.5b (PR pending): the conditional read — **D159** (⚠ the version token is a **per-role content hash**, not the D85 snapshot version this section names — that snapshot was never built) + **N148** (as built; `routes/conditional.ts`). Gate items proven by test: match-`304`s/bump-forces (route + counting e2e), the emulator token-stability/write-bump pair, both pages on one store, `no-store` on every branch. Remaining gate item at 7.5b's merge: the **delivered** `304` through Firebase Hosting's rewrite, live on staging (the D146 class of risk).
+
 ### Phase 7.6 — Ghost↔Book theme integration on staging
 
 **Goal:** the newsletter side of the composite system looks the way it will at launch, so UAT testers (Phase 7.7) experience the real navigation between PBE News and Book.

@@ -26,6 +26,7 @@ import {
   projectSelf,
 } from "../projection/projection.js";
 import { readRateLimit, writeRateLimit } from "../security/rate-limit.js";
+import { ifNoneMatchSatisfied } from "./conditional.js";
 import { negotiateEncoding } from "./encoding.js";
 import { type EmailLifecycleResult, runEmailGhostLifecycle } from "./ghost-push.js";
 import type { RecordLock } from "./record-lock.js";
@@ -92,6 +93,17 @@ export function registerProfileRoutes(app: FastifyInstance, deps: ProfileRouteDe
  * The read is session-gated and **per-role** (D82): the caller's role selects
  * the projection — the precomputed brother buffer for brothers, a freshly
  * computed manager/admin projection otherwise.
+ *
+ * **The app-level conditional read (Phase 7.5b, N62/N63/D159).** The response
+ * carries a role-qualified dataset `ETag` (a content hash of the served JSON —
+ * see {@link NegotiablePayload.etag}); a request whose `If-None-Match` matches
+ * gets an empty **`304`** instead of the full payload, and the SPA re-renders
+ * from its retained heap-only store. ⚠ This deliberately does NOT resurrect
+ * D76's browser-cache conditional GET: the response stays `no-store` on every
+ * branch — including the `304` — so the browser HTTP cache is never involved;
+ * the token lives in application code on both ends and the data only ever in
+ * the JS heap (D95, N63). The role suffix means a "View as" switch can never be
+ * answered `304` against the other role's projection (N31).
  */
 function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDeps): void {
   app.get(
@@ -103,13 +115,20 @@ function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDep
       const session = request.session;
       const role = session ? effectiveRole(session) : "brother";
       const payload = await cache.payloadForRole(role);
-      const encoding = negotiateEncoding(request.headers["accept-encoding"]);
 
       reply
         .header("Cache-Control", "no-store")
         .header("Vary", "Accept-Encoding")
-        .header("Content-Type", "application/json; charset=utf-8");
+        .header("ETag", `"${payload.etag}"`);
 
+      if (ifNoneMatchSatisfied(request.headers["if-none-match"], payload.etag)) {
+        // Dataset unchanged for this role: skip the transfer. Status-only reply —
+        // a 304 carries no body and no Content-Type/Content-Encoding.
+        return reply.code(304).send();
+      }
+
+      const encoding = negotiateEncoding(request.headers["accept-encoding"]);
+      reply.header("Content-Type", "application/json; charset=utf-8");
       if (encoding === "br") {
         return reply.header("Content-Encoding", "br").send(payload.br);
       }

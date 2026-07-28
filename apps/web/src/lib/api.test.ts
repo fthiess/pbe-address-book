@@ -177,7 +177,8 @@ describe("api re-auth-and-retry seam (OFC-236 / D109)", () => {
 
     const response = await fetchProfiles();
 
-    expect(response.profiles).toHaveLength(1);
+    expect(response.status).toBe("fresh");
+    expect(response.status === "fresh" && response.body.profiles).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     // Seamless — no full reload, so the app must not have bounced to sign-in.
     expect(unauthorized).not.toHaveBeenCalled();
@@ -208,6 +209,59 @@ describe("api re-auth-and-retry seam (OFC-236 / D109)", () => {
     await expect(fetchProfiles()).rejects.toBeInstanceOf(ApiError);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(unauthorized).toHaveBeenCalledOnce();
+  });
+});
+
+/**
+ * The app-level conditional read (7.5b, N62/N63): the token rides an
+ * `If-None-Match` request header and comes back on the `ETag` response header;
+ * a `304` is a distinct result, not an error. All in application code over
+ * `no-store` responses — the browser HTTP cache plays no part.
+ */
+describe("fetchProfiles conditional read (7.5b)", () => {
+  it("sends no If-None-Match without a token, and returns the response ETag unquoted", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ profiles: [{ id: 5001 }], majors: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ETag: '"abc123.brother"' },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchProfiles();
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).toBeUndefined();
+    expect(result).toMatchObject({ status: "fresh", etag: "abc123.brother" });
+  });
+
+  it("sends the held token quoted, and maps a 304 to `not-modified`", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 304 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchProfiles("abc123.brother");
+
+    const init = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(init.headers).toEqual({ "If-None-Match": '"abc123.brother"' });
+    expect(result).toEqual({ status: "not-modified" });
+  });
+
+  it("a stale token gets the fresh payload and the new token", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ profiles: [{ id: 5001 }, { id: 5002 }], majors: [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ETag: '"def456.brother"' },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchProfiles("abc123.brother");
+
+    expect(result.status).toBe("fresh");
+    if (result.status === "fresh") {
+      expect(result.body.profiles).toHaveLength(2);
+      expect(result.etag).toBe("def456.brother");
+    }
   });
 });
 

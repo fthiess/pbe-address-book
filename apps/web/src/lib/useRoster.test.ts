@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProfilesFetchResult } from "./api.js";
 import type { ProfilesResponse } from "./types.js";
 
 /**
@@ -34,9 +35,14 @@ import {
 
 const mockFetchProfiles = vi.mocked(fetchProfiles);
 
-function response(profiles: ProfilesResponse["profiles"]): ProfilesResponse {
-  return { profiles, majors: [] };
+function fresh(
+  profiles: ProfilesResponse["profiles"],
+  etag: string | null = "v1.brother",
+): ProfilesFetchResult {
+  return { status: "fresh", body: { profiles, majors: [] }, etag };
 }
+
+const NOT_MODIFIED: ProfilesFetchResult = { status: "not-modified" };
 
 const ROSTER = [
   { id: 5247, firstName: "James", lastName: "Smyth", classYear: 1984 },
@@ -59,7 +65,7 @@ afterEach(() => {
 
 describe("roster store — first load", () => {
   it("loads the roster into the store", async () => {
-    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    mockFetchProfiles.mockResolvedValue(fresh(ROSTER));
 
     revalidateRoster();
     await flush();
@@ -83,7 +89,7 @@ describe("roster store — first load", () => {
     await flush();
     expect(__getRosterState().error).toBe(true);
 
-    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    mockFetchProfiles.mockResolvedValue(fresh(ROSTER));
     revalidateRoster();
     await flush();
 
@@ -91,9 +97,9 @@ describe("roster store — first load", () => {
   });
 
   it("dedupes concurrent revalidations against the in-flight fetch", async () => {
-    let resolve!: (value: ProfilesResponse) => void;
+    let resolve!: (value: ProfilesFetchResult) => void;
     mockFetchProfiles.mockReturnValue(
-      new Promise<ProfilesResponse>((r) => {
+      new Promise<ProfilesFetchResult>((r) => {
         resolve = r;
       }),
     );
@@ -103,7 +109,7 @@ describe("roster store — first load", () => {
     revalidateRoster();
     expect(mockFetchProfiles).toHaveBeenCalledTimes(1);
 
-    resolve(response(ROSTER));
+    resolve(fresh(ROSTER));
     await flush();
     expect(__getRosterState().profiles).toEqual(ROSTER);
   });
@@ -113,13 +119,13 @@ describe("roster store — background revalidation (7.5a)", () => {
   const FRESH = [...ROSTER, { id: 5400, firstName: "New", lastName: "Initiate", classYear: 2026 }];
 
   beforeEach(async () => {
-    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    mockFetchProfiles.mockResolvedValue(fresh(ROSTER));
     revalidateRoster();
     await flush();
   });
 
   it("swaps fresh data into the retained store", async () => {
-    mockFetchProfiles.mockResolvedValue(response(FRESH));
+    mockFetchProfiles.mockResolvedValue(fresh(FRESH));
 
     revalidateRoster();
     // The retained roster stays rendered while the refetch is in flight.
@@ -142,7 +148,7 @@ describe("roster store — background revalidation (7.5a)", () => {
 
 describe("clearRoster (sign-out, D95)", () => {
   it("drops the roster from the heap", async () => {
-    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    mockFetchProfiles.mockResolvedValue(fresh(ROSTER));
     revalidateRoster();
     await flush();
 
@@ -157,16 +163,16 @@ describe("clearRoster (sign-out, D95)", () => {
     // call clearRoster() while it is in flight. The late response must be
     // DISCARDED — resolving it into the store would put all ~1,166 records of
     // real PII back on a possibly shared machine after the user signed out.
-    let resolve!: (value: ProfilesResponse) => void;
+    let resolve!: (value: ProfilesFetchResult) => void;
     mockFetchProfiles.mockReturnValue(
-      new Promise<ProfilesResponse>((r) => {
+      new Promise<ProfilesFetchResult>((r) => {
         resolve = r;
       }),
     );
 
     revalidateRoster(); // fetch now in flight
     clearRoster(); // sign-out lands first
-    resolve(response(ROSTER)); // ...then the response arrives
+    resolve(fresh(ROSTER)); // ...then the response arrives
     await flush();
 
     expect(__getRosterState()).toEqual({ profiles: null, error: false });
@@ -175,7 +181,7 @@ describe("clearRoster (sign-out, D95)", () => {
   it("a fetch failing after sign-out surfaces no stale error state", async () => {
     let reject!: (reason: Error) => void;
     mockFetchProfiles.mockReturnValue(
-      new Promise<ProfilesResponse>((_r, rj) => {
+      new Promise<ProfilesFetchResult>((_r, rj) => {
         reject = rj;
       }),
     );
@@ -191,9 +197,69 @@ describe("clearRoster (sign-out, D95)", () => {
   });
 });
 
+describe("roster store — conditional read token (7.5b)", () => {
+  it("sends no token on a first load, then the held token on revalidation", async () => {
+    mockFetchProfiles.mockResolvedValue(fresh(ROSTER, "v1.brother"));
+
+    revalidateRoster();
+    await flush();
+    expect(mockFetchProfiles).toHaveBeenLastCalledWith(null);
+
+    revalidateRoster();
+    await flush();
+    expect(mockFetchProfiles).toHaveBeenLastCalledWith("v1.brother");
+  });
+
+  it("a 304 keeps the retained data and the token", async () => {
+    mockFetchProfiles.mockResolvedValueOnce(fresh(ROSTER, "v1.brother"));
+    revalidateRoster();
+    await flush();
+
+    mockFetchProfiles.mockResolvedValue(NOT_MODIFIED);
+    revalidateRoster();
+    await flush();
+
+    expect(__getRosterState()).toEqual({ profiles: ROSTER, error: false });
+    // The token survived the 304: a further revalidation still sends it.
+    revalidateRoster();
+    await flush();
+    expect(mockFetchProfiles).toHaveBeenLastCalledWith("v1.brother");
+  });
+
+  it("a fresh 200 replaces both the data and the token", async () => {
+    const FRESH = [...ROSTER, { id: 5400, firstName: "New", lastName: "Face" }];
+    mockFetchProfiles.mockResolvedValueOnce(fresh(ROSTER, "v1.brother"));
+    revalidateRoster();
+    await flush();
+
+    mockFetchProfiles.mockResolvedValue(fresh(FRESH, "v2.brother"));
+    revalidateRoster();
+    await flush();
+
+    expect(__getRosterState().profiles).toEqual(FRESH);
+    revalidateRoster();
+    await flush();
+    expect(mockFetchProfiles).toHaveBeenLastCalledWith("v2.brother");
+  });
+
+  it("clearRoster drops the token with the data — the next viewer starts unconditional", async () => {
+    mockFetchProfiles.mockResolvedValue(fresh(ROSTER, "v1.brother"));
+    revalidateRoster();
+    await flush();
+
+    clearRoster();
+
+    revalidateRoster();
+    await flush();
+    // The role-qualified token must never cross a sign-out boundary: the next
+    // load is a plain unconditional read.
+    expect(mockFetchProfiles).toHaveBeenLastCalledWith(null);
+  });
+});
+
 describe("applyProfileToRoster (the §5.7.4 fold)", () => {
   beforeEach(async () => {
-    mockFetchProfiles.mockResolvedValue(response(ROSTER));
+    mockFetchProfiles.mockResolvedValue(fresh(ROSTER));
     revalidateRoster();
     await flush();
   });

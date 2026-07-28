@@ -115,17 +115,43 @@ export async function fetchMe(signal?: AbortSignal): Promise<Me> {
   return response.json();
 }
 
-/** The bulk directory download (brother-role projection). */
-export async function fetchProfiles(signal?: AbortSignal): Promise<ProfilesResponse> {
+/**
+ * The bulk read's outcome (Phase 7.5b). `fresh` carries the payload plus the
+ * role-qualified dataset token the server stamped on it; `not-modified` means
+ * the token matched and the caller re-renders from its retained store. The
+ * token is handled entirely in application code over a `no-store` response —
+ * the browser HTTP cache is never involved (D95/N63).
+ */
+export type ProfilesFetchResult =
+  | { status: "fresh"; body: ProfilesResponse; etag: string | null }
+  | { status: "not-modified" };
+
+/** The bulk directory download (per-role projection), conditional when a token is held. */
+export async function fetchProfiles(
+  etag?: string | null,
+  signal?: AbortSignal,
+): Promise<ProfilesFetchResult> {
   // A mid-session lapse here recovers seamlessly (OFC-153): re-auth in a child window
   // and re-fetch in place rather than bounce + full reload + re-download the whole
   // roster over a slow link. On a failed re-auth the 401 falls through to the
   // (non-silent) bounce below.
-  const response = await fetchWithReauth("/api/profiles", { credentials: "same-origin", signal });
+  const response = await fetchWithReauth("/api/profiles", {
+    credentials: "same-origin",
+    signal,
+    ...(etag ? { headers: { "If-None-Match": `"${etag}"` } } : {}),
+  });
+  if (response.status === 304) {
+    return { status: "not-modified" };
+  }
   if (!response.ok) {
     throw await asError(response);
   }
-  return response.json();
+  const raw = response.headers.get("ETag");
+  return {
+    status: "fresh",
+    body: await response.json(),
+    etag: raw ? raw.replace(/^W\//, "").replace(/^"(.*)"$/, "$1") : null,
+  };
 }
 
 /** A single profile plus its concurrency token (the `ETag`), for the Profile page. */

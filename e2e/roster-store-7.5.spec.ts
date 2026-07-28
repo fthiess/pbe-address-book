@@ -98,6 +98,99 @@ function recordRoute(page: Page) {
   });
 }
 
+/**
+ * 7.5b — the app-level conditional read. The mock plays the server's part: it
+ * stamps an `ETag` on the full response and answers `304` (empty body) when the
+ * SPA's `If-None-Match` matches the current token — so these specs prove the
+ * client half end-to-end: the token is held, sent, and a `304` re-renders the
+ * retained store with no payload transferred, while a bumped token forces the
+ * full pull (the CODING-PROJECT-PLAN §7.5 gate's "match skips / bump forces").
+ */
+test.describe("Phase 7.5b — the conditional read", () => {
+  function conditionalRoute(
+    page: Page,
+    dataset: () => { etag: string; profiles: typeof ROSTER },
+    counts: { full: number; notModified: number },
+  ) {
+    return page.route("**/api/profiles", (route) => {
+      const { etag, profiles } = dataset();
+      const sent = route.request().headers()["if-none-match"];
+      if (sent && sent.replace(/^W\//, "").replace(/^"(.*)"$/, "$1") === etag) {
+        counts.notModified += 1;
+        return route.fulfill({ status: 304, headers: { ETag: `"${etag}"` } });
+      }
+      counts.full += 1;
+      return route.fulfill({
+        headers: { ETag: `"${etag}"` },
+        json: { profiles, majors: [] },
+      });
+    });
+  }
+
+  test("match skips the download: the return trip revalidates as a 304 and renders from the store", async ({
+    page,
+  }) => {
+    const counts = { full: 0, notModified: 0 };
+    await page.route("**/api/me", (route) => route.fulfill({ json: ME }));
+    await recordRoute(page);
+    await conditionalRoute(page, () => ({ etag: "v1.brother", profiles: ROSTER }), counts);
+
+    await page.goto("/");
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
+    expect(counts).toEqual({ full: 1, notModified: 0 });
+
+    await page
+      .getByRole("rowheader", { name: /Aaron Adams/ })
+      .getByRole("link")
+      .click();
+    await expect(page.getByRole("heading", { level: 1, name: /Aaron Adams/ })).toBeVisible();
+    await page.goBack();
+
+    // The grid renders from the retained store; the background revalidation was
+    // answered 304 — no second payload ever crossed the wire.
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
+    await expect.poll(() => counts.notModified).toBe(1);
+    expect(counts.full).toBe(1);
+  });
+
+  test("a version bump forces the full pull and the fresh data reaches the grid", async ({
+    page,
+  }) => {
+    const counts = { full: 0, notModified: 0 };
+    const FRESH = [
+      ...ROSTER,
+      {
+        id: 5400,
+        firstName: "Newly",
+        lastName: "Arrived",
+        classYear: 2026,
+        deceased: { isDeceased: false },
+        hasHeadshot: false,
+      },
+    ];
+    // The dataset "changes server-side" while the reader is on the Profile page.
+    let current = { etag: "v1.brother", profiles: ROSTER };
+    await page.route("**/api/me", (route) => route.fulfill({ json: ME }));
+    await recordRoute(page);
+    await conditionalRoute(page, () => current, counts);
+
+    await page.goto("/");
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
+
+    await page
+      .getByRole("rowheader", { name: /Aaron Adams/ })
+      .getByRole("link")
+      .click();
+    await expect(page.getByRole("heading", { level: 1, name: /Aaron Adams/ })).toBeVisible();
+    current = { etag: "v2.brother", profiles: FRESH };
+    await page.goBack();
+
+    // The stale token misses, the full pull runs, and the change lands.
+    await expect(page.getByRole("rowheader", { name: /Newly Arrived/ })).toBeVisible();
+    expect(counts).toEqual({ full: 2, notModified: 0 });
+  });
+});
+
 test.describe("Phase 7.5a — one roster store, one download", () => {
   test("Directory→Profile→Directory: one download in, instant render back, one background refresh", async ({
     page,

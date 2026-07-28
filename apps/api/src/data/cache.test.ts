@@ -47,6 +47,42 @@ describe("ProfileCache", () => {
     expect(body.majors).toEqual([]);
   });
 
+  it("stamps a deterministic, role-qualified etag that changes only with the data (7.5b)", async () => {
+    const records = [makeProfile({ id: 5001 }), makeProfile({ id: 5002 })];
+    const cache = new ProfileCache();
+    await cache.load(records);
+    const first = cache.brotherPayload().etag;
+    expect(first).toMatch(/^[0-9a-f]{16}\.brother$/);
+
+    // Identical data → identical token, across a full reload (the cold-start
+    // property: a rehydrated instance must not force spurious re-downloads).
+    const rebuilt = new ProfileCache();
+    await rebuilt.load(records);
+    expect(rebuilt.brotherPayload().etag).toBe(first);
+
+    // A write changes it (rebuildAndSwap path)…
+    await cache.applyUpdate(makeProfile({ id: 5002, lastName: "Renamed" }), "t2");
+    const afterUpdate = cache.brotherPayload().etag;
+    expect(afterUpdate).not.toBe(first);
+
+    // …and so does a delete (the second, inline rebuild path).
+    await cache.applyDelete(5002, []);
+    expect(cache.brotherPayload().etag).not.toBe(afterUpdate);
+  });
+
+  it("staff payloads carry their own role-suffixed etags (7.5b)", async () => {
+    const cache = new ProfileCache();
+    await cache.load([makeProfile({ id: 5001 }), makeProfile({ id: 5002, unlisted: true })]);
+
+    const manager = await cache.payloadForRole("manager");
+    const admin = await cache.payloadForRole("admin");
+    expect(manager.etag).toMatch(/^[0-9a-f]{16}\.manager$/);
+    expect(admin.etag).toMatch(/^[0-9a-f]{16}\.admin$/);
+    // Different projections of the same dataset are different representations.
+    expect(manager.etag).not.toBe(admin.etag);
+    expect(manager.etag).not.toBe(cache.brotherPayload().etag);
+  });
+
   it("applies the projection — unlisted and de-brothered records are absent", async () => {
     const cache = new ProfileCache();
     await cache.load([
