@@ -48,6 +48,8 @@ The Ghost side: staging profiles get real `ghostMemberId`s via the existing `mir
 
 The invitation states plainly the one privacy fact that matters: **volunteers' real names and email addresses will be visible to the other testers** inside the UAT environment (it is a fraternity directory; the cohort is all brothers). Everything else in the environment is fake, and anything a tester types into their own profile is theirs to choose — real or invented. No signed releases; the notice in the invitation suffices (Forrest's call, D132).
 
+**Status (2026-07-28).** Recruitment closed at **six volunteers**, not the 10–15 estimated here — the number the roster, the free-tier mail ceiling (D154) and §10's exit criteria are all now sized against. The appendices below remain **drafts**: the invitation and instructions Forrest actually sent depart from them, most consequentially in dropping Appendix B's numbered task script in favour of letting testers approach Book with fresh eyes. Read them as the reasoning that shaped the real emails, not as a record of what was sent.
+
 ## 5. Tester provisioning
 
 Mechanism: **OFC-248**, `seed:staging-testers`. It **replaces** the single-tester `link:staging-tester` script, which is retired (D156).
@@ -126,7 +128,7 @@ Phase 7.7 is complete when:
 
 1. **All `UAT`-labeled bugs of high severity are fixed and live-confirmed on staging.** (Normal Gate-5 discipline — a fix isn't done until confirmed, by Forrest or by the reporting tester.)
 2. **Every remaining `UAT` item is explicitly triaged** into *fix before cutover* (stays on the board blocking Phase 8) or *post-launch backlog* — nothing left undecided.
-3. **Participation was real**: at least ~8 testers completed the task script (best effort — if volunteering falls short, Forrest decides whether the coverage achieved suffices).
+3. **Participation is not a gate** (amended 2026-07-28, DECISIONS **D160**, Forrest's call). The original criterion here — "~8 testers completed the task script" — is retired. Two of its premises are gone: the cohort settled at **six** (§4's status note), and the instructions actually sent at kickoff deliberately dropped the scripted task list in favour of letting testers approach Book with fresh eyes, so there is no script to complete and no number to hit. **Any feedback is a good outcome; a quiet window is not a failure.** What *is* a defect — to be chased, never recorded as low participation — is a tester who could not get in at all: §7 identifies an undelivered magic link as the riskiest step in the system, and it is the one failure a tester cannot report from inside Book, which is why the kickoff instructions ask for a missing sign-in email to be reported by reply.
 4. **Wind-down executed**: `STAGING_AUTOSEED` restored, the roster trimmed to the brothers keeping standing staging access, testers thanked, and the UAT experience written up briefly in the decision log (what the cohort taught us — input to CUTOVER-PLAN's staged-exposure thinking, since some UAT testers are natural candidates for the early-exposure ring at launch).
 
 ## 11. Out of scope
