@@ -8,7 +8,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { ClearButton } from "../components/ClearButton.js";
 import { ControlHelp } from "../components/ControlHelp.js";
-import { LoadingOverlay } from "../components/LoadingOverlay.js";
+import {
+  LoadingOverlay,
+  OVERLAY_DELAY_MS,
+  REASSURANCE_DELAY_MS,
+  STILL_LOADING_REASSURANCE,
+} from "../components/LoadingOverlay.js";
 import { trackMobileOptionsOpened } from "../lib/analytics.js";
 import { fetchProfiles } from "../lib/api.js";
 import type { DirectoryProfile } from "../lib/types.js";
@@ -287,7 +292,11 @@ export function Directory() {
   }, [setQ, setIncludeDeceased, filters, sort]);
 
   const loading = profiles === null && !error;
-  const showOverlay = useDelayedFlag(loading, 500);
+  const showOverlay = useDelayedFlag(loading, OVERLAY_DELAY_MS);
+  // The neutral line, not the wake-the-server one: the session fetch has already
+  // succeeded by the time this runs, so the instance is warm — and the bulk roster
+  // is ~1 MB, so a long wait here may simply be the transfer (OFC-324).
+  const showReassurance = useDelayedFlag(loading, REASSURANCE_DELAY_MS);
   const help = getHelpEntry("directory.search");
   const staff = canSelectRows(role);
 
@@ -352,7 +361,9 @@ export function Directory() {
 
   return (
     <section aria-labelledby="directory-heading" data-search-ready={searchReady}>
-      {showOverlay && <LoadingOverlay />}
+      {showOverlay && (
+        <LoadingOverlay reassurance={STILL_LOADING_REASSURANCE} showReassurance={showReassurance} />
+      )}
 
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>

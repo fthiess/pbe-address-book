@@ -9,7 +9,12 @@ import {
   useParams,
 } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
-import { LoadingOverlay } from "../components/LoadingOverlay.js";
+import {
+  LoadingOverlay,
+  OVERLAY_DELAY_MS,
+  REASSURANCE_DELAY_MS,
+  WAKE_REASSURANCE,
+} from "../components/LoadingOverlay.js";
 import {
   trackBrotherDeleted,
   trackDebrotherStatusChanged,
@@ -130,7 +135,12 @@ export function ProfileContainer() {
   const [etag, setEtag] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "notfound" | "error">("loading");
   const [toast, setToast] = useState<string | null>(null);
-  const showOverlay = useDelayedFlag(status === "loading", 500);
+  const showOverlay = useDelayedFlag(status === "loading", OVERLAY_DELAY_MS);
+  // A single record is a tiny payload, so a wait this long is a sleeping instance,
+  // not transfer time. This is the site that Forrest's live-testing case actually
+  // hits: a tab left open past the scale-to-zero idle window, then a click into a
+  // brother — loaded SPA, cold backend (OFC-324).
+  const showReassurance = useDelayedFlag(status === "loading", REASSURANCE_DELAY_MS);
 
   useEffect(() => {
     if (!Number.isInteger(id) || id <= 0) {
@@ -414,7 +424,11 @@ export function ProfileContainer() {
   }, [directoryNav, navigate]);
 
   if (status === "loading") {
-    return showOverlay ? <LoadingOverlay /> : <div className="min-h-[40vh]" />;
+    return showOverlay ? (
+      <LoadingOverlay reassurance={WAKE_REASSURANCE} showReassurance={showReassurance} />
+    ) : (
+      <div className="min-h-[40vh]" />
+    );
   }
   if (status === "notfound") {
     // A stashed id can stop resolving between stash and click (deleted /
