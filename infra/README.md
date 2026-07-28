@@ -563,11 +563,16 @@ profile with a blank one. Roster changes during the window are run by hand.
 workflow). Assignment is deterministic — profiles in ascending id order, photos in
 ascending index order — so a reseed puts the same face on the same brother; random
 assignment would make "my photo changed" a bug report nobody could reproduce. The
-corpus is smaller than the `hasHeadshot` population (408 against 438), so the lowest
-ids take the real faces and the rest fall back to the eight committed placeholders.
-Faces are never repeated to close the gap: a duplicated face reads as a data
+corpus now covers the `hasHeadshot` population exactly (438 against 438, since
+OFC-355 added the last thirty), so no profile falls back to a placeholder — a
+successful deploy logs `438 from the UAT corpus, 0 from the committed placeholders`.
+Should the corpus ever again be smaller than the population, the lowest ids take
+the real faces and the rest fall back to the eight committed placeholders. Faces
+are never repeated to close such a gap: a duplicated face reads as a data
 integrity bug, whereas a placeholder reads as "no photo on file", which is both true
-and what roughly a third of the real membership will show.
+and what roughly a third of the real membership will show. Photos beyond the
+population size are simply unused — `planPhotoAssignments` caps at the population
+and logs the surplus.
 
 **Every failure here is non-fatal.** Bucket unset, manifest missing, download
 failed — each logs a loud warning and falls back to placeholders for the whole
