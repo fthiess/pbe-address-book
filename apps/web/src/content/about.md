@@ -4,6 +4,15 @@ The PBE Address Book is a private directory for the brothers of Phi Beta Epsilon
 look up any brother's contact information and keep your own current. Only brothers can sign in,
 and the Address Book shows brothers only what each brother has chosen to share.
 
+## The user manual
+
+There is a written guide to the whole Address Book — finding a brother, keeping your own
+details current, choosing what you share, and everything else. Read it at
+[the PBE Address Book user manual](https://github.com/fthiess/pbe-address-book/blob/main/docs/initial-build/USER-MANUAL.md).
+
+You don't have to go there for small questions: many controls carry a **?** beside them that
+explains that one control, right where you are.
+
 ## Something not right? Tell us
 
 If anything doesn't work, doesn't look right, or is simply hard to read, use the **Report a
