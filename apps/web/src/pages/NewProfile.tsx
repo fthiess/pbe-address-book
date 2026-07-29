@@ -2,12 +2,9 @@ import { type Profile, firstIssueByField, validateProfile } from "@pbe/shared";
 import { useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
+import { BackToDirectory } from "../components/BackToDirectory.js";
 import { ApiError, createProfile } from "../lib/api.js";
 import { Section, TextField } from "./profile/fields.js";
-
-/** Shared styling for the "← Directory" affordance, matching the Admin page. */
-const BACK_CLASS =
-  "inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] text-[length:var(--text-label)] font-semibold text-primary outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * The **Add Brother** page (`/brother/new`; OFC-201) — the small first step of the
@@ -145,15 +142,7 @@ export function NewProfile() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      {fromDirectory ? (
-        <button type="button" onClick={() => navigate(-1)} className={BACK_CLASS}>
-          <span aria-hidden="true">←</span> Directory
-        </button>
-      ) : (
-        <Link to="/" className={BACK_CLASS}>
-          <span aria-hidden="true">←</span> Directory
-        </Link>
-      )}
+      <BackToDirectory onPop={fromDirectory ? () => navigate(-1) : null} />
       <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">Add Brother</h1>
         <p className="mt-2 max-w-prose text-[length:var(--text-body)] text-muted-foreground">

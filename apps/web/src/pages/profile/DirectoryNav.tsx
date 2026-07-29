@@ -1,17 +1,8 @@
 import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { BackToDirectory } from "../../components/BackToDirectory.js";
 import { trackDirectoryLinkClicked } from "../../lib/analytics.js";
 import { cn } from "../../lib/utils.js";
 import type { DirectoryNav as DirectoryNavModel, StepDirection } from "./directory-nav.js";
-
-/**
- * Shared styling for the "← Directory" affordance, whether it renders as a button
- * or a link. Matched to the Prev/Next controls' size, weight, and foreground
- * colour (OFC-198) — a borderless text link, not a bordered button, but no longer
- * the smaller-looking muted grey it used to be.
- */
-const BACK_CLASS =
-  "inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-[length:var(--text-label)] font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * The Profile-page directory navigation bar (Phase 4d, OFC-67 / N45): the
@@ -23,11 +14,11 @@ const BACK_CLASS =
  * stale id still gets prev/next — the controls live on the display page only
  * (edit keeps the N33 one-entry model).
  *
- * "← Directory" renders as a real `<Link to="/">` when there is nothing to pop
- * (a cold deep-link, `delta === 0`) so the escape hatch is a genuine anchor —
- * it works even if the router misfires and reads as a link to assistive tech
- * (OFC-145). When there IS a chain to pop (`delta > 0`) it must stay a button:
- * an `href` cannot walk the history stack back to the true Directory entry.
+ * "← Directory" is the shared {@link BackToDirectory} control, which picks its
+ * own form from `onPop`: a real `<Link to="/">` when there is nothing to pop (a
+ * cold deep-link, `delta === 0`), a `<button>` when there is a chain (`delta > 0`),
+ * since an `href` cannot walk the history stack back to the true Directory entry
+ * (OFC-145).
  *
  * Stepping via Prev/Next remounts this whole bar (the container flips to a
  * loading state on the id change), which would drop keyboard focus to `<body>`.
@@ -76,22 +67,10 @@ export function DirectoryNav({
 
   return (
     <div className="mb-3 flex items-center justify-between gap-3">
-      {nav.delta > 0 ? (
-        <button
-          type="button"
-          onClick={() => {
-            trackDirectoryLinkClicked();
-            onBack();
-          }}
-          className={BACK_CLASS}
-        >
-          <span aria-hidden="true">←</span> Directory
-        </button>
-      ) : (
-        <Link to="/" onClick={() => trackDirectoryLinkClicked()} className={BACK_CLASS}>
-          <span aria-hidden="true">←</span> Directory
-        </Link>
-      )}
+      <BackToDirectory
+        onPop={nav.delta > 0 ? onBack : null}
+        onActivate={trackDirectoryLinkClicked}
+      />
 
       {nav.hasStash && (
         <div className="flex items-center gap-1.5">
