@@ -566,10 +566,15 @@ test.describe("Directory mobile fold (OFC-211)", () => {
     await expect(page.getByRole("button", { name: /^Options/ })).toBeVisible();
     await expect(page.getByLabel("Include deceased")).toHaveCount(0);
 
-    // Opening the fold reveals the quick toggles, the column picker, and the filters.
+    // Opening the fold reveals the quick toggles, the field picker, the Sort
+    // control, and the filters. The picker is called **Fields** here, not
+    // Columns: a phone shows cards, so there are no columns on screen (OFC-364).
     await page.getByRole("button", { name: /^Options/ }).click();
     await expect(page.getByLabel("Include deceased")).toBeVisible();
-    await expect(page.getByText("Columns", { exact: true })).toBeVisible();
+    await expect(page.getByText("Fields", { exact: true })).toBeVisible();
+    await expect(page.getByText("Columns", { exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Sort by")).toBeVisible();
+    await expect(page.getByLabel("Order")).toBeVisible();
     await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeVisible();
 
     // The summary badge counts active options even while the fold is collapsed.
@@ -590,5 +595,60 @@ test.describe("Directory mobile fold (OFC-211)", () => {
     await expect(page.getByRole("button", { name: /^Options/ })).toHaveCount(0);
     await expect(page.getByLabel("Include deceased")).toBeVisible();
     await expect(page.getByRole("button", { name: "Filters", exact: true })).toBeVisible();
+
+    // The picker keeps the desktop word, and Sort stays phone-only: the column
+    // headers are the sort affordance here (OFC-364).
+    await expect(page.getByText("Columns", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("Sort by")).toHaveCount(0);
+  });
+});
+
+/**
+ * The phone Sort control (OFC-364). On a phone the Directory renders cards, so
+ * there are no column headers — and a header click was the app's only sort
+ * affordance. These two selects are that affordance; the sort itself is the same
+ * URL-held state the grid has always used (D31).
+ */
+test.describe("Directory mobile sort (OFC-364)", () => {
+  /** The first card in the virtualized list, whichever brother currently sorts there. */
+  const firstCard = (page: Page) => page.locator('li[aria-posinset="1"]');
+
+  test("sorts the cards by a chosen field, in both directions, and shares in the URL", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: /^Options/ }).click();
+
+    // Class year ascending: the fixture's oldest class is 1970 (Brother001).
+    await page.getByLabel("Sort by").selectOption("classYear");
+    await expect(firstCard(page)).toContainText("Brother001");
+    await expect(page).toHaveURL(/sort=classYear/);
+
+    // Flipping Order alone keeps the field and reverses it: 2009 (Brother040).
+    // A dropdown must move only the dimension it names — unlike a header click,
+    // which deliberately resets direction when the column changes.
+    await page.getByLabel("Order").selectOption("desc");
+    await expect(firstCard(page)).toContainText("Brother040");
+    await expect(page).toHaveURL(/sort=classYear/);
+    await expect(page).toHaveURL(/dir=desc/);
+
+    // Changing the field keeps the chosen direction (Z→A by name).
+    await page.getByLabel("Sort by").selectOption("name");
+    await expect(firstCard(page)).toContainText("Webster");
+    // The default field encodes as the *absence* of `sort`, so a shared link
+    // never carries the pristine value; the non-default direction stays.
+    await expect(page).not.toHaveURL(/sort=/);
+    await expect(page).toHaveURL(/dir=desc/);
+  });
+
+  test("names the sort in force even when the lens hides that field", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await gotoDirectory(page);
+    // A link whose sort names a field its own `cols` doesn't show. The select
+    // must still report it, or it would misstate the order on screen.
+    await page.goto("/?sort=email&cols=classYear");
+    await page.getByRole("button", { name: /^Options/ }).click();
+    await expect(page.getByLabel("Sort by")).toHaveValue("email");
   });
 });

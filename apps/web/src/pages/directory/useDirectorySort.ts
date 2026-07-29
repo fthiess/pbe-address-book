@@ -12,6 +12,13 @@ import { COLUMNS, type ColumnKey, type SortDirection } from "./grid-model.js";
  * clicking the active header again toggles to descending (§5.6.2). The grid then
  * applies the (last, first, year) canonical order as the universal secondary key
  * (see `makeComparator`).
+ *
+ * `toggleSort` encodes *header* semantics, which are wrong for a pair of
+ * dropdowns: picking a field there must not silently reset the direction, and
+ * picking the field you are already sorted by must not flip it. So the phone's
+ * Sort control (OFC-364) drives {@link DirectorySort.setSortKey} and
+ * {@link DirectorySort.setDirection} instead — each moves exactly the one
+ * dimension its `<select>` names.
  */
 
 const DEFAULT_KEY: ColumnKey = "name";
@@ -27,6 +34,10 @@ export interface DirectorySort {
   direction: SortDirection;
   /** Header click: a new column sorts ascending; the active column toggles direction. */
   toggleSort: (key: ColumnKey) => void;
+  /** Sort by `key`, keeping the current direction — the phone's "Sort by" select (OFC-364). */
+  setSortKey: (key: ColumnKey) => void;
+  /** Set the direction outright, keeping the current column — the phone's "Order" select (OFC-364). */
+  setDirection: (direction: SortDirection) => void;
   /** Restore the default sort (Canonical Name ascending) — used by Reset (D38). */
   reset: () => void;
 }
@@ -61,13 +72,33 @@ export function useDirectorySort(): DirectorySort {
     [sortKey, direction, setKey, setDir],
   );
 
+  // Both setters write `null` for the default value, so a pristine sort keeps the
+  // URL clean (and a shared link never carries `?sort=name&dir=asc`) — the same
+  // encoding `toggleSort` uses.
+  const setSortKey = useCallback(
+    (key: ColumnKey) => {
+      if (!COLUMNS[key]?.sortable) {
+        return;
+      }
+      void setKey(key === DEFAULT_KEY ? null : key);
+    },
+    [setKey],
+  );
+
+  const setDirection = useCallback(
+    (next: SortDirection) => {
+      void setDir(next === DEFAULT_DIRECTION ? null : next);
+    },
+    [setDir],
+  );
+
   const reset = useCallback(() => {
     void setKey(null);
     void setDir(null);
   }, [setKey, setDir]);
 
   return useMemo(
-    () => ({ sortKey, direction, toggleSort, reset }),
-    [sortKey, direction, toggleSort, reset],
+    () => ({ sortKey, direction, toggleSort, setSortKey, setDirection, reset }),
+    [sortKey, direction, toggleSort, setSortKey, setDirection, reset],
   );
 }
