@@ -4,13 +4,20 @@ import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
 import { BackToDirectory } from "../components/BackToDirectory.js";
 import { ApiError, createProfile } from "../lib/api.js";
+import {
+  CLASS_YEAR_HELPER,
+  classYearErrorText,
+  parseClassYearInput,
+} from "./profile/class-year.js";
 import { Section, TextField } from "./profile/fields.js";
 
 /**
  * The **Add Brother** page (`/brother/new`; OFC-201) — the small first step of the
- * two-step create (DECISIONS N71). It collects only the **mandatory identity
- * essentials** every new brother needs to exist — the Constitution signer number,
- * name, and class year — then `POST`s them (creating a **Book-only** record) and
+ * two-step create (DECISIONS N71). It collects only the **identity essentials** every
+ * new brother needs to exist — the Constitution signer number and name, plus the class
+ * year, which is **optional** (OFC-365) but kept here because the common occasion for
+ * this page is an initiation, where a dozen brothers share one — then `POST`s them
+ * (creating a **Book-only** record) and
  * hands the admin straight to the **regular profile edit page** to fill in
  * everything else at their leisure. **Email is deliberately not here** (OFC-232): it
  * is an optional field, so it belongs on the edit page, where adding it is what
@@ -61,7 +68,7 @@ export function NewProfile() {
   function validate(): Record<string, string> {
     const currentYear = new Date().getUTCFullYear();
     const id = Number(idText.trim());
-    const classYear = classYearText.trim() === "" ? Number.NaN : Number(classYearText.trim());
+    const classYear = parseClassYearInput(classYearText);
     const candidate = {
       firstName: firstName.trim(),
       lastName: lastName.trim(),
@@ -100,7 +107,9 @@ export function NewProfile() {
         id,
         firstName: firstName.trim(),
         lastName: lastName.trim(),
-        classYear: Number(classYearText.trim()),
+        // An explicit `null` when the admin left it blank (D13's unknown) — never
+        // omitted, since the validator's required-fields pass rejects an `undefined`.
+        classYear: parseClassYearInput(classYearText),
         // No email: the create is Book-only (OFC-232). The admin adds an email on the
         // edit page next, which is what mints the Ghost member (D133).
       });
@@ -146,11 +155,11 @@ export function NewProfile() {
       <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">Add Brother</h1>
         <p className="mt-2 max-w-prose text-[length:var(--text-body)] text-muted-foreground">
-          Enter the essentials to create the brother — the signer number, name, and class year are
-          all required. Once the record is created, you'll be taken to the full profile page to add
-          any other details: <strong>email</strong>, address, telephone, photo, privacy preferences,
-          and more. (Adding an email there is what sets up the brother's sign-in and PBE News
-          subscription.)
+          Enter the essentials to create the brother — the signer number and name are required, and
+          the class year is optional. Once the record is created, you'll be taken to the full
+          profile page to add any other details: <strong>email</strong>, address, telephone, photo,
+          privacy preferences, and more. (Adding an email there is what sets up the brother's
+          sign-in and PBE News subscription.)
         </p>
       </header>
 
@@ -216,11 +225,11 @@ export function NewProfile() {
               setClassYearText(v);
               clearError("classYear");
             }}
-            error={errors.classYear}
+            error={classYearErrorText(classYearText, errors.classYear)}
             inputMode="numeric"
             mono
             placeholder="YYYY"
-            helper="A 4-digit year."
+            helper={CLASS_YEAR_HELPER}
           />
         </Section>
 

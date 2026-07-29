@@ -74,7 +74,7 @@ If you help maintain the membership, you may have a **manager** role, which the 
 
 Administrators have full access to everything. Adding, removing, and restoring brothers are administrator actions, and there is a dedicated **Admin** page for the system-wide operations that run online.
 
-**Adding and removing brothers.** A new brother is added from the **Add Brother** page, reached from the Directory, where you enter just the essentials — his Constitution signer number, name, and class year. His profile then opens so you can add anything else you have, such as his **email address** (adding an email is what sets up his sign-in and his PBE News subscription). From a brother's own profile, an administrator can change his role or, with a deliberate typed confirmation, delete him; removing the last administrator is prevented, so you can't accidentally lock everyone out.
+**Adding and removing brothers.** A new brother is added from the **Add Brother** page, reached from the Directory, where you enter just the essentials — his Constitution signer number and name, plus his class year if you know it (it is optional, and can be filled in later). His profile then opens so you can add anything else you have, such as his **email address** (adding an email is what sets up his sign-in and his PBE News subscription). From a brother's own profile, an administrator can change his role or, with a deliberate typed confirmation, delete him; removing the last administrator is prevented, so you can't accidentally lock everyone out.
 
 **De-brothering a member.** In rare and serious circumstances a brother may be removed from the brotherhood ("de-brothered"). This is an administrator action, taken by an administrator from the brother's own profile behind a deliberate confirmation. De-brothering hides the record from all brothers (managers and administrators still see it, with the name shown struck through), removes the member's PBE website account so he can no longer sign in to the website or to the Address Book, stops all PBE News email to him, and keeps his information out of any sharing with the MIT Alumni Association. It can be **reversed**: reinstating a de-brothered member restores his settings and re-creates his website account.
 
@@ -172,7 +172,7 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 #### Class year
 
-- **Helper text:** A 4-digit year, or “unknown”.
+- **Helper text:** An optional 4-digit year.
 - **Behind the “?”:** The year you and your pledge brothers associate with. Usually, but not necessarily, the same as your graduation year.
 
 #### Mug name

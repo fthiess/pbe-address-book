@@ -11,6 +11,7 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import type { ProfileRecord } from "../../lib/types.js";
 import { isBlankAddress } from "./address-edit.js";
+import { parseClassYearInput } from "./class-year.js";
 import { buildPatch, isDirty } from "./patch.js";
 import { sanitizeRepeatables } from "./repeatables.js";
 import type { Viewer } from "./viewer.js";
@@ -47,7 +48,7 @@ export interface ProfileDraft {
   draft: ProfileRecord;
   /** Set a text field; an empty value clears an optional field (→ `undefined`). */
   setText: (key: keyof Profile, value: string) => void;
-  /** The class-year input is string-backed; "" / "unknown" → `null`. */
+  /** The class-year input is string-backed; `parseClassYearInput` is the "" / "unknown" → `null` rule. */
   classYearText: string;
   setClassYear: (value: string) => void;
   /** Flip one privacy flag (the `privacy` sub-object). */
@@ -112,15 +113,7 @@ export function useProfileDraft(record: ProfileRecord, viewer: Viewer): ProfileD
   const setClassYear = useCallback(
     (value: string) => {
       setClassYearText(value);
-      const trimmed = value.trim();
-      let parsed: number | null;
-      if (trimmed === "" || /^unknown$/i.test(trimmed)) {
-        parsed = null;
-      } else {
-        const n = Number(trimmed);
-        parsed = Number.isInteger(n) ? n : Number.NaN;
-      }
-      setDraft((d) => ({ ...d, classYear: parsed }));
+      setDraft((d) => ({ ...d, classYear: parseClassYearInput(value) }));
       clearServerIssue("classYear");
     },
     [clearServerIssue],
