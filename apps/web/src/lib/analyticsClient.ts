@@ -66,11 +66,15 @@ export function initAnalytics(): void {
   const client: AnalyticsClient = {
     identify: (distinctId) => mixpanel.identify(distinctId),
     peopleSet: (properties) => mixpanel.people.set(properties),
+    register: (properties) => mixpanel.register(properties),
     track: (event, properties) => mixpanel.track(event, properties),
     reset: () => {
       mixpanel.reset();
       // `reset()` clears super properties along with the identity, so the app
       // discriminator has to be put back or every post-sign-out event loses it.
+      // ⚠ Only the app discriminator: the identity-scoped Constitution ID super
+      // property (N152) must stay cleared, or a shared machine would staple the
+      // departed brother's id onto the next person's events.
       mixpanel.register({ ...APP_SUPER_PROPERTIES });
     },
   };

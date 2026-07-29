@@ -43,6 +43,7 @@ import type { ThemeMode } from "./theme.js";
 export interface AnalyticsClient {
   identify(distinctId: string): void;
   peopleSet(properties: Record<string, unknown>): void;
+  register(properties: Record<string, unknown>): void;
   track(event: string, properties?: Record<string, unknown>): void;
   reset(): void;
 }
@@ -83,7 +84,9 @@ export function __resetAnalyticsStateForTests(): void {
  * recoverable — Simplified ID Merge folds a device's prior anonymous events into
  * the user retroactively once a real `identify()` lands.
  *
- * Constitution ID and role ride along as **user properties** per D88; `name` is
+ * Constitution ID and role ride along as **user properties** per D88, and the
+ * Constitution ID is *additionally* registered as a **super property** so it rides
+ * every subsequent event (N152) — see the `register` call below for why. `name` is
  * deliberately not sent (D88 dropped it, and it stays dropped).
  */
 export function identifyMember(
@@ -97,6 +100,24 @@ export function identifyMember(
   identifiedAs = ghostMemberUuid;
   client.identify(ghostMemberUuid);
   client.peopleSet({ "Constitution ID": profileId, Role: role });
+  // Also a **super property**, so the id rides every event and not just the person
+  // record (N152, Forrest's call). Without it the Events feed is a wall of
+  // near-identical uuids: you cannot tell whose row you are reading without opening
+  // the profile, and you cannot practically filter a set of people in or out.
+  //
+  // This is not a P6 relaxation. P6 keeps *whom a brother viewed, starred or
+  // searched for* out of the payload; this is the **acting** brother's own id, and
+  // Mixpanel already holds it — `$user_id` *is* this id's twin, and the newsletter
+  // half of the project already joins that uuid to an email (`default.hbs`). What
+  // changes is only which Mixpanel surfaces can attribute a row without a profile
+  // lookup. `name` stays out (D88), and `BLOCKED_PROPERTIES` is untouched.
+  //
+  // ⚠ Deliberately **not** added to `APP_SUPER_PROPERTIES`: that set is re-registered
+  // by `reset()` on sign-out, and re-attaching a departed brother's id to the next
+  // person's events on a shared machine is exactly the misattribution `reset()`
+  // exists to prevent. Registering it here — after the uuid guard — means it is
+  // scoped to an identified session and cleared with the identity.
+  client.register({ "Constitution ID": profileId });
 }
 
 /**
