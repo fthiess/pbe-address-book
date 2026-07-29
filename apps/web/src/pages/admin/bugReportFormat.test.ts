@@ -34,11 +34,16 @@ describe("formatTimestamp", () => {
 });
 
 describe("formatForCopy", () => {
-  it("includes the submitter, timestamp, route, url, and all context, then the description", () => {
+  it("leads with the submitter, timestamp and the report itself, then folds the context away", () => {
     expect(formatForCopy(full)).toBe(
       [
         "Bug report from James Smyth '84 (#5247)",
         "Submitted: 2026-06-12 · 14:02 UTC",
+        "",
+        "Save did nothing.",
+        "",
+        ">>> Technical details",
+        "```",
         "Page: /brother/5247/edit",
         "URL: https://book.pbe400.org/brother/5247/edit",
         "Device: Desktop",
@@ -49,9 +54,16 @@ describe("formatForCopy", () => {
         "Web version: abc123",
         "API version: def456",
         "User agent: Mozilla/5.0",
-        "",
-        "Save did nothing.",
+        "```",
+        ">>>",
       ].join("\n"),
+    );
+  });
+
+  it("puts the description above the fold, where the technical block cannot bury it", () => {
+    const copied = formatForCopy(full);
+    expect(copied.indexOf("Save did nothing.")).toBeLessThan(
+      copied.indexOf(">>> Technical details"),
     );
   });
 
@@ -69,9 +81,14 @@ describe("formatForCopy", () => {
       [
         "Bug report from (former member) (#5002)",
         "Submitted: 2026-06-13 · 10:00 UTC",
-        "Page: (unknown)",
         "",
         "Just the text.",
+        "",
+        ">>> Technical details",
+        "```",
+        "Page: (unknown)",
+        "```",
+        ">>>",
       ].join("\n"),
     );
   });
