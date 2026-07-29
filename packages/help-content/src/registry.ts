@@ -96,7 +96,7 @@ export const helpContent: HelpContent = {
   "profile.classYear": {
     key: "profile.classYear",
     label: "Class year",
-    helperText: "A 4-digit year, or “unknown”.",
+    helperText: "An optional 4-digit year.",
     toggleTip:
       "The year you and your pledge brothers associate with. Usually, but not necessarily, the same as your graduation year.",
   },

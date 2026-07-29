@@ -20,7 +20,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Data model & vocabularies
 
 - Collections & ids: **D12** (three collections; private state split), **N6** (single numeric id = Constitution ID).
-- Fields: **D13** (classYear `number | null`), **N34** (middleName retained), **N38** (US-only ZIP validation).
+- Fields: **D13** (classYear `number | null`) → **N150** (current — the string→value parse is shared by Add Brother and Profile edit in `pages/profile/class-year.ts`; blank *and* "unknown" mean `null`, the create sends an explicit `null`, and the helper line reddens rather than rewording, except for the range message), **N34** (middleName retained), **N38** (US-only ZIP validation).
 - Names: **D15** (constructed Canonical Name, derived ambiguity; served to the Linter per D58).
 - Majors: D14 → **D69** (checked-in vocabulary + seed/reconcile script); interim display names **N29**.
 - Country/state: D18 (ISO country codes) → **D37** (US/CA state-province vocabulary); display names via **N7**.
@@ -62,7 +62,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Profile page
 
-- Model: **D43** (view/edit, two-up layout) + **N33** (edit mode accumulates no history), **D44** (one layout, four role projections), **D50** (validation/save/conflict) with guard order **N11**.
+- Model: **D43** (view/edit, two-up layout) + **N33** (edit mode accumulates no history), **D44** (one layout, four role projections), **D50** (validation/save/conflict) with guard order **N11** — ⚠ D50 shares the *validator*, not the string→value parse in front of it, which is what drifted in **N150**.
 - Controls: **D46** → **N36** (Radix Combobox, editable address, sanitized repeatables) → **N108** (Combobox gains a `renderOption` prop; the course picker shows chips via the shared `CourseChipName` — OFC-265 follow-up); polish N35 → **N37** (incl. phone canonicalization) → **N107** (6b-5: the emergency/spouse share toggles unified into the Privacy & consent group; Admin Note promoted to its own "Administrative" view section, left column under Preferences; repeatable Remove-button centring + spacing — OFC-270/271/260) → **N109** (live-test: the repeatable spacing was inert — `space-y` cancelled by the rows' `m-0` → 0px; real fix is flex `gap` + `self-start` on the Add button; and the "Administrative" Admin-Note section reaches the edit page too — current).
 - Headshot: **D47** (crop-on-upload, staged until Save) → **D158** (click/Enter opens the full **512² square** in a modal — the stored image the page already downloaded, so it costs no bytes; opt-in per call site, never over the initials avatar — OFC-353).
 - Layout chrome: **N144** (a full-width section renders its own `Band` — rule + rhythm — so a section that renders nothing leaves no stranded separator behind it; OFC-318).

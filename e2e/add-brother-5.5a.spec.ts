@@ -126,7 +126,7 @@ test.describe("Add Brother essentials (5.5a)", () => {
     // Email is NOT collected here (OFC-232) — no email input, and the copy tells the
     // admin it (and the Ghost sign-in it sets up) is added on the profile page.
     await expect(page.locator("#new-email")).toHaveCount(0);
-    await expect(page.getByText(/all required/i)).toBeVisible();
+    await expect(page.getByText(/the class year is optional/i)).toBeVisible();
     await expect(page.getByText(/full profile page to add any other details/i)).toBeVisible();
 
     const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
@@ -154,6 +154,36 @@ test.describe("Add Brother essentials (5.5a)", () => {
       classYear: 2001,
     });
     expect(posted && "email" in posted).toBe(false);
+  });
+
+  test("creates a brother with the class year left blank — it is optional (OFC-365)", async ({
+    page,
+  }) => {
+    const mocks = await gotoNew(page, "admin");
+    await page.fill("#new-constitutionId", String(NEW_ID));
+    await page.fill("#new-firstName", "Fred");
+    await page.fill("#new-lastName", "Newman");
+    // Class year deliberately left blank — an admin adding a brother may not know it.
+    await page.getByRole("button", { name: "Create brother" }).click();
+
+    // No inline complaint, and the create went through to the edit-page hand-off.
+    await expect(page).toHaveURL(new RegExp(`/brother/${NEW_ID}/edit$`));
+    // `classYear` is sent as an explicit `null` (D13's unknown), never omitted —
+    // the shared validator's required-fields pass rejects an `undefined`.
+    const posted = mocks.posted();
+    expect(posted).toMatchObject({ id: NEW_ID, classYear: null });
+  });
+
+  test("accepts the typed word “unknown” for the class year, as the edit page does", async ({
+    page,
+  }) => {
+    const mocks = await gotoNew(page, "admin");
+    await fillEssentials(page);
+    await page.fill("#new-classYear", "Unknown");
+    await page.getByRole("button", { name: "Create brother" }).click();
+
+    await expect(page).toHaveURL(new RegExp(`/brother/${NEW_ID}/edit$`));
+    expect(mocks.posted()).toMatchObject({ classYear: null });
   });
 
   test("blocks an empty submit with inline errors and makes no create call", async ({ page }) => {

@@ -14,6 +14,7 @@ import { type HeadshotChange, HeadshotEditor } from "./HeadshotEditor.js";
 import { MajorsEditor } from "./MajorsEditor.js";
 import { RelationshipsEditor } from "./RelationshipsEditor.js";
 import { EmergencyContactsEditor, LinksEditor } from "./RepeatableEditors.js";
+import { classYearErrorText } from "./class-year.js";
 import { SWITCH_KEYS } from "./consent.js";
 import { canonicalName } from "./display.js";
 import {
@@ -355,7 +356,7 @@ export function ProfileEdit({
                     value={form.classYearText}
                     onChange={form.setClassYear}
                     onBlur={() => form.touch("classYear")}
-                    error={form.errorFor("classYear")}
+                    error={classYearErrorText(form.classYearText, form.errorFor("classYear"))}
                     inputMode="numeric"
                     mono
                     placeholder="YYYY"
