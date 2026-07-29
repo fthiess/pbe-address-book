@@ -27,6 +27,7 @@ import { DirectoryCards } from "./directory/DirectoryCards.js";
 import { DirectoryGrid } from "./directory/DirectoryGrid.js";
 import { FilterPanel } from "./directory/FilterPanel.js";
 import { useSelection } from "./directory/SelectionContext.js";
+import { SortControl } from "./directory/SortControl.js";
 import { useStars } from "./directory/StarsContext.js";
 import {
   autoFitChipStripWidth,
@@ -336,7 +337,9 @@ export function Directory() {
       </label>
     </div>
   );
-  const columnPicker = <ColumnPicker lens={lens} />;
+  // Two vocabularies for one control: a phone shows cards, so what the desktop
+  // calls Columns are Fields there (OFC-364). The picker itself is identical.
+  const columnPicker = <ColumnPicker lens={lens} wording={wide ? "columns" : "fields"} />;
   const filterPanel = (
     <FilterPanel
       filters={filters.filters}
@@ -462,6 +465,11 @@ export function Directory() {
             <div id={optionsRegionId} className="mt-3 flex flex-col gap-3">
               {quickToggles}
               {columnPicker}
+              {/* Sort is a phone-only control: on desktop the column headers are
+                  the sort affordance, and below `md` there are no headers at all
+                  (OFC-364). It sits directly under the Fields picker — the two
+                  together are "what these cards show, and in what order". */}
+              <SortControl sort={sort} lens={lens} role={role} />
               {filterPanel}
               {actionBar}
             </div>

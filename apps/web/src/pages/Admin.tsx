@@ -1,18 +1,11 @@
-import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
+import { BackToDirectory } from "../components/BackToDirectory.js";
 import { BackupCard } from "./admin/BackupCard.js";
 import { BannerCard } from "./admin/BannerCard.js";
 import { BounceReportCard } from "./admin/BounceReportCard.js";
 import { BugReportsCard } from "./admin/BugReportsCard.js";
 import { GhostAuditCard } from "./admin/GhostAuditCard.js";
-
-/**
- * Shared styling for the "← Directory" affordance, whether button or link.
- * Identical to the Profile page's back link so the affordance reads the same
- * across pages, matched to the Prev/Next controls' size/weight/colour (OFC-198).
- */
-const BACK_CLASS =
-  "inline-flex items-center gap-1.5 rounded-[var(--radius-md)] px-1 py-1 text-[length:var(--text-label)] font-medium text-foreground outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
  * The Admin control panel (`/admin`; PRD §5.8) — the whole-database operations
@@ -42,15 +35,7 @@ export function Admin() {
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      {fromDirectory ? (
-        <button type="button" onClick={() => navigate(-1)} className={BACK_CLASS}>
-          <span aria-hidden="true">←</span> Directory
-        </button>
-      ) : (
-        <Link to="/" className={BACK_CLASS}>
-          <span aria-hidden="true">←</span> Directory
-        </Link>
-      )}
+      <BackToDirectory onPop={fromDirectory ? () => navigate(-1) : null} />
       <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">
           Administrative Tools

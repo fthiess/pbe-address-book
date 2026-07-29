@@ -15,14 +15,50 @@ import type { ColumnLens } from "./useColumnLens.js";
  * The restricted, manager/administrator-only columns appear in their own labelled
  * group only when the role may select them — the lens already filters them out
  * for brothers, so the section is simply absent there.
+ *
+ * **The control is called "Fields" on a phone** (OFC-364): below `md` the Directory
+ * renders cards, not a table, so there are no columns on screen and the desktop
+ * word names nothing the reader can see. The underlying model, the `cols` URL
+ * parameter, the localStorage key, and the analytics event names are unchanged —
+ * this is the visible word only, chosen by the caller that knows the width.
  */
 
-const GROUP_LABEL: Partial<Record<ColumnGroup, string>> = {
-  optional: "More columns",
-  restricted: "Staff columns",
+const GROUP_LABEL: Partial<Record<ColumnGroup, "optional" | "restricted">> = {
+  optional: "optional",
+  restricted: "restricted",
 };
 
-export function ColumnPicker({ lens }: { lens: ColumnLens }) {
+/**
+ * Every string that changes with the layout's word for a column. Grouped in one
+ * table so the two vocabularies stay parallel and a future third caller can't
+ * half-rename the control.
+ */
+const WORDING = {
+  columns: {
+    trigger: "Columns",
+    legend: "Choose which columns to show",
+    optional: "More columns",
+    restricted: "Staff columns",
+    reset: "Reset to default columns",
+  },
+  fields: {
+    trigger: "Fields",
+    legend: "Choose which fields to show",
+    optional: "More fields",
+    restricted: "Staff fields",
+    reset: "Reset to default fields",
+  },
+} as const;
+
+export function ColumnPicker({
+  lens,
+  wording = "columns",
+}: {
+  lens: ColumnLens;
+  /** Which vocabulary to show: table columns (desktop) or card fields (phone, OFC-364). */
+  wording?: keyof typeof WORDING;
+}) {
+  const words = WORDING[wording];
   const panelId = useId();
   const ref = useRef<HTMLDetailsElement>(null);
   useDetailsAutoClose(ref);
@@ -35,14 +71,14 @@ export function ColumnPicker({ lens }: { lens: ColumnLens }) {
     <details ref={ref} className="group relative">
       <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-lg border border-input bg-background px-3 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
         <Columns3 size={15} strokeWidth={1.4} aria-hidden="true" />
-        Columns
+        {words.trigger}
       </summary>
       <div
         id={panelId}
         className="absolute right-0 z-30 mt-2 w-60 rounded-xl border border-border bg-popover p-2 text-popover-foreground shadow-lg"
       >
         <fieldset className="m-0 border-0 p-0">
-          <legend className="sr-only">Choose which columns to show</legend>
+          <legend className="sr-only">{words.legend}</legend>
           {groups.map((group) => {
             const columns = lens.available.filter((column) => column.group === group);
             if (columns.length === 0) {
@@ -52,7 +88,7 @@ export function ColumnPicker({ lens }: { lens: ColumnLens }) {
               <div key={group} className="mb-1 last:mb-0">
                 {GROUP_LABEL[group] && (
                   <p className="px-2 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    {GROUP_LABEL[group]}
+                    {words[GROUP_LABEL[group]]}
                   </p>
                 )}
                 {columns.map((column) => (
@@ -88,7 +124,7 @@ export function ColumnPicker({ lens }: { lens: ColumnLens }) {
             }}
             className="w-full rounded-lg px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:outline-none"
           >
-            Reset to default columns
+            {words.reset}
           </button>
         </div>
       </div>
