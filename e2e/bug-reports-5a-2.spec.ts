@@ -246,6 +246,19 @@ test.describe("Bug reports — admin queue", () => {
     expect(clip).toContain("Web version: web-abc");
     expect(clip).toContain("API version: api-def");
     expect(clip).toContain("The star column doesn't update right away on my iPad.");
+
+    // Shaped for a Linear paste (OFC-366): the member's own words come first, and the
+    // diagnostics follow inside a collapsible fenced block. `toContain` alone cannot
+    // tell the new layout from the old one — only the ordering can.
+    const description = clip.indexOf("The star column doesn't update right away on my iPad.");
+    const fold = clip.indexOf(">>> Technical details");
+    expect(description).toBeGreaterThan(-1);
+    expect(fold).toBeGreaterThan(description);
+    expect(clip.indexOf("Viewport: 820x1180")).toBeGreaterThan(fold);
+    // Normalized because the Windows clipboard hands back CRLF whatever was written —
+    // the app writes "\n" (the unit tests assert the exact string). CI is Linux, so an
+    // un-normalized assertion would pass there and fail only on a developer's machine.
+    expect(clip.replace(/\r\n/g, "\n").endsWith("```\n>>>")).toBe(true);
   });
 
   test("Delete asks for confirmation, then removes the report", async ({ page }) => {

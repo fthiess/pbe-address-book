@@ -145,7 +145,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 ## Admin surfaces
 
 - **D52** (control-panel surfaces; amended by D55/D63/D68/D100/D114); **D51** + ~~N50~~ → **D128** (segmented role control now reads `record.role`; role write re-pathed to `PUT /api/profiles/{id}/role`; last-admin over the ProfileCache); N49 (4c-2 privileged-action slice).
-- Bug reports: **D121** → **N60** (Book receives bugs, doesn't track them) → **N61** (endpoints; two-value status; DELETE verb).
+- Bug reports: **D121** → **N60** (Book receives bugs, doesn't track them — so "Copy report" is the entire Book→tracker path) → **N61** (endpoints; two-value status; DELETE verb) → **N151** (current — the clipboard block is shaped for a Linear paste: description first, diagnostics in a `>>>` collapsible **code fence**, because Linear's paste honours neither CommonMark hard-break spelling; measured, not assumed).
 
 ## Process & scope
 
