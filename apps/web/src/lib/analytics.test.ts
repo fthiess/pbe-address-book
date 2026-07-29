@@ -42,6 +42,7 @@ function fakeClient() {
   return {
     identify: vi.fn(),
     peopleSet: vi.fn(),
+    register: vi.fn(),
     track: vi.fn(),
     reset: vi.fn(),
   } satisfies AnalyticsClient;
@@ -79,6 +80,23 @@ describe("identifyMember (D137/N123)", () => {
     expect(JSON.stringify(properties)).not.toMatch(/name/i);
   });
 
+  it("registers Constitution ID as a super property so it rides every event (N152)", () => {
+    identifyMember("uuid-abc", 5247, "brother");
+
+    expect(client.register).toHaveBeenCalledExactlyOnceWith({ "Constitution ID": 5247 });
+  });
+
+  it("registers the id ALONE — no name, and no Role riding events (N152)", () => {
+    // The super property is scoped to the one property the Events feed needs to be
+    // readable. Role stays a person property: nobody asked for role-segmented event
+    // rows, and every property added here is added to every event forever.
+    identifyMember("uuid-abc", 5247, "admin");
+
+    const properties = client.register.mock.calls[0]?.[0] ?? {};
+    expect(Object.keys(properties)).toEqual(["Constitution ID"]);
+    expect(JSON.stringify(properties)).not.toMatch(/name/i);
+  });
+
   it("does NOT identify when the uuid is absent — no fallback key", () => {
     // The load-bearing rule of 7a-2. Under Simplified ID Merge two `$user_id`s can
     // never be merged, so identifying on any other key would permanently split this
@@ -87,6 +105,9 @@ describe("identifyMember (D137/N123)", () => {
 
     expect(client.identify).not.toHaveBeenCalled();
     expect(client.peopleSet).not.toHaveBeenCalled();
+    // The super property sits behind the same guard: an anonymous session must not
+    // carry an id its `$user_id` doesn't match (N152).
+    expect(client.register).not.toHaveBeenCalled();
   });
 
   it("identifies once per uuid, not once per render", () => {
@@ -95,6 +116,8 @@ describe("identifyMember (D137/N123)", () => {
     identifyMember("uuid-abc", 5247, "admin");
 
     expect(client.identify).toHaveBeenCalledOnce();
+    // The latch covers the super property too — it sits below the same early return.
+    expect(client.register).toHaveBeenCalledOnce();
   });
 
   it("re-identifies after a reset, so a second brother on one machine is a new person", () => {
@@ -104,6 +127,12 @@ describe("identifyMember (D137/N123)", () => {
 
     expect(client.identify).toHaveBeenCalledTimes(2);
     expect(client.identify).toHaveBeenLastCalledWith("uuid-xyz");
+    // The super property re-registers onto the *new* brother. `reset()` clears super
+    // properties, so the second registration replaces rather than accumulates — which
+    // is the whole reason the id is registered here and not in APP_SUPER_PROPERTIES
+    // (which `reset()` deliberately restores). N152.
+    expect(client.register).toHaveBeenCalledTimes(2);
+    expect(client.register).toHaveBeenLastCalledWith({ "Constitution ID": 5301 });
   });
 
   it("is inert with no client registered (a token-less dev or CI build)", () => {
@@ -374,6 +403,7 @@ describe("7a-4 follow-up events (OFC-315) — roles/settings/booleans only, neve
     const throwing = {
       identify: vi.fn(),
       peopleSet: vi.fn(),
+      register: vi.fn(),
       track: vi.fn(() => {
         throw new Error("mixpanel exploded");
       }),
