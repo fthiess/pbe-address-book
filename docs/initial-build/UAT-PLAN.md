@@ -34,7 +34,7 @@ The tooling tickets (OFC-248, OFC-249) are ordinary Book sessions and can likewi
 
 ## 3. Environment and data policy
 
-**Platform: the existing staging environment** (`pbe-book-staging.web.app` + Ghost-staging at `staging.pbe400.org`). This resolves N64's deferred fork as its option (a), with one refinement the fork's framing missed: *code* deploys and *data* reseeds are separable, so "frozen" applies only to the data layer.
+**Platform: the existing staging environment** (`book-staging.pbe400.org` — renamed from `pbe-book-staging.web.app` mid-window, D161 — plus Ghost-staging at `staging.pbe400.org`). This resolves N64's deferred fork as its option (a), with one refinement the fork's framing missed: *code* deploys and *data* reseeds are separable, so "frozen" applies only to the data layer.
 
 - **During the UAT window, the repository variable `STAGING_AUTOSEED` is set to `false`.** Merges to `main` still auto-deploy code to staging — testers see fixes and improvements as soon as they land, which is the point of running UAT and remediation concurrently — but the reseed step is skipped, so tester links, role upgrades, profile edits, and photos survive every deploy. Regressions slipping through are an accepted risk on a test environment (Forrest's call, D132).
 - **A full manual reseed remains available at any time** and reproduces the complete UAT state in one pass: fake profiles → Ghost mirror → tester roster → photo corpus (§5–§6 give the pieces). The known cost: a mid-window reseed wipes testers' in-progress edits (accepted, D132). Use it for data-shape fixes or a deliberate clean slate.
