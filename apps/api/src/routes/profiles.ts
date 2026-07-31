@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PRIVACY,
   type PrivacyFlags,
   type Profile,
   type Role,
@@ -364,30 +365,14 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
   );
 }
 
-/**
- * The schema privacy defaults for a new brother (DATABASE-SCHEMA §3.3): **all
- * five on**. Overlaid by any boolean the admin actually sent, so an omitted flag
- * never lands `undefined`.
- *
- * `shareEmergency`/`shareSpousePartner` defaulted *off* from D93 until D163
- * reversed it (OFC-373). The short version of the reversal: a brother fills in
- * an emergency contact or a spouse precisely because he wants it shared, and
- * emergency information that nobody may read serves no function at all. Read
- * D163 before flipping either back — it is the third pass over this question,
- * and the two before it (D93, and OFC-268 declined at N107) landed the other way.
- *
- * ⚠ This constant governs the **create route only**. The fail-closed fallbacks
- * elsewhere — `data/cache.ts` for a record whose stored `privacy` is malformed,
- * `pages/profile/patch.ts` for a block that never reached the client — are
- * safety defaults, not schema defaults, and stay all-`false` deliberately.
- */
-const DEFAULT_PRIVACY: PrivacyFlags = {
-  shareEmail: true,
-  sharePhone: true,
-  shareAddress: true,
-  shareEmergency: true,
-  shareSpousePartner: true,
-};
+// The schema privacy defaults for a new brother are `DEFAULT_PRIVACY` from
+// `@pbe/shared` — all five toggles on (D163). Deliberately not re-declared here:
+// the create route is only one of the programs that must agree on them (the
+// staging tester seed and the Phase 8 bulk-loader are the others), and a
+// hand-copied literal is how they drift. Read the constant's own doc comment
+// before changing a flag; it carries D163's reasoning and the ⚠ distinction
+// between this schema default and the fail-closed fallbacks in `data/cache.ts`
+// and `pages/profile/patch.ts`, which stay all-`false`.
 
 /**
  * Build a well-formed new `Profile` from the admin's create body (OFC-201). The

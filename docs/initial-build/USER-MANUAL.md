@@ -50,7 +50,7 @@ Open your own profile from the menu behind your profile icon at the top right of
 
 **Your contact preferences — the switches.** Several settings on your profile are simple two-position switches, each labeled in plain words for exactly what it controls — what you will and won't receive, or who can and can't see a given piece of information. Each switch states, in plain language, what it is doing right now: "Brothers can reach you by email" when it is on, "Your email is hidden from other brothers" when it is off. So you never have to work out what flipping it would mean — the switch always describes the situation you are actually in. A few of them carry a "?" as well, where there is more worth explaining than the line itself can carry.
 
-Most of these start in the open position — but the ones that govern sharing *beyond* the brotherhood (e.g. Share with the MIT Alumni Association), or that involve other people’s information (e.g. spouse and emergency contacts) start *off*, so that kind of sharing happens only if you deliberately turn it on.
+These start in the open position — the Address Book exists so that brothers can reach one another. The exception is sharing *beyond* the brotherhood: Share with the MIT Alumni Association starts *off*, so information leaves PBE only if you deliberately turn it on.
 
 ![The Privacy and consent section while editing: switches for sharing email, telephone, mailing address, emergency contacts and spouse or partner, then PBE News email, directory listing, and — set apart — sharing beyond the brotherhood with the MIT Alumni Association.](../images/profile-edit-privacy.png)
 

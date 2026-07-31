@@ -67,7 +67,7 @@ interface Profile {
   // --- Professional / personal ---
   employerName?: string;
   jobTitle?: string;
-  spousePartnerName?: string;          // toggle: shareSpousePartner — third-party data, default off (decision D93)
+  spousePartnerName?: string;          // toggle: shareSpousePartner — default true (decision D163; off under D93)
   majors?: string[];                   // course codes (e.g. ["6-3"]); primary first; validated vs. `majors`
   links?: Link[];                      // up to 5 external links
 
