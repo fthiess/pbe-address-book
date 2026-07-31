@@ -68,7 +68,7 @@ describe("MIXPANEL_INIT_CONFIG", () => {
     // duplicated here deliberately: the test is the reminder that firebase.json's
     // `connect-src` has to move with it.
     expect(MIXPANEL_INIT_CONFIG.api_host).toBe(MIXPANEL_API_HOST);
-    expect(MIXPANEL_API_HOST).toBe("https://api-js.mixpanel.com");
+    expect(MIXPANEL_API_HOST).toBe("https://mp.pbe400.org");
   });
 });
 

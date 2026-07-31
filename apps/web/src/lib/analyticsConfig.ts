@@ -54,18 +54,28 @@ export const BLOCKED_PROPERTIES = [
 export const APP_SUPER_PROPERTIES = { app: "book" } as const;
 
 /**
- * Mixpanel's own default ingestion origin (read from `DEFAULT_CONFIG` in
- * `mixpanel-browser`, not inferred). `firebase.json`'s CSP `connect-src` must list
- * exactly this origin — if a library upgrade moves it, events fail on a CSP
- * violation and this constant is where to look.
+ * Where Book's events are sent. `firebase.json`'s CSP `connect-src` must list
+ * exactly this origin — the two are duplicated deliberately and a unit test
+ * asserts the literal, because moving one without the other fails as a CSP
+ * violation rather than as anything legible.
  *
- * Book talks to Mixpanel **directly**, not through the newsletter's
- * `mp.pbe400.org` first-party proxy (D140, resolving what D139 parked): the proxy
- * defeats ad blockers only by being same-site, and Book-staging at
- * `pbe-book-staging.web.app` is a different registrable domain from `pbe400.org`.
- * At cutover `book.pbe400.org` makes it genuinely same-site — see CUTOVER-PLAN.md.
+ * Book routes through the newsletter's `mp.pbe400.org` **first-party proxy**
+ * (D162, amending D140). D139 and D140 both deferred this on one explicit
+ * ground — "the proxy defeats ad blockers only by being same-site", and Book
+ * then lived at `pbe-book-staging.web.app`, a different registrable domain from
+ * `pbe400.org`. D161 moved Book-staging to `book-staging.pbe400.org`, so that
+ * condition now holds and the deferral has expired on its own terms.
+ *
+ * ⚠ This is not merely blocklist evasion. Safari treats a **cross-site** request
+ * as third-party however benign the destination, which is why the same-site
+ * requirement was the load-bearing part: iOS traffic was the observed gap.
+ *
+ * ⚠ The proxy is Caddy on gladstone — a single VM. Book's analytics now depend
+ * on it. Acceptable for staging; decide deliberately before production, since
+ * D126 keeps Book's *serving* path free of extra infrastructure and this puts
+ * some in its *telemetry* path.
  */
-export const MIXPANEL_API_HOST = "https://api-js.mixpanel.com";
+export const MIXPANEL_API_HOST = "https://mp.pbe400.org";
 
 /**
  * The `init()` options, minus the token. Every value here is deliberate; several

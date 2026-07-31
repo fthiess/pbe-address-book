@@ -2047,6 +2047,8 @@ D138 settled the shape of Book's Mixpanel integration and 7a-2 built it. Three o
 
 *Amends **D138** in the analytics-delivery chain D138 → **D140** (current). Resolves the `api_host` question D139 parked. Interacts with N94 (whose default-to-production rule this deliberately inverts for one define, and only for this one), D74 (the ceiling raised alongside), D88 (`ignore_dnt` retained), and D108 (the assertion pattern borrowed). Log-tail order: N123 → D140.*
 
+*Later updated by: D162 — Book now routes through `mp.pbe400.org` after all. This entry's reasoning is unchanged and was not wrong: it deferred the proxy explicitly until Book became same-site with `pbe400.org`, and D161 made that true.*
+
 ### N124 — 7a-2 as built: the analytics seam holds no Mixpanel code, page views key on route `handle` metadata, and the D74 ceiling rises to 270 KB
 
 **The seam splits logic from library, for a testing reason that turned out to be structural.** `lib/analytics.ts` holds every decision — when to identify, what may ride an event, how a result count is bucketed — and imports nothing from `mixpanel-browser`. `lib/analyticsClient.ts` imports the library, builds a four-method client, and registers it; `main.tsx` is the only caller. The immediate motive was testability: `mixpanel-browser` touches `window` at module scope and the SPA's unit tests run under Vitest's **node** environment with no jsdom, so a static import anywhere in the logic path would have made the whole module untestable and pushed the P6 rules out to Playwright, where they would be checked by observation rather than by assertion. The shape is the same seam `api.ts` already uses for its 401 handler. The side benefit is the one worth keeping: **until a client is registered every analytics call is a no-op**, so a token-less build — local dev, CI, e2e — is not "analytics that fails" but "analytics that isn't there", with no error path to reason about.
@@ -2706,3 +2708,21 @@ Staging Book is now served at **`https://book-staging.pbe400.org`** — a Fireba
 **Cost to testers:** a new origin means a new `__session` cookie, so every UAT tester signs in again once. Accepted as cheaper than a tester who cannot reach the site at all.
 
 *Amends the allowlist value in D104/N2 and the `book_url` table in D139; neither decision's reasoning changes.*
+
+### D162 — Book's Mixpanel traffic moves to the `mp.pbe400.org` first-party proxy *(Stage 2.1 / UAT; Linear: OFC-371)* **(Forrest's call)**
+
+`MIXPANEL_API_HOST` becomes `https://mp.pbe400.org` and `firebase.json`'s CSP `connect-src` moves with it. **Amends D140**, and closes the question D139 originally parked.
+
+**The deferral expired on its own terms.** D139 and D140 both declined the proxy for one stated reason — *"the proxy defeats ad blockers only by being same-site"* — and Book-staging then sat at `pbe-book-staging.web.app`, a different registrable domain from `pbe400.org`. **D161 moved it to `book-staging.pbe400.org`.** Both entries also said, in as many words, that at that point the proxy "starts earning its keep." Nothing about the reasoning changed; the precondition it was waiting on arrived.
+
+**The observed gap that prompted it.** Cloud Run recorded **36 iOS app loads across the UAT window** (12 / 15 / 9 on Jul 28–30) while Mixpanel appeared to show nothing from them. ⚠ **Not established as blocking** — read this before concluding the proxy fixed anything. **OFC-369 predicts precisely the same symptom without any blocking at all:** a slow Ghost uuid lookup leaves a session unidentified for its whole life, and the "UAT Testers" cohort is defined as `Constitution ID Is numeric`, so unidentified sessions are excluded *by construction* and the view is empty while the events sit in an anonymous cluster. **If iOS events are still missing after this ships, OFC-369 is the suspect, not the proxy.** The distinguishing check is all `app = "book"` events over three days with **no cohort filter**, broken down by `$os`.
+
+**Why same-site was the load-bearing part, and not just blocklists.** A domain blocklist keys on the *destination* hostname, so `mp.pbe400.org` evades that class from any origin. **Safari is the case that needed the domain move**: it treats a cross-site request as third-party however benign the destination, and iOS was the observed gap. D140's compressed phrasing ("only by being same-site") is imprecise about blocklists but correct about the case that mattered here.
+
+**Verified before committing:** a CORS preflight to `https://mp.pbe400.org/track/` sent with `Origin: https://book-staging.pbe400.org` returns `200` with `Access-Control-Allow-Origin` echoing that origin, and a tracking `POST` returns `200`. The proxy's Caddy config routes `/track/`, `/engage/` etc. through its catch-all to `api-js.mixpanel.com`; Book bundles `mixpanel-browser` rather than loading it from a CDN, so the `/mp-cdn/*` path the newsletter uses is not involved.
+
+**⚠ Book's telemetry now depends on gladstone, a single VM.** D126 deliberately keeps Book's *serving* path free of extra infrastructure; this puts some in its *telemetry* path. Acceptable on staging, where losing analytics is an inconvenience. **Decide it deliberately before production** rather than inheriting it — the alternative is reverting `api_host` for the prod tier only, on the same environment-specific pattern D138 uses for the token.
+
+**`cross_subdomain_cookie` stays `false`.** CUTOVER-PLAN notes `.pbe400.org` "becomes a real option" now that Book is same-site. Sharing Mixpanel's identity cookie across every `pbe400.org` subdomain is a privacy decision on its own merits, not a consequence of changing an ingestion host. **Still open.**
+
+*Amends D140 (which said "no, until cutover"); answers the question D139 parked.*
