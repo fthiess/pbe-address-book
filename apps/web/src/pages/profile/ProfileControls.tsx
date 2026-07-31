@@ -580,33 +580,33 @@ function MarkDeceasedDialog({
             All fields are optional. Enter either a full date of death or just a year, not both.
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {/* ⚠ Date of death owns this row — do not pair it with another control
-                (OFC-376). On iOS the native date control sizes to its content
-                (~250px), which is wider than a 224px half-column, so anything
-                beside it gets lapped. The *width* half of the same defect is
-                handled by `widthClassFor` above; both are needed, and the reasons
-                are different. ⚠ Chromium never reproduced any of it, so a green
-                e2e run here proves the layout, never the iOS behaviour. */}
-            <div className="sm:col-span-2">
+            {/* ⚠ Date of death takes ONE column and keeps the row to itself
+                (OFC-376/N157). One column, so it aligns with `Death year` directly
+                beneath it — a lone field of any other width reads as a mistake.
+                Its own row, because the shell is exactly a column wide and the
+                iOS control has been known to render past it; nothing beside it
+                means nothing to lap even if it does. `Death year` is pinned to
+                column 1 to start the new row rather than filling this one. */}
+            <MemorialField
+              label="Date of death"
+              type="date"
+              value={dateOfDeath}
+              onChange={setDateOfDeath}
+              error={issueFor("dateOfDeath")}
+              inputRef={firstFieldRef}
+            />
+            {/* The two year fields pair beneath it — plain number inputs, which
+                size correctly everywhere, and a natural reading of the lifespan
+                the memorial line renders (D122). */}
+            <div className="sm:col-start-1">
               <MemorialField
-                label="Date of death"
-                type="date"
-                value={dateOfDeath}
-                onChange={setDateOfDeath}
-                error={issueFor("dateOfDeath")}
-                inputRef={firstFieldRef}
+                label="Death year (if the date is unknown)"
+                type="number"
+                value={deathYear}
+                onChange={setDeathYear}
+                error={issueFor("deathYear")}
               />
             </div>
-            {/* The two year fields pair instead — plain number inputs, which shrink
-                to their column everywhere, and a natural reading of the lifespan
-                the memorial line renders (D122). */}
-            <MemorialField
-              label="Death year (if the date is unknown)"
-              type="number"
-              value={deathYear}
-              onChange={setDeathYear}
-              error={issueFor("deathYear")}
-            />
             <MemorialField
               label="Birth year"
               type="number"
@@ -653,35 +653,48 @@ function MarkDeceasedDialog({
 // Everything but the width, which `MemorialField` picks per type — see below.
 // `min-w-0` is ordinary hygiene; ⚠ it is *not* what fixed OFC-376, despite a
 // first pass that said so (N154, corrected by N155/N156).
-const inputBaseClass =
-  "min-w-0 rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 text-[length:var(--text-body)] outline-none focus-visible:ring-2 focus-visible:ring-ring";
+const inputClass =
+  "w-full min-w-0 rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 text-[length:var(--text-body)] outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /**
- * ⚠ **A date input must never be given a percentage width** (OFC-376, N156).
+ * ⚠ **A date input carries no padding or border of its own** (OFC-376, N157).
+ * The chrome every other field paints on the input itself — border, background,
+ * inset, focus ring — is painted on this shell instead, and the control sits
+ * inside it stripped bare.
  *
- * On iOS, `input[type=date]` is a native control that adds its horizontal padding
- * *outside* a declared width instead of inside it — content-box behaviour that
- * `box-sizing: border-box` does not override. So `w-full` inside this dialog
- * renders 24px (`px-3` doubled) wider than its container's content box: at half
- * width it lapped the field beside it, and at full width it overran the dialog's
- * padding and touched the edge. Both reports were the same defect.
+ * The reason, which took three rounds to pin down: on iOS `input[type=date]` is a
+ * native control that adds its horizontal padding **outside** a declared width
+ * rather than inside it — content-box behaviour that `box-sizing: border-box`
+ * does not override. So `w-full` + `px-3` rendered 24px wider than its container
+ * in every layout we tried: at half width it lapped the field beside it, at full
+ * width it overran the dialog's padding, and sizing it intrinsically (`w-auto`)
+ * dodged both but left a stub two-thirds the width of its neighbours.
  *
- * `w-auto` removes the premise rather than fighting it — with no declared width
- * there is nothing for the padding to be added on top of, and the control sizes
- * to its content (~250px on iOS, measured 163px Chromium / 193px WebKit) well
- * inside the ~463px row. `max-w-full` is the backstop for a very narrow viewport.
+ * **A control with no padding has nothing to add outside its width**, so the
+ * shell's `w-full` lands exactly on the grid column and the field aligns with
+ * `Death year` beside it. This also survives a future change to the inset — move
+ * the padding on the shell and the arithmetic still works, because there is no
+ * arithmetic. That is why this is a shell rather than a compensating `calc()`.
  *
- * ⚠ This is why the date field also keeps its **own row** (see the grid's note):
- * an intrinsically-sized date control is still wider than a 224px half-column, so
- * pairing it with anything would re-create the original collision.
+ * The focus ring moves to `focus-within` on the shell, since the ring must
+ * surround the visible box and the input no longer draws one. ⚠ Slight knock-on:
+ * `:focus-within` fires on pointer focus too, where the sibling fields'
+ * `:focus-visible` does not — so clicking this field rings it and clicking a text
+ * field does not. Accepted deliberately: it is strictly *more* visible focus
+ * (WCAG 2.4.7), and the alternative (`has-[:focus-visible]`) needs `:has()`,
+ * which would silently drop the ring on an older iPad — the exact reader this
+ * project designs for.
  *
- * ⚠ **No engine reachable from the build machine reproduces any of this** —
- * Chromium and desktop WebKit both size the control correctly, and iPad *device
- * emulation* does not help, because what differs is the native iOS control, not
- * the viewport. Verified on Forrest's iPad, twice, the hard way.
+ * ⚠ **No engine on the build machine reproduces the underlying defect** —
+ * Chromium, desktop WebKit, *and* WebKit under iPad device emulation all size the
+ * control correctly (measured; see N156's table before spending time on it).
  */
-const widthClassFor = (type: "date" | "number" | "url"): string =>
-  type === "date" ? "w-auto max-w-full" : "w-full";
+const dateShellClass =
+  "flex w-full rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-ring";
+
+/** The date control itself: no box of its own, so nothing can be added outside it. */
+const bareDateInputClass =
+  "w-full min-w-0 border-0 bg-transparent p-0 text-[length:var(--text-body)] outline-none";
 
 /** One optional deceased-fact field: a label associated by `htmlFor`/`id` (the fields.tsx convention). */
 function MemorialField({
@@ -700,20 +713,26 @@ function MemorialField({
   inputRef?: React.Ref<HTMLInputElement>;
 }) {
   const id = useId();
+  const isDate = type === "date";
+  const control = (
+    <input
+      id={id}
+      ref={inputRef}
+      type={type}
+      inputMode={type === "number" ? "numeric" : undefined}
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className={isDate ? bareDateInputClass : inputClass}
+    />
+  );
   return (
     <div>
       <label htmlFor={id} className="mb-1 block text-[length:var(--text-label)] font-medium">
         {label}
       </label>
-      <input
-        id={id}
-        ref={inputRef}
-        type={type}
-        inputMode={type === "number" ? "numeric" : undefined}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={cn(widthClassFor(type), inputBaseClass)}
-      />
+      {/* Only the date control needs the shell — see `dateShellClass`. Every other
+          type paints its own box and sizes correctly in every engine. */}
+      {isDate ? <div className={dateShellClass}>{control}</div> : control}
       {error && (
         <span className="mt-1 block text-[length:var(--text-body-sm)] text-destructive">
           {error}
