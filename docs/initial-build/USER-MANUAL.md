@@ -144,7 +144,7 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 #### Constitution ID
 
-- **Placeholder:** e.g. 5001, 5100-5200
+- **Placeholder:** e.g. 721, 900-1000
 - **Behind the “?”:** The Constitution ID is the sequence number of the brother's signature on the PBE constitution. Filter by Constitution ID the same way as Class Year: a single number, a comma-separated list, or a range like 800-900 (open-ended ranges like 800- work too).
 
 #### Staff

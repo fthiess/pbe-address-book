@@ -96,7 +96,7 @@ export function FilterPanel({
             />
             <NumericFilter
               label="Constitution ID"
-              placeholder="e.g. 5001, 5100-5200"
+              placeholder="e.g. 721, 900-1000"
               value={filters.constitutionId}
               onChange={(v) => setFilter("constitutionId", v)}
               helpKey="directory.filter.constitutionId"
