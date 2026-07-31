@@ -152,20 +152,19 @@ test.describe("profile 4c-2 — privileged actions", () => {
     expect(calls.deceased).toBe(1);
   });
 
-  test("OFC-376: the date of death owns its row, and the two year fields pair beside it", async ({
+  test("OFC-376: the date of death aligns with Death year and keeps its own row", async ({
     page,
   }) => {
-    // The memorial dialog's layout is load-bearing on iOS, where `input[type=date]`
-    // will not shrink to a half-width column and laps whatever sits beside it. The
-    // first attempt at OFC-376 tried to make it shrink (`min-w-0`) and **did not
-    // work on real hardware**; this guard encodes the structural answer instead —
-    // no control ever shares a row with the date input, so no engine's opinion of
-    // its intrinsic width can cause a collision (N155, superseding N154's account).
+    // Three rounds of live-testing on real iOS produced this layout; the reasoning
+    // is in N154 → N155 → N156 → N157, and the short version is that the native
+    // iOS date control adds its padding *outside* a declared width. The control
+    // therefore carries no padding of its own — a shell draws the visible box —
+    // so its width lands exactly on the grid column like every other field.
     //
-    // ⚠ Chromium — the only engine in this suite — never reproduced the original
-    // overlap, so this cannot fail on the iOS behaviour itself. What it *does*
-    // catch is the layout regressing back to a shared row, which is the thing that
-    // would let the bug return. Real-device confirmation stays a live-test step.
+    // ⚠ Chromium, the only engine in this suite, sizes the control correctly under
+    // every variant we tried, so this test **cannot fail on the iOS defect**. It
+    // guards the layout that works: one column wide, flush with `Death year`, and
+    // alone on its row. Real-device confirmation stays a live-test step.
     await mockAdminViewing(page);
     await page.setViewportSize({ width: 834, height: 1194 }); // iPad Pro 11" portrait
     await gotoProfile(page);
@@ -174,30 +173,38 @@ test.describe("profile 4c-2 — privileged actions", () => {
     const dialog = page.getByRole("dialog");
     await dialog.getByRole("button", { name: "Continue" }).click();
 
-    const dateOfDeath = await dialog.getByLabel("Date of death").boundingBox();
+    const dateInput = dialog.getByLabel("Date of death");
+    const dateOfDeath = await dateInput.boundingBox();
+    // The shell is the visible box now, so alignment is measured on it, not on the
+    // stripped control inside.
+    const dateOfDeathShell = await dateInput.locator("xpath=..").boundingBox();
     const deathYear = await dialog.getByLabel("Death year (if the date is unknown)").boundingBox();
     const birthYear = await dialog.getByLabel("Birth year").boundingBox();
-    if (!dateOfDeath || !deathYear || !birthYear) {
+    if (!dateOfDeath || !dateOfDeathShell || !deathYear || !birthYear) {
       throw new Error("memorial date fields are not laid out");
     }
 
-    // Date of death owns its row: it sits entirely above the next field, so
-    // nothing is beside it to be lapped.
+    // Date of death owns its row: entirely above the next field, nothing beside
+    // it to be lapped.
     expect(dateOfDeath.y + dateOfDeath.height).toBeLessThanOrEqual(deathYear.y);
 
-    // ...and it stays inside the dialog's content box. This is the assertion the
-    // second round needed: with `w-full`, iOS rendered the control 24px wider than
-    // its container (it adds `px-3` outside a declared width) and it ran out to
-    // touch the dialog's edge. `w-auto` means there is no declared width for the
-    // padding to be added to. ⚠ Chromium sizes it correctly either way, so this
-    // cannot fail on the iOS defect — it guards the intent (N156).
+    // ...and it is exactly one column wide, flush with `Death year` below it —
+    // both edges, which is the property Forrest asked for after round three left
+    // a stub two-thirds the width of its neighbours. Measured on the date field's
+    // *shell*, since the control itself no longer draws the visible box (N157).
+    expect(dateOfDeathShell.x).toBeCloseTo(deathYear.x, 0);
+    expect(dateOfDeathShell.width).toBeCloseTo(deathYear.width, 0);
+
+    // Belt to that: the shell stays inside the dialog's content box. This is what
+    // round two needed — with `w-full` + `px-3`, iOS rendered the control 24px
+    // over its container and it ran out to touch the dialog's edge.
     const dialogBox = await dialog.boundingBox();
     if (!dialogBox) {
       throw new Error("dialog is not laid out");
     }
     const PADDING = 24; // the dialog's `p-6`
-    expect(dateOfDeath.x).toBeGreaterThanOrEqual(dialogBox.x + PADDING - 1);
-    expect(dateOfDeath.x + dateOfDeath.width).toBeLessThanOrEqual(
+    expect(dateOfDeathShell.x).toBeGreaterThanOrEqual(dialogBox.x + PADDING - 1);
+    expect(dateOfDeathShell.x + dateOfDeathShell.width).toBeLessThanOrEqual(
       dialogBox.x + dialogBox.width - PADDING + 1,
     );
 
@@ -211,6 +218,13 @@ test.describe("profile 4c-2 — privileged actions", () => {
     // Both are plain number inputs, which shrink to their column in every engine —
     // but assert the separation anyway, since that is the property that matters.
     expect(deathYear.x + deathYear.width).toBeLessThanOrEqual(birthYear.x);
+
+    // The existing axe pass scans the dialog's *confirm* phase, which has no
+    // fields in it. Scan the fields phase too: N157 moved the date field's border
+    // and focus ring off the control and onto a wrapper, which is exactly the kind
+    // of change that can strand a label or leave a control with no visible focus.
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
   });
 
   test("an admin can de-brother a member with a confirmation", async ({ page }) => {
