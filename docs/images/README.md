@@ -55,7 +55,7 @@ visible change, is real. The other four are stable across every run measured
   whose Constitution IDs are all above the #5000 fake floor and whose emails are
   all `example.test`, and the app is driven against mocks, so it never reaches a
   real API. Anything added by some *other* route must be captured from
-  **staging** (`pbe-book-staging.web.app`, fake data by design), never from
+  **staging** (`book-staging.pbe400.org`, fake data by design), never from
   production — confirm no real name, email, or address is visible before
   committing.
 - **Optimize for the slow-connection audience.** Book's readers skew 60+ and many

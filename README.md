@@ -140,11 +140,14 @@ Three environments, by design (`CODING-PROJECT-PLAN.md` §4):
 - **Local** — this machine: Vite, the API, the Firestore emulator, fake data,
   the `DevIdentityProvider`.
 - **Staging** — a persistent cloud Book, live at
-  `https://pbe-book-staging.web.app` (GCP project `pbe-book-staging`: Firebase
+  `https://book-staging.pbe400.org` (GCP project `pbe-book-staging`: Firebase
   Hosting → Cloud Run + Firestore + a private image bucket, provisioned by
   `infra/provision-staging.sh`). **Fake data only.** Sign-in goes through the
   real Ghost bridge against the self-hosted ghost-staging instance
   (`staging.pbe400.org`) — never production Ghost (D72).
+  The Firebase default origin `pbe-book-staging.web.app` still serves the same
+  site, but sign-in from it lands on the custom domain, because the bridge's
+  callback allowlist names only the latter (D161).
 - **Production** — `book.pbe400.org`, real data, the real Ghost integration.
   Not yet stood up; it comes up in Phase 8 (migration & cutover).
 
@@ -168,12 +171,12 @@ TTFB bimodal). Staging already seeds the full 1,200-profile dataset on every
 deploy, so there is no loading step.
 
 ```bash
-# 1. A real __session cookie: sign in to pbe-book-staging.web.app, then copy the
+# 1. A real __session cookie: sign in to book-staging.pbe400.org, then copy the
 #    value from DevTools -> Application -> Cookies. It is a credential — keep it
 #    out of the repo. Write the header file somewhere temporary:
 #      {"Cookie":"__session=<value>"}
 # 2. Warm the instance.
-curl -s -o /dev/null https://pbe-book-staging.web.app/api/profiles -H "Cookie: __session=<value>"
+curl -s -o /dev/null https://book-staging.pbe400.org/api/profiles -H "Cookie: __session=<value>"
 ```
 
 `chrome-launcher` cannot spawn Chrome on this Windows setup (`spawn UNKNOWN`), so
@@ -182,7 +185,7 @@ rather than letting it launch its own:
 
 ```bash
 node -e "require('playwright').chromium.launch({args:['--remote-debugging-port=9222','--no-sandbox']}).then(()=>new Promise(r=>setTimeout(r,900000)))" &
-npx lighthouse@12 https://pbe-book-staging.web.app/ --port=9222 \
+npx lighthouse@12 https://book-staging.pbe400.org/ --port=9222 \
   --extra-headers=/tmp/lh-headers.json --only-categories=performance \
   --output=json --output=html --output-path=/tmp/lh-directory
 ```
