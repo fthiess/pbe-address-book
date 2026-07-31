@@ -62,7 +62,13 @@
  * the testers' emails at sign-in.
  */
 import { readFile } from "node:fs/promises";
-import { type Profile, type Role, formatCanonicalName, normalizeEmail } from "@pbe/shared";
+import {
+  DEFAULT_PRIVACY,
+  type Profile,
+  type Role,
+  formatCanonicalName,
+  normalizeEmail,
+} from "@pbe/shared";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
@@ -211,13 +217,10 @@ function buildTesterProfile(entry: RosterEntry, now: string): Profile {
     deceased: { isDeceased: false },
     debrothered: { isDebrothered: false },
     hasHeadshot: false,
-    privacy: {
-      shareEmail: true,
-      sharePhone: true,
-      shareAddress: true,
-      shareEmergency: false,
-      shareSpousePartner: false,
-    },
+    // The shared schema defaults, not a copy of them: a tester opening his own
+    // profile should meet the switch states a real brother will get, so this
+    // tracks D163 (and whatever supersedes it) rather than pinning today's values.
+    privacy: { ...DEFAULT_PRIVACY },
     unlisted: false,
     allowNewsletterEmail: true,
     allowShareWithMITAA: false,

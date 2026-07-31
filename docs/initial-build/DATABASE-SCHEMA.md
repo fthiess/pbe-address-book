@@ -67,7 +67,7 @@ interface Profile {
   // --- Professional / personal ---
   employerName?: string;
   jobTitle?: string;
-  spousePartnerName?: string;          // toggle: shareSpousePartner — third-party data, default off (decision D93)
+  spousePartnerName?: string;          // toggle: shareSpousePartner — default true (decision D163; off under D93)
   majors?: string[];                   // course codes (e.g. ["6-3"]); primary first; validated vs. `majors`
   links?: Link[];                      // up to 5 external links
 
@@ -165,14 +165,14 @@ interface DebrotherInfo {
 /** Per-field visibility toggles for the toggle-class fields. Each governs whether
  *  other brothers AND managers see the corresponding field(s); the owner and admins
  *  always see them. The backend projects hidden fields out of the response entirely
- *  (decision D5). The reachability toggles default true; the two third-party-data
- *  toggles (shareEmergency, shareSpousePartner) default FALSE / opt-in (decision D93). */
+ *  (decision D5). All five default true (decision D163, reversing D93's opt-in default
+ *  for the two third-party-data toggles). */
 interface PrivacyFlags {
   shareEmail: boolean;                 // covers both email and alternateEmail; default true
   sharePhone: boolean;                 // default true
   shareAddress: boolean;               // covers the whole Address block; default true
-  shareEmergency: boolean;             // covers all emergencyContacts; default FALSE — third-party (non-member) data (decision D93)
-  shareSpousePartner: boolean;         // covers spousePartnerName; default FALSE — third-party (non-member) data (decision D93)
+  shareEmergency: boolean;             // covers all emergencyContacts; default true (decision D163; FALSE under D93)
+  shareSpousePartner: boolean;         // covers spousePartnerName; default true (decision D163; FALSE under D93)
 }
 ```
 
@@ -197,7 +197,7 @@ Required / default / visibility / validation for each field. The **Visibility** 
 | `emergencyContacts` | `EmergencyContact[]?` | no | absent | toggle: `shareEmergency` | Max length 2. |
 | `employerName` | `string?` | no | absent | public | |
 | `jobTitle` | `string?` | no | absent | public | |
-| `spousePartnerName` | `string?` | no | absent | toggle: `shareSpousePartner` | Third-party data; hidden from peers unless the brother opts in (decision D93). |
+| `spousePartnerName` | `string?` | no | absent | toggle: `shareSpousePartner` | Behind the owner's share flag, which defaults on (decision D163; opt-in under D93). |
 | `majors` | `string[]?` | no | absent | public | Each code must exist in `majors`; no duplicates; primary first. |
 | `links` | `Link[]?` | no | absent | public | Max length 5. |
 | `bigBrotherId` | `number \| null?` | no | absent | public | Existing ID, ≠ `id`, no cycle. |
@@ -206,7 +206,7 @@ Required / default / visibility / validation for each field. The **Visibility** 
 | `unlisted` | `boolean` | yes | `false` | staff-only flag; **whole record hidden from peers** | Owner-settable (self-service); admins may also set it; managers may not (privacy change, §9). Hidden from brothers, badged "UNLISTED" for mgr/admin. Member fully retained — distinct from `debrothered` (decision D124, §9). |
 | `hasHeadshot` | `boolean` | yes | `false` | public | |
 | `headshotVersion` | `string?` | no | absent | public | Present iff `hasHeadshot`. |
-| `privacy` | `PrivacyFlags` | yes | reachability flags `true`; `shareEmergency`/`shareSpousePartner` `false` | restricted | The toggle flags themselves are not shown to peers. Third-party-data toggles default off / opt-in (decision D93). |
+| `privacy` | `PrivacyFlags` | yes | all five flags `true` | restricted | The toggle flags themselves are not shown to peers. `shareEmergency`/`shareSpousePartner` defaulted off under D93; decision D163 reverses that (OFC-373). |
 | `allowNewsletterEmail` | `boolean` | yes | `true` | restricted | Pushed to Ghost; forced `false` when marked deceased. |
 | `allowShareWithMITAA` | `boolean` | yes | `false` | restricted | Opt-in master contact-sharing switch (decision D89, §9). |
 | `lastVerifiedDate` | `string?` | no | absent | public | YYYY-MM-DD; server-set by the verify action. Public per OFC-207 (amends D28); marking verified stays owner/manager/admin (write side). |
@@ -373,12 +373,12 @@ Applied on write (server-authoritative; the client validates the same rules for 
 Every field carries a **visibility class** that the backend enforces by projecting each response down to the fields the requester may see (decision D5); the frontend never receives data the requester is not entitled to. Six classes:
 
 - **public** — visible to all authenticated brothers: identity, names, class year, majors, links, employer, Big Brother, deceased status (including the `birthYear`/`deathYear` shown only when deceased, decision D122), the headshot/thumbnail, **verification status** (`lastVerifiedDate`, `verifiedBy` — OFC-207, amends D28: an accuracy signal and a public administrative act, not PII; the *right to mark verified* stays owner/manager/admin, enforced on the write side), and the brother's **`role`** (decision D128, reversing OFC-139's staff-only plan: the staff roles are official contact points, not secret; the *right to change a role* stays admin-only, a **protected** write enforced on the write side — every authenticated brother may *see* who is staff, only an admin may *set* it). (`spousePartnerName` is **not** public — it moved to the **toggle** class as third-party data, decision D93.)
-- **toggle** — the protected contact *values*. Visible to the record's owner and to admins **always**; visible to other brothers **and to managers** only when the owner's corresponding share flag is `true`. (This is the Session-3 narrowing of decision D16: a field a brother has hidden is invisible to managers too — only admins, the override role, still see it. See decision D19.) The flags — the reachability toggles default `true`, the two **third-party-data** toggles default `false` / opt-in (decision D93):
+- **toggle** — the protected contact *values*. Visible to the record's owner and to admins **always**; visible to other brothers **and to managers** only when the owner's corresponding share flag is `true`. (This is the Session-3 narrowing of decision D16: a field a brother has hidden is invisible to managers too — only admins, the override role, still see it. See decision D19.) The flags — **all five default `true`** (decision D163; the two third-party-data toggles defaulted `false` / opt-in under D93):
   - `privacy.shareEmail` → `email`, `alternateEmail` (default `true`)
   - `privacy.sharePhone` → `phone` (default `true`)
   - `privacy.shareAddress` → the whole `Address` (default `true`)
-  - `privacy.shareEmergency` → all `emergencyContacts` (default **`false`** — third-party data)
-  - `privacy.shareSpousePartner` → `spousePartnerName` (default **`false`** — third-party data, decision D93)
+  - `privacy.shareEmergency` → all `emergencyContacts` (default **`true`** — decision D163)
+  - `privacy.shareSpousePartner` → `spousePartnerName` (default **`true`** — decision D163)
 - **restricted** — the flags, preferences, and housekeeping metadata: the `privacy` flags themselves, `allowNewsletterEmail`, `allowShareWithMITAA`, and `lastModified`. Never visible to ordinary brothers; visible to the owner, managers, and admins, but **read-only for managers** — only the owner and admins may change a brother's consent and privacy settings, and `lastModified` is server-set, never directly edited. Keeping `allowNewsletterEmail` and `allowShareWithMITAA` here (rather than in `users`) lets managers and admins receive them in the bulk download and use them as search/filter/sort columns, while still hiding them from ordinary brothers. So a manager can *see* a brother's privacy choices without being able to *see through* an off-toggle to the protected value, or to *change* the brother's choices. (Verification — `lastVerifiedDate`/`verifiedBy` — was formerly restricted; it is now **public**, above, per OFC-207. The staff-only *verification filters* in the Directory — "not verified since," etc. — remain a manager/admin affordance regardless, since "filterable ⟺ visible" gates those controls by role, not by the field's read class.)
 - **private** — never part of the directory payload at all; lives in the `users` collection: the user's `stars`. (`role` was formerly private here; since decision D128 it is a **public** field on the `Profile`, above — only `stars` remains private.)
 - **staff-internal** — visible to, and read/write for, **managers and administrators only**; **not** visible to the owner or to peers. The sole member is `adminNote` — a free-text note for coordinating among staff and recording the history of manual changes, whose value depends on candor and therefore on the brother *not* seeing it. It is the first field the owner cannot see on their own profile; it lives in `profiles` (so it travels in the manager/admin bulk download) but is projected out for ordinary brothers and for the owner.

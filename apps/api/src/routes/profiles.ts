@@ -1,4 +1,5 @@
 import {
+  DEFAULT_PRIVACY,
   type PrivacyFlags,
   type Profile,
   type Role,
@@ -364,18 +365,14 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
   );
 }
 
-/**
- * The schema privacy defaults for a new brother (DATABASE-SCHEMA §3.3, D93): the
- * reachability toggles on, the two third-party-data toggles off. Overlaid by any
- * boolean the admin actually sent, so an omitted flag never lands `undefined`.
- */
-const DEFAULT_PRIVACY: PrivacyFlags = {
-  shareEmail: true,
-  sharePhone: true,
-  shareAddress: true,
-  shareEmergency: false,
-  shareSpousePartner: false,
-};
+// The schema privacy defaults for a new brother are `DEFAULT_PRIVACY` from
+// `@pbe/shared` — all five toggles on (D163). Deliberately not re-declared here:
+// the create route is only one of the programs that must agree on them (the
+// staging tester seed and the Phase 8 bulk-loader are the others), and a
+// hand-copied literal is how they drift. Read the constant's own doc comment
+// before changing a flag; it carries D163's reasoning and the ⚠ distinction
+// between this schema default and the fail-closed fallbacks in `data/cache.ts`
+// and `pages/profile/patch.ts`, which stay all-`false`.
 
 /**
  * Build a well-formed new `Profile` from the admin's create body (OFC-201). The

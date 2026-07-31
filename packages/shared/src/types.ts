@@ -126,9 +126,8 @@ export interface DebrotherInfo {
 /**
  * Per-field visibility toggles for the toggle-class fields (§3.2). Each governs
  * whether other brothers AND managers see the corresponding field(s); the owner
- * and admins always see them. The reachability toggles default true; the two
- * third-party-data toggles (`shareEmergency`, `shareSpousePartner`) default
- * FALSE / opt-in (D93).
+ * and admins always see them. **All five default true** (D163, reversing D93's
+ * opt-in default for the two third-party-data toggles — OFC-373).
  */
 export interface PrivacyFlags {
   /** Covers both `email` and `alternateEmail`; default true. */
@@ -137,9 +136,9 @@ export interface PrivacyFlags {
   sharePhone: boolean;
   /** Covers the whole `Address` block; default true. */
   shareAddress: boolean;
-  /** Covers all `emergencyContacts`; default FALSE — third-party data (D93). */
+  /** Covers all `emergencyContacts`; default true (D163; was FALSE under D93). */
   shareEmergency: boolean;
-  /** Covers `spousePartnerName`; default FALSE — third-party data (D93). */
+  /** Covers `spousePartnerName`; default true (D163; was FALSE under D93). */
   shareSpousePartner: boolean;
 }
 
@@ -181,7 +180,7 @@ export interface Profile {
   // --- Professional / personal ---
   employerName?: string;
   jobTitle?: string;
-  /** toggle: `shareSpousePartner` — third-party data, default off (D93). */
+  /** toggle: `shareSpousePartner` — default on (D163; was off under D93). */
   spousePartnerName?: string;
   /** Course codes (e.g. ["6-3"]); primary first; validated against `majors`. */
   majors?: string[];

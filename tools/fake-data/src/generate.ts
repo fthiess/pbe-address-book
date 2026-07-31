@@ -173,14 +173,17 @@ function makeAddress(rng: Random): Address {
 }
 
 function makePrivacy(rng: Random): PrivacyFlags {
-  // Reachability toggles default-on, the two third-party toggles default-off
-  // (D93), but each is independently varied so the dataset spans the combos.
+  // All five toggles default on (D163), so the emergency/spouse rates now sit
+  // beside the reachability ones instead of well below them — a tester browsing
+  // staging should meet shared emergency/spouse data at roughly the rate a
+  // brother will after launch. Each is still varied independently so the dataset
+  // spans the combinations, including every field hidden.
   return {
     shareEmail: rng.chance(0.85),
     sharePhone: rng.chance(0.8),
     shareAddress: rng.chance(0.8),
-    shareEmergency: rng.chance(0.2),
-    shareSpousePartner: rng.chance(0.25),
+    shareEmergency: rng.chance(0.8),
+    shareSpousePartner: rng.chance(0.8),
   };
 }
 

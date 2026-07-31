@@ -21,6 +21,8 @@ These run once (or a handful of times during pre-launch dry runs) and are then r
 
 **Sequencing note.** The dedup (collapse Ghost to one-primary-email-per-brother) must precede the pull-and-seed and the bulk-load. The merge across sources is expected to be substantially manual (human + AI), with these tools doing the mechanical pulls and the final write.
 
+**⚠ Bulk-loader obligation — the privacy block (decision D163).** The loader must write **all five `privacy` flags `true`** for every brother it creates, matching the schema defaults in DATABASE-SCHEMA §3.3. This is easy to get silently wrong in two directions. Import **`DEFAULT_PRIVACY` from `@pbe/shared`** and spread it — do not hand-write the block. The loader does not go through the Add Brother route, so nothing applies that default for it automatically; and the two conservative all-`false` blocks in the codebase (`data/cache.ts`, `pages/profile/patch.ts`) are *fail-closed fallbacks*, not defaults, so copying either would land every real brother opt-out. Decision D163 reversed the emergency/spouse default precisely so that brothers who record that information have it shared — a loader that writes `false` would make that reversal a no-op for all ~1,199 production records while leaving the code looking correct. **Verify on loaded data at cutover, not by re-reading the constant.**
+
 ## B. Ongoing operational side-tools (not one-time, not in Book)
 
 Recurring utilities that live outside Book by design — listed here so they aren't mistaken for Book features or for one-time migration tools.

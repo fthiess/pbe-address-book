@@ -208,8 +208,9 @@ export function trackProfileSaved(groups: FieldGroup[], own: boolean): void {
 /**
  * A privacy/consent switch flipped (7a-4) — the toggle's registry key and its new
  * state. A brother's own choice about his own data, so no P6 problem; directly feeds
- * the year-old defaults debate (D45 → D89 → D93) that has run on first principles
- * with zero data on what brothers actually choose.
+ * the year-old defaults debate (D45 → D89 → D93 → D163) that has run on first
+ * principles with almost no data on what brothers actually choose — D163 is the
+ * first move in it driven by a real user rather than by argument.
  */
 export function trackConsentToggleChanged(toggle: string, enabled: boolean): void {
   emit("Consent Toggle Changed", { Toggle: toggle, Enabled: enabled });

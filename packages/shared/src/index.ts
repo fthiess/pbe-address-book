@@ -11,6 +11,7 @@ export type {
   Role,
   VisibilityClass,
 } from "./types.js";
+export { DEFAULT_PRIVACY } from "./defaults.js";
 export { formatConstitutionId, formatClassYear } from "./format.js";
 export { FAKE_ID_FLOOR, TESTER_ID_FLOOR, DEV_PROFILE_IDS } from "./fake-ids.js";
 export {
