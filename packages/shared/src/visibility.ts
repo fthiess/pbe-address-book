@@ -74,7 +74,8 @@ export const FIELD_VISIBILITY: Record<keyof Profile, FieldVisibility> = {
   // --- Professional / personal ---
   employerName: { cls: "public" },
   jobTitle: { cls: "public" },
-  // Third-party data, hidden from peers unless opted in (D93).
+  // Behind the owner's share-flag, which now defaults on (D163; opt-in under D93).
+  // The *classification* is unchanged by that reversal — only the default is.
   spousePartnerName: { cls: "toggle", flag: "shareSpousePartner" },
   majors: { cls: "public" },
   links: { cls: "public" },

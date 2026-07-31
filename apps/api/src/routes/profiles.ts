@@ -365,16 +365,28 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
 }
 
 /**
- * The schema privacy defaults for a new brother (DATABASE-SCHEMA §3.3, D93): the
- * reachability toggles on, the two third-party-data toggles off. Overlaid by any
- * boolean the admin actually sent, so an omitted flag never lands `undefined`.
+ * The schema privacy defaults for a new brother (DATABASE-SCHEMA §3.3): **all
+ * five on**. Overlaid by any boolean the admin actually sent, so an omitted flag
+ * never lands `undefined`.
+ *
+ * `shareEmergency`/`shareSpousePartner` defaulted *off* from D93 until D163
+ * reversed it (OFC-373). The short version of the reversal: a brother fills in
+ * an emergency contact or a spouse precisely because he wants it shared, and
+ * emergency information that nobody may read serves no function at all. Read
+ * D163 before flipping either back — it is the third pass over this question,
+ * and the two before it (D93, and OFC-268 declined at N107) landed the other way.
+ *
+ * ⚠ This constant governs the **create route only**. The fail-closed fallbacks
+ * elsewhere — `data/cache.ts` for a record whose stored `privacy` is malformed,
+ * `pages/profile/patch.ts` for a block that never reached the client — are
+ * safety defaults, not schema defaults, and stay all-`false` deliberately.
  */
 const DEFAULT_PRIVACY: PrivacyFlags = {
   shareEmail: true,
   sharePhone: true,
   shareAddress: true,
-  shareEmergency: false,
-  shareSpousePartner: false,
+  shareEmergency: true,
+  shareSpousePartner: true,
 };
 
 /**

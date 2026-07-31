@@ -2769,3 +2769,28 @@ The repro test proved the reported trigger was incidental: **"Starred only" move
 ⚠ **Geometry assertions must not assume a label fits on one line.** The first version of that guard asserted the two inputs had equal `y`. It passed on Windows and **failed on CI**: under Linux font metrics "Death year (if the date is unknown)" wraps to two lines, pushing that field's input ~20px below its neighbour's while both stay in the same grid row. The assertion now tests *overlapping vertical extents* plus the horizontal separation that is the actual invariant. Any future layout test comparing coordinates across two labelled controls has the same trap — the label is the variable, and the build machine is not the test machine.
 
 **Verified:** OFC-375 by a failing-then-passing repro at 834×1194 reproducing the reported counts exactly (1207 records, 118 deceased), plus desktop/phone position guards and a byte-identical regeneration of the manual screenshots. OFC-376 **not verified on iOS Safari** — no such engine is reachable from the build machine; the mechanism is reasoned from Tailwind's compiled `minmax(0, 1fr)` and Safari's intrinsic control sizing, and the ticket stays open until confirmed on the reporter's iPad.
+### D163 — The emergency-contact and spouse/partner share toggles default to **shared**; D93's opt-in default is reversed *(Stage 2.1 / UAT — OFC-373)*
+
+**Forrest's call**, after UAT tester Roy Russell argued the point and changed his mind.
+
+**The decision.** `privacy.shareEmergency` and `privacy.shareSpousePartner` now default `true`, alongside the three reachability toggles. All five schema defaults are on. The toggles themselves stay — a brother who wants either hidden still has the switch.
+
+**Why the reversal.** Three arguments, the first two Roy's:
+
+1. **The only reason to enter the data is to share it.** A brother fills in an emergency contact or names a spouse because he wants brothers to have it. Someone who wants it private simply leaves the field empty — the field has no other function. A default that hides what was just deliberately typed inverts the user's evident intent.
+2. **Emergency information nobody may read serves no purpose at all.** The entire value of the field is that a brother can reach someone in a crisis. Default-hidden, it is dead weight in the record.
+3. **These were the only two toggles defaulting off**, so the Privacy & consent group presented an inconsistency the copy never explained.
+
+**What D93 was protecting, and why it yields.** D93 (from the adversarial design review, finding P13) reasoned that an emergency contact is a *non-member's* name and phone — third-party data the subject never consented to, broadcast to ~700 browsers by default. That reasoning is sound and is not being called wrong; it is being outweighed. The counterweight is that the brother entering it is the person who holds the relationship and is making a deliberate choice to record it, that the audience is a closed membership rather than the public, and that a safety field which cannot be read is not a privacy win but a functionality loss. The classification is untouched — both fields remain **toggle**-class, still projected out server-side when the flag is off (D5/D82), still excluded from the MITAA export as third-party data (§5.3). Only the default moves.
+
+**⚠ This is the third pass over this question, and the first two went the other way.** D93 set the opt-in default; **OFC-268 proposed exactly this reversal and was declined** ("D93 stands", recorded at N107 during 6b-5). Anyone tempted to flip it back a fourth time should read all three and bring a new argument rather than re-running these.
+
+**⚠ This constant does not reach a single real brother by itself.** `DEFAULT_PRIVACY` governs the **create route** — Add Brother. The ~1,199 production records will be written by the **Phase 8 bulk-loader, which does not exist yet** (`tools/migration` is still a placeholder). If that loader writes its own `privacy` block without inheriting this default, every real brother lands opt-out at cutover and this decision silently does nothing. Recorded against the loader in PRE-LAUNCH-TOOLS.md; **verify it at cutover, on data, not by reading this entry.**
+
+**Deliberately unchanged — the fail-closed fallbacks.** Two other all-`false` privacy blocks exist and stay: `data/cache.ts` normalizing a stored record whose `privacy` is malformed or missing, and `pages/profile/patch.ts` when the block never reached the client (N70). Neither is a schema default; both are safety reads of "we don't know what this brother chose", for which all-hidden remains the only defensible answer. **Do not "harmonize" them with this change.**
+
+**Fake data moved with it.** `tools/fake-data` rolled these two flags at 20%/25% against the reachability toggles' 80%; both now roll at 80%, so a UAT tester meets shared emergency/spouse data at roughly the post-launch rate. Staging wipe-reseeds on every deploy (N18), so this takes effect immediately.
+
+**No copy change.** The switch labels and on/off consequence lines (help-content registry) describe *state*, never the default, so they read correctly either way.
+
+*Reverses D93's default (not its classification); supersedes the OFC-268 decline recorded in N107.*

@@ -615,8 +615,9 @@ describe("PATCH /api/profiles/:id — concurrency, authorization, audit", () => 
   });
 
   it("forbids a manager overwriting a toggle field the owner has hidden (OFC-206/N70)", async () => {
-    // The default privacy hides spouse/partner (shareSpousePartner: false), so a
-    // manager never sees 5003's value — and must not be able to blind-overwrite it.
+    // The `makeProfile` fixture hides spouse/partner (shareSpousePartner: false —
+    // deliberately, so this case exists; it is no longer the schema default since
+    // D163), so a manager never sees 5003's value and must not blind-overwrite it.
     const { app, cache, cookieAs, etagOf } = await buildWriteServer([makeProfile({ id: 5003 })]);
     const cookie = await cookieAs(9001, "manager");
     const etag = await etagOf(5003, cookie);
@@ -1322,8 +1323,11 @@ describe("POST /api/profiles (Add Brother — OFC-201)", () => {
     const stored = cache.getById(6002);
     expect(stored?.allowNewsletterEmail).toBe(true); // subscribed by default (D45)
     expect(stored?.allowShareWithMITAA).toBe(false); // MITAA sharing stays opt-out (D56/D93)
-    expect(stored?.privacy.shareEmail).toBe(true); // schema privacy defaults filled
-    expect(stored?.privacy.shareSpousePartner).toBe(false);
+    // Schema privacy defaults filled — all five on since D163 (OFC-373); the two
+    // third-party-data toggles defaulted off under D93.
+    expect(stored?.privacy.shareEmail).toBe(true);
+    expect(stored?.privacy.shareEmergency).toBe(true);
+    expect(stored?.privacy.shareSpousePartner).toBe(true);
     expect(stored?.unlisted).toBe(false);
     await app.close();
   });

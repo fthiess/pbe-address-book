@@ -211,12 +211,15 @@ function buildTesterProfile(entry: RosterEntry, now: string): Profile {
     deceased: { isDeceased: false },
     debrothered: { isDebrothered: false },
     hasHeadshot: false,
+    // The schema defaults (DATABASE-SCHEMA §3.3) — all five on since D163. A
+    // tester opening his own profile should meet the switch states a real brother
+    // will get, so this block tracks the defaults rather than pinning old values.
     privacy: {
       shareEmail: true,
       sharePhone: true,
       shareAddress: true,
-      shareEmergency: false,
-      shareSpousePartner: false,
+      shareEmergency: true,
+      shareSpousePartner: true,
     },
     unlisted: false,
     allowNewsletterEmail: true,
