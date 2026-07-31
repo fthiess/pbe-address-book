@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
   APP_SUPER_PROPERTIES,
@@ -5,6 +7,27 @@ import {
   MIXPANEL_API_HOST,
   MIXPANEL_INIT_CONFIG,
 } from "./analyticsConfig.js";
+
+/**
+ * Read the CSP actually shipped in `firebase.json`, so the assertion below tests
+ * the config rather than a restatement of it — the D146 pattern, for the same
+ * reason it was built there (`scripts/lib/hosting-cache-headers.test.ts`): a
+ * hand-copied literal in a test proves only that someone copied it.
+ */
+const shippedConnectSrc = (): string => {
+  const path = fileURLToPath(new URL("../../../../firebase.json", import.meta.url));
+  const config = JSON.parse(readFileSync(path, "utf8")) as {
+    hosting: { headers: { source: string; headers: { key: string; value: string }[] }[] };
+  };
+  const csp = config.hosting.headers
+    .flatMap((rule) => rule.headers)
+    .find((h) => h.key === "Content-Security-Policy")?.value;
+  const directive = csp?.split(";").find((d) => d.trim().startsWith("connect-src"));
+  if (!directive) {
+    throw new Error("no connect-src directive found in firebase.json's CSP");
+  }
+  return directive.trim();
+};
 
 /**
  * These assertions exist because of a specific review failure (N125).
@@ -68,7 +91,17 @@ describe("MIXPANEL_INIT_CONFIG", () => {
     // duplicated here deliberately: the test is the reminder that firebase.json's
     // `connect-src` has to move with it.
     expect(MIXPANEL_INIT_CONFIG.api_host).toBe(MIXPANEL_API_HOST);
-    expect(MIXPANEL_API_HOST).toBe("https://api-js.mixpanel.com");
+    expect(MIXPANEL_API_HOST).toBe("https://mp.pbe400.org");
+  });
+
+  it("is actually listed in the CSP that firebase.json ships (D146's pattern, D162)", () => {
+    // The assertion above is a restatement; this one is evidence. It reads the
+    // deployed config and checks the origin is really allowed — so moving
+    // `MIXPANEL_API_HOST` without moving `connect-src` (or vice versa) fails here
+    // instead of silently shipping a CSP violation that only shows up as "analytics
+    // mysteriously stopped". N125's rule: a test that cannot observe the failure
+    // mode is not evidence about it, however green it runs.
+    expect(shippedConnectSrc()).toContain(MIXPANEL_API_HOST);
   });
 });
 

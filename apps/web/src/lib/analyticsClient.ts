@@ -81,8 +81,12 @@ export function initAnalytics(): void {
   setAnalyticsClient(client);
 
   // One line, always — the cheap way to tell "a content blocker ate the requests"
-  // from "analytics is misconfigured", which look identical otherwise. uBlock
-  // Origin blocks this origin from its default lists; Privacy Badger is heuristic
-  // and may block it only after observing it tracking across several sites.
+  // from "analytics is misconfigured", which look identical otherwise.
+  // ⚠ Since D162 this origin is `mp.pbe400.org`, a first-party proxy that is **not**
+  // on the default blocklists — which is the point of it. So a blocked request here
+  // no longer implicates uBlock's stock lists; suspect a heuristic blocker
+  // (Privacy Badger), a custom rule, or the proxy host itself being down. That last
+  // one is new: the proxy is a single VM, so "no events" now has an infrastructure
+  // cause it never had when this talked to Mixpanel directly.
   console.info(`[analytics] Mixpanel initialised → ${MIXPANEL_API_HOST}`);
 }
