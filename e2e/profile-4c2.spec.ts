@@ -175,9 +175,16 @@ test.describe("profile 4c-2 — privileged actions", () => {
       throw new Error("memorial date fields are not laid out");
     }
 
-    // Side by side on one row, with the gap intact: the first field's right edge
-    // must stop short of where the second begins.
-    expect(dateOfDeath.y).toBeCloseTo(deathYear.y, 0);
+    // The two fields share a row — asserted as *overlapping vertical extents*,
+    // not equal `y`. Equal `y` fails on CI for a legitimate reason: "Death year
+    // (if the date is unknown)" is long enough to wrap to two lines under Linux
+    // font metrics, which pushes that field's input ~20px below its neighbour's
+    // while both stay in the same grid row.
+    expect(dateOfDeath.y).toBeLessThan(deathYear.y + deathYear.height);
+    expect(deathYear.y).toBeLessThan(dateOfDeath.y + dateOfDeath.height);
+
+    // The actual invariant: the first field's right edge stops short of where the
+    // second begins, so neither can lap the other.
     expect(dateOfDeath.x + dateOfDeath.width).toBeLessThanOrEqual(deathYear.x);
   });
 
