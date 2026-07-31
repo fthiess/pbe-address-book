@@ -181,13 +181,25 @@ test.describe("profile 4c-2 — privileged actions", () => {
       throw new Error("memorial date fields are not laid out");
     }
 
-    // Date of death spans the dialog: nothing is beside it to be lapped. Asserted
-    // by width rather than by counting neighbours, so it holds however the fields
-    // below are arranged.
-    expect(dateOfDeath.width).toBeGreaterThan(deathYear.width * 1.5);
-
-    // ...and it sits entirely above the next row.
+    // Date of death owns its row: it sits entirely above the next field, so
+    // nothing is beside it to be lapped.
     expect(dateOfDeath.y + dateOfDeath.height).toBeLessThanOrEqual(deathYear.y);
+
+    // ...and it stays inside the dialog's content box. This is the assertion the
+    // second round needed: with `w-full`, iOS rendered the control 24px wider than
+    // its container (it adds `px-3` outside a declared width) and it ran out to
+    // touch the dialog's edge. `w-auto` means there is no declared width for the
+    // padding to be added to. ⚠ Chromium sizes it correctly either way, so this
+    // cannot fail on the iOS defect — it guards the intent (N156).
+    const dialogBox = await dialog.boundingBox();
+    if (!dialogBox) {
+      throw new Error("dialog is not laid out");
+    }
+    const PADDING = 24; // the dialog's `p-6`
+    expect(dateOfDeath.x).toBeGreaterThanOrEqual(dialogBox.x + PADDING - 1);
+    expect(dateOfDeath.x + dateOfDeath.width).toBeLessThanOrEqual(
+      dialogBox.x + dialogBox.width - PADDING + 1,
+    );
 
     // The two year fields do share a row. Overlapping vertical extents, never
     // equal `y`: "Death year (if the date is unknown)" wraps to two lines under

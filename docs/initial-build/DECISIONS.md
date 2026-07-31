@@ -2814,3 +2814,30 @@ So the constant was **moved out of the API into `packages/shared` as `DEFAULT_PR
 **Verified:** the new layout by a failing-then-passing guard at 834×1194 (red at 223px half-width, green at full span) and by eye on the rendered dialog. ⚠ **The iOS behaviour itself remains unverified from this machine by construction** — the structural fix is engine-independent, so it does not need iOS to be *correct*, but Forrest's iPad is still what closes OFC-376.
 
 *Supersedes N154's account of OFC-376 (the `min-w-0` mechanism); N154's OFC-375 half stands.*
+
+*Later updated by: N156 (the own-row fix below was necessary but not sufficient — the date control also needs `w-auto`, because it adds padding outside a declared width; N156 carries the corrected mechanism and the do-not-retry repro table).*
+
+### N156 — OFC-376, round three: the iOS date control adds its padding *outside* a declared width. Never give `input[type=date]` a percentage width *(Stage 2.1 / UAT — OFC-376; completes N155, corrects N154)*
+
+**One defect, reported twice, finally understood.** Round one saw the date input lap the field beside it in a half-width column; round two — after the field was given its own full-width row — saw it overrun the dialog's padding and touch the edge. Two symptoms, two theories, one cause.
+
+**The measurement settles it.** In the round-two screenshot the dialog is 512px with `p-6`, so its content box is 463px. Every other input in that dialog renders at exactly 463. The date input renders at **487 — precisely 463 + 24**, and 24px is `px-3` doubled. The control is adding its own horizontal padding *on top of* the declared `width: 100%` instead of inside it: **content-box behaviour that `box-sizing: border-box` does not override.** The same arithmetic explains round one — a 224px column plus 24px of padding is the ~245px box that lapped its neighbour. Note this is *not* an intrinsic **minimum** width, which is what N154 assumed; a minimum would have been satisfied by the 463px row and would have predicted no round-two symptom at all. The wrong model survived round one because both models predict the same thing in a narrow column.
+
+**The fix removes the premise.** `w-auto max-w-full` on date inputs only (`widthClassFor`): with no declared width there is nothing for the padding to be added on top of, so the control sizes to its content — measured **163px in Chromium, 193px in desktop WebKit**, ~250px on iOS — inside a 463px row. ⚠ **The own-row change from N155 stays load-bearing for a different reason:** an intrinsically-sized date control is still wider than a 224px half-column, so pairing it with anything would re-create the collision. Two changes, two distinct necessities; removing either brings a symptom back.
+
+**⚠ Do not spend time trying to reproduce this locally — it was tried and it does not work.** Both were measured, so the next session doesn't have to:
+
+| Engine | Renders the date control | Reproduces the overflow |
+|---|---|---|
+| Chromium (the e2e suite) | desktop widget | **no** — sizes correctly |
+| Playwright **desktop WebKit** | desktop widget | **no** — sizes correctly |
+| Playwright WebKit + **iPad device emulation** | desktop widget | **no** — emulation changes viewport/UA/touch, not the native control |
+| Real iOS | native iOS control | **yes** |
+
+Device emulation is the trap worth naming: it looks like the right tool and is not, because what differs is the platform control, not the viewport. And per N155, a second *browser* on iOS is not a second engine either. **This class of defect is reachable only on real Apple hardware** — for form controls, treat "no repro locally" as uninformative rather than as evidence.
+
+**What the e2e guard now asserts**, and its honest limit: the date input owns its row *and* stays inside the dialog's content box — the check round two needed. ⚠ Chromium sizes the control correctly either way, so **it cannot fail on the iOS defect**; it guards the intent against a future edit that reintroduces a percentage width or a shared row.
+
+**Verified:** the layout by e2e at 834×1194 and by eye on the rendered dialog; the sizing behaviour by direct measurement of a minimal reproduction across Chromium, desktop WebKit and emulated-iPad WebKit. ⚠ **The iOS behaviour itself remains unverified from this machine, by construction** — but unlike round two the fix does not depend on it: `w-auto` is correct under both box models. Forrest's iPad closes OFC-376.
+
+*Completes N155 (whose own-row fix stands and is still required); corrects N154's "intrinsic minimum width" mechanism, which was the wrong model.*

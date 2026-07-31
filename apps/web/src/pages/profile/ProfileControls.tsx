@@ -580,18 +580,13 @@ function MarkDeceasedDialog({
             All fields are optional. Enter either a full date of death or just a year, not both.
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            {/* ⚠ Date of death spans the grid, and must keep spanning it (OFC-376).
-                On iOS, `input[type=date]` will not shrink into a half-width column:
-                it keeps the intrinsic width of its localized "Dec 1, 2019" rendering
-                and overflows, lapping whatever sits beside it. Clearing the input's
-                own minimum with `min-w-0` was tried first and **does not work on
-                real hardware** — and because every iOS browser is required to use
-                the system WebKit engine, Chrome-on-iPad is not a second opinion.
-                Giving the field its own row removes the dependency on any engine's
-                intrinsic sizing rather than arguing with it (N155, superseding
-                N154's account). Chromium never reproduced the overlap, so the e2e
-                guard cannot catch a regression here on behaviour — only on layout.
-                Do not pair a date input with another control in this dialog. */}
+            {/* ⚠ Date of death owns this row — do not pair it with another control
+                (OFC-376). On iOS the native date control sizes to its content
+                (~250px), which is wider than a 224px half-column, so anything
+                beside it gets lapped. The *width* half of the same defect is
+                handled by `widthClassFor` above; both are needed, and the reasons
+                are different. ⚠ Chromium never reproduced any of it, so a green
+                e2e run here proves the layout, never the iOS behaviour. */}
             <div className="sm:col-span-2">
               <MemorialField
                 label="Date of death"
@@ -655,16 +650,38 @@ function MarkDeceasedDialog({
   );
 }
 
-// `min-w-0` is ordinary hygiene here — kept, but ⚠ **it is not what fixed
-// OFC-376**, despite a first pass that said so. The reasoning was that Tailwind's
-// `grid-cols-2` compiles to `minmax(0, 1fr)`, so the track minimum is already
-// zero and only the input's own automatic minimum could be forcing the overflow.
-// Real iOS hardware disproved it: the date input still overran its column. The
-// working fix is structural — the date field spans the grid and shares its row
-// with nothing (see the dialog's own note, and N155). Don't reintroduce a
-// half-width date input on the strength of this class.
-const inputClass =
-  "w-full min-w-0 rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 text-[length:var(--text-body)] outline-none focus-visible:ring-2 focus-visible:ring-ring";
+// Everything but the width, which `MemorialField` picks per type — see below.
+// `min-w-0` is ordinary hygiene; ⚠ it is *not* what fixed OFC-376, despite a
+// first pass that said so (N154, corrected by N155/N156).
+const inputBaseClass =
+  "min-w-0 rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 text-[length:var(--text-body)] outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/**
+ * ⚠ **A date input must never be given a percentage width** (OFC-376, N156).
+ *
+ * On iOS, `input[type=date]` is a native control that adds its horizontal padding
+ * *outside* a declared width instead of inside it — content-box behaviour that
+ * `box-sizing: border-box` does not override. So `w-full` inside this dialog
+ * renders 24px (`px-3` doubled) wider than its container's content box: at half
+ * width it lapped the field beside it, and at full width it overran the dialog's
+ * padding and touched the edge. Both reports were the same defect.
+ *
+ * `w-auto` removes the premise rather than fighting it — with no declared width
+ * there is nothing for the padding to be added on top of, and the control sizes
+ * to its content (~250px on iOS, measured 163px Chromium / 193px WebKit) well
+ * inside the ~463px row. `max-w-full` is the backstop for a very narrow viewport.
+ *
+ * ⚠ This is why the date field also keeps its **own row** (see the grid's note):
+ * an intrinsically-sized date control is still wider than a 224px half-column, so
+ * pairing it with anything would re-create the original collision.
+ *
+ * ⚠ **No engine reachable from the build machine reproduces any of this** —
+ * Chromium and desktop WebKit both size the control correctly, and iPad *device
+ * emulation* does not help, because what differs is the native iOS control, not
+ * the viewport. Verified on Forrest's iPad, twice, the hard way.
+ */
+const widthClassFor = (type: "date" | "number" | "url"): string =>
+  type === "date" ? "w-auto max-w-full" : "w-full";
 
 /** One optional deceased-fact field: a label associated by `htmlFor`/`id` (the fields.tsx convention). */
 function MemorialField({
@@ -695,7 +712,7 @@ function MemorialField({
         inputMode={type === "number" ? "numeric" : undefined}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={inputClass}
+        className={cn(widthClassFor(type), inputBaseClass)}
       />
       {error && (
         <span className="mt-1 block text-[length:var(--text-body-sm)] text-destructive">
