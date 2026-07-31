@@ -152,15 +152,20 @@ test.describe("profile 4c-2 — privileged actions", () => {
     expect(calls.deceased).toBe(1);
   });
 
-  test("OFC-376: the memorial date fields never overlap at tablet width", async ({ page }) => {
-    // ⚠ This guards the invariant, not the reported bug. The overlap the tester
-    // hit is Safari-only: it gives `input[type=date]` an intrinsic minimum width
-    // that overflows the dialog's 224px column, and Chromium — the only engine in
-    // this suite — renders the same input narrow enough to fit either way. So this
-    // passes before and after the `min-w-0` fix. It earns its place by catching a
-    // future *layout* regression (a wider column pairing, a longer label) that
-    // would reintroduce the collision in every engine; the Safari fix itself is
-    // confirmed on real hardware at live-test.
+  test("OFC-376: the date of death owns its row, and the two year fields pair beside it", async ({
+    page,
+  }) => {
+    // The memorial dialog's layout is load-bearing on iOS, where `input[type=date]`
+    // will not shrink to a half-width column and laps whatever sits beside it. The
+    // first attempt at OFC-376 tried to make it shrink (`min-w-0`) and **did not
+    // work on real hardware**; this guard encodes the structural answer instead —
+    // no control ever shares a row with the date input, so no engine's opinion of
+    // its intrinsic width can cause a collision (N155, superseding N154's account).
+    //
+    // ⚠ Chromium — the only engine in this suite — never reproduced the original
+    // overlap, so this cannot fail on the iOS behaviour itself. What it *does*
+    // catch is the layout regressing back to a shared row, which is the thing that
+    // would let the bug return. Real-device confirmation stays a live-test step.
     await mockAdminViewing(page);
     await page.setViewportSize({ width: 834, height: 1194 }); // iPad Pro 11" portrait
     await gotoProfile(page);
@@ -171,21 +176,29 @@ test.describe("profile 4c-2 — privileged actions", () => {
 
     const dateOfDeath = await dialog.getByLabel("Date of death").boundingBox();
     const deathYear = await dialog.getByLabel("Death year (if the date is unknown)").boundingBox();
-    if (!dateOfDeath || !deathYear) {
+    const birthYear = await dialog.getByLabel("Birth year").boundingBox();
+    if (!dateOfDeath || !deathYear || !birthYear) {
       throw new Error("memorial date fields are not laid out");
     }
 
-    // The two fields share a row — asserted as *overlapping vertical extents*,
-    // not equal `y`. Equal `y` fails on CI for a legitimate reason: "Death year
-    // (if the date is unknown)" is long enough to wrap to two lines under Linux
-    // font metrics, which pushes that field's input ~20px below its neighbour's
-    // while both stay in the same grid row.
-    expect(dateOfDeath.y).toBeLessThan(deathYear.y + deathYear.height);
-    expect(deathYear.y).toBeLessThan(dateOfDeath.y + dateOfDeath.height);
+    // Date of death spans the dialog: nothing is beside it to be lapped. Asserted
+    // by width rather than by counting neighbours, so it holds however the fields
+    // below are arranged.
+    expect(dateOfDeath.width).toBeGreaterThan(deathYear.width * 1.5);
 
-    // The actual invariant: the first field's right edge stops short of where the
-    // second begins, so neither can lap the other.
-    expect(dateOfDeath.x + dateOfDeath.width).toBeLessThanOrEqual(deathYear.x);
+    // ...and it sits entirely above the next row.
+    expect(dateOfDeath.y + dateOfDeath.height).toBeLessThanOrEqual(deathYear.y);
+
+    // The two year fields do share a row. Overlapping vertical extents, never
+    // equal `y`: "Death year (if the date is unknown)" wraps to two lines under
+    // Linux font metrics and pushes its input ~20px below its neighbour's while
+    // both stay in the same grid row — equality fails on CI and passes on Windows.
+    expect(deathYear.y).toBeLessThan(birthYear.y + birthYear.height);
+    expect(birthYear.y).toBeLessThan(deathYear.y + deathYear.height);
+
+    // Both are plain number inputs, which shrink to their column in every engine —
+    // but assert the separation anyway, since that is the property that matters.
+    expect(deathYear.x + deathYear.width).toBeLessThanOrEqual(birthYear.x);
   });
 
   test("an admin can de-brother a member with a confirmation", async ({ page }) => {

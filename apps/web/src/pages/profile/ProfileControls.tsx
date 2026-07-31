@@ -580,14 +580,31 @@ function MarkDeceasedDialog({
             All fields are optional. Enter either a full date of death or just a year, not both.
           </p>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <MemorialField
-              label="Date of death"
-              type="date"
-              value={dateOfDeath}
-              onChange={setDateOfDeath}
-              error={issueFor("dateOfDeath")}
-              inputRef={firstFieldRef}
-            />
+            {/* ⚠ Date of death spans the grid, and must keep spanning it (OFC-376).
+                On iOS, `input[type=date]` will not shrink into a half-width column:
+                it keeps the intrinsic width of its localized "Dec 1, 2019" rendering
+                and overflows, lapping whatever sits beside it. Clearing the input's
+                own minimum with `min-w-0` was tried first and **does not work on
+                real hardware** — and because every iOS browser is required to use
+                the system WebKit engine, Chrome-on-iPad is not a second opinion.
+                Giving the field its own row removes the dependency on any engine's
+                intrinsic sizing rather than arguing with it (N155, superseding
+                N154's account). Chromium never reproduced the overlap, so the e2e
+                guard cannot catch a regression here on behaviour — only on layout.
+                Do not pair a date input with another control in this dialog. */}
+            <div className="sm:col-span-2">
+              <MemorialField
+                label="Date of death"
+                type="date"
+                value={dateOfDeath}
+                onChange={setDateOfDeath}
+                error={issueFor("dateOfDeath")}
+                inputRef={firstFieldRef}
+              />
+            </div>
+            {/* The two year fields pair instead — plain number inputs, which shrink
+                to their column everywhere, and a natural reading of the lifespan
+                the memorial line renders (D122). */}
             <MemorialField
               label="Death year (if the date is unknown)"
               type="number"
@@ -638,13 +655,14 @@ function MarkDeceasedDialog({
   );
 }
 
-// `min-w-0` is load-bearing, not tidiness (OFC-376). Safari gives
-// `input[type=date]` an intrinsic minimum width — wide enough for its localized
-// "Dec 1, 2019" rendering — which `w-full` alone does not defeat. Tailwind's
-// `grid-cols-2` compiles to `minmax(0, 1fr)`, so the *track* minimum is already
-// zero and the column cannot grow to absorb it; the input therefore overflowed
-// its 224px column and lapped the field beside it on iPad. Clearing the input's
-// own automatic minimum is what lets it honour the column.
+// `min-w-0` is ordinary hygiene here — kept, but ⚠ **it is not what fixed
+// OFC-376**, despite a first pass that said so. The reasoning was that Tailwind's
+// `grid-cols-2` compiles to `minmax(0, 1fr)`, so the track minimum is already
+// zero and only the input's own automatic minimum could be forcing the overflow.
+// Real iOS hardware disproved it: the date input still overran its column. The
+// working fix is structural — the date field spans the grid and shares its row
+// with nothing (see the dialog's own note, and N155). Don't reintroduce a
+// half-width date input on the strength of this class.
 const inputClass =
   "w-full min-w-0 rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 text-[length:var(--text-body)] outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
