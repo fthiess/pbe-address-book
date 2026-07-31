@@ -374,7 +374,23 @@ export function Directory() {
         <LoadingOverlay reassurance={STILL_LOADING_REASSURANCE} showReassurance={showReassurance} />
       )}
 
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+      {/* Between `sm` and `lg` the break is pinned to the breakpoint rather than
+          left to `flex-wrap` (OFC-375). While this row wrapped purely on content,
+          whether the control group sat beside the heading or below it depended on
+          the *rendered width of the count line* — which changes with the filter
+          state ("1089 of 1207 brothers" vs "1207 brothers"). At tablet width the
+          row sits a few px from that wrap point, so ticking a filter jumped the
+          whole group 60px up onto the heading line. (The reported trigger was
+          "Include deceased", but any filter that narrows the count does it —
+          "Starred only" included.)
+
+          Deliberately scoped to the tablet band. On a phone the group is just the
+          search box (the toggles and picker live in the Options fold, OFC-211) and
+          it already shares the heading line; stacking it there would cost the
+          brother list a row of vertical space that OFC-211 went to some trouble to
+          win back. At `lg` the longest count and the full group fit side by side
+          with room to spare, so desktop keeps its compact two-column header. */}
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3 sm:flex-col sm:items-stretch lg:flex-row lg:items-end lg:justify-between">
         <div>
           <h1 id="directory-heading" className="text-xl font-bold tracking-tight">
             Directory

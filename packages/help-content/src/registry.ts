@@ -56,7 +56,10 @@ export const helpContent: HelpContent = {
   "directory.filter.constitutionId": {
     key: "directory.filter.constitutionId",
     label: "Constitution ID",
-    placeholder: "e.g. 5001, 5100-5200",
+    // Real Constitution IDs top out around 1481; the old "5001, 5100-5200" came
+    // from the fake-data range (ids > #5000) and read as nonsense to testers,
+    // who have no reason to know the seed convention (OFC-374).
+    placeholder: "e.g. 721, 900-1000",
     toggleTip:
       "The Constitution ID is the sequence number of the brother's signature on the PBE constitution. Filter by Constitution ID the same way as Class Year: a single number, a comma-separated list, or a range like 800-900 (open-ended ranges like 800- work too).",
   },

@@ -638,8 +638,15 @@ function MarkDeceasedDialog({
   );
 }
 
+// `min-w-0` is load-bearing, not tidiness (OFC-376). Safari gives
+// `input[type=date]` an intrinsic minimum width — wide enough for its localized
+// "Dec 1, 2019" rendering — which `w-full` alone does not defeat. Tailwind's
+// `grid-cols-2` compiles to `minmax(0, 1fr)`, so the *track* minimum is already
+// zero and the column cannot grow to absorb it; the input therefore overflowed
+// its 224px column and lapped the field beside it on iPad. Clearing the input's
+// own automatic minimum is what lets it honour the column.
 const inputClass =
-  "w-full rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 text-[length:var(--text-body)] outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "w-full min-w-0 rounded-[var(--radius-md)] border border-input bg-background px-3 py-2 text-[length:var(--text-body)] outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
 /** One optional deceased-fact field: a label associated by `htmlFor`/`id` (the fields.tsx convention). */
 function MemorialField({

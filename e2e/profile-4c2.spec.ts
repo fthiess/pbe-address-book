@@ -152,6 +152,35 @@ test.describe("profile 4c-2 — privileged actions", () => {
     expect(calls.deceased).toBe(1);
   });
 
+  test("OFC-376: the memorial date fields never overlap at tablet width", async ({ page }) => {
+    // ⚠ This guards the invariant, not the reported bug. The overlap the tester
+    // hit is Safari-only: it gives `input[type=date]` an intrinsic minimum width
+    // that overflows the dialog's 224px column, and Chromium — the only engine in
+    // this suite — renders the same input narrow enough to fit either way. So this
+    // passes before and after the `min-w-0` fix. It earns its place by catching a
+    // future *layout* regression (a wider column pairing, a longer label) that
+    // would reintroduce the collision in every engine; the Safari fix itself is
+    // confirmed on real hardware at live-test.
+    await mockAdminViewing(page);
+    await page.setViewportSize({ width: 834, height: 1194 }); // iPad Pro 11" portrait
+    await gotoProfile(page);
+
+    await page.getByRole("button", { name: "Mark as deceased…" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByRole("button", { name: "Continue" }).click();
+
+    const dateOfDeath = await dialog.getByLabel("Date of death").boundingBox();
+    const deathYear = await dialog.getByLabel("Death year (if the date is unknown)").boundingBox();
+    if (!dateOfDeath || !deathYear) {
+      throw new Error("memorial date fields are not laid out");
+    }
+
+    // Side by side on one row, with the gap intact: the first field's right edge
+    // must stop short of where the second begins.
+    expect(dateOfDeath.y).toBeCloseTo(deathYear.y, 0);
+    expect(dateOfDeath.x + dateOfDeath.width).toBeLessThanOrEqual(deathYear.x);
+  });
+
   test("an admin can de-brother a member with a confirmation", async ({ page }) => {
     const calls = await mockAdminViewing(page);
     await gotoProfile(page);
