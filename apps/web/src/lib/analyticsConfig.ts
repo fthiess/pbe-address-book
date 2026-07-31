@@ -114,7 +114,12 @@ export const MIXPANEL_INIT_CONFIG = {
   // a shared `$user_id` (the Ghost uuid, D137), not by a shared cookie.
   persistence: "localStorage" as const,
   secure_cookie: true,
-  // Host-only. On `*.web.app` a cross-subdomain cookie is unsettable anyway
-  // (public suffix); at cutover this becomes a real choice — see CUTOVER-PLAN.md.
+  // Host-only. This used to be forced: on `*.web.app` a cross-subdomain cookie is
+  // unsettable at all (public suffix). D161 moved Book-staging to
+  // `book-staging.pbe400.org`, so `.pbe400.org` is now genuinely settable and this
+  // is a **real, open choice today** — not one deferred to cutover. It stays
+  // `false` deliberately: sharing Mixpanel's identity cookie with every other
+  // `pbe400.org` subdomain is a privacy decision on its own merits, and D162
+  // declined to make it as a side effect of moving an ingestion host.
   cross_subdomain_cookie: false,
 };
