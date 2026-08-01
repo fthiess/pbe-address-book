@@ -8,30 +8,32 @@ import { cn } from "../../lib/utils.js";
  * sole signal (accessibility policy D32).
  */
 
-/**
- * The reserved neutral: the UNLISTED badge (D124) and anything with no course
- * family. Deliberately outside the 25 course families so a palette change can
- * never move the privacy badge (D165).
- */
-const NEUTRAL = "neutral";
-
-/**
- * A family's token key. Lower-cased because CSS custom properties are
- * case-sensitive and `Other` is the one mixed-case family — the generator
- * (`scripts/generate-chip-tokens.mjs`) lower-cases identically.
- */
-function familyToken(family: CourseFamily): string {
-  return family.toLowerCase();
-}
-
-/** Inline style drawing a family's three chip tokens from the token layer. */
-export function familyStyle(family: CourseFamily | typeof NEUTRAL) {
-  const key = family === NEUTRAL ? NEUTRAL : familyToken(family);
+/** The three chip tokens for a palette key, as an inline style. */
+function chipTokens(key: string) {
   return {
     color: `var(--chip-${key}-fg)`,
     backgroundColor: `var(--chip-${key}-bg)`,
     borderColor: `var(--chip-${key}-border)`,
   };
+}
+
+/**
+ * Inline style for a course family, or — for `null`, a code the vocabulary does
+ * not know — the reserved neutral. The key is lower-cased because CSS custom
+ * properties are case-sensitive and `Other` is the one mixed-case family; the
+ * generator (`scripts/generate-chip-tokens.mjs`) lower-cases identically.
+ */
+export function familyStyle(family: CourseFamily | null) {
+  return chipTokens(family === null ? "neutral" : family.toLowerCase());
+}
+
+/**
+ * The reserved neutral, used directly by the UNLISTED badge (D124). Deliberately
+ * outside the 25 course families, so re-deriving the course palette can never
+ * move the privacy badge (D165).
+ */
+export function neutralStyle() {
+  return chipTokens("neutral");
 }
 
 /**
@@ -116,7 +118,7 @@ export function UnlistedBadge() {
   return (
     <span
       className="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[length:var(--text-micro)] font-bold uppercase tracking-wide"
-      style={familyStyle(NEUTRAL)}
+      style={neutralStyle()}
     >
       <EyeOff size={11} strokeWidth={1.4} aria-hidden="true" />
       Unlisted

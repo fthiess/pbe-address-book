@@ -146,7 +146,7 @@ function MajorChip({
     transition,
     isDragging,
   } = useSortable({ id: code });
-  const family: CourseFamily = courseFamily(code);
+  const family: CourseFamily | null = courseFamily(code);
   const name = courseName(code);
 
   const style: CSSProperties = {

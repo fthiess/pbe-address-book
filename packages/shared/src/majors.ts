@@ -232,11 +232,19 @@ export function courseName(code: string): string {
 
 /**
  * The colour family a course code belongs to — the leading course number, which
- * is what the chip palette is keyed on. Unknown codes fall back to `"Other"`, so
- * a code that predates the vocabulary still renders a chip rather than throwing.
+ * is what the chip palette is keyed on.
+ *
+ * Returns `null` for a code the vocabulary does not know, which the chip layer
+ * renders in the reserved neutral. ⚠ It must **not** fall back to `"Other"`:
+ * that is a real family with a real hue, worn by CMS/HST/STS, so an unrecognised
+ * code would be indistinguishable from a genuine inter-school programme. An
+ * unknown code is a *gap in the vocabulary*, and should look like one. This is
+ * reachable — `validateProfile` deliberately leaves major-code membership
+ * unchecked (DATABASE-SCHEMA §8) so a legacy code can survive on a profile, and
+ * the bundled list is a launch subset until D69's Firestore vocabulary is built.
  */
-export function courseFamily(code: string): CourseFamily {
-  return BY_CODE.get(code)?.family ?? "Other";
+export function courseFamily(code: string): CourseFamily | null {
+  return BY_CODE.get(code)?.family ?? null;
 }
 
 /**
@@ -289,10 +297,16 @@ function parseCode(code: string): ParsedCode | null {
 /**
  * Order course codes the way MIT lists them — **numerically**, not as strings, so
  * Course 2 precedes Course 10 (a plain string sort puts "10" before "2"). Within a
- * family the bare code leads, then letter-suffixed subjects alphabetically
- * (21 < 21A < 21W), then numeric sub-codes (6-1 < 6-2 < 6-14), then alpha
- * sub-codes (18 < 18-C). The pure-letter programmes (CMS, HST, STS) sort after
- * every numbered course, alphabetically among themselves.
+ * family the bare code leads, then its dash sub-codes (numeric first, 6-1 < 6-2 <
+ * 6-14; then alpha, 18 < 18-C), and finally the letter-suffixed subjects
+ * alphabetically (21 < 21A < 21W). The pure-letter programmes (CMS, HST, STS) sort
+ * after every numbered course, alphabetically among themselves.
+ *
+ * The suffix is compared before the sub-code, so a family mixing both shapes sorts
+ * `9 9-1 9-C 9A` — letter-suffixed last. No family in today's vocabulary mixes them
+ * (Course 21 is all suffixes, Course 6 all sub-codes), so the relative order of the
+ * two is arbitrary; it is documented only because it is *stable*, which is what the
+ * total-order guarantee below actually needs.
  *
  * ⚠ The comparator must be a **total order**: `Array.sort` has undefined behaviour
  * given a comparator that returns NaN or reports two distinct values as equal, and

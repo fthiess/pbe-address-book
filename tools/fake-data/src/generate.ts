@@ -74,10 +74,15 @@ export const COLLISION_COUNT = 2;
  * only six families; with 25, a subset would have left most of the palette
  * unseen on staging, which is exactly what UAT needs to look at.
  *
- * Drawing uniformly over *codes* also lands close to reality without any
- * weighting table: the families MIT splits into many codes are the ones PBE
- * brothers actually read, so Course 6 (nine codes) turns up nine times as often
- * as Course 22 (one).
+ * ⚠ Sampling is uniform over *codes*, which is chosen for **coverage, not
+ * realism** — do not read the generated distribution as a model of the
+ * membership. Code count per family and real enrolment are only weakly
+ * correlated: Course 21 has the most codes (ten, via its lettered subjects) but
+ * among the fewest brothers (15 of 851), so it is drawn roughly ten times too
+ * often, while Course 2 has one code and 120 brothers and is drawn roughly eight
+ * times too rarely. The real per-family counts live in
+ * `scripts/generate-chip-tokens.mjs`; if fake data ever needs to be
+ * *representative* rather than merely complete, weight from that table.
  */
 export const FAKE_MAJOR_CODES: readonly string[] = MAJOR_CODES;
 

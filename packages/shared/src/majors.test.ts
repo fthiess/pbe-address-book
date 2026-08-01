@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { MAJORS, MAJOR_CODES, compareCourseCodes, courseLabel, courseName } from "./majors.js";
+import {
+  COURSE_FAMILIES,
+  type CourseFamily,
+  MAJORS,
+  MAJOR_CODES,
+  compareCourseCodes,
+  courseFamily,
+  courseLabel,
+  courseName,
+} from "./majors.js";
 
 describe("course vocabulary", () => {
   it("resolves a known code to its display name", () => {
@@ -24,6 +33,27 @@ describe("course vocabulary", () => {
   it("orders course codes by number, not as strings (2 before 10; 6-1 < 6-2 < 6-3)", () => {
     const sorted = ["10", "2", "6-3", "18", "6-1", "6-2", "7"].sort(compareCourseCodes);
     expect(sorted).toEqual(["2", "6-1", "6-2", "6-3", "7", "10", "18"]);
+  });
+
+  it("maps every code to its family, and every family is a known one", () => {
+    const families = new Set(COURSE_FAMILIES);
+    for (const code of MAJOR_CODES) {
+      const family = courseFamily(code);
+      expect(family).not.toBeNull();
+      expect(families.has(family as CourseFamily)).toBe(true);
+    }
+    expect(courseFamily("6-3")).toBe("6");
+    expect(courseFamily("21W")).toBe("21");
+    expect(courseFamily("CMS")).toBe("Other");
+  });
+
+  // An unknown code must NOT borrow "Other" — that is a real family with a real
+  // hue (CMS/HST/STS), so a legacy code would be indistinguishable from a genuine
+  // inter-school programme. null routes it to the reserved neutral instead.
+  it("returns null — not 'Other' — for a code outside the vocabulary", () => {
+    expect(courseFamily("99-99")).toBeNull();
+    expect(courseFamily("")).toBeNull();
+    expect(courseFamily("Other")).toBeNull();
   });
 
   it("puts a bare code before its own variants (6 < 6-1; 21 < 21A)", () => {
