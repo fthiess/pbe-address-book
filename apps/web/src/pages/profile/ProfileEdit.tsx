@@ -266,7 +266,7 @@ export function ProfileEdit({
         {/* Sticky action bar (§5.7) — EDITING marker + Cancel / Save changes. */}
         <div className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-card/95 px-6 py-3 backdrop-blur sm:px-8">
           <div className="flex items-center gap-3">
-            <span className="rounded-[var(--radius-sm)] bg-[var(--chip-teal-bg)] px-2 py-0.5 text-[length:var(--text-caption)] font-bold uppercase tracking-wide text-[var(--primary-emphasis)]">
+            <span className="rounded-[var(--radius-sm)] bg-[var(--primary-tint)] px-2 py-0.5 text-[length:var(--text-caption)] font-bold uppercase tracking-wide text-[var(--primary-emphasis)]">
               Editing
             </span>
             <span className="font-semibold">{name}</span>

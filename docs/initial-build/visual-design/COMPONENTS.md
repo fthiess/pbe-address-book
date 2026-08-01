@@ -44,14 +44,16 @@ Height 42px, radius 9px, border 1px `--input` #808A92, bg #fff, padding 0 12px, 
 - Short inputs (year fields) use `--font-mono`, placeholder "YYYY".
 
 ## Chip (course-area / status)
-Pill, radius 999px, padding 3×10, 12px/600. Colors from the **course-area chip palette** in `tokens.css` (teal=Course 6, gold=2, green=7, purple=18, red=10, slate=neutral). The major **code text** carries the meaning; color is reinforcement.
+Pill, radius 999px, padding 3×10, 12px/600. Colors from the **course-area chip palette** in `tokens.css` — one hue per **course family** (the leading course number), so all nine Course 6 codes wear one color. Tokens are named by family: `--chip-6-{fg,bg,border}`, `--chip-other-*` for the lettered inter-school programmes, and `--chip-neutral-*` reserved for the UNLISTED badge and unknown codes. The major **code text** carries the meaning; color is reinforcement.
+
+The palette is **generated**, not hand-picked (D165) — `scripts/generate-chip-tokens.mjs` emits all 25 families from a single OKLCH ramp at fixed lightness/chroma, varying only hue, so every pairing has the same contrast by construction (worst 7.14:1 light, 9.30:1 dark — AAA in both themes). Don't hand-edit the generated block; `assert:chip-tokens` fails the build if you do. Hue placement is frozen: a brother's chip must not change color between visits.
 
 ### Chip editor (Profile › Courses, edit mode)
 Wrapping field, min-height 48px, dashed-free 1px `--input` border. Each chip gains a grab handle (`⠿`) on the left and an `×` remove circle on the right. "Drag to reorder; the course listed first appears in the directory." An "Add a course…" placeholder ends the row. The section is labelled **Courses** (the data field stays `majors`; matches the Directory's N15 rename). Locked relationship chips (Little Brothers) render flat with a 🔒 on the section label and an explanatory note — not editable.
 
 ## UNLISTED badge  ← (privacy hide; manager/admin-only)
 - Calm, neutral, **present-but-private** — deliberately NOT an alarm and NOT a strike.
-- Solid slate fill: text `--chip-slate-fg` #3A4651, bg `--chip-slate-bg` #E9EDF0, border `--chip-slate-border` #D2DADF, radius 4–5px, 10.5px/700, letter-spacing 0.03em.
+- Solid slate fill: text `--chip-neutral-fg` #3A4651, bg `--chip-neutral-bg` #E9EDF0, border `--chip-neutral-border` #D2DADF, radius 4–5px, 10.5px/700, letter-spacing 0.03em. (Was `--chip-slate-*`, which doubled as a course family's tint; the neutral is now reserved so a course-palette change can never move this badge — D165.)
 - Leads with a small "no/hidden" glyph: an inline SVG circle with a diagonal slash (`currentColor`, stroke 1.3–1.4).
 - Text "UNLISTED" + `title`/accessible name: "Unlisted — hidden from the directory; visible to managers and administrators only."
 - **Shown only to managers/admins** on the Directory row/card and on the Profile.

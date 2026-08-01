@@ -1,4 +1,10 @@
-import { MAJOR_CODES, resolveCanonicalNames, validateProfile } from "@pbe/shared";
+import {
+  COURSE_FAMILIES,
+  MAJOR_CODES,
+  courseFamily,
+  resolveCanonicalNames,
+  validateProfile,
+} from "@pbe/shared";
 import { describe, expect, it } from "vitest";
 import {
   COLLISION_COUNT,
@@ -19,6 +25,16 @@ describe("course vocabulary coverage", () => {
     for (const code of FAKE_MAJOR_CODES) {
       expect(known.has(code)).toBe(true);
     }
+  });
+
+  // Staging is where the chip palette gets looked at, and staging reseeds from
+  // this generator on every deploy (N18/N90). If a default-sized dataset misses
+  // a family, that family's colour is unreviewable — so assert coverage rather
+  // than trusting that uniform sampling got there (D165/OFC-320).
+  it("a default-sized dataset exercises all 25 chip colour families", () => {
+    const profiles = generateProfiles({ count: DEFAULT_COUNT, seed: 7 });
+    const seen = new Set(profiles.flatMap((p) => p.majors ?? []).map(courseFamily));
+    expect([...seen].sort()).toEqual([...COURSE_FAMILIES].sort());
   });
 });
 

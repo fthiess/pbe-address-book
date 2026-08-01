@@ -98,9 +98,12 @@ export {
 export { profilesToCsv, neutralizeCsvCell, formatCsvCell } from "./csv.js";
 export {
   type Major,
+  type CourseFamily,
+  COURSE_FAMILIES,
   MAJORS,
   MAJOR_CODES,
   courseName,
+  courseFamily,
   courseLabel,
   compareCourseCodes,
 } from "./majors.js";

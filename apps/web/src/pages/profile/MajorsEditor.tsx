@@ -1,13 +1,19 @@
 import { DndContext, type DragEndEvent, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { MAJORS, compareCourseCodes, courseName } from "@pbe/shared";
+import {
+  type CourseFamily,
+  MAJORS,
+  compareCourseCodes,
+  courseFamily,
+  courseName,
+} from "@pbe/shared";
 import { Plus } from "lucide-react";
 import { type CSSProperties, type KeyboardEvent, useId } from "react";
 import { Combobox } from "../../components/Combobox.js";
 import { ControlHelp } from "../../components/ControlHelp.js";
 import { cn } from "../../lib/utils.js";
-import { type ChipFamily, CourseChipName, courseFamily, familyStyle } from "../directory/Chips.js";
+import { CourseChipName, familyStyle } from "../directory/Chips.js";
 import { FIELD_LABEL_CLASS } from "./fields.js";
 
 /**
@@ -140,7 +146,7 @@ function MajorChip({
     transition,
     isDragging,
   } = useSortable({ id: code });
-  const family: ChipFamily = courseFamily(code);
+  const family: CourseFamily = courseFamily(code);
   const name = courseName(code);
 
   const style: CSSProperties = {

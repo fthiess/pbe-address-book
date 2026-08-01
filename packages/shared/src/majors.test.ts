@@ -25,4 +25,46 @@ describe("course vocabulary", () => {
     const sorted = ["10", "2", "6-3", "18", "6-1", "6-2", "7"].sort(compareCourseCodes);
     expect(sorted).toEqual(["2", "6-1", "6-2", "6-3", "7", "10", "18"]);
   });
+
+  it("puts a bare code before its own variants (6 < 6-1; 21 < 21A)", () => {
+    expect(compareCourseCodes("6", "6-1")).toBeLessThan(0);
+    expect(compareCourseCodes("21", "21A")).toBeLessThan(0);
+  });
+
+  it("orders Course 21's letter-suffixed subjects alphabetically", () => {
+    const sorted = ["21W", "21A", "21", "21M", "21H", "21E"].sort(compareCourseCodes);
+    expect(sorted).toEqual(["21", "21A", "21E", "21H", "21M", "21W"]);
+  });
+
+  it("orders alpha sub-codes without producing NaN (3 < 3-C; 18 < 18-C)", () => {
+    expect(compareCourseCodes("3", "3-C")).toBeLessThan(0);
+    expect(compareCourseCodes("18", "18-C")).toBeLessThan(0);
+    const sorted = ["20-B", "4-B", "3-C", "10-B", "18-C"].sort(compareCourseCodes);
+    expect(sorted).toEqual(["3-C", "4-B", "10-B", "18-C", "20-B"]);
+  });
+
+  it("sorts non-numeric codes after every numbered course, alphabetically", () => {
+    const sorted = ["STS", "6-3", "CMS", "25", "HST"].sort(compareCourseCodes);
+    expect(sorted).toEqual(["6-3", "25", "CMS", "HST", "STS"]);
+  });
+
+  it("is a consistent total order over the whole vocabulary — never NaN, never a false tie", () => {
+    for (const a of MAJOR_CODES) {
+      for (const b of MAJOR_CODES) {
+        const ab = compareCourseCodes(a, b);
+        expect(Number.isNaN(ab)).toBe(false);
+        // Distinct codes must never compare equal, and the order must be antisymmetric.
+        expect(Math.sign(ab)).toBe(a === b ? 0 : -Math.sign(compareCourseCodes(b, a)));
+      }
+    }
+  });
+
+  it("sorts the vocabulary to the same order regardless of input order", () => {
+    const canonical = [...MAJOR_CODES].sort(compareCourseCodes);
+    // A deterministic shuffle — reversing and rotating exercises a different
+    // insertion path through Array.sort than the already-ordered source does.
+    const shuffled = [...MAJOR_CODES].reverse();
+    shuffled.push(...shuffled.splice(0, 17));
+    expect([...shuffled].sort(compareCourseCodes)).toEqual(canonical);
+  });
 });

@@ -4,6 +4,7 @@ import {
   type EmergencyContact,
   FAKE_ID_FLOOR,
   type Link,
+  MAJOR_CODES,
   type PrivacyFlags,
   type Profile,
   type Role,
@@ -67,23 +68,18 @@ export const COLLISION_IDENTITY = {
 export const COLLISION_COUNT = 2;
 
 /**
- * The small course-code pool the fake `majors` are drawn from. These are the
- * codes the generated dataset uses; the test validates against exactly this set.
+ * The course-code pool the fake `majors` are drawn from — the **whole** shared
+ * vocabulary, so a generated dataset exercises every one of the 25 chip colours
+ * (D165/OFC-320). It was a hand-picked subset of 12 codes while the palette had
+ * only six families; with 25, a subset would have left most of the palette
+ * unseen on staging, which is exactly what UAT needs to look at.
+ *
+ * Drawing uniformly over *codes* also lands close to reality without any
+ * weighting table: the families MIT splits into many codes are the ones PBE
+ * brothers actually read, so Course 6 (nine codes) turns up nine times as often
+ * as Course 22 (one).
  */
-export const FAKE_MAJOR_CODES: readonly string[] = [
-  "6-3",
-  "6-2",
-  "6-1",
-  "8",
-  "18",
-  "2",
-  "10",
-  "15",
-  "16",
-  "7",
-  "21",
-  "14",
-] as const;
+export const FAKE_MAJOR_CODES: readonly string[] = MAJOR_CODES;
 
 /** A fixed epoch so generated timestamps are deterministic (no wall-clock). */
 const BASE_EPOCH_MS = Date.UTC(2024, 0, 1);
