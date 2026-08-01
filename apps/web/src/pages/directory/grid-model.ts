@@ -40,6 +40,7 @@ export type ColumnKey =
   // Non-default selectable columns (off by default):
   | "fullName"
   | "mugName"
+  | "employer"
   | "constitutionId"
   | "role"
   // Restricted, manager/administrator only (§5.6.1, off by default):
@@ -304,6 +305,22 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     sortable: true,
     display: (p) => p.mugName ?? EMPTY,
     sortValue: (p) => p.mugName?.toLocaleLowerCase() ?? null,
+  },
+  employer: {
+    key: "employer",
+    // The brother's current employer — a public field (shared visibility table),
+    // already in every role's projection, so this column adds no bytes to the
+    // roster read. Off by default like every optional column: it is the answer to
+    // a specific question ("who works at …"), not part of the resting view (D164,
+    // OFC-379). Wide enough for a company name without the header truncating.
+    label: "Employer",
+    group: "optional",
+    width: 200,
+    align: "start",
+    pinned: false,
+    sortable: true,
+    display: (p) => p.employerName ?? EMPTY,
+    sortValue: (p) => p.employerName?.toLocaleLowerCase() ?? null,
   },
   constitutionId: {
     key: "constitutionId",

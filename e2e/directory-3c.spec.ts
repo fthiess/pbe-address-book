@@ -439,6 +439,77 @@ test.describe("Directory 3c — follow-up fixes", () => {
   });
 });
 
+test.describe("Directory — Employer filter and column (D164, OFC-379)", () => {
+  // A local fixture rather than employers on the shared PROFILES: the export and
+  // auto-fit tests above read those rows, and a filter test has no business
+  // changing what they measure.
+  const EMPLOYED = {
+    ...PROFILES,
+    profiles: PROFILES.profiles.map((profile) => {
+      if (profile.id === 5001) {
+        return { ...profile, employerName: "Acme Corporation" };
+      }
+      if (profile.id === 5006) {
+        return { ...profile, employerName: "Initech" };
+      }
+      // 5002 (the viewer) and 5003 deliberately keep no employer — the "not on
+      // record" case must never match a non-empty query.
+      return profile;
+    }),
+  };
+
+  test("filters to brothers whose employer contains the typed text", async ({ page }) => {
+    await gotoDirectory(page, "admin", EMPLOYED);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+
+    // Lower-case, and a fragment of the name — the "search by company" case UAT
+    // asked for (a brother types "acme", not "Acme Corporation").
+    await page.getByRole("textbox", { name: "Employer" }).fill("acme");
+
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toHaveCount(0);
+    // A brother with no employer on record is not swept in.
+    await expect(page.getByRole("rowheader", { name: /Dev Admin/ })).toHaveCount(0);
+  });
+
+  test("is available to an ordinary brother — `employerName` is a public field", async ({
+    page,
+  }) => {
+    await gotoDirectory(page, "brother", EMPLOYED);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+
+    await page.getByRole("textbox", { name: "Employer" }).fill("initech");
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toHaveCount(0);
+  });
+
+  test("the `?` says only the CURRENT employer is on record", async ({ page }) => {
+    await gotoDirectory(page, "brother", EMPLOYED);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+
+    await page.getByRole("button", { name: "Help: Employer" }).click();
+
+    // The limitation lives in the data model, not the filter, so it can only be
+    // explained here — and it is the whole reason this control has help at all.
+    await expect(page.getByText(/only a brother's current employer is on record/i)).toBeVisible();
+  });
+
+  test("Employer is an optional column, off by default, addable by a brother", async ({ page }) => {
+    await gotoDirectory(page, "brother", EMPLOYED);
+
+    // Off by default: the resting view is unchanged by this feature.
+    await expect(page.getByRole("columnheader", { name: "Employer" })).toHaveCount(0);
+
+    // The picker is a <details> with plain checkboxes (ColumnPicker), so the
+    // trigger is its <summary> — matching the idiom in columns-impersonate-6b-2.
+    await page.getByText("Columns", { exact: true }).click();
+    await page.getByRole("checkbox", { name: "Employer" }).check();
+
+    await expect(page.getByRole("columnheader", { name: /Employer/ })).toBeVisible();
+    await expect(page.getByRole("cell", { name: "Acme Corporation" })).toBeVisible();
+  });
+});
+
 test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
   test("filters by a one-sided year range (OFC-195)", async ({ page }) => {
     await gotoDirectory(page);

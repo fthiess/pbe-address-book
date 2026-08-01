@@ -63,6 +63,16 @@ export const helpContent: HelpContent = {
     toggleTip:
       "The Constitution ID is the sequence number of the brother's signature on the PBE constitution. Filter by Constitution ID the same way as Class Year: a single number, a comma-separated list, or a range like 800-900 (open-ended ranges like 800- work too).",
   },
+  // The filter UAT asked for most (OFC-379/D164). The `?` exists for one reason:
+  // the field holds a brother's single *current* employer, so a former company
+  // finds nobody — a limitation of the data model that the control itself cannot
+  // show, and the exact thing a brother would otherwise read as a broken filter.
+  "directory.filter.employer": {
+    key: "directory.filter.employer",
+    label: "Employer",
+    toggleTip:
+      "Finds brothers whose employer contains what you type — acme finds Acme Corporation. Only a brother's current employer is on record, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all.",
+  },
   "directory.filter.staff": {
     key: "directory.filter.staff",
     label: "Staff",
