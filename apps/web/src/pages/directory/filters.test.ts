@@ -123,8 +123,10 @@ describe("buildFilterPredicate — Employer (D164, OFC-379)", () => {
   });
 
   it("never matches a brother with no employer on record", () => {
-    // "a" appears in every populated value, so only the absent one can drop out.
-    expect(keep({ employer: "a" }, "brother")).toEqual([1, 2]);
+    // "e" is in all three populated values ("Acme", "acme", "Initech"), so the ONLY
+    // row that can drop out is the one with no employer — which is what makes this
+    // an absence test rather than another substring test.
+    expect(keep({ employer: "e" }, "brother")).toEqual([1, 2, 3]);
   });
 
   it("treats a whitespace-only value as unset (the filter must not exclude everyone)", () => {
