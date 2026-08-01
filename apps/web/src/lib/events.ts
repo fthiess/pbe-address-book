@@ -168,9 +168,17 @@ export function fieldGroupsChanged(
  * value is the human dimension label. Only the *dimension* is ever sent — never the
  * selected value, which would narrow toward *whom* the brother is looking for (P6).
  *
- * A filter present in `useDirectoryFilters` but absent here simply goes untracked —
- * a safe omission, not a leak. Keep this in step with `filterParsers` when a filter
- * is added.
+ * Omitting a filter here is **safe** (it merely goes untracked — never a leak), but it
+ * is no longer **allowed** to happen by accident: a unit test asserts this map's keys
+ * equal the filter model's, so a new filter without a dimension label fails the build
+ * rather than silently making a Mixpanel funnel lie by omission (D164). Add the entry
+ * when you add the filter.
+ *
+ * ⚠ That test is a completeness check, not a P6 ruling, and P6 outranks it. If a future
+ * filter's *dimension name alone* would say too much — a filter over a `toggle`/
+ * `restricted` field, say, where "someone filtered on Emergency Contact" is itself
+ * revealing — then the right move is to leave it out and loosen the test with a named
+ * exception, NOT to mint a label just to make the assertion pass.
  */
 export const FILTER_DIMENSIONS = {
   classYear: "Class Year",
