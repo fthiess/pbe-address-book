@@ -4,6 +4,7 @@ import {
   type EmergencyContact,
   FAKE_ID_FLOOR,
   type Link,
+  MAJOR_CODES,
   type PrivacyFlags,
   type Profile,
   type Role,
@@ -67,23 +68,23 @@ export const COLLISION_IDENTITY = {
 export const COLLISION_COUNT = 2;
 
 /**
- * The small course-code pool the fake `majors` are drawn from. These are the
- * codes the generated dataset uses; the test validates against exactly this set.
+ * The course-code pool the fake `majors` are drawn from — the **whole** shared
+ * vocabulary, so a generated dataset exercises every one of the 25 chip colours
+ * (D165/OFC-320). It was a hand-picked subset of 12 codes while the palette had
+ * only six families; with 25, a subset would have left most of the palette
+ * unseen on staging, which is exactly what UAT needs to look at.
+ *
+ * ⚠ Sampling is uniform over *codes*, which is chosen for **coverage, not
+ * realism** — do not read the generated distribution as a model of the
+ * membership. Code count per family and real enrolment are only weakly
+ * correlated: Course 21 has the most codes (ten, via its lettered subjects) but
+ * among the fewest brothers (15 of 851), so it is drawn roughly ten times too
+ * often, while Course 2 has one code and 120 brothers and is drawn roughly eight
+ * times too rarely. The real per-family counts live in
+ * `scripts/generate-chip-tokens.mjs`; if fake data ever needs to be
+ * *representative* rather than merely complete, weight from that table.
  */
-export const FAKE_MAJOR_CODES: readonly string[] = [
-  "6-3",
-  "6-2",
-  "6-1",
-  "8",
-  "18",
-  "2",
-  "10",
-  "15",
-  "16",
-  "7",
-  "21",
-  "14",
-] as const;
+export const FAKE_MAJOR_CODES: readonly string[] = MAJOR_CODES;
 
 /** A fixed epoch so generated timestamps are deterministic (no wall-clock). */
 const BASE_EPOCH_MS = Date.UTC(2024, 0, 1);

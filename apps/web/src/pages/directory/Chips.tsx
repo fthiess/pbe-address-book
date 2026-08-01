@@ -1,4 +1,4 @@
-import { courseLabel, courseName } from "@pbe/shared";
+import { type CourseFamily, courseFamily, courseLabel, courseName } from "@pbe/shared";
 import { EyeOff } from "lucide-react";
 import { cn } from "../../lib/utils.js";
 
@@ -8,41 +8,39 @@ import { cn } from "../../lib/utils.js";
  * sole signal (accessibility policy D32).
  */
 
-/** Course-area chip palette families, keyed off the leading course number. */
-export type ChipFamily = "teal" | "gold" | "green" | "purple" | "red" | "slate";
-
-/** Map an MIT course code (e.g. "6-3", "18") to its area's chip family. */
-export function courseFamily(code: string): ChipFamily {
-  const lead = Number.parseInt(code, 10);
-  switch (lead) {
-    case 6:
-      return "teal";
-    case 2:
-      return "gold";
-    case 7:
-      return "green";
-    case 18:
-      return "purple";
-    case 10:
-      return "red";
-    default:
-      return "slate";
-  }
-}
-
-/** Inline style drawing a family's three chip tokens from the token layer. */
-export function familyStyle(family: ChipFamily) {
+/** The three chip tokens for a palette key, as an inline style. */
+function chipTokens(key: string) {
   return {
-    color: `var(--chip-${family}-fg)`,
-    backgroundColor: `var(--chip-${family}-bg)`,
-    borderColor: `var(--chip-${family}-border)`,
+    color: `var(--chip-${key}-fg)`,
+    backgroundColor: `var(--chip-${key}-bg)`,
+    borderColor: `var(--chip-${key}-border)`,
   };
 }
 
 /**
- * A course chip — a rounded pill carrying the course code, tinted to the
- * course area (Course 6 → teal, 2 → gold, 7 → green, 18 → purple, 10 → red,
- * everything else → slate). The code text carries the meaning.
+ * Inline style for a course family, or — for `null`, a code the vocabulary does
+ * not know — the reserved neutral. The key is lower-cased because CSS custom
+ * properties are case-sensitive and `Other` is the one mixed-case family; the
+ * generator (`scripts/generate-chip-tokens.mjs`) lower-cases identically.
+ */
+export function familyStyle(family: CourseFamily | null) {
+  return chipTokens(family === null ? "neutral" : family.toLowerCase());
+}
+
+/**
+ * The reserved neutral, used directly by the UNLISTED badge (D124). Deliberately
+ * outside the 25 course families, so re-deriving the course palette can never
+ * move the privacy badge (D165).
+ */
+export function neutralStyle() {
+  return chipTokens("neutral");
+}
+
+/**
+ * A course chip — a rounded pill carrying the course code, tinted to its course
+ * family (the leading course number, so every Course 6 code shares one colour;
+ * `courseFamily` in `@pbe/shared` owns the mapping). The code text carries the
+ * meaning.
  */
 export function CourseChip({ code }: { code: string }) {
   // The course number is the visible label (how MIT majors are named); the full
@@ -120,7 +118,7 @@ export function UnlistedBadge() {
   return (
     <span
       className="inline-flex shrink-0 items-center gap-1 rounded-full border px-1.5 py-0.5 text-[length:var(--text-micro)] font-bold uppercase tracking-wide"
-      style={familyStyle("slate")}
+      style={neutralStyle()}
     >
       <EyeOff size={11} strokeWidth={1.4} aria-hidden="true" />
       Unlisted

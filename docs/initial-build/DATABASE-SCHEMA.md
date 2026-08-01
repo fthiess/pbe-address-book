@@ -270,12 +270,19 @@ The controlled vocabulary for `Profile.majors`. One document per MIT course code
 ```typescript
 interface Major {
   code: string;                        // e.g. "6-3"; the document ID
-  displayName: string;                 // e.g. "Computer Science"
+  displayName: string;                 // e.g. "Computer Science and Engineering"
+  family: CourseFamily;                // the leading course number — what carries the chip colour
   active: boolean;                     // false = retired but still valid for historical profiles
 }
 ```
 
 Storing the vocabulary as Firestore data (rather than hard-coded in the build) lets it be edited without a code release as MIT's course numbers change. Profiles store only the `code`; the `displayName` is looked up from this collection in memory, so a name correction propagates everywhere and the stored profile JSON stays compact and meaningful. Retired courses (`active: false`) remain selectable so older brothers' majors stay valid, while the entry UI can de-emphasize them. The SPA loads this collection once at startup alongside the profile bulk-load.
+
+**As built (D165/OFC-320).** The Firestore collection is **not built yet** — the vocabulary is bundled in `packages/shared/src/majors.ts` and this section describes the eventual shape (D69, N29). What ships is the curated launch list: **58 codes in 25 colour families**, covering brothers back to 1890, every entry `active: true`. Historical course *names* are folded into their modern entry rather than carried as separate retired codes, so there is deliberately no deprecated-course set to de-emphasize; course numbers retired outright and never reused (19 Meteorology, 13 Ocean Engineering) keep their own entry.
+
+`family` is the leading course number (`"6"` for every `6-*` code) with `"Other"` collecting the lettered inter-school programmes (CMS, HST, STS). It is the key the chip palette is generated against — `--chip-6-bg`, `--chip-other-bg` — so **the family strings are load-bearing**: renaming one orphans three CSS variables. A code the vocabulary does not know falls back to the reserved `--chip-neutral-*`, which is outside the 25 and shared with the UNLISTED badge (D124).
+
+⚠ Codes come in four shapes — bare (`18`), letter-suffixed (`21W`), numeric sub-code (`6-14`) and alpha sub-code (`18-C`) — plus the pure-letter programmes. Anything ordering codes must use the shared `compareCourseCodes`, never a string sort and never a naive `parseInt` split; see D165 for the sort bug the last two shapes caused.
 
 ### 6.3 `config` (app-level singletons)
 
