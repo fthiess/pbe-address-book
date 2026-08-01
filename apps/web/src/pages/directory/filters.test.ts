@@ -4,6 +4,7 @@ import {
   EMPTY_FILTERS,
   buildFilterPredicate,
   collectFilterOptions,
+  countActiveFilters,
   parseNumericGrammar,
 } from "./filters.js";
 
@@ -101,6 +102,80 @@ describe("buildFilterPredicate — composition (D38)", () => {
   it("matches City as a case-insensitive substring", () => {
     const pred = buildFilterPredicate({ ...EMPTY_FILTERS, city: "cam" }, "brother");
     expect(keep(pred)).toEqual([3]);
+  });
+});
+
+describe("buildFilterPredicate — Employer (D164, OFC-379)", () => {
+  const rows = [
+    p({ id: 1, classYear: 1984, employerName: "Acme Corporation" }),
+    p({ id: 2, classYear: 1990, employerName: "acme labs" }),
+    p({ id: 3, classYear: 1984, employerName: "Initech" }),
+    // No employer on record — the field is optional, and "not set" is
+    // indistinguishable from "not visible" to the client by design.
+    p({ id: 4, classYear: 1984 }),
+  ];
+  const keep = (filters: Partial<typeof EMPTY_FILTERS>, role: "brother" | "manager" | "admin") =>
+    rows.filter(buildFilterPredicate({ ...EMPTY_FILTERS, ...filters }, role)).map((r) => r.id);
+
+  it("matches as a case-insensitive substring, like City", () => {
+    expect(keep({ employer: "acme" }, "brother")).toEqual([1, 2]);
+    expect(keep({ employer: "CORP" }, "brother")).toEqual([1]);
+  });
+
+  it("never matches a brother with no employer on record", () => {
+    // "a" appears in every populated value, so only the absent one can drop out.
+    expect(keep({ employer: "a" }, "brother")).toEqual([1, 2]);
+  });
+
+  it("treats a whitespace-only value as unset (the filter must not exclude everyone)", () => {
+    expect(keep({ employer: "   " }, "brother")).toEqual([1, 2, 3, 4]);
+  });
+
+  it("is available to EVERY role — `employerName` is public, so filterable ⟺ visible", () => {
+    for (const role of ["brother", "manager", "admin"] as const) {
+      expect(keep({ employer: "initech" }, role)).toEqual([3]);
+    }
+  });
+
+  it("ANDs with another field (D38)", () => {
+    expect(keep({ employer: "acme", classYear: "1984" }, "brother")).toEqual([1]);
+  });
+});
+
+describe("countActiveFilters", () => {
+  it("counts nothing for a pristine filter set", () => {
+    expect(countActiveFilters(EMPTY_FILTERS)).toBe(0);
+  });
+
+  it("counts each constraining field once, and ignores whitespace-only text", () => {
+    expect(countActiveFilters({ ...EMPTY_FILTERS, employer: "acme" })).toBe(1);
+    expect(countActiveFilters({ ...EMPTY_FILTERS, employer: "  " })).toBe(0);
+    expect(countActiveFilters({ ...EMPTY_FILTERS, employer: "acme", city: "boston" })).toBe(2);
+  });
+
+  it("counts every filter field, so a new filter cannot be left out of the badge", () => {
+    // Every key set to a constraining value → the count must equal the field count.
+    // This is the assertion that fails if a filter is added to the model and its
+    // line is forgotten here (the panel badge and the pristine-URL check both
+    // read this number).
+    const all = {
+      ...EMPTY_FILTERS,
+      classYear: "1984",
+      constitutionId: "721",
+      major: ["6-3"],
+      country: ["US"],
+      stateProvince: ["MA"],
+      city: "boston",
+      employer: "acme",
+      staff: "staffOnly" as const,
+      email: "has" as const,
+      phone: "has" as const,
+      allowNewsletterEmail: "yes" as const,
+      allowShareWithMITAA: "yes" as const,
+      verification: "verified" as const,
+      verifiedBefore: "2026-01-01",
+    };
+    expect(countActiveFilters(all)).toBe(Object.keys(EMPTY_FILTERS).length);
   });
 });
 

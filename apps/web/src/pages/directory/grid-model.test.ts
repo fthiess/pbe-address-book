@@ -80,6 +80,27 @@ describe("role column (OFC-199)", () => {
   });
 });
 
+describe("employer column (D164, OFC-379)", () => {
+  it("renders the employer, with the em-dash placeholder when none is on record", () => {
+    expect(COLUMNS.employer.display(row({ id: 1, employerName: "Acme Corporation" }), "")).toBe(
+      "Acme Corporation",
+    );
+    expect(COLUMNS.employer.display(row({ id: 2 }), "")).toBe("—");
+  });
+
+  it("sorts case-insensitively, with an absent employer last (null)", () => {
+    expect(COLUMNS.employer.sortValue(row({ id: 1, employerName: "Acme" }))).toBe("acme");
+    expect(COLUMNS.employer.sortValue(row({ id: 2 }))).toBeNull();
+  });
+
+  it("is off by default and selectable by every role (public field)", () => {
+    for (const role of ["brother", "manager", "admin"] as const) {
+      expect(selectableColumns(role).map((c) => c.key)).toContain("employer");
+    }
+    expect(DEFAULT_DATA_KEYS).not.toContain("employer");
+  });
+});
+
 describe("major column sort (OFC-290)", () => {
   // Codes chosen so a lexicographic sort and a course-number sort disagree
   // everywhere: "10" < "18" < "2" as strings, but 2 < 6-1 < 6-3 < 10 < 18 as courses.

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EMPTY_FILTERS } from "../pages/directory/filters.js";
 import {
   type EventProperties,
   FILTER_DIMENSIONS,
@@ -127,6 +128,15 @@ describe("FILTER_DIMENSIONS labels (P6)", () => {
     expect(FILTER_DIMENSIONS.major).toBe("Course"); // UI "course" is stored as `major`
     expect(FILTER_DIMENSIONS.stateProvince).toBe("State/Province");
     expect(FILTER_DIMENSIONS.classYear).toBe("Class Year");
+    expect(FILTER_DIMENSIONS.employer).toBe("Employer"); // D164/OFC-379
+  });
+
+  it("covers every filter in the directory model", () => {
+    // The map's own comment asks the next author to keep it in step with the filter
+    // set when a filter is added; an untracked filter is a safe omission, not a leak,
+    // so this is a completeness check rather than a safety one — but "silently
+    // untracked" is exactly the state that makes a Mixpanel funnel lie by omission.
+    expect(Object.keys(FILTER_DIMENSIONS).sort()).toEqual(Object.keys(EMPTY_FILTERS).sort());
   });
 });
 

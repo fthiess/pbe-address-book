@@ -179,6 +179,7 @@ export const FILTER_DIMENSIONS = {
   country: "Country",
   stateProvince: "State/Province",
   city: "City",
+  employer: "Employer",
   staff: "Staff Role",
   email: "Has Email",
   phone: "Has Phone",

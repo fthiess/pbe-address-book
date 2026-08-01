@@ -24,7 +24,11 @@ The **Directory** is the Address Book's home page: a searchable, sortable list o
 
 **Searching by name.** The Name Search box near the top finds brothers by name. It is forgiving: it tolerates misspellings, matches names that *sound* alike, and knows common nicknames — so "Bill" finds "William" and "Tom" finds "Thomas" — letting you find a brother even if you aren't sure how his name is spelled or what he goes by formally. It searches names only — first, last, middle, and the mug (nickname) — not class years or courses; those you narrow with the filters instead.
 
-**Filtering.** The filter panel lets you narrow the list — by class year, course, city, state or province, country, and (for managers and administrators) a few additional fields. Filters combine sensibly: choosing two courses shows brothers in *either*, while also setting a class-year range shows only brothers who match *both*. The class-year filter is more capable than it looks — it accepts single years, ranges, and lists together (for example, `1980-1989, 1992`), and ranges can be left open at either end (`1990-`, or `-1975`); the "?" beside the field explains this where you type. On a small phone screen the filters, the view options, the sort, and the choice of which details to show tuck behind a single **Options** button so the list of brothers gets the room; tap it to open them (the Name Search box always stays in view).
+**Filtering.** The filter panel lets you narrow the list — by class year, course, city, state or province, country, employer, and (for managers and administrators) a few additional fields. Filters combine sensibly: choosing two courses shows brothers in *either*, while also setting a class-year range shows only brothers who match *both*. The class-year filter is more capable than it looks — it accepts single years, ranges, and lists together (for example, `1980-1989, 1992`), and ranges can be left open at either end (`1990-`, or `-1975`); the "?" beside the field explains this where you type.
+
+**Finding brothers at a company.** The **Employer** filter answers "who else works at …": type any part of a company name and the list narrows to the brothers whose employer contains it (`acme` finds Acme Corporation). One thing is worth knowing, and the "?" beside the field says it too: a record holds a brother's **current** employer only, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all. If you would rather see employers beside every brother than filter by one, **Employer** is also available as an optional column (add it from **Columns**, or **Fields** on a phone).
+
+On a small phone screen the filters, the view options, the sort, and the choice of which details to show tuck behind a single **Options** button so the list of brothers gets the room; tap it to open them (the Name Search box always stays in view).
 
 ![The Directory on a phone: the Options fold open, showing the Starred-only and Include-deceased switches, the Fields control, the Sort by and Order selects, and the Filters fold, above brothers shown as cards rather than table rows.](../images/directory-mobile-options.png)
 
@@ -146,6 +150,10 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Placeholder:** e.g. 721, 900-1000
 - **Behind the “?”:** The Constitution ID is the sequence number of the brother's signature on the PBE constitution. Filter by Constitution ID the same way as Class Year: a single number, a comma-separated list, or a range like 800-900 (open-ended ranges like 800- work too).
+
+#### Employer
+
+- **Behind the “?”:** Finds brothers whose employer contains what you type — acme finds Acme Corporation. Only a brother's current employer is on record, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all.
 
 #### Staff
 

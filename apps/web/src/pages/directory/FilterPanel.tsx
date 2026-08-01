@@ -129,6 +129,16 @@ export function FilterPanel({
               value={filters.city}
               onChange={(v) => setFilter("city", v)}
             />
+            <TextFilter
+              label="Employer"
+              placeholder="contains…"
+              value={filters.employer}
+              onChange={(v) => setFilter("employer", v)}
+              // The `?` carries the one thing a brother cannot infer from the
+              // field: only the *current* employer is stored, so an old company
+              // finds nobody (D164).
+              helpKey="directory.filter.employer"
+            />
             <StaffSelect value={filters.staff} onChange={(v) => setFilter("staff", v, "push")} />
           </div>
 
@@ -230,15 +240,18 @@ function TextFilter({
   placeholder,
   value,
   onChange,
+  helpKey,
 }: {
   label: string;
   placeholder?: string;
   value: string;
   onChange: (value: string) => void;
+  /** Registry id for an optional `?` toggle-tip beside the label (as NumericFilter). */
+  helpKey?: string;
 }) {
   const id = useId();
   return (
-    <Field label={label} htmlFor={id}>
+    <Field label={label} htmlFor={id} helpKey={helpKey}>
       <ClearableInput
         id={id}
         type="text"
