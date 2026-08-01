@@ -123,8 +123,13 @@ test.describe("profile 4b-1 — majors chip editor", () => {
     // The picker option shows the shared course chip (OFC-265/N108), matching the
     // Directory filter — the chip carries the "code — name" title.
     await expect(page.getByTitle("18 — Mathematics")).toBeVisible();
-    await page.getByRole("option", { name: /Course 18/ }).click();
-    await expect(page.getByRole("button", { name: /Remove Course 18/ })).toBeVisible();
+    // Match the option EXACTLY. Since D165 the vocabulary holds prefix-sharing
+    // codes, so a "Math" search offers both 18 and 18-C and a /Course 18/ regex
+    // is a strict-mode violation rather than a click.
+    await page.getByRole("option", { name: "Course 18, Mathematics", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Remove Course 18, Mathematics", exact: true }),
+    ).toBeVisible();
 
     // Remove Course 2.
     await page.getByRole("button", { name: /Remove Course 2, Mechanical/ }).click();
