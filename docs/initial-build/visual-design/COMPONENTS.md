@@ -2,7 +2,7 @@
 
 Conventions used throughout:
 - **Focus**: every focusable element keeps a visible teal focus ring — `box-shadow: var(--ring-shadow)` (`0 0 0 3px rgba(0,113,148,0.20)`), often with a 2px `--ring` border. Never remove it.
-- **Hit targets**: ≥ 42px tall for primary controls (audience skews 60+). Icon buttons ≥ 26px, switches 42×24.
+- **Hit targets**: ≥ 42px tall for primary controls (sized for the fine-motor edge of the audience). Icon buttons ≥ 26px, switches 42×24.
 - **Meaning never by color alone**: every state that uses color also carries text, an icon, a fill/outline difference, or knob position.
 - **Help**: the `?` control is a click-toggle Radix popover (see below), not hover-only.
 

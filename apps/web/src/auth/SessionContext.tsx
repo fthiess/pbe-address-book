@@ -81,8 +81,8 @@ async function runReauth(): Promise<boolean> {
   // Open the child window **first**, synchronously, before the `startSignIn` round-trip
   // — the popup already fires after the Save's fetch, so spending the network latency of
   // `startSignIn` before `window.open` would eat more of the browser's transient-user-
-  // activation budget and get the popup blocked on exactly the slow links this audience
-  // skews toward. Open a blank window now, then navigate it once the relay URL is minted.
+  // activation budget and get the popup blocked on exactly the slow links some brothers
+  // are on. Open a blank window now, then navigate it once the relay URL is minted.
   let popup: Window | null;
   try {
     popup = window.open("", REAUTH_WINDOW_NAME, "width=480,height=680");

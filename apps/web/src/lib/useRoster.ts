@@ -126,7 +126,7 @@ function load(): void {
 function ensureLoaded(): void {
   // Retry on any fresh mount when the roster isn't loaded — the earlier
   // `!state.error` guard latched a single transient failure (a scale-to-zero cold
-  // 503, a network blip on the flaky slow links this audience skews toward) into a
+  // 503, a network blip on the genuinely slow links some brothers are on) into a
   // permanent error for the whole session, with no recovery short of a full page
   // reload. Opening another profile now re-attempts the fetch (OFC-114).
   if (state.profiles === null && !loading) {

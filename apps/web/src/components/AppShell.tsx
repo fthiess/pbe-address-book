@@ -26,7 +26,7 @@ const ROLE_LABEL: Record<Role, string> = {
 /**
  * Shared classes for the avatar menu's interactive rows. `min-h-11` (44px) keeps
  * every stacked target comfortably above the WCAG 2.2 AA 2.5.8 minimum (24px) with
- * room to spare for the 60+ audience ([[project-audience-slow-connections]]).
+ * room to spare for the fine-motor edge of the audience.
  */
 const MENU_ITEM =
   "flex w-full min-h-11 items-center rounded-lg px-3 text-left text-sm hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:outline-none";

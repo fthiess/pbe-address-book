@@ -26,7 +26,7 @@ import {
  * are set apart under a labeled divider so the all-brother filters read cleanly.
  *
  * Built from native form controls (selects, checkboxes, text/date inputs) — the
- * most robust path for the WCAG 2.2 AA gate and the 60+ audience (D79). Every
+ * most robust path for the WCAG 2.2 AA gate and for assistive tech (D79). Every
  * field carries a **clear** affordance (an "×", echoing the search box) that
  * appears only when the field is constraining the view.
  */

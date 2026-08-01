@@ -14,8 +14,8 @@ import { PrivacyFooter } from "./PrivacyFooter.js";
  * unavailable, please check back" message with a manual retry. (A visitor loading
  * Book *fresh* during planned downtime gets the separate edge `maintenance.html`,
  * served by Firebase Hosting independently of Cloud Run.) Copy is calm and
- * non-alarming for an audience that skews 60+ on slow links, and reassures that the
- * member's session is preserved.
+ * non-alarming — written for the least confident reader on the slowest link — and
+ * reassures that the member's session is preserved.
  */
 export function MaintenanceOutage({ onRetry }: { onRetry: () => void }) {
   return (

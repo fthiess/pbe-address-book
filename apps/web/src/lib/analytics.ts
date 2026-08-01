@@ -304,8 +304,8 @@ export function trackExportPerformed(scope: ExportScope, rowCount: number): void
 }
 
 /**
- * The below-`md` "Options" disclosure fold was opened (7a-4; N92). The audience
- * skews 60+ and phone use has been assumed rather than measured.
+ * The below-`md` "Options" disclosure fold was opened (7a-4; N92). Phone use has
+ * been assumed rather than measured.
  */
 export function trackMobileOptionsOpened(): void {
   emit("Mobile Options Opened", {});

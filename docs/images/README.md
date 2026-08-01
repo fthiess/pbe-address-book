@@ -58,8 +58,9 @@ visible change, is real. The other four are stable across every run measured
   **staging** (`book-staging.pbe400.org`, fake data by design), never from
   production — confirm no real name, email, or address is visible before
   committing.
-- **Optimize for the slow-connection audience.** Book's readers skew 60+ and many
-  are on slow links. Compress and right-size images before committing (PNG for UI
+- **Optimize for the slowest connection, not the typical one.** Most brothers are on
+  fast links; some genuinely are not, and it is that edge that sets the byte budget.
+  Compress and right-size images before committing (PNG for UI
   screenshots, sensible dimensions, run through a lossless optimizer) — keep the
   repo and any doc pages byte-frugal. The generated shots run between roughly
   45 KB and 125 KB, which is the band to stay in.

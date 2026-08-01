@@ -458,7 +458,7 @@ function HeaderCell({
             type="button"
             aria-label={`Reorder the ${column.label} column`}
             className={cn(
-              // ≥24×24 target (WCAG 2.5.8, the audience skews 60+ — §5.5/D79).
+              // ≥24×24 target (WCAG 2.5.8; the fine-motor edge — §5.5/D79).
               "-ml-1 flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
               isDragging && "cursor-grabbing",
             )}
