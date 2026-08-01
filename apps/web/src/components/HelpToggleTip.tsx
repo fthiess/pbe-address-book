@@ -13,8 +13,8 @@ import { trackHelpOpened } from "../lib/analytics.js";
  * native-`<details>` `HelpTip`.
  *
  * A toggle-tip, not a hover tooltip: it opens on click/tap (never hover), so it
- * works on touch and never depends on a pointer the 60+ audience may not hover
- * with. The 24px trigger meets the WCAG 2.2 AA target-size minimum (2.5.8).
+ * works on touch and never depends on a pointer some brothers cannot steadily
+ * hover with. The 24px trigger meets the WCAG 2.2 AA target-size minimum (2.5.8).
  */
 export function HelpToggleTip({ title, children }: { title: string; children: ReactNode }) {
   return (

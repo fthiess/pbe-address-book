@@ -84,7 +84,7 @@ Out of ~1,200 fake profiles, testers should see a directory that looks alive —
 
 ## 7. Outbound email — the hard prerequisite
 
-UAT **must** exercise the real magic-link sign-in flow — it is precisely the step the 60+ audience will stumble on at launch, so bypassing it via `DevIdentityProvider` would test around the riskiest UX in the system. That means Ghost-staging must deliver mail to 10–15 arbitrary addresses, and its current Mailgun **sandbox** mode caps delivery at ~5 pre-authorized recipients.
+UAT **must** exercise the real magic-link sign-in flow — it is precisely the step a less confident user will stumble on at launch, so bypassing it via `DevIdentityProvider` would test around the riskiest UX in the system. That means Ghost-staging must deliver mail to 10–15 arbitrary addresses, and its current Mailgun **sandbox** mode caps delivery at ~5 pre-authorized recipients.
 
 **Forrest owns this fix (OFC-252), before UAT setup.** Baseline plan: a short-term paid Mailgun account covering 30–40 recipients; alternatives under investigation include a verified sending domain on Mailgun, a free-tier transactional SMTP provider (e.g. Brevo), or Gmail app-password SMTP. Staging sends no newsletters — magic-link transactional mail only — so any Ghost-supported SMTP provider works. This is a della2/self-hosted-Ghost config change, outside the Book repo. Done means: a magic link delivers to an arbitrary, non-pre-authorized address.
 
@@ -118,7 +118,7 @@ Phase 7.6 (sequenced in `CODING-PROJECT-PLAN.md` §7; no dependency on Phases 6/
 
 **Mid-point nudge.** Halfway through the window, a short email: thanks, what's been fixed so far (testers love seeing their bugs die), a nudge to those who haven't started, and a reminder of the manager-upgrade offer.
 
-**Mobile and accessibility emphasis.** The instructions explicitly ask testers to try Book **on their phones** as well as desktop (the 5.5h mobile work gets its first real-user exercise), to note anything hard to read, click, or understand, and to report load times that feel slow — this cohort *is* the accessibility and slow-connection audience the product is designed for, so their friction reports are first-class findings, not noise.
+**Mobile and accessibility emphasis.** The instructions explicitly ask testers to try Book **on their phones** as well as desktop (the 5.5h mobile work gets its first real-user exercise), to note anything hard to read, click, or understand, and to report load times that feel slow — this cohort spans the accessibility and slow-connection *edges* the product is designed around, so their friction reports are first-class findings, not noise.
 
 **Close.** At window end: a thank-you email to all participants (with a preview of what launch will look like), and the wind-down of §10.
 

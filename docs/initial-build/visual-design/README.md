@@ -1,7 +1,7 @@
 # Handoff: PBE Address Book
 
 ## Overview
-A members' address book / directory web app for the Phi Beta Epsilon (PBE) fraternity, sibling to the PBE News site (pbe400.org). It lets brothers find and update contact records, and gives managers/administrators tools to maintain membership: roles, privacy, "deceased / In Memoriam," "de-brother," "unlisted," and record deletion. The audience skews 60+, so legibility, large hit targets, calm confirmations, and full keyboard/AT support are first-class requirements. Light **and** dark themes; WCAG 2.2 AA in both.
+A members' address book / directory web app for the Phi Beta Epsilon (PBE) fraternity, sibling to the PBE News site (pbe400.org). It lets brothers find and update contact records, and gives managers/administrators tools to maintain membership: roles, privacy, "deceased / In Memoriam," "de-brother," "unlisted," and record deletion. The audience spans ages 18 up and is mostly well-connected, but it includes older brothers, less confident users, and vision or fine-motor needs at its edges — and those edges set the constraints, so legibility, large hit targets, calm confirmations, and full keyboard/AT support are first-class requirements. Light **and** dark themes; WCAG 2.2 AA in both.
 
 ## About the design files
 The files in `references/` are **design references created in HTML** — prototypes that show the intended look, layout, copy, and behavior. **They are not production code to copy.** They are authored as self-contained "Design Component" HTML docs (each `.dc.html` stacks several states/screens on one page for review).

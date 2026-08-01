@@ -32,8 +32,8 @@ export function isDifferentVersion(loaded: string, fetched: string | null): bool
 /**
  * Read the deployed build id from `/version.json` (a static, `no-cache` asset the
  * build emits). Best-effort: a network blip, a 404 (dev), or a malformed body all
- * resolve to `null` (no prompt), so a transient failure on the slow links this
- * audience skews toward never surfaces as a spurious toast. Not routed through the
+ * resolve to `null` (no prompt), so a transient failure on the slow links some
+ * brothers are on never surfaces as a spurious toast. Not routed through the
  * app's `fetch` wrappers — it is a public asset, so a 401 is meaningless here and
  * must not trip the session interceptor (OFC-193).
  */
