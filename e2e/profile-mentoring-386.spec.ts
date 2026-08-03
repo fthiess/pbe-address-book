@@ -89,6 +89,10 @@ test.describe("profile — mentoring switch (edit)", () => {
     await expect(
       section(page, "Privacy & consent").getByRole("switch", { name: /Willing to mentor/ }),
     ).toHaveCount(0);
+    // The MENTORING field label, matching its siblings and the view page's read-out.
+    // It was missing on the first cut of the move — the switch was the only control in
+    // the section with no label — so it is pinned here.
+    await expect(professional.getByText("Mentoring", { exact: true })).toBeVisible();
 
     // The on-copy names what OTHER brothers will read — this is the one switch here
     // whose value is public, so it cannot be phrased as "hidden from…" like its
