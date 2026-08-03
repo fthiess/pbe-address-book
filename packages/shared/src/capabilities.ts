@@ -90,6 +90,11 @@ export const WRITE_RULE: Record<keyof Profile, WriteRule> = {
   unlisted: "consent", // owner self-service; admin may set another's; manager may not (D124)
   allowNewsletterEmail: "consent",
   allowShareWithMITAA: "consent",
+  // `consent`, not `editable`, even though the field is public on read (D166):
+  // it is a brother volunteering his own time, which a manager must not assert on
+  // his behalf. This also keeps the Privacy & consent section uniformly locked for
+  // managers rather than mixing one writable switch into a read-only block.
+  willingToMentor: "consent",
 
   // Server-managed verification & housekeeping.
   lastVerifiedDate: "protected", // set by the verify action (D28)

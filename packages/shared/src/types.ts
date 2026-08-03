@@ -229,6 +229,24 @@ export interface Profile {
    */
   unlisted: boolean;
 
+  // --- Mentoring ---
+  /**
+   * Whether the brother has opted in to being approached for professional
+   * information and advice (D166; OFC-386). **Public** on read — every brother
+   * sees it, filters on it, and may show it as a Directory column — but written
+   * only by the owner or an admin, like the rest of the Privacy & consent block.
+   *
+   * Defaults **false**: this is an opt-in, and the toggle is being shipped ahead
+   * of the mentoring programme itself (OFC-255) precisely to collect opt-ins
+   * while launch traffic is at its peak. Stored optionally in Firestore — a
+   * document that omits it is not willing — and normalized to a concrete boolean
+   * at the single hydration boundary, so no backfill is needed.
+   *
+   * ⚠ Read {@link isWillingToMentor} before consuming this field directly: a
+   * deceased brother's stored `true` must not be presented as a live offer.
+   */
+  willingToMentor: boolean;
+
   // --- Usage preferences (restricted: owner/manager/admin only — §9) ---
   /** Default true — may PBE News be emailed; pushed to Ghost; forced false when deceased. */
   allowNewsletterEmail: boolean;

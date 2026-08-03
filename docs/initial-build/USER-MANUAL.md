@@ -155,6 +155,10 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Behind the “?”:** Finds brothers whose employer contains what you type — acme finds Acme Corporation. Only a brother's current employer is on record, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all.
 
+#### Willing to mentor
+
+- **Behind the “?”:** Finds brothers who have said they are willing to provide professional information and advice. It is an opt-in each brother sets on his own profile, so a brother who has not visited his profile will not appear — an absence here means “hasn't said”, not “no”.
+
 #### Staff
 
 - **Behind the “?”:** Use this filter to find PBE Address Book staff — the managers and administrators who have extra powers to help keep brother information up to date and to maintain the system.
@@ -252,6 +256,12 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Shows when on:** You will receive PBE News by email.
 - **Shows when off:** You won't receive PBE News by email.
+
+#### Willing to mentor
+
+- **Shows when on:** You are willing to provide professional information and advice to other brothers.
+- **Shows when off:** You're not in a position to help right now, but may opt in later.
+- **Behind the “?”:** This switch is how you signal to other brothers that you are willing to take time to provide professional information, advice, and answer questions. It will eventually be connected to a PBE Mentoring program, which may ask for more of a time commitment, but for the time being only shows up as a filterable toggle on your profile.
 
 #### Listed in the directory
 

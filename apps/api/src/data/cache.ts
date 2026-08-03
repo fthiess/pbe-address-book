@@ -180,6 +180,11 @@ export function normalizeHydratedProfile(
     privacy,
     unlisted: raw.unlisted === true,
     hasHeadshot: raw.hasHeadshot === true,
+    // The mentoring opt-in defaults **off** (D166), and stores optionally, so a
+    // document written before OFC-386 — every record on staging and every one the
+    // Phase 8 bulk-loader writes — normalizes to `false` here. That is what makes
+    // the field need no backfill: absence and "not willing" are the same state.
+    willingToMentor: raw.willingToMentor === true,
     // `role` lives on the profile (OFC-139) but is stored optionally: a document
     // that omits it is a `brother` (the initial load writes `role` only for the
     // non-brothers). This is the single Firestore→Profile hydration boundary, so

@@ -10,6 +10,7 @@ import {
   type DirectoryFilters,
   type FilterOption,
   type FilterOptions,
+  type MentorFilter,
   type PresenceFilter,
   type StaffFilter,
   type VerificationFilter,
@@ -140,6 +141,10 @@ export function FilterPanel({
               helpKey="directory.filter.employer"
             />
             <StaffSelect value={filters.staff} onChange={(v) => setFilter("staff", v, "push")} />
+            <MentorSelect
+              value={filters.willingToMentor}
+              onChange={(v) => setFilter("willingToMentor", v, "push")}
+            />
           </div>
 
           {staff && (
@@ -482,6 +487,39 @@ function StaffSelect({
       >
         <option value="">Any</option>
         <option value="staffOnly">PBE Address Book Managers and Administrators</option>
+      </select>
+    </Field>
+  );
+}
+
+/**
+ * The mentoring filter (D166, OFC-386) — an all-brothers control like Staff, since
+ * `willingToMentor` is public. "Any / Yes" only: see {@link MentorFilter} for why
+ * there is deliberately no "No".
+ */
+function MentorSelect({
+  value,
+  onChange,
+}: {
+  value: MentorFilter;
+  onChange: (value: MentorFilter) => void;
+}) {
+  const id = useId();
+  return (
+    <Field
+      label="Willing to mentor"
+      htmlFor={id}
+      helpKey="directory.filter.willingToMentor"
+      onClear={value ? () => onChange("") : undefined}
+    >
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value as MentorFilter)}
+        className={inputClass}
+      >
+        <option value="">Any</option>
+        <option value="yes">Yes</option>
       </select>
     </Field>
   );

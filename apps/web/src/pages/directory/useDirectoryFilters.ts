@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import {
   type BoolFilter,
   type DirectoryFilters,
+  type MentorFilter,
   type PresenceFilter,
   type StaffFilter,
   type VerificationFilter,
@@ -30,6 +31,7 @@ const filterParsers = {
   city: parseAsString.withDefault(""),
   employer: parseAsString.withDefault(""),
   staff: parseAsString.withDefault(""),
+  willingToMentor: parseAsString.withDefault(""),
   email: parseAsString.withDefault(""),
   phone: parseAsString.withDefault(""),
   allowNewsletterEmail: parseAsString.withDefault(""),
@@ -72,6 +74,7 @@ export function useDirectoryFilters(role: Role): DirectoryFiltersControl {
       city: raw.city,
       employer: raw.employer,
       staff: raw.staff as StaffFilter,
+      willingToMentor: raw.willingToMentor as MentorFilter,
       email: raw.email as PresenceFilter,
       phone: raw.phone as PresenceFilter,
       allowNewsletterEmail: raw.allowNewsletterEmail as BoolFilter,

@@ -50,6 +50,27 @@ describe("profilesToCsv — role-aware columns (§10)", () => {
     expect(h).not.toContain("unlisted");
   });
 
+  it("includes the public mentoring column in every role's export (D166)", () => {
+    // Public, so unlike the two `allow*` consent columns beside it in the file, it
+    // must ride a brother's export too.
+    for (const role of ["brother", "manager", "admin"] as const) {
+      expect(header(profilesToCsv(rows({ id: 5247 }), role))).toContain("willingToMentor");
+    }
+  });
+
+  it("exports the STORED mentoring opt-in, not the live-offer predicate (D166)", () => {
+    // An export is a dump of state: a deceased brother's stored `true` stays `true`
+    // here, and the deceased columns travel alongside for the reader to combine.
+    // Only the *presentation* surfaces (profile, column, filter) suppress it.
+    const csv = profilesToCsv(
+      rows({ id: 5247, willingToMentor: true, deceased: { isDeceased: true } }),
+      "admin",
+    );
+    const headers = header(csv);
+    const cells = (csv.split("\r\n")[1] ?? "").split(",");
+    expect(cells[headers.indexOf("willingToMentor")]).toBe("true");
+  });
+
   it("includes the public verification columns in a brother's export (OFC-207)", () => {
     // Verification is public (amends D28), and the export inherits the projection,
     // so a brother's file carries the same verification signal he sees on profiles.

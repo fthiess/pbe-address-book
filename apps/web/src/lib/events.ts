@@ -189,6 +189,10 @@ export const FILTER_DIMENSIONS = {
   city: "City",
   employer: "Employer",
   staff: "Staff Role",
+  // Safe under P6: the dimension says a brother filtered for mentors, which reveals
+  // nothing about *whom* he was looking for — and the underlying field is public
+  // anyway, unlike the toggle/restricted case the note above warns about (D166).
+  willingToMentor: "Willing to Mentor",
   email: "Has Email",
   phone: "Has Phone",
   allowNewsletterEmail: "Newsletter Consent",

@@ -3,6 +3,7 @@ import {
   compareCourseCodes,
   countryName,
   courseLabel,
+  isWillingToMentor,
   subdivisionName,
 } from "@pbe/shared";
 import type { DirectoryProfile } from "../../lib/types.js";
@@ -30,6 +31,14 @@ export type BoolFilter = "" | "yes" | "no";
 export type VerificationFilter = "" | "verified" | "never";
 /** The Staff filter: unset, or "managers and administrators" (OFC-199). */
 export type StaffFilter = "" | "staffOnly";
+/**
+ * The mentoring filter: unset, or "willing" (D166, OFC-386). Deliberately **not** a
+ * {@link BoolFilter} — there is no "No" option, because the stored `false` conflates
+ * "I considered this and declined" with "I have never opened my profile", and a
+ * filter that presented those as a single answered "No" would be lying about most of
+ * the roster. "Any" already covers everyone the negative case would.
+ */
+export type MentorFilter = "" | "yes";
 
 /** Every structured filter, in its URL-serialisable form (strings + string lists). */
 export interface DirectoryFilters {
@@ -60,6 +69,12 @@ export interface DirectoryFilters {
    * from admins would add UI for no practical gain.
    */
   staff: StaffFilter;
+  /**
+   * All-brothers — keep only brothers willing to mentor (D166, OFC-386).
+   * `willingToMentor` is **public**, so like Employer and Staff this needs no role
+   * gate: filterable ⟺ visible holds outright.
+   */
+  willingToMentor: MentorFilter;
   /** Staff-only — presence of an email / phone. */
   email: PresenceFilter;
   phone: PresenceFilter;
@@ -81,6 +96,7 @@ export const EMPTY_FILTERS: DirectoryFilters = {
   city: "",
   employer: "",
   staff: "",
+  willingToMentor: "",
   email: "",
   phone: "",
   allowNewsletterEmail: "",
@@ -120,6 +136,7 @@ export function countActiveFilters(filters: DirectoryFilters): number {
   if (filters.city.trim()) n++;
   if (filters.employer.trim()) n++;
   if (filters.staff) n++;
+  if (filters.willingToMentor) n++;
   if (filters.email) n++;
   if (filters.phone) n++;
   if (filters.allowNewsletterEmail) n++;
@@ -260,6 +277,14 @@ export function buildFilterPredicate(
   // and administrators. Undefined role (a brother) never matches.
   if (filters.staff === "staffOnly") {
     clauses.push((p) => p.role === "manager" || p.role === "admin");
+  }
+
+  // Mentoring, all roles: public like Employer and Staff. Uses the shared predicate,
+  // so a deceased brother's stored opt-in never matches — which matters because
+  // "Include deceased" (D36) is the one case where he could otherwise reach the grid
+  // and be offered as a mentor.
+  if (filters.willingToMentor === "yes") {
+    clauses.push((p) => isWillingToMentor(p));
   }
 
   if (canUseStaffFilters(role)) {

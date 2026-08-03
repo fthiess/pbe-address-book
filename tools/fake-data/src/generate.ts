@@ -321,6 +321,11 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
       // Deceased forces the newsletter flag off (D49).
       allowNewsletterEmail: !isDeceased && rng.chance(0.9),
       allowShareWithMITAA: rng.chance(0.5),
+      // The mentoring opt-in (D166), drawn for **everyone including the deceased** —
+      // deliberately, so staging carries the one case worth looking at: a stored
+      // `true` on a deceased brother, which `isWillingToMentor` must suppress
+      // everywhere it is presented. Forcing it false here would hide that from UAT.
+      willingToMentor: rng.chance(0.35),
       lastModified,
       newsletterConsentChangedAt: lastModified,
     };

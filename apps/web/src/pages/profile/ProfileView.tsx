@@ -1,4 +1,9 @@
-import { type EmergencyContact, formatClassYear, formatConstitutionId } from "@pbe/shared";
+import {
+  type EmergencyContact,
+  formatClassYear,
+  formatConstitutionId,
+  isWillingToMentor,
+} from "@pbe/shared";
 import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Avatar } from "../../components/Avatar.js";
@@ -366,6 +371,16 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
                     </li>
                   ))}
                 </ul>
+              </ReadField>
+            )}
+            {/* Mentoring (D166, OFC-386): shown only when the brother has opted in —
+              there is no "not willing" state to display, because declining to
+              volunteer is the default and says nothing about him. `isWillingToMentor`
+              (not the raw field) is what also keeps a deceased brother's opt-in off
+              his memorial page. */}
+            {isWillingToMentor(record) && (
+              <ReadField label="Mentoring">
+                Willing to provide professional information and advice
               </ReadField>
             )}
           </div>
