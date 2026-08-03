@@ -108,9 +108,16 @@ test.describe("profile 6b-5 — OFC-270 share-toggle placement (edit)", () => {
       privacy.getByRole("switch", { name: /Share spouse \/ partner with brothers/ }),
     ).toBeVisible();
 
-    // …and no switch is left stranded beside the fields they protect.
+    // …and no *share* switch is left stranded beside the field it protects.
+    // ⚠ Narrowed from "no switch at all" by N160: Professional & personal now holds
+    // the Willing-to-mentor switch, which is not a share toggle — it publishes a fact
+    // rather than governing visibility of an adjacent field, so OFC-270's rule does
+    // not reach it. The assertion still fails if a *share* toggle is put back beside
+    // its field, which is the regression OFC-270 actually cares about.
     await expect(section(page, "Emergency contacts").getByRole("switch")).toHaveCount(0);
-    await expect(section(page, "Professional & personal").getByRole("switch")).toHaveCount(0);
+    const professional = section(page, "Professional & personal");
+    await expect(professional.getByRole("switch", { name: /^Share / })).toHaveCount(0);
+    await expect(professional.getByRole("switch")).toHaveCount(1); // Willing to mentor only
   });
 
   test("the moved switches name their field in the off state", async ({ page }) => {

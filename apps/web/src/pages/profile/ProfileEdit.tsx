@@ -525,6 +525,29 @@ export function ProfileEdit({
                     onChange={form.setMajors}
                     error={form.errorFor("majors")}
                   />
+                  {/* Mentoring (N160, amending D166's placement — Forrest's call). It
+                    sits here, beneath Courses, so the edit control is in the same place
+                    as the Profile view's read-out; having the toggle in Privacy &
+                    consent and the display here was the inconsistency that prompted the
+                    move.
+
+                    ⚠ This does NOT reverse OFC-270/N107, which pulled the *share*
+                    toggles out of their field sections and into Privacy & consent. That
+                    rule is about switches governing an adjacent field's visibility; this
+                    one publishes a fact about the brother and governs nothing, which is
+                    why it reads as out of place among the privacy switches.
+
+                    ⚠ Its write rule stays `consent` (owner or admin), so `locked` must
+                    be passed explicitly here — it no longer inherits a locked Section.
+                    A manager therefore sees one locked control in an otherwise editable
+                    section; `ConsentSwitch`'s locked mode draws the lock that explains
+                    it. */}
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.willingToMentor}
+                    value={form.draft.willingToMentor ?? false}
+                    onChange={(v) => form.setBool("willingToMentor", v)}
+                    locked={consentLocked}
+                  />
                 </div>
               </div>
             </Section>
@@ -596,20 +619,6 @@ export function ProfileEdit({
                     entryKey={SWITCH_KEYS.allowNewsletterEmail}
                     value={form.draft.allowNewsletterEmail ?? false}
                     onChange={(v) => form.setBool("allowNewsletterEmail", v)}
-                    locked={consentLocked}
-                  />
-                </Subgroup>
-
-                {/* Mentoring (D166, OFC-386). Sits in this section because it is a
-                  choice about the brother himself, but note it is the one switch here
-                  whose value is PUBLIC — every brother can see it, column it, and
-                  filter on it. Its write rule is still `consent` (owner or admin), so
-                  it locks with the rest of the block for a manager. */}
-                <Subgroup title="Mentoring">
-                  <ConsentSwitch
-                    entryKey={SWITCH_KEYS.willingToMentor}
-                    value={form.draft.willingToMentor ?? false}
-                    onChange={(v) => form.setBool("willingToMentor", v)}
                     locked={consentLocked}
                   />
                 </Subgroup>

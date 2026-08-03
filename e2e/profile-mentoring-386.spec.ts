@@ -1,4 +1,7 @@
+import AxeBuilder from "@axe-core/playwright";
 import { type Page, expect, test } from "@playwright/test";
+
+const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 
 /**
  * The mentoring opt-in on the Profile surfaces (D166, OFC-386). The backend is
@@ -72,13 +75,20 @@ function section(page: Page, name: string) {
 }
 
 test.describe("profile — mentoring switch (edit)", () => {
-  test("sits in Privacy & consent and states the public consequence when on", async ({ page }) => {
+  test("sits in Professional & personal and states the public consequence when on", async ({
+    page,
+  }) => {
     await mock(page, me("admin", 5247), record({ willingToMentor: true }));
     await page.goto("/brother/5247/edit");
     await expect(page.getByText("Editing", { exact: true })).toBeVisible();
 
-    const privacy = section(page, "Privacy & consent");
-    await expect(privacy.getByRole("switch", { name: /Willing to mentor/ })).toBeVisible();
+    // N160: the edit control sits where the view page's read-out sits, beneath
+    // Courses — not in Privacy & consent, which is what prompted the move.
+    const professional = section(page, "Professional & personal");
+    await expect(professional.getByRole("switch", { name: /Willing to mentor/ })).toBeVisible();
+    await expect(
+      section(page, "Privacy & consent").getByRole("switch", { name: /Willing to mentor/ }),
+    ).toHaveCount(0);
 
     // The on-copy names what OTHER brothers will read — this is the one switch here
     // whose value is public, so it cannot be phrased as "hidden from…" like its
@@ -116,14 +126,20 @@ test.describe("profile — mentoring switch (edit)", () => {
   test("locks for a manager editing another brother — consent-class write (D166)", async ({
     page,
   }) => {
-    // Public on READ, but a manager must not volunteer another brother's time. The
-    // whole Privacy & consent block is read-only for him, and this switch with it.
+    // Public on READ, but a manager must not volunteer another brother's time.
+    // ⚠ Since N160 this control no longer sits inside the locked Privacy & consent
+    // Section, so the lock is passed to it explicitly. That makes this the assertion
+    // that would catch the lock being dropped in the move — the switch now sits among
+    // fields a manager CAN edit, so nothing else would flag it.
     await mock(page, me("manager", 9001), record({ id: 5247, willingToMentor: true }));
     await page.goto("/brother/5247/edit");
     await expect(page.getByText("Editing", { exact: true })).toBeVisible();
 
-    const privacy = section(page, "Privacy & consent");
-    await expect(privacy.getByRole("switch", { name: /Willing to mentor/ })).toBeDisabled();
+    const professional = section(page, "Professional & personal");
+    await expect(professional.getByRole("switch", { name: /Willing to mentor/ })).toBeDisabled();
+    // …while a genuinely editable field in the same section stays writable, so this
+    // proves the lock is per-control and not an accidental section-wide freeze.
+    await expect(professional.getByLabel("Employer")).toBeEnabled();
   });
 });
 
@@ -137,6 +153,21 @@ test.describe("profile — mentoring line (view)", () => {
     await expect(
       professional.getByText("Willing to provide professional information and advice"),
     ).toBeVisible();
+  });
+
+  test("the opted-in line has no accessibility violations (axe, WCAG 2.2 AA)", async ({ page }) => {
+    // The line carries a decorative success dot beside the sentence. It is
+    // aria-hidden and the sentence holds the whole meaning, so nothing rides on
+    // colour (D32) — but WCAG AA is CI-gated here, so the claim gets checked
+    // rather than asserted.
+    await mock(page, me("brother", 9001), record({ id: 5247, willingToMentor: true }));
+    await page.goto("/brother/5247");
+    await expect(
+      page.getByText("Willing to provide professional information and advice"),
+    ).toBeVisible();
+
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
   });
 
   test("renders NOTHING — not even the heading — when he has not", async ({ page }) => {
