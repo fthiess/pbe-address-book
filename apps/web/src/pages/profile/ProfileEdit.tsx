@@ -542,12 +542,27 @@ export function ProfileEdit({
                     A manager therefore sees one locked control in an otherwise editable
                     section; `ConsentSwitch`'s locked mode draws the lock that explains
                     it. */}
-                  <ConsentSwitch
-                    entryKey={SWITCH_KEYS.willingToMentor}
-                    value={form.draft.willingToMentor ?? false}
-                    onChange={(v) => form.setBool("willingToMentor", v)}
-                    locked={consentLocked}
-                  />
+                  <div>
+                    {/* The MENTORING label, matching Spouse/partner and Courses beside
+                      it — and the view page's read-out, which has carried one all
+                      along. Without it the switch was the only control in the section
+                      with no label at all.
+
+                      Deliberately bare, with no `ControlHelp`: `ConsentSwitch` already
+                      renders the entry's `?` at the right end of its own row, as it
+                      does for all nine switches, so pairing one with the label would
+                      show two. The label is visual grouping only — the switch's
+                      accessible name already carries "Willing to mentor" via the
+                      sr-only suffix in `ConsentSwitch`, so nothing here is the control's
+                      only name. */}
+                    <p className={`mb-1 block ${FIELD_LABEL_CLASS}`}>Mentoring</p>
+                    <ConsentSwitch
+                      entryKey={SWITCH_KEYS.willingToMentor}
+                      value={form.draft.willingToMentor ?? false}
+                      onChange={(v) => form.setBool("willingToMentor", v)}
+                      locked={consentLocked}
+                    />
+                  </div>
                 </div>
               </div>
             </Section>
