@@ -140,11 +140,14 @@ export function FilterPanel({
               // finds nobody (D164).
               helpKey="directory.filter.employer"
             />
-            <StaffSelect value={filters.staff} onChange={(v) => setFilter("staff", v, "push")} />
             <MentorSelect
               value={filters.willingToMentor}
               onChange={(v) => setFilter("willingToMentor", v, "push")}
             />
+            {/* Staff sits last in the all-roles block (Forrest's call, OFC-386): it
+              filters on who administers the Book rather than on anything about the
+              brother himself, so it reads as the odd one out and belongs at the end. */}
+            <StaffSelect value={filters.staff} onChange={(v) => setFilter("staff", v, "push")} />
           </div>
 
           {staff && (
