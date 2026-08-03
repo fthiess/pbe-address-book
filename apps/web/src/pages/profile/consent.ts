@@ -31,7 +31,14 @@ export interface SwitchCopy {
   toggleTip?: string;
 }
 
-/** The stable registry ids of the nine privacy/consent switches. */
+/**
+ * The stable registry ids of the switch-shaped controls. The first eight are the
+ * privacy/consent block; `willingToMentor` is deliberately keyed outside it
+ * (`profile.willingToMentor`) because it lives in Professional & personal, not in
+ * Privacy & consent — it publishes a fact rather than governing who may see one
+ * (N160). It still renders through {@link SwitchCopy}, which is about the control's
+ * *shape*, not its section.
+ */
 export const SWITCH_KEYS = {
   shareEmail: "profile.privacy.shareEmail",
   shareAddress: "profile.privacy.shareAddress",
@@ -40,7 +47,7 @@ export const SWITCH_KEYS = {
   shareSpousePartner: "profile.privacy.shareSpousePartner",
   allowShareWithMITAA: "profile.consent.allowShareWithMITAA",
   allowNewsletterEmail: "profile.consent.allowNewsletterEmail",
-  willingToMentor: "profile.consent.willingToMentor",
+  willingToMentor: "profile.willingToMentor",
   listed: "profile.consent.listed",
 } as const;
 

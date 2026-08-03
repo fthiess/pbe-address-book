@@ -146,6 +146,19 @@ export const helpContent: HelpContent = {
     label: "Courses",
     toggleTip: "These are the MIT courses in which you did substantial work toward a degree.",
   },
+  // Keyed `profile.willingToMentor`, NOT `profile.consent.*` (N160): the key prefix
+  // is what files an entry into a manual group, and this control lives in
+  // Professional & personal beside Courses, not among the privacy switches. It is a
+  // fact the brother publishes about himself, not a switch governing who may see
+  // something he already entered — which is exactly why it moved.
+  "profile.willingToMentor": {
+    key: "profile.willingToMentor",
+    label: "Willing to mentor",
+    whenOn: "You are willing to provide professional information and advice to other brothers.",
+    whenOff: "You're not in a position to help right now, but may opt in later.",
+    toggleTip:
+      "This switch is how you signal to other brothers that you are willing to take time to provide professional information, advice, and answer questions. It will eventually be connected to a PBE Mentoring program, which may ask for more of a time commitment, but for the time being only shows up as a filterable toggle on your profile.",
+  },
   "profile.bigBrother": {
     key: "profile.bigBrother",
     label: "Big Brother",
@@ -212,17 +225,6 @@ export const helpContent: HelpContent = {
     label: "PBE News newsletter",
     whenOn: "You will receive PBE News by email.",
     whenOff: "You won't receive PBE News by email.",
-  },
-  // The mentoring opt-in (D166; OFC-386). Unlike every other switch in this section,
-  // the value it sets is **public** — so the on-copy says what other brothers will
-  // read, not what will be hidden from them.
-  "profile.consent.willingToMentor": {
-    key: "profile.consent.willingToMentor",
-    label: "Willing to mentor",
-    whenOn: "You are willing to provide professional information and advice to other brothers.",
-    whenOff: "You're not in a position to help right now, but may opt in later.",
-    toggleTip:
-      "This switch is how you signal to other brothers that you are willing to take time to provide professional information, advice, and answer questions. It will eventually be connected to a PBE Mentoring program, which may ask for more of a time commitment, but for the time being only shows up as a filterable toggle on your profile.",
   },
   // Presented as the positive "Listed in the directory" (on = listed/visible), so
   // it reads like every other privacy switch — the stored field stays `unlisted`,

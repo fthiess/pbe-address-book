@@ -380,7 +380,26 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
               his memorial page. */}
             {isWillingToMentor(record) && (
               <ReadField label="Mentoring">
-                Willing to provide professional information and advice
+                <span className="flex items-start gap-2.5">
+                  {/* The same filled --success dot the Preferences & consent digest
+                    uses for an active choice, so a positive answer reads the same way
+                    wherever it appears. ⚠ The offset differs from that digest's
+                    `mt-1.5` on purpose: this sits in a ReadField at --text-body-lg
+                    (15px/1.5 → a 22.5px line box), so centring an 8px dot on the first
+                    line wants ~7.25px, not the ~6.85px of the digest's 14px/1.55 line.
+                    `items-start`, not `items-center`, so the dot stays on the first
+                    line when the sentence wraps on a phone.
+
+                    Decorative only: it is aria-hidden and the sentence beside it
+                    already carries the whole meaning, so nothing here rides on colour
+                    (D32). There is no "off" dot because the line does not render at
+                    all when the brother has not opted in. */}
+                  <span
+                    aria-hidden="true"
+                    className="mt-2 size-2 shrink-0 rounded-full bg-[var(--success)]"
+                  />
+                  <span>Willing to provide professional information and advice</span>
+                </span>
               </ReadField>
             )}
           </div>

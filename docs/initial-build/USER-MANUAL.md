@@ -207,6 +207,12 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Behind the “?”:** These are the MIT courses in which you did substantial work toward a degree.
 
+#### Willing to mentor
+
+- **Shows when on:** You are willing to provide professional information and advice to other brothers.
+- **Shows when off:** You're not in a position to help right now, but may opt in later.
+- **Behind the “?”:** This switch is how you signal to other brothers that you are willing to take time to provide professional information, advice, and answer questions. It will eventually be connected to a PBE Mentoring program, which may ask for more of a time commitment, but for the time being only shows up as a filterable toggle on your profile.
+
 #### Big Brother
 
 - **Behind the “?”:** Record the brother who was your Big Brother. You don't enter your Little Brothers here — they appear automatically from the profiles of the brothers who name you as their Big Brother.
@@ -256,12 +262,6 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Shows when on:** You will receive PBE News by email.
 - **Shows when off:** You won't receive PBE News by email.
-
-#### Willing to mentor
-
-- **Shows when on:** You are willing to provide professional information and advice to other brothers.
-- **Shows when off:** You're not in a position to help right now, but may opt in later.
-- **Behind the “?”:** This switch is how you signal to other brothers that you are willing to take time to provide professional information, advice, and answer questions. It will eventually be connected to a PBE Mentoring program, which may ask for more of a time commitment, but for the time being only shows up as a filterable toggle on your profile.
 
 #### Listed in the directory
 
