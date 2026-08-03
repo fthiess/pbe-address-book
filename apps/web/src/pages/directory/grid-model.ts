@@ -3,6 +3,7 @@ import {
   compareCourseCodes,
   countryName,
   formatConstitutionId,
+  isWillingToMentor,
   subdivisionName,
 } from "@pbe/shared";
 import type { DirectoryProfile } from "../../lib/types.js";
@@ -43,6 +44,7 @@ export type ColumnKey =
   | "employer"
   | "constitutionId"
   | "role"
+  | "willingToMentor"
   // Restricted, manager/administrator only (§5.6.1, off by default):
   | "allowNewsletterEmail"
   | "allowShareWithMITAA"
@@ -347,6 +349,29 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     sortable: true,
     display: (p) => roleLabel(p.role),
     sortValue: (p) => roleRank(p.role),
+  },
+  willingToMentor: {
+    key: "willingToMentor",
+    // The mentoring opt-in (D166, OFC-386) — a public field, so selectable by any
+    // role and already in every projection. Renders "Yes" or an em-dash rather than
+    // Yes/No, following the Role column: the opt-in is the interesting value, "No"
+    // is the resting state of most of the roster, and a column of "No" would offer a
+    // distinction the filter deliberately doesn't (its options are Any/Yes).
+    label: "Willing to Mentor",
+    group: "optional",
+    width: 148,
+    align: "start",
+    pinned: false,
+    sortable: true,
+    // `isWillingToMentor`, not the raw field: a deceased brother's stored opt-in is
+    // not a live offer, so he reads as an em-dash here exactly as he is skipped by
+    // the filter — the two must agree, which is why both call the shared predicate.
+    display: (p) => (isWillingToMentor(p) ? "Yes" : EMPTY),
+    // Not-willing is `null`, not `0`, so it sorts last in BOTH directions and the
+    // opted-in brothers gather at the top whichever way the header is clicked — the
+    // same single-interesting-value shape as the Role column's `roleRank`, and the
+    // reason this column's sort direction is deliberately close to a no-op.
+    sortValue: (p) => (isWillingToMentor(p) ? 1 : null),
   },
   allowNewsletterEmail: {
     key: "allowNewsletterEmail",

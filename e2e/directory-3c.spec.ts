@@ -510,6 +510,87 @@ test.describe("Directory — Employer filter and column (D164, OFC-379)", () => 
   });
 });
 
+test.describe("Directory — Willing to Mentor filter and column (D166, OFC-386)", () => {
+  // A local fixture, like the Employer block above, so the export and auto-fit tests
+  // keep measuring the rows they were written against.
+  const MENTORS = {
+    ...PROFILES,
+    profiles: PROFILES.profiles.map((profile) => {
+      if (profile.id === 5001) {
+        return { ...profile, willingToMentor: true };
+      }
+      // 5003 is the deceased brother: opted in during his life, and so the one row
+      // that proves the filter reads `isWillingToMentor` and not the raw field.
+      if (profile.id === 5003) {
+        return { ...profile, willingToMentor: true };
+      }
+      // 5002 (the viewer) and 5006 have never opted in.
+      return profile;
+    }),
+  };
+
+  // By ROLE, not by label: the column picker carries a checkbox with the same
+  // accessible name, so `getByLabel` matches two controls and fails on strictness.
+  const mentorFilter = (page: Page) => page.getByRole("combobox", { name: "Willing to mentor" });
+
+  test("filters to brothers who opted in", async ({ page }) => {
+    await gotoDirectory(page, "admin", MENTORS);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+
+    await mentorFilter(page).selectOption("yes");
+
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toHaveCount(0);
+  });
+
+  test("never returns a deceased brother, even with Include deceased on", async ({ page }) => {
+    // Grace Abbott is deceased and carries a stored opt-in. The deceased toggle is
+    // the only way she reaches the grid at all (D36) — and when she does, a mentor
+    // search must still not offer her.
+    await gotoDirectory(page, "admin", MENTORS);
+    await page.getByRole("checkbox", { name: /Include deceased/ }).check();
+    await expect(page.getByRole("rowheader", { name: /Grace Abbott/ })).toBeVisible();
+
+    await page.getByRole("button", { name: /^Filters/ }).click();
+    await mentorFilter(page).selectOption("yes");
+
+    await expect(page.getByRole("rowheader", { name: /Grace Abbott/ })).toHaveCount(0);
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
+  });
+
+  test("is available to an ordinary brother — `willingToMentor` is a public field", async ({
+    page,
+  }) => {
+    await gotoDirectory(page, "brother", MENTORS);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+
+    await mentorFilter(page).selectOption("yes");
+    await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toBeVisible();
+    await expect(page.getByRole("rowheader", { name: /William Webster/ })).toHaveCount(0);
+  });
+
+  test("offers Any and Yes only — there is deliberately no No", async ({ page }) => {
+    await gotoDirectory(page, "brother", MENTORS);
+    await page.getByRole("button", { name: /^Filters/ }).click();
+
+    await expect(mentorFilter(page).locator("option")).toHaveText(["Any", "Yes"]);
+  });
+
+  test("is an optional column, off by default, addable by a brother", async ({ page }) => {
+    await gotoDirectory(page, "brother", MENTORS);
+
+    await expect(page.getByRole("columnheader", { name: "Willing to Mentor" })).toHaveCount(0);
+
+    await page.getByText("Columns", { exact: true }).click();
+    await page.getByRole("checkbox", { name: "Willing to Mentor" }).check();
+
+    await expect(page.getByRole("columnheader", { name: /Willing to Mentor/ })).toBeVisible();
+    // "Yes" for the opted-in brother; everyone else reads as an em-dash rather than
+    // a wall of "No" (D166).
+    await expect(page.getByRole("cell", { name: "Yes", exact: true })).toHaveCount(1);
+  });
+});
+
 test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
   test("filters by a one-sided year range (OFC-195)", async ({ page }) => {
     await gotoDirectory(page);

@@ -96,6 +96,7 @@ export {
   shouldHaveGhostMember,
 } from "./capabilities.js";
 export { profilesToCsv, neutralizeCsvCell, formatCsvCell } from "./csv.js";
+export { isWillingToMentor } from "./mentoring.js";
 export {
   type Major,
   type CourseFamily,

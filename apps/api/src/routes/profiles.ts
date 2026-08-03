@@ -424,14 +424,18 @@ function assembleNewProfile(body: Record<string, unknown>, id: number, now: Date
     ...settable,
     id,
     privacy,
-    // The three consent booleans coerced to a real boolean (never left undefined
+    // The four consent booleans coerced to a real boolean (never left undefined
     // or a stray non-boolean), the status flags forced to their new-brother values,
     // and the server-managed housekeeping stamped. A new brother defaults to
     // **subscribed** to PBE News (the D45 pro-sharing/opt-out default, and what an
     // admin adding a member expects); `allowShareWithMITAA` stays opt-out (D56/D93).
+    // `willingToMentor` is opt-in and so defaults **off** (D166) — and must be
+    // stamped here rather than relying on the hydration normalization, because the
+    // create path commits through `cache.applyCreate`, which does not run it.
     unlisted: (settable.unlisted ?? false) === true,
     allowNewsletterEmail: (settable.allowNewsletterEmail ?? true) === true,
     allowShareWithMITAA: (settable.allowShareWithMITAA ?? false) === true,
+    willingToMentor: (settable.willingToMentor ?? false) === true,
     deceased: { isDeceased: false },
     debrothered: { isDebrothered: false },
     hasHeadshot: false,

@@ -170,6 +170,7 @@ describe("countActiveFilters", () => {
       city: "boston",
       employer: "acme",
       staff: "staffOnly" as const,
+      willingToMentor: "yes" as const,
       email: "has" as const,
       phone: "has" as const,
       allowNewsletterEmail: "yes" as const,
@@ -200,6 +201,36 @@ describe("buildFilterPredicate — Staff filter (all roles, OFC-199)", () => {
   it("is available to every viewing role, not just staff (role is public, OFC-139)", () => {
     expect(keptFor("manager")).toEqual([2, 3]);
     expect(keptFor("admin")).toEqual([2, 3]);
+  });
+});
+
+describe("buildFilterPredicate — Willing to mentor (all roles, D166/OFC-386)", () => {
+  const living = { isDeceased: false };
+  const rows = [
+    p({ id: 1, willingToMentor: true, deceased: living }),
+    p({ id: 2, willingToMentor: false, deceased: living }),
+    p({ id: 3, deceased: living }), // field absent on the wire → not willing
+    // Opted in during his life, since deceased. "Include deceased" (D36) is the only
+    // way he reaches the grid at all — and when he does, he must not be offered.
+    p({ id: 4, willingToMentor: true, deceased: { isDeceased: true } }),
+  ];
+  const keptFor = (viewer: "brother" | "manager" | "admin") =>
+    rows
+      .filter(buildFilterPredicate({ ...EMPTY_FILTERS, willingToMentor: "yes" }, viewer))
+      .map((r) => r.id);
+
+  it("keeps only living brothers who opted in", () => {
+    expect(keptFor("brother")).toEqual([1]);
+  });
+
+  it("is available to every viewing role — the field is public (D166)", () => {
+    expect(keptFor("manager")).toEqual([1]);
+    expect(keptFor("admin")).toEqual([1]);
+  });
+
+  it("constrains nothing when unset", () => {
+    const kept = rows.filter(buildFilterPredicate(EMPTY_FILTERS, "brother")).map((r) => r.id);
+    expect(kept).toEqual([1, 2, 3, 4]);
   });
 });
 

@@ -101,6 +101,58 @@ describe("employer column (D164, OFC-379)", () => {
   });
 });
 
+describe("willingToMentor column (D166, OFC-386)", () => {
+  const living = { isDeceased: false };
+
+  it("renders 'Yes' for an opted-in brother and an em-dash otherwise", () => {
+    expect(
+      COLUMNS.willingToMentor.display(row({ id: 1, willingToMentor: true, deceased: living }), ""),
+    ).toBe("Yes");
+    expect(
+      COLUMNS.willingToMentor.display(row({ id: 2, willingToMentor: false, deceased: living }), ""),
+    ).toBe("—");
+    // Absent on the wire (a record predating the field) reads as not willing, not blank.
+    expect(COLUMNS.willingToMentor.display(row({ id: 3 }), "")).toBe("—");
+  });
+
+  it("shows a deceased brother's stored opt-in as an em-dash, matching the filter", () => {
+    // The column and the filter must agree, or "Include deceased" + sort-by-mentor
+    // would surface a brother the filter refuses to return.
+    expect(
+      COLUMNS.willingToMentor.display(
+        row({ id: 4, willingToMentor: true, deceased: { isDeceased: true } }),
+        "",
+      ),
+    ).toBe("—");
+    expect(
+      COLUMNS.willingToMentor.sortValue(
+        row({ id: 4, willingToMentor: true, deceased: { isDeceased: true } }),
+      ),
+    ).toBeNull();
+  });
+
+  it("sorts opted-in brothers to the top in BOTH directions (null, not 0)", () => {
+    expect(COLUMNS.willingToMentor.sortValue(row({ id: 1, willingToMentor: true }))).toBe(1);
+    expect(COLUMNS.willingToMentor.sortValue(row({ id: 2, willingToMentor: false }))).toBeNull();
+
+    const rows = [
+      row({ id: 2, lastName: "B", firstName: "B", willingToMentor: false }),
+      row({ id: 1, lastName: "A", firstName: "A", willingToMentor: true }),
+    ];
+    // Nulls sort last regardless of direction, so the willing brother leads either way
+    // — the same single-interesting-value shape the Role column uses.
+    expect(sortRows(rows, "willingToMentor", "asc").map((r) => r.id)).toEqual([1, 2]);
+    expect(sortRows(rows, "willingToMentor", "desc").map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  it("is off by default and selectable by every role (public field)", () => {
+    for (const role of ["brother", "manager", "admin"] as const) {
+      expect(selectableColumns(role).map((c) => c.key)).toContain("willingToMentor");
+    }
+    expect(DEFAULT_DATA_KEYS).not.toContain("willingToMentor");
+  });
+});
+
 describe("major column sort (OFC-290)", () => {
   // Codes chosen so a lexicographic sort and a course-number sort disagree
   // everywhere: "10" < "18" < "2" as strings, but 2 < 6-1 < 6-3 < 10 < 18 as courses.

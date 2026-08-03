@@ -277,6 +277,15 @@ describe("validateProfile — consent & privacy (OFC-111)", () => {
     expect(fields({ allowShareWithMITAA: 1 as unknown as boolean })).toEqual([
       "allowShareWithMITAA",
     ]);
+    // The mentoring opt-in is type-validated with the rest (D166): the write
+    // allowlist gates the key, not the value, so without this a hand-crafted PATCH
+    // could store a string that every `=== true` consumer then reads as "not willing".
+    expect(fields({ willingToMentor: "yes" as unknown as boolean })).toEqual(["willingToMentor"]);
+  });
+
+  it("accepts a boolean mentoring opt-in", () => {
+    expect(fields({ willingToMentor: true })).toEqual([]);
+    expect(fields({ willingToMentor: false })).toEqual([]);
   });
 
   it("rejects a privacy value that isn't an object", () => {

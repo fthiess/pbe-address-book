@@ -73,6 +73,12 @@ export const helpContent: HelpContent = {
     toggleTip:
       "Finds brothers whose employer contains what you type — acme finds Acme Corporation. Only a brother's current employer is on record, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all.",
   },
+  "directory.filter.willingToMentor": {
+    key: "directory.filter.willingToMentor",
+    label: "Willing to mentor",
+    toggleTip:
+      "Finds brothers who have said they are willing to provide professional information and advice.",
+  },
   "directory.filter.staff": {
     key: "directory.filter.staff",
     label: "Staff",
@@ -206,6 +212,17 @@ export const helpContent: HelpContent = {
     label: "PBE News newsletter",
     whenOn: "You will receive PBE News by email.",
     whenOff: "You won't receive PBE News by email.",
+  },
+  // The mentoring opt-in (D166; OFC-386). Unlike every other switch in this section,
+  // the value it sets is **public** — so the on-copy says what other brothers will
+  // read, not what will be hidden from them.
+  "profile.consent.willingToMentor": {
+    key: "profile.consent.willingToMentor",
+    label: "Willing to mentor",
+    whenOn: "You are willing to provide professional information and advice to other brothers.",
+    whenOff: "You're not in a position to help right now, but may opt in later.",
+    toggleTip:
+      "This switch is how you signal to other brothers that you are willing to take time to provide professional information, advice, and answer questions. It will eventually be connected to a PBE Mentoring program, which may ask for more of a time commitment, but for the time being only shows up as a filterable toggle on your profile.",
   },
   // Presented as the positive "Listed in the directory" (on = listed/visible), so
   // it reads like every other privacy switch — the stored field stays `unlisted`,

@@ -31,7 +31,7 @@ export interface SwitchCopy {
   toggleTip?: string;
 }
 
-/** The stable registry ids of the eight privacy/consent switches. */
+/** The stable registry ids of the nine privacy/consent switches. */
 export const SWITCH_KEYS = {
   shareEmail: "profile.privacy.shareEmail",
   shareAddress: "profile.privacy.shareAddress",
@@ -40,6 +40,7 @@ export const SWITCH_KEYS = {
   shareSpousePartner: "profile.privacy.shareSpousePartner",
   allowShareWithMITAA: "profile.consent.allowShareWithMITAA",
   allowNewsletterEmail: "profile.consent.allowNewsletterEmail",
+  willingToMentor: "profile.consent.willingToMentor",
   listed: "profile.consent.listed",
 } as const;
 

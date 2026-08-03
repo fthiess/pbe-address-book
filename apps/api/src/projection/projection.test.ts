@@ -143,6 +143,36 @@ describe("projectForRole — verification is public (OFC-207, amends D28)", () =
   });
 });
 
+describe("projectForRole — the mentoring opt-in is public (D166)", () => {
+  it("delivers willingToMentor to every role, unlike the restricted consent flags", () => {
+    for (const role of ["brother", "manager", "admin"] as const) {
+      const [view] = projectForRole([makeProfile({ id: 5001, willingToMentor: true })], role);
+      expect(view?.willingToMentor).toBe(true);
+    }
+    // The contrast that matters: it sits beside `allowNewsletterEmail` in the UI but
+    // is NOT classified with it, so a brother sees one and not the other.
+    const [brotherView] = projectForRole([makeProfile({ id: 5001 })], "brother");
+    expect(brotherView).toHaveProperty("willingToMentor");
+    expect(brotherView).not.toHaveProperty("allowNewsletterEmail");
+  });
+
+  it("projects a deceased brother's stored opt-in unchanged — suppression is the client's job", () => {
+    // The projection is a visibility boundary, not a presentation one. The stored
+    // value travels; `isWillingToMentor` is what every display/filter site applies.
+    const [view] = projectForRole(
+      [
+        makeProfile({
+          id: 5001,
+          willingToMentor: true,
+          deceased: { isDeceased: true, dateOfDeath: "2020-05-01" },
+        }),
+      ],
+      "brother",
+    );
+    expect(view?.willingToMentor).toBe(true);
+  });
+});
+
 describe("projectForRole — whole-record hides (D124/D115)", () => {
   const roster = () => [
     makeProfile({ id: 5001 }),

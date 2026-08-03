@@ -38,6 +38,7 @@ export function makeProfile(overrides: Partial<Profile> = {}): Profile {
       shareSpousePartner: false,
     },
     unlisted: false,
+    willingToMentor: false,
     allowNewsletterEmail: true,
     allowShareWithMITAA: false,
     lastModified: FIXED_TIMESTAMP,

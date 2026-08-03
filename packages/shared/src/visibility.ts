@@ -97,6 +97,13 @@ export const FIELD_VISIBILITY: Record<keyof Profile, FieldVisibility> = {
   hasHeadshot: { cls: "public" },
   headshotVersion: { cls: "public" },
 
+  // --- Mentoring ---
+  // Public, and deliberately so: the whole point of the opt-in is that other
+  // brothers can find the brothers who raised their hand (D166; OFC-386). It
+  // reveals nothing about the brother beyond a willingness he chose to publish,
+  // so — unlike the two `allow*` preferences below — it is not `restricted`.
+  willingToMentor: { cls: "public" },
+
   // --- Visibility settings ---
   privacy: { cls: "restricted" },
   // Staff-only flag; the record it marks is hidden from peers wholesale (D124).

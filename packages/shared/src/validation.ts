@@ -381,7 +381,12 @@ export function validateProfile(
 }
 
 /** The top-level boolean consent switches (§9). Each must be a boolean when written. */
-const CONSENT_BOOLEAN_FIELDS = ["allowNewsletterEmail", "allowShareWithMITAA", "unlisted"] as const;
+const CONSENT_BOOLEAN_FIELDS = [
+  "allowNewsletterEmail",
+  "allowShareWithMITAA",
+  "unlisted",
+  "willingToMentor",
+] as const;
 
 /** The per-field share toggles inside the `privacy` object (§3.2). */
 const PRIVACY_FLAG_KEYS = [

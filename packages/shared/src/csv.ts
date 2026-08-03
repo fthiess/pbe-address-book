@@ -103,6 +103,9 @@ const COLUMNS: readonly CsvColumn[] = [
     field: "privacy",
     get: (p) => boolStr(p.privacy?.shareSpousePartner),
   },
+  // The **stored** opt-in, not `isWillingToMentor` — an export is a dump of state,
+  // and it carries the deceased columns alongside for the reader to combine (D166).
+  { header: "willingToMentor", field: "willingToMentor", get: (p) => boolStr(p.willingToMentor) },
   {
     header: "allowNewsletterEmail",
     field: "allowNewsletterEmail",

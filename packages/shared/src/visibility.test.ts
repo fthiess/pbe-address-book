@@ -35,6 +35,11 @@ describe("FIELD_VISIBILITY table", () => {
       cls: "toggle",
       flag: "shareSpousePartner",
     });
+    // The mentoring opt-in is public — the whole point is that brothers can find
+    // the brothers who raised a hand (D166). Asserted explicitly because it sits in
+    // the Privacy & consent UI next to two `restricted` fields, so a later reader
+    // "harmonizing" the three would silently un-ship the feature.
+    expect(FIELD_VISIBILITY.willingToMentor).toEqual({ cls: "public" });
     expect(FIELD_VISIBILITY.privacy).toEqual({ cls: "restricted" });
     expect(FIELD_VISIBILITY.lastModified).toEqual({ cls: "restricted" });
     expect(FIELD_VISIBILITY.adminNote).toEqual({ cls: "staff-internal" });

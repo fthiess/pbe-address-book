@@ -224,6 +224,10 @@ function buildTesterProfile(entry: RosterEntry, now: string): Profile {
     unlisted: false,
     allowNewsletterEmail: true,
     allowShareWithMITAA: false,
+    // Off, like a real brother's (D166) — a tester who opts in should be doing it
+    // himself, since watching whether testers *find* and flip this switch is a
+    // large part of what OFC-386 is shipping early to learn.
+    willingToMentor: false,
     lastModified: now,
     newsletterConsentChangedAt: now,
   };

@@ -43,6 +43,10 @@ describe("WRITE_RULE table", () => {
     expect(WRITE_RULE.privacy).toBe("consent");
     expect(WRITE_RULE.unlisted).toBe("consent");
     expect(WRITE_RULE.allowNewsletterEmail).toBe("consent");
+    // `consent`, not `editable`, despite being PUBLIC on read (D166): a manager must
+    // not volunteer another brother's time on his behalf. This is the one field where
+    // the read class is wide and the write class is narrow, so it is asserted here.
+    expect(WRITE_RULE.willingToMentor).toBe("consent");
     expect(WRITE_RULE.adminNote).toBe("staff");
     expect(WRITE_RULE.deceased).toBe("protected");
     expect(WRITE_RULE.debrothered).toBe("protected");
@@ -178,6 +182,17 @@ describe("canWriteField — the per-field write truth table (§8)", () => {
       });
     }
   }
+
+  it("gives willingToMentor the consent write rule despite its public read class (D166)", () => {
+    expect(canWriteField("brother", true, "willingToMentor")).toBe(true); // his own
+    expect(canWriteField("admin", false, "willingToMentor")).toBe(true); // admin on another
+    expect(canWriteField("manager", false, "willingToMentor")).toBe(false); // manager may not
+    // And the record-aware predicate must not widen it: the field is public, so the
+    // "can't write what you can't read" narrowing has nothing to add here, and a
+    // manager stays blocked by the static rule alone.
+    expect(canWriteFieldOnRecord("manager", false, "willingToMentor", NONE_SHARED)).toBe(false);
+    expect(canWriteFieldOnRecord("brother", true, "willingToMentor", NONE_SHARED)).toBe(true);
+  });
 
   it("encodes the D124 unlisted rule precisely: owner yes, admin-on-another yes, manager-on-another no", () => {
     expect(canWriteField("brother", true, "unlisted")).toBe(true); // owner self-service

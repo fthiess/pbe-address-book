@@ -600,6 +600,20 @@ export function ProfileEdit({
                   />
                 </Subgroup>
 
+                {/* Mentoring (D166, OFC-386). Sits in this section because it is a
+                  choice about the brother himself, but note it is the one switch here
+                  whose value is PUBLIC — every brother can see it, column it, and
+                  filter on it. Its write rule is still `consent` (owner or admin), so
+                  it locks with the rest of the block for a manager. */}
+                <Subgroup title="Mentoring">
+                  <ConsentSwitch
+                    entryKey={SWITCH_KEYS.willingToMentor}
+                    value={form.draft.willingToMentor ?? false}
+                    onChange={(v) => form.setBool("willingToMentor", v)}
+                    locked={consentLocked}
+                  />
+                </Subgroup>
+
                 <Subgroup title="Directory listing">
                   {/* Presented positively as "Listed" (on = listed); the stored
                     field is `unlisted`, so the value and change are inverted (N35). */}
