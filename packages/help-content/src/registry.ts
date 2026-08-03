@@ -77,7 +77,7 @@ export const helpContent: HelpContent = {
     key: "directory.filter.willingToMentor",
     label: "Willing to mentor",
     toggleTip:
-      "Finds brothers who have said they are willing to provide professional information and advice. It is an opt-in each brother sets on his own profile, so a brother who has not visited his profile will not appear — an absence here means “hasn't said”, not “no”.",
+      "Finds brothers who have said they are willing to provide professional information and advice.",
   },
   "directory.filter.staff": {
     key: "directory.filter.staff",
