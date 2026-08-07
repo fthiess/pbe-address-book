@@ -47,6 +47,7 @@ import {
   type DirectoryNavState,
   type StepDirection,
   deriveDirectoryNav,
+  directoryEntryIsReachable,
   stepNavState,
 } from "./profile/directory-nav.js";
 import { getDirectoryStash } from "./profile/directory-stash.js";
@@ -88,7 +89,7 @@ export interface ProfileOutletContext {
   actions: ProfileActions;
   /** Leave edit mode back to the view: pop the edit entry, or replace it on a cold deep-link. */
   exitEdit: () => void;
-  /** The "← Directory" action: pop `directoryDelta` entries to the Directory, or `/` on a cold deep-link. */
+  /** The "← Directory" action: pop `directoryDelta` entries back, or rebuild the view from its URL. */
   backToDirectory: () => void;
   /** The prev/next-through-the-Directory model derived from `location.state` (4d, N45). */
   directoryNav: DirectoryNavModel;
@@ -332,20 +333,27 @@ export function ProfileContainer() {
 
   const changeRoleAction = useCallback((role: Role) => changeRole(id, role), [id]);
 
-  // Return to the Directory ENTRY we arrived from as a POP — popping the whole
-  // Prev/Next chain via `directoryDelta` (each entry carries its own, N45) so the
-  // Directory's URL filters/search/sort and `location.key`-keyed scroll are
-  // restored, not `navigate("/")` (which would open a fresh, unfiltered Directory
-  // at the top and lose the user's place). A cold deep-link (delta 0) has no
-  // Directory entry to pop, so it falls back to the Directory home. Shared by
-  // "← Directory" and the post-delete return (OFC-143).
+  // Return to the Directory ENTRY we arrived from as a POP — walking back
+  // `directoryDelta` entries (each entry carries its own, N45) so the Directory's
+  // URL filters/search/sort and `location.key`-keyed scroll are restored, not
+  // `navigate("/")` (which would open a fresh, unfiltered Directory at the top and
+  // lose the user's place). Shared by "← Directory" and the post-delete return
+  // (OFC-143).
+  //
+  // The pop is asked for only when the target is actually still in the session
+  // history (OFC-395): `history.go()` past the start of the stack navigates
+  // nowhere, reports nothing, and leaves the button looking broken — which is how
+  // this reached UAT. When the entry is gone (or on a cold deep-link, delta 0,
+  // where there was never one), we rebuild the view from the URL stashed with the
+  // id-list instead. That restores search/filter/sort exactly and loses only
+  // scroll, since a freshly-created entry has a new `location.key`.
   const popToDirectory = useCallback(() => {
-    if (directoryNav.delta > 0) {
+    if (directoryEntryIsReachable(directoryNav.delta, window.history.length)) {
       navigate(-directoryNav.delta);
     } else {
-      navigate("/");
+      navigate(directoryNav.directoryUrl || "/");
     }
-  }, [directoryNav.delta, navigate]);
+  }, [directoryNav.delta, directoryNav.directoryUrl, navigate]);
 
   const removeProfile = useCallback(async () => {
     const outcome = await deleteProfile(id);
@@ -412,19 +420,26 @@ export function ProfileContainer() {
     stepIntentRef.current = null;
   }, []);
 
-  // Prev/Next: an ordinary push to the neighbour's display page, re-carrying the
-  // stashed id-list with `directoryDelta + 1` so "← Directory" keeps popping to
-  // the real Directory entry (N45). Guarded so an end-of-set call is a no-op.
+  // Prev/Next: a **replace** onto the neighbour's display page, re-carrying the
+  // stashed id-list at the same `directoryDelta` (OFC-395, superseding N45's push
+  // + increment) so the chain never deepens and "← Directory" is always one hop
+  // from the Directory entry. Guarded so an end-of-set call is a no-op.
   const goPrev = useCallback(() => {
     if (directoryNav.prevId !== null) {
       stepIntentRef.current = "prev";
-      navigate(`/brother/${directoryNav.prevId}`, { state: stepNavState(directoryNav) });
+      navigate(`/brother/${directoryNav.prevId}`, {
+        replace: true,
+        state: stepNavState(directoryNav),
+      });
     }
   }, [directoryNav, navigate]);
   const goNext = useCallback(() => {
     if (directoryNav.nextId !== null) {
       stepIntentRef.current = "next";
-      navigate(`/brother/${directoryNav.nextId}`, { state: stepNavState(directoryNav) });
+      navigate(`/brother/${directoryNav.nextId}`, {
+        replace: true,
+        state: stepNavState(directoryNav),
+      });
     }
   }, [directoryNav, navigate]);
 

@@ -55,41 +55,51 @@ describe("directory stash store (OFC-141 + lazy-write follow-up)", () => {
     expect(stashCount()).toBe(0); // newStashId does not touch storage
   });
 
-  it("round-trips an id-list written under an explicit stash id", () => {
+  it("round-trips an id-list and its Directory URL under an explicit stash id", () => {
     const id = newStashId();
-    putDirectoryStash(id, [5, 4, 3, 2, 1]);
-    expect(getDirectoryStash(id)).toEqual([5, 4, 3, 2, 1]);
+    putDirectoryStash(id, [5, 4, 3, 2, 1], "/?q=smy&sort=classYear");
+    expect(getDirectoryStash(id)).toEqual({
+      ids: [5, 4, 3, 2, 1],
+      url: "/?q=smy&sort=classYear",
+    });
   });
 
-  it("returns [] for an undefined or unknown stash id", () => {
-    expect(getDirectoryStash(undefined)).toEqual([]);
-    expect(getDirectoryStash("never-written")).toEqual([]);
+  it("returns an empty stash for an undefined or unknown stash id", () => {
+    expect(getDirectoryStash(undefined)).toEqual({ ids: [], url: "" });
+    expect(getDirectoryStash("never-written")).toEqual({ ids: [], url: "" });
+  });
+
+  it("still reads a pre-OFC-395 bare array left in storage by an older build", () => {
+    // A tab open across a deploy holds entries in the old shape. They must keep
+    // driving Prev/Next; only the URL fallback is unavailable for them.
+    sessionStorage.setItem("pbe:dirnav:legacy", JSON.stringify([7, 8, 9]));
+    expect(getDirectoryStash("legacy")).toEqual({ ids: [7, 8, 9], url: "" });
   });
 
   it("re-writing the same id overwrites in place — no duplicate accumulates", () => {
     const id = newStashId();
-    putDirectoryStash(id, [1, 2]);
-    putDirectoryStash(id, [1, 2, 3]);
+    putDirectoryStash(id, [1, 2], "/");
+    putDirectoryStash(id, [1, 2, 3], "/?q=a");
     expect(stashCount()).toBe(1);
-    expect(getDirectoryStash(id)).toEqual([1, 2, 3]);
+    expect(getDirectoryStash(id)).toEqual({ ids: [1, 2, 3], url: "/?q=a" });
   });
 
   it("bounds retained stashes, evicting the oldest so a long session can't accumulate them", () => {
     const first = newStashId();
-    putDirectoryStash(first, [0]);
+    putDirectoryStash(first, [0], "/");
     let last = first;
     for (let i = 1; i <= 40; i++) {
       last = newStashId();
-      putDirectoryStash(last, [i]);
+      putDirectoryStash(last, [i], "/");
     }
-    expect(getDirectoryStash(first)).toEqual([]); // evicted
-    expect(getDirectoryStash(last)).toEqual([40]); // retained
+    expect(getDirectoryStash(first)).toEqual({ ids: [], url: "" }); // evicted
+    expect(getDirectoryStash(last)).toEqual({ ids: [40], url: "/" }); // retained
     expect(stashCount()).toBeLessThanOrEqual(12); // MAX_STASHES
   });
 
   it("clearDirectoryStashes empties the store (all stashes + the index)", () => {
-    putDirectoryStash(newStashId(), [1]);
-    putDirectoryStash(newStashId(), [2]);
+    putDirectoryStash(newStashId(), [1], "/");
+    putDirectoryStash(newStashId(), [2], "/");
     expect(stashCount()).toBe(2);
     clearDirectoryStashes();
     expect(stashCount()).toBe(0);

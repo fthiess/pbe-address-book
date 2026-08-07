@@ -134,6 +134,54 @@ async function mockAdmin(page: Page): Promise<{ del: () => number }> {
   return { del: () => del };
 }
 
+/**
+ * A long-chain fixture (OFC-395): enough brothers that walking the set with Next
+ * outruns the browser's session-history cap. Chrome retains at most 50 entries per
+ * tab and prunes from the **oldest** end, so past ~50 pushes the Directory entry
+ * itself is deleted while the code still counts steps — which is exactly how the
+ * "← Directory" button went silently dead in UAT. Playwright's Chromium enforces
+ * the same cap, so this fixture reproduces the bug rather than approximating it.
+ *
+ * The surnames sort in generation order under the default Canonical Name ascending
+ * sort, so "Chain00" is row 1 and stepping Next walks 1 → 70 in order.
+ */
+const CHAIN_SIZE = 70;
+const CHAIN: Record<number, ReturnType<typeof baseRecord>> = Object.fromEntries(
+  Array.from({ length: CHAIN_SIZE }, (_, i) => {
+    const id = 5400 + i;
+    return [id, baseRecord(id, "Walker", `Chain${String(i).padStart(2, "0")}`, 1980 + (i % 20))];
+  }),
+);
+
+async function mockChain(page: Page) {
+  const list = {
+    profiles: Object.values(CHAIN).map((r) => ({
+      id: r.id,
+      firstName: r.firstName,
+      lastName: r.lastName,
+      classYear: r.classYear,
+      deceased: { isDeceased: false },
+      hasHeadshot: false,
+    })),
+    majors: [],
+  };
+  await page.route("**/api/me", (route) => route.fulfill({ json: ME }));
+  await page.route("**/api/profiles", (route) => route.fulfill({ json: list }));
+  await page.route(/\/api\/profiles\/\d+$/, (route) => {
+    const id = Number(
+      route
+        .request()
+        .url()
+        .match(/\/(\d+)$/)?.[1],
+    );
+    const record = CHAIN[id];
+    if (!record) {
+      return route.fulfill({ status: 404, json: { error: "not_found" } });
+    }
+    return route.fulfill({ headers: { ETag: 'W/"v1"' }, json: record });
+  });
+}
+
 async function gotoDirectory(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
@@ -194,6 +242,69 @@ test.describe("prev/next through the directory (4d)", () => {
     await page.getByRole("button", { name: /Directory/ }).click();
     await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
     await expect(page).toHaveURL(/\/$/);
+  });
+
+  test("'← Directory' survives a chain longer than the browser's history cap (OFC-395)", async ({
+    page,
+  }) => {
+    // The UAT failure: a tester stepped Next essentially all the way through a
+    // 168-brother filtered set, and "← Directory" then did nothing at all — no
+    // navigation, no error. Every step used to push an entry and count
+    // `directoryDelta + 1`, so the pop asked for `history.go(-167)` against a stack
+    // Chrome had already pruned to 50. `go()` out of range is a silent no-op, which
+    // is why the analytics stream showed 24 clicks and no page view.
+    await mockChain(page);
+    await gotoDirectory(page);
+
+    // A filtered view, so the return can be checked for more than "a Directory".
+    await page.getByRole("searchbox").fill("Chain");
+    await openRow(page, "Chain00");
+    await expect(page.getByText(`1 of ${CHAIN_SIZE}`)).toBeVisible();
+
+    // 60 steps — comfortably past the 50-entry cap, so the Directory entry is
+    // pruned well before the walk ends.
+    const next = page.getByRole("button", { name: "Next brother" });
+    for (let step = 1; step <= 60; step++) {
+      await next.click();
+      await expect(page.getByText(`${step + 1} of ${CHAIN_SIZE}`)).toBeVisible();
+    }
+
+    await page.getByRole("button", { name: /Directory/ }).click();
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    // …and the filtered view comes back, not a cleared one.
+    await expect(page.getByRole("searchbox")).toHaveValue("Chain");
+  });
+
+  test("a Prev/Next step replaces its history entry but still counts as a page view", async ({
+    page,
+  }) => {
+    // The structural half of the OFC-395 fix: stepping REPLACES the current entry,
+    // so the chain never grows and the Directory entry can never be pruned out from
+    // under the pop. Asserted directly on `history.length` — the property the old
+    // model grew without bound.
+    //
+    // The second assertion guards the cost of that choice: `useAnalytics` dedupes
+    // page views on the history entry's `key`, so a replace that reused the key
+    // would silently blind the step-through funnel. React Router mints a fresh key
+    // on every navigation, replace included; this pins that behaviour to a test
+    // rather than to a reading of the router's source.
+    await mockChain(page);
+    await gotoDirectory(page);
+    await openRow(page, "Chain00");
+
+    const entry = () =>
+      page.evaluate(() => ({
+        length: history.length,
+        key: (history.state as { key?: string } | null)?.key,
+      }));
+
+    const before = await entry();
+    await page.getByRole("button", { name: "Next brother" }).click();
+    await expect(page.getByText(`2 of ${CHAIN_SIZE}`)).toBeVisible();
+    const after = await entry();
+
+    expect(after.length).toBe(before.length);
+    expect(after.key).not.toBe(before.key);
   });
 
   test("a stale stashed id shows not-found with prev/next still working (no auto-skip)", async ({

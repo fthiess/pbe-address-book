@@ -6,9 +6,15 @@ import type { DirectoryNav as DirectoryNavModel, StepDirection } from "./directo
 
 /**
  * The Profile-page directory navigation bar (Phase 4d, OFC-67 / N45): the
- * "← Directory" affordance (delta-aware — it pops to the true Directory entry
- * even after a Prev/Next chain) plus Prev / Next through the stashed set and a
- * "12 of 431" position readout. Prev/Next and the readout render only when a
+ * "← Directory" affordance (delta-aware — it returns to the true Directory view
+ * however the user reached this brother) plus Prev / Next through the stashed set
+ * and a "12 of 431" position readout. Stepping **replaces** the current history
+ * entry rather than pushing one, so a walk of any length stays one hop from the
+ * Directory (OFC-395 — see `directory-nav.ts` for why that matters). The trade is
+ * that the browser's Back button leaves the walk entirely instead of retracing it;
+ * Prev is the affordance for stepping back through the set.
+ *
+ * Prev/Next and the readout render only when a
  * Directory set was stashed (i.e. not on a cold deep-link); "← Directory" always
  * shows. Shared by {@link ProfileView} and the container's not-found branch so a
  * stale id still gets prev/next — the controls live on the display page only

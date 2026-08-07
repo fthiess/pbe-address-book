@@ -4,7 +4,12 @@ import { useCallback, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
-import { entryNavState, newStashId, putDirectoryStash } from "../profile/directory-stash.js";
+import {
+  currentDirectoryUrl,
+  entryNavState,
+  newStashId,
+  putDirectoryStash,
+} from "../profile/directory-stash.js";
 import { CourseChips, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { Selection } from "./SelectionContext.js";
@@ -69,7 +74,7 @@ export function DirectoryCards({
   );
   const linkState = useMemo(() => entryNavState(stashId), [stashId]);
   const commitStash = useCallback(
-    () => putDirectoryStash(stashId, orderedIds),
+    () => putDirectoryStash(stashId, orderedIds, currentDirectoryUrl()),
     [stashId, orderedIds],
   );
 
