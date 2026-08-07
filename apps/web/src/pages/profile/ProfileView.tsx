@@ -9,7 +9,7 @@ import { Link } from "react-router-dom";
 import { Avatar } from "../../components/Avatar.js";
 import { trackProfileViewed } from "../../lib/analytics.js";
 import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
-import { CourseChip } from "../directory/Chips.js";
+import { CourseChip, DebrotheredBadge, UnlistedBadge } from "../directory/Chips.js";
 import { StarButton } from "../directory/RowControls.js";
 import { useStars } from "../directory/StarsContext.js";
 import { BOX, Thumbnail } from "../directory/thumbnail.js";
@@ -27,7 +27,12 @@ import {
   verifierAttribution,
 } from "./display.js";
 import { PrivateMarker, ReadField, Section } from "./fields.js";
-import { littleBrothers, rosterMember, rosterNames } from "./relationships.js";
+import {
+  type RelationshipEntry,
+  bigBrotherEntry,
+  littleBrotherEntries,
+  rosterNames,
+} from "./relationships.js";
 import { type Viewer, canEdit, managerSeesPrivate, seesRestricted } from "./viewer.js";
 
 /**
@@ -110,7 +115,7 @@ export function ProfileView({
               its own Band, so a section with nothing to show contributes no rule
               either — see Band (OFC-318). */}
           <ProfessionalSection record={record} viewer={viewer} />
-          <RelationshipsSection record={record} roster={roster} names={names} />
+          <RelationshipsSection record={record} roster={roster} names={names} viewer={viewer} />
 
           {restricted ? (
             <Row>
@@ -410,53 +415,60 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
 }
 
 /**
- * Relationships (§5.7.4). The Big Brother link carries his Canonical Name (from
- * the roster once it loads, falling back to a neutral link meanwhile), and the
+ * Relationships (§5.7.4). The Big Brother carries his Canonical Name, and the
  * **derived Little Brothers** — the brothers who name this one as their Big
- * Brother — render read-only beneath, each a link. Both are free reads of the
- * in-memory dataset; nothing here is stored. The section is absent when there is
- * neither a Big Brother nor any Little Brother.
+ * Brother — render read-only beneath. Both are free reads of the in-memory
+ * dataset; nothing here is stored.
+ *
+ * Either edge may point at a brother this viewer may not see (`unlisted` D124 /
+ * `debrothered` D115), and D168 renders that as an explicit, nameless "Info is
+ * private" rather than eliding it. The two directions used to fail differently
+ * and both wrongly (OFC-392): a withheld Big Brother became a stranger with
+ * invented initials, while a withheld Little Brother vanished so completely that
+ * a brother whose *only* little brother was unlisted lost the whole section — an
+ * unlisted little brother being indistinguishable from none at all.
+ *
+ * The section is absent only when there is genuinely nothing to say: no Big
+ * Brother, no visible Little Brother, and none withheld.
  */
 function RelationshipsSection({
   record,
   roster,
   names,
+  viewer,
 }: {
   record: ProfileRecord;
   roster: DirectoryProfile[] | null;
   names: Map<number, string> | null;
+  viewer: Viewer;
 }) {
   const littles = useMemo(
-    () => (roster && names ? littleBrothers(roster, names, record.id) : []),
-    [roster, names, record.id],
+    () => littleBrotherEntries(roster, names, record.id, record.hiddenLittleBrothers),
+    [roster, names, record.id, record.hiddenLittleBrothers],
   );
+  const big = bigBrotherEntry(roster, names, record.bigBrotherId);
 
-  if (record.bigBrotherId == null && littles.length === 0) {
+  if (big === null && littles.length === 0) {
     return null;
   }
-
-  const bigBrotherId = record.bigBrotherId;
-  const bigBrother = rosterMember(roster, bigBrotherId);
-  const bigBrotherName = bigBrotherId != null ? (names?.get(bigBrotherId) ?? null) : null;
 
   return (
     <Band>
       <Section title="Relationships">
-        {bigBrotherId != null && (
+        {big && (
           <ReadField label="Big Brother">
-            <RelationshipLink
-              id={bigBrotherId}
-              name={bigBrotherName ?? "View his profile"}
-              profile={bigBrother}
-            />
+            <RelationshipEntryView entry={big} viewer={viewer} />
           </ReadField>
         )}
         {littles.length > 0 && (
           <ReadField label="Little Brothers">
             <ul className="flex flex-wrap gap-x-5 gap-y-2">
-              {littles.map((little) => (
-                <li key={little.id}>
-                  <RelationshipLink id={little.id} name={little.name} profile={little.profile} />
+              {littles.map((entry, index) => (
+                // Private placeholders carry no id, so they are keyed by position.
+                // They are interchangeable by construction — that is the point —
+                // so a positional key reorders nothing observable.
+                <li key={entry.kind === "private" ? `private-${index}` : entry.id}>
+                  <RelationshipEntryView entry={entry} viewer={viewer} />
                 </li>
               ))}
             </ul>
@@ -473,33 +485,60 @@ function RelationshipsSection({
  * de-brothered overlays) to the left of his Canonical Name, the whole thing a
  * link to his profile — so brother names read identically here and in the
  * Directory. The thumbnail is decorative (the adjacent name is the link's
- * accessible label). When the roster hasn't resolved the brother (a Big Brother
- * hidden from this viewer, or the roster still loading), it falls back to a plain
- * avatar seeded by his id.
+ * accessible label).
+ *
+ * A **private** entry is the exception, and deliberately not a link (D168): its
+ * only destination is a page saying exactly what the label already says. Its
+ * avatar is anonymous *and* unseeded, so every withheld brother renders
+ * identically — a per-id colour family would otherwise let a viewer tell two
+ * withheld brothers apart, and match one against a `bigBrotherId` he can read.
  */
-function RelationshipLink({
-  id,
-  name,
-  profile,
-}: {
-  id: number;
-  name: string;
-  profile: DirectoryProfile | null;
-}) {
-  return (
-    <Link
-      to={`/brother/${id}`}
-      className="group inline-flex items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      {profile ? (
-        <Thumbnail profile={profile} name={name} decorative />
-      ) : (
-        <Avatar name={name} seed={id} size={BOX} />
-      )}
-      <span className="font-medium text-foreground underline-offset-2 group-hover:underline">
-        {name}
+function RelationshipEntryView({ entry, viewer }: { entry: RelationshipEntry; viewer: Viewer }) {
+  if (entry.kind === "private") {
+    return (
+      <span className="inline-flex items-center gap-2.5">
+        <Avatar name="" size={BOX} anonymous />
+        <span className="text-muted-foreground italic">Info is private</span>
       </span>
-    </Link>
+    );
+  }
+
+  // A still-loading roster keeps the pre-D168 neutral invitation: for all but a
+  // handful of brothers the link is real, and the label resolves to his name the
+  // moment the roster lands. The avatar stays anonymous until it does.
+  const label = entry.kind === "pending" ? "View his profile" : entry.name;
+  const staff = viewer.role === "manager" || viewer.role === "admin";
+  return (
+    <span className="inline-flex items-center gap-2.5">
+      <Link
+        to={`/brother/${entry.id}`}
+        className="group inline-flex items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {entry.kind === "known" ? (
+          <Thumbnail profile={entry.profile} name={label} decorative />
+        ) : (
+          <Avatar name="" seed={entry.id} size={BOX} anonymous />
+        )}
+        <span className="font-medium text-foreground underline-offset-2 group-hover:underline">
+          {label}
+        </span>
+      </Link>
+      {/* Managers and administrators see through the hide, so for them the
+        relationship resolves normally — and carries the same status badges the
+        Directory puts on the row, so one record reads the same on both surfaces
+        (D124/D115). Brothers never reach this branch: a withheld record is absent
+        from their roster, so it is a `private` entry above.
+
+        Outside the <Link> on purpose: inside, the badge text would be folded into
+        the link's accessible name ("Robert Brown '79 Unlisted"), which is a status
+        of the record, not part of who the link goes to. */}
+      {entry.kind === "known" && staff && (
+        <>
+          {entry.profile.unlisted === true && <UnlistedBadge />}
+          {entry.profile.debrothered?.isDebrothered === true && <DebrotheredBadge />}
+        </>
+      )}
+    </span>
   );
 }
 

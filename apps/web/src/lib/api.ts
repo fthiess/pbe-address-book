@@ -165,7 +165,10 @@ export interface FetchedProfile {
  * One brother's record for the Profile page (API-SPEC §3). The owner receives
  * their full self-record, everyone else the role projection; either way the
  * `ETag` is the token an edit must echo. A brother requesting a whole-record-
- * hidden record gets `404` (the directory hide's single-record consequence).
+ * hidden record gets `403` (the directory hide's single-record consequence),
+ * distinct from the `404` of a record that does not exist — the caller maps the
+ * two to different dead-end messages (D168, `profile/load-status.ts`). The body
+ * may also carry the derived `hiddenLittleBrothers` count (D168).
  */
 export async function fetchProfile(id: number, signal?: AbortSignal): Promise<FetchedProfile> {
   const response = await fetchWithReauth(`/api/profiles/${id}`, {

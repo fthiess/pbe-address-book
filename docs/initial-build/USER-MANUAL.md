@@ -271,7 +271,7 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Shows when on:** You appear in the directory for all brothers.
 - **Shows when off:** You don't appear in the directory for other brothers; managers and administrators can still see your record.
-- **Behind the “?”:** This switch lets you be “unlisted”, so none of your information is visible to the brotherhood at large. You'll still be in PBE's official records, and Address Book staff can still see your information.
+- **Behind the “?”:** This switch lets you be “unlisted”, so none of your information is visible to the brotherhood at large. You'll still be in PBE's official records, and Address Book staff can still see your information. One thing does remain visible: on the profile of your Big Brother or a Little Brother, other brothers see that a brother is there, marked “Info is private” — never your name, photo, or anything else about you.
 
 ### Administration
 

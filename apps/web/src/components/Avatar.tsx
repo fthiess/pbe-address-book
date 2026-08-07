@@ -67,6 +67,7 @@ export function Avatar({
   size = 40,
   sizeVar,
   deceased = false,
+  anonymous = false,
   className,
 }: {
   name: string;
@@ -81,6 +82,15 @@ export function Avatar({
    */
   sizeVar?: string;
   deceased?: boolean;
+  /**
+   * Drop the initials, leaving the ground and silhouette alone — for a brother
+   * whose **name the viewer may not see** (a withheld Big or Little Brother,
+   * D168). Initials are derived from the `name` string, so a placeholder label
+   * silently becomes fake initials: "View his profile" rendered as "VP" over a
+   * generic avatar, which UAT reasonably read as a real person (OFC-392). A
+   * nameless avatar must therefore be nameless all the way down.
+   */
+  anonymous?: boolean;
   className?: string;
 }) {
   const ground = groundFor(seed ?? hashString(name), deceased);
@@ -105,9 +115,14 @@ export function Avatar({
         <circle cx="20" cy="15" r="7" />
         <path d="M7 40 C7 28 33 28 33 40 Z" />
       </svg>
-      <span className="relative font-semibold leading-none" style={{ color: ground.ink, fontSize }}>
-        {initialsOf(name)}
-      </span>
+      {!anonymous && (
+        <span
+          className="relative font-semibold leading-none"
+          style={{ color: ground.ink, fontSize }}
+        >
+          {initialsOf(name)}
+        </span>
+      )}
     </span>
   );
 }

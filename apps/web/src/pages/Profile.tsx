@@ -1,5 +1,5 @@
 import type { Profile as ProfileType, Role } from "@pbe/shared";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Navigate,
   Outlet,
@@ -50,6 +50,7 @@ import {
   stepNavState,
 } from "./profile/directory-nav.js";
 import { getDirectoryStash } from "./profile/directory-stash.js";
+import { statusFor } from "./profile/load-status.js";
 import { valuesEqual } from "./profile/patch.js";
 import { type Viewer, canEdit } from "./profile/viewer.js";
 
@@ -133,7 +134,9 @@ export function ProfileContainer() {
 
   const [record, setRecord] = useState<ProfileRecord | null>(null);
   const [etag, setEtag] = useState("");
-  const [status, setStatus] = useState<"loading" | "ready" | "notfound" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "notfound" | "private" | "error">(
+    "loading",
+  );
   const [toast, setToast] = useState<string | null>(null);
   const showOverlay = useDelayedFlag(status === "loading", OVERLAY_DELAY_MS);
   // A single record is a tiny payload, so a wait this long is a sleeping instance,
@@ -159,7 +162,9 @@ export function ProfileContainer() {
         if (controller.signal.aborted) {
           return;
         }
-        setStatus(error instanceof ApiError && error.status === 404 ? "notfound" : "error");
+        // 403 is the whole-record hide (D168), 404 a record that isn't there.
+        // Anything else is a genuine failure and gets the retry message.
+        setStatus(error instanceof ApiError ? statusFor(error.status) : "error");
       });
     return () => controller.abort();
     // Re-fetch only on id change (a different brother). The view↔edit transition
@@ -430,10 +435,10 @@ export function ProfileContainer() {
       <div className="min-h-[40vh]" />
     );
   }
-  if (status === "notfound") {
+  if (status === "notfound" || status === "private") {
     // A stashed id can stop resolving between stash and click (deleted /
     // de-brothered / unlisted / newly deceased — 4c). MVP shows the normal
-    // not-found state but keeps the prev/next bar (the id is still a member of
+    // dead-end state but keeps the prev/next bar (the id is still a member of
     // the stashed set) so the user steps past it — no auto-skip (N45).
     return (
       <section className="mx-auto max-w-5xl">
@@ -445,7 +450,11 @@ export function ProfileContainer() {
           autoFocusStep={stepIntentRef.current}
           onStepFocused={consumeStepIntent}
         />
-        <NotFound canStep={directoryNav.hasStash} />
+        {status === "private" ? (
+          <PrivateRecord canStep={directoryNav.hasStash} />
+        ) : (
+          <NotFound canStep={directoryNav.hasStash} />
+        )}
       </section>
     );
   }
@@ -568,14 +577,46 @@ function ProfileToast({ message, onDone }: { message: string | null; onDone: () 
 // Rendered under the shared DirectoryNav bar (which carries the back + prev/next
 // affordances, so there is no duplicate inline link here). `canStep` is true when
 // a directory set was stashed, so the Prev/Next controls are present to point at.
+//
+// Two dead ends, two messages (D168). They were one — "This record doesn't exist,
+// or it isn't visible to you" — which reads as a broken link, and UAT duly
+// reported it as one (OFC-392). The server now distinguishes them (`404` vs
+// `403`), so the page can too: a wrong id is the reader's mistake to correct, a
+// withheld record is a deliberate state with nothing to correct.
 function NotFound({ canStep = false }: { canStep?: boolean }) {
   return (
+    <Dead heading="Brother not found" canStep={canStep}>
+      This record doesn't exist.
+    </Dead>
+  );
+}
+
+function PrivateRecord({ canStep = false }: { canStep?: boolean }) {
+  // The heading carries the whole message; the reason for the hide (unlisted D124
+  // or de-brothered D115) is deliberately not distinguished here — nor is it known
+  // to the client, which receives one `403` for both.
+  return <Dead heading="This brother's information is private" canStep={canStep} />;
+}
+
+function Dead({
+  heading,
+  canStep,
+  children,
+}: {
+  heading: string;
+  canStep: boolean;
+  children?: ReactNode;
+}) {
+  return (
     <div className="rounded-xl border border-border bg-card p-6">
-      <h1 className="text-[length:var(--text-h3)] font-bold">Brother not found</h1>
-      <p className="mt-2 text-sm text-muted-foreground">
-        This record doesn't exist, or it isn't visible to you.
-        {canStep && " Use Prev / Next above to continue through the directory."}
-      </p>
+      <h1 className="text-[length:var(--text-h3)] font-bold">{heading}</h1>
+      {(children || canStep) && (
+        <p className="mt-2 text-sm text-muted-foreground">
+          {children}
+          {children && canStep && " "}
+          {canStep && "Use Prev / Next above to continue through the directory."}
+        </p>
+      )}
     </div>
   );
 }

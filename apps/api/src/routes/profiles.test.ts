@@ -407,10 +407,10 @@ describe("GET /api/profiles/:id", () => {
     await app.close();
   });
 
-  it("404s a brother asking for an unlisted record (the whole-record hide), no-store", async () => {
+  it("403s a brother asking for an unlisted record (the whole-record hide), no-store", async () => {
     const { app, cookieAs } = await buildWriteServer([
-      makeProfile({ id: 5001 }),
-      makeProfile({ id: 5002, unlisted: true }),
+      makeProfile({ id: 5001, email: "a@example.test" }),
+      makeProfile({ id: 5002, email: "b@example.test", unlisted: true }),
     ]);
     const cookie = await cookieAs(5001, "brother");
     const response = await app.inject({
@@ -418,10 +418,50 @@ describe("GET /api/profiles/:id", () => {
       url: "/api/profiles/5002",
       headers: { cookie },
     });
-    expect(response.statusCode).toBe(404);
-    // The 404 is **per-role** (an admin gets a 200 for the same URL), so it must be
-    // `no-store` — otherwise a shared cache can replay a brother's 404 to an admin
+    // D168: hidden-from-you is `403 private`, distinct from the `404` of a record
+    // that does not exist — the two were one catch-all message and UAT read the
+    // combined wording as "the link is broken" (OFC-392).
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: "private" });
+    // The 403 is **per-role** (an admin gets a 200 for the same URL), so it must be
+    // `no-store` — otherwise a shared cache can replay a brother's 403 to an admin
     // and the record "disappears" until the cache lapses (OFC-192).
+    expect(response.headers["cache-control"]).toBe("no-store");
+    await app.close();
+  });
+
+  it("403s a de-brothered record too — one placeholder, never which reason (D168)", async () => {
+    const { app, cookieAs } = await buildWriteServer([
+      makeProfile({ id: 5001, email: "a@example.test" }),
+      makeProfile({
+        id: 5002,
+        email: "b@example.test",
+        debrothered: { isDebrothered: true },
+      }),
+    ]);
+    const cookie = await cookieAs(5001, "brother");
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/profiles/5002",
+      headers: { cookie },
+    });
+    expect(response.statusCode).toBe(403);
+    // Byte-identical to the unlisted branch: the viewer learns the record is
+    // withheld, never whether it is private (D124) or expelled (D115).
+    expect(response.json()).toMatchObject({ error: "private" });
+    await app.close();
+  });
+
+  it("still 404s a record that genuinely does not exist", async () => {
+    const { app, cookieAs } = await buildWriteServer([makeProfile({ id: 5001 })]);
+    const cookie = await cookieAs(5001, "brother");
+    const response = await app.inject({
+      method: "GET",
+      url: "/api/profiles/5999",
+      headers: { cookie },
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toMatchObject({ error: "not_found" });
     expect(response.headers["cache-control"]).toBe("no-store");
     await app.close();
   });
@@ -443,6 +483,86 @@ describe("GET /api/profiles/:id", () => {
     expect(res.statusCode).toBe(401);
     expect(res.headers["cache-control"]).toBe("no-store");
     await app.close();
+  });
+
+  // `hiddenLittleBrothers` (D168). Little Brothers are a **derived reverse edge**
+  // the SPA computes by filtering the roster on `bigBrotherId`; a hidden record is
+  // omitted from the brother roster wholesale, so for that viewer the edge does not
+  // exist in the client's data at all — no amount of client work can recover it.
+  // The count is the one signal that says "someone is there", and it rides on this
+  // read (the only fetch the Profile page makes for the record it renders).
+  describe("hiddenLittleBrothers (the derived reverse edge, D168)", () => {
+    const family = () => [
+      makeProfile({ id: 5001, email: "big@example.test" }),
+      makeProfile({ id: 5002, email: "vis@example.test", bigBrotherId: 5001 }),
+      makeProfile({ id: 5003, email: "unl@example.test", bigBrotherId: 5001, unlisted: true }),
+      makeProfile({
+        id: 5004,
+        email: "deb@example.test",
+        bigBrotherId: 5001,
+        debrothered: { isDebrothered: true },
+      }),
+    ];
+
+    it("counts the little brothers hidden from a brother, both hide reasons", async () => {
+      const { app, cookieAs } = await buildWriteServer(family());
+      const cookie = await cookieAs(5002, "brother");
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/profiles/5001",
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ id: 5001, hiddenLittleBrothers: 2 });
+      await app.close();
+    });
+
+    it("omits the field for a manager and an admin, who see every record already", async () => {
+      const { app, cookieAs } = await buildWriteServer(family());
+      for (const role of ["manager", "admin"] as const) {
+        const response = await app.inject({
+          method: "GET",
+          url: "/api/profiles/5001",
+          headers: { cookie: await cookieAs(9001, role) },
+        });
+        expect(response.statusCode).toBe(200);
+        // Absent, not zero: staff resolve every little brother from their own
+        // roster, so a count would be a second, redundant source of the same truth.
+        expect(response.json()).not.toHaveProperty("hiddenLittleBrothers");
+      }
+      await app.close();
+    });
+
+    it("is absent when every little brother is visible", async () => {
+      const { app, cookieAs } = await buildWriteServer([
+        makeProfile({ id: 5001, email: "big@example.test" }),
+        makeProfile({ id: 5002, email: "vis@example.test", bigBrotherId: 5001 }),
+      ]);
+      const cookie = await cookieAs(5002, "brother");
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/profiles/5001",
+        headers: { cookie },
+      });
+      expect(response.json()).not.toHaveProperty("hiddenLittleBrothers");
+      await app.close();
+    });
+
+    it("rides the owner's own self-record read too", async () => {
+      // The owner's record comes from `projectSelf`, a different branch of the same
+      // handler — an unlisted brother's own Big Brother page must not silently drop
+      // his hidden little brothers just because he is reading his own record.
+      const { app, cookieAs } = await buildWriteServer(family());
+      const cookie = await cookieAs(5001, "brother");
+      const response = await app.inject({
+        method: "GET",
+        url: "/api/profiles/5001",
+        headers: { cookie },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ hiddenLittleBrothers: 2 });
+      await app.close();
+    });
   });
 
   it("lets a manager read an unlisted record", async () => {
