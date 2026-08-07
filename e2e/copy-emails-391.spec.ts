@@ -206,6 +206,67 @@ test.describe("Copy Emails (D167 / OFC-391)", () => {
     await expect.poll(() => pings).toEqual([{ scope: "clipboard", count: 1 }]);
   });
 
+  test("a success notice clears itself after ten seconds (N165)", async ({ page }) => {
+    // Driven by Playwright's fake clock rather than a real wait, so the assertion is
+    // deterministic and the suite does not grow by ten seconds. `install()` must
+    // precede navigation.
+    await page.clock.install();
+    await gotoDirectory(page);
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+
+    const notice = page.getByRole("status").filter({ hasText: "copied to your clipboard" });
+    await expect(notice).toHaveCount(1);
+    // Still up just before the deadline — proves the disappearance is the timer's
+    // doing and not something else unmounting the notice.
+    await page.clock.runFor(9_000);
+    await expect(notice).toHaveCount(1);
+    await page.clock.runFor(2_000);
+    await expect(notice).toHaveCount(0);
+  });
+
+  test("hovering the notice pauses its countdown (N165)", async ({ page }) => {
+    // The mitigation that makes auto-dismiss acceptable for a slow sighted reader —
+    // the half that would be easy to drop in a refactor without any test noticing.
+    await page.clock.install();
+    await gotoDirectory(page);
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+
+    const notice = page.getByRole("status").filter({ hasText: "copied to your clipboard" });
+    await notice.hover();
+    await page.clock.runFor(30_000);
+    await expect(notice).toHaveCount(1);
+
+    // Moving away restarts the countdown, so it still goes on its own eventually.
+    await page.mouse.move(0, 0);
+    await page.clock.runFor(11_000);
+    await expect(notice).toHaveCount(0);
+  });
+
+  test("an error notice never clears itself — it reports a copy that did NOT happen", async ({
+    page,
+  }) => {
+    await page.clock.install();
+    await gotoDirectory(page);
+    // Make the clipboard write reject, the way an insecure context or a refused
+    // permission would.
+    await page.evaluate(() => {
+      Object.defineProperty(navigator.clipboard, "writeText", {
+        value: () => Promise.reject(new Error("blocked")),
+        configurable: true,
+      });
+    });
+
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+
+    const failure = page.getByRole("status").filter({ hasText: "Couldn't copy to the clipboard" });
+    await expect(failure).toHaveCount(1);
+    await page.clock.runFor(60_000);
+    await expect(failure).toHaveCount(1);
+  });
+
   test("explains an empty selection and leaves the clipboard alone", async ({ page }) => {
     await gotoDirectory(page);
     await page.evaluate((sentinel) => navigator.clipboard.writeText(sentinel), SENTINEL);
