@@ -201,6 +201,41 @@ test.describe("Copy Emails (D167 / OFC-391)", () => {
     await expect(notice).toHaveCount(0);
   });
 
+  test("the notice sits just under the action bar, not adrift in the viewport", async ({
+    page,
+  }) => {
+    // Both halves of the OFC-391 live-test finding. The notice is anchored to the
+    // action bar (`absolute top-full`), so it lands just below the top of the grid —
+    // near enough to the button to read as its answer, without covering the controls
+    // still in play. Two viewport-`fixed` attempts each failed one end of the page.
+    //
+    // ⚠ Asserted as an ORDERING, never as coordinates: a pixel assertion would pass
+    // on Windows and fail on CI's Linux font metrics (N154's lesson).
+    await gotoDirectory(page);
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+
+    const button = await page.getByRole("button", { name: /^Copy Emails/ }).boundingBox();
+    const notice = page.getByRole("status").filter({ hasText: "copied to your clipboard" });
+    const oneLine = await notice.boundingBox();
+    if (!button || !oneLine) throw new Error("expected both to be laid out");
+    // Below the button that produced it, and close to it — not parked at the far
+    // edge of the viewport.
+    expect(oneLine.y).toBeGreaterThanOrEqual(button.y + button.height);
+    expect(oneLine.y - (button.y + button.height)).toBeLessThan(40);
+
+    // A one-line message must be SHORTER than a two-line one. It used to be the same
+    // height with the text pinned to the top, which read as a blank second line.
+    await page.getByRole("checkbox", { name: /^Select Pat Private/ }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+    await expect(page.getByText(/address kept private/)).toBeVisible();
+    const twoLine = await page
+      .getByRole("status")
+      .filter({ hasText: "copied to your clipboard" })
+      .boundingBox();
+    expect(twoLine?.height).toBeGreaterThan(oneLine.height);
+  });
+
   test("an ordinary brother has no Copy Emails button at all", async ({ page }) => {
     await gotoDirectory(page, "brother");
     await expect(page.getByRole("button", { name: /^Copy Emails/ })).toHaveCount(0);
