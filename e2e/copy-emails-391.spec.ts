@@ -94,6 +94,21 @@ const PROFILES = {
       // he classifies on. An admin *would* receive it here and must still skip.
       privacy: { ...PRIVACY_SHARING, shareEmail: false },
     },
+    {
+      id: 5009,
+      firstName: "Ulric",
+      lastName: "Unlisted",
+      classYear: 1999,
+      deceased: { isDeceased: false },
+      debrothered: { isDebrothered: false },
+      hasHeadshot: false,
+      // Has an address and left `shareEmail` ON — the case N164 was reported for.
+      // Staff still see the record (D124), so he can be ticked; what he must not do
+      // is reach the clipboard.
+      email: "ulric@example.test",
+      privacy: { ...PRIVACY_SHARING },
+      unlisted: true,
+    },
   ],
   majors: [],
 };
@@ -147,20 +162,35 @@ test.describe("Copy Emails (D167 / OFC-391)", () => {
     await expect(page.getByText("2 email addresses copied to your clipboard.")).toBeVisible();
   });
 
-  test("skips the private and email-less brothers, and says why", async ({ page }) => {
+  test("skips the private, unlisted and email-less brothers, and says why", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("checkbox", { name: /select all brothers/i }).check();
     await page.getByRole("button", { name: /^Copy Emails/ }).click();
 
     const clip = await readClipboard(page);
     expect(clip).toContain("aaron.adams@example.test");
-    // Neither the brother with no address nor the one who keeps his private appears.
+    // None of the three excluded brothers appears — by address, since a name could
+    // legitimately be absent for other reasons.
     expect(clip).not.toContain("Noemail");
     expect(clip).not.toContain("Private");
+    expect(clip).not.toContain("ulric@example.test");
     await expect(page.getByText("2 email addresses copied to your clipboard.")).toBeVisible();
     await expect(
-      page.getByText("2 brothers skipped — no email address (1), address kept private (1)."),
+      page.getByText("3 brothers skipped — no email address (1), address kept private (2)."),
     ).toBeVisible();
+  });
+
+  test("an UNLISTED brother's address never reaches the clipboard (N164)", async ({ page }) => {
+    // Reported in live testing: an admin ticked an unlisted brother and his address
+    // was copied. Staff *can* see an unlisted record (D124) — but the question this
+    // feature answers is whether the address may be republished to other brothers,
+    // and hiding the whole record from peers is the strongest possible no.
+    await gotoDirectory(page);
+    await page.getByRole("checkbox", { name: /^Select Ulric Unlisted/ }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+
+    await expect(page.getByText("No email addresses to copy.")).toBeVisible();
+    await expect(page.getByText("1 brother skipped — address kept private (1).")).toBeVisible();
   });
 
   test("fires the D92 audit ping under the clipboard scope", async ({ page }) => {
