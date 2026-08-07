@@ -18,15 +18,26 @@
  *     the brother. Composing an email is an outbound action, and a deceased
  *     brother's address now most likely reaches his family.
  *
- *  2. **`privacy.shareEmail` off — for *every* role, admins included.** This is the
- *     one rule that deliberately departs from the read projection. D19 lets an
- *     admin read through an off toggle, and `csv.ts` gives him those addresses in
- *     an export; a CSV, though, goes to the exporter alone, while a `To:` line
- *     publishes the address to **every other recipient**. That is a new exposure
- *     the CSV never had, so this list honours the brother's choice at all three
- *     roles. ⚠ **Do not "fix" this to match the projection** — an admin who
+ *  2. **A privacy choice by the brother — `unlisted`, or `privacy.shareEmail` off —
+ *     for *every* role, admins included.** This is the rule that deliberately
+ *     departs from the read projection. D19 lets an admin read through an off
+ *     toggle and D124 shows staff an `unlisted` record in full, and `csv.ts` gives
+ *     him both in an export; a CSV, though, goes to the exporter alone, while a
+ *     `To:` line publishes the address to **every other recipient**. That is a new
+ *     exposure the CSV never had, so this list honours the brother's choice at all
+ *     three roles. ⚠ **Do not "fix" this to match the projection** — an admin who
  *     genuinely needs the address still has Export CSV and the brother's profile
  *     page. (Forrest's call.)
+ *
+ *     ⚠ **`unlisted` is here because the governing question is "may this address be
+ *     REPUBLISHED to other brothers?", not "may staff see it?"** D167 originally
+ *     kept unlisted brothers in on the second reading — staff *can* see the record,
+ *     and the staffer deliberately ticked it — and that was wrong (N164, found in
+ *     live testing): a brother who hides his whole record from his peers has made a
+ *     *stronger* statement than one who merely turned off `shareEmail`, so it makes
+ *     no sense to honour the weaker signal and ignore the stronger. Any future
+ *     "should X be skipped?" question is settled by the republication test, not by
+ *     the visibility table.
  *
  *  3. **No usable email**, via the shared {@link hasUsableEmail}.
  *
@@ -53,7 +64,7 @@ import type { Profile } from "./types.js";
  */
 export type RecipientCandidate = Pick<
   Partial<Profile>,
-  "firstName" | "lastName" | "email" | "privacy" | "deceased" | "debrothered"
+  "firstName" | "lastName" | "email" | "privacy" | "unlisted" | "deceased" | "debrothered"
 >;
 
 /** What one press of Copy Emails produced — the string, and why anyone was left out. */
@@ -64,7 +75,10 @@ export interface RecipientList {
   readonly copied: number;
   /** Selected brothers with no usable email address. */
   readonly skippedNoEmail: number;
-  /** Selected brothers whose `shareEmail` is off (see rule 2 — this includes admins). */
+  /** Selected brothers who chose privacy — `unlisted`, or `shareEmail` off (rule 2,
+   *  which applies to admins too). The two share a bucket because they are the same
+   *  answer to the user ("he asked us not to"), exactly as deceased and de-brothered
+   *  do; splitting them would add a reason without adding an action. */
   readonly skippedPrivate: number;
   /** Selected brothers who are deceased or de-brothered. */
   readonly skippedNotLiving: number;
@@ -159,7 +173,10 @@ export function buildRecipientList(profiles: readonly RecipientCandidate[]): Rec
       continue;
     }
     // Before the email value, deliberately — see the module note on role agreement.
-    if (profile.privacy?.shareEmail === false) {
+    // `unlisted` sits here rather than with the not-living pair because it is the
+    // brother's own privacy choice, and it is the *stronger* of the two choices in
+    // this branch: hiding the whole record from peers subsumes hiding one field.
+    if (profile.unlisted === true || profile.privacy?.shareEmail === false) {
       skippedPrivate += 1;
       continue;
     }

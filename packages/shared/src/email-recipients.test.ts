@@ -15,6 +15,7 @@ function candidate(overrides: Partial<RecipientCandidate> = {}): RecipientCandid
     lastName: "Smyth",
     email: "james@example.test",
     privacy: { ...DEFAULT_PRIVACY },
+    unlisted: false,
     deceased: { isDeceased: false },
     debrothered: { isDebrothered: false },
     ...overrides,
@@ -155,6 +156,39 @@ describe("buildRecipientList — the copy set and the skip tally (D167)", () => 
     expect(list.copied).toBe(0);
     expect(list.skippedPrivate).toBe(1);
     expect(list.skippedNoEmail).toBe(0);
+  });
+
+  it("skips an UNLISTED brother, even one who left shareEmail on", () => {
+    // The live-test finding (N164). An unlisted brother hides his whole record from
+    // his peers — a *stronger* privacy statement than turning off `shareEmail` — so
+    // honouring the weaker signal while ignoring the stronger made no sense. The
+    // governing question is "may this address be republished to other brothers?",
+    // not "may staff see the record?" (staff can, by D124, which is why it was
+    // originally and wrongly kept in).
+    const list = buildRecipientList([
+      candidate({ unlisted: true, privacy: { ...DEFAULT_PRIVACY, shareEmail: true } }),
+    ]);
+    expect(list.text).toBe("");
+    expect(list.copied).toBe(0);
+    expect(list.skippedPrivate).toBe(1);
+  });
+
+  it("counts unlisted and shareEmail-off in one bucket, never twice", () => {
+    // They share a bucket because they are the same answer to the user; a brother
+    // who is both must still count once, or the reported total stops reconciling.
+    const list = buildRecipientList([
+      candidate({ unlisted: true, privacy: { ...DEFAULT_PRIVACY, shareEmail: false } }),
+      candidate({ unlisted: true }),
+      candidate({ privacy: { ...DEFAULT_PRIVACY, shareEmail: false } }),
+    ]);
+    expect(list.skippedPrivate).toBe(3);
+    expect(list.copied).toBe(0);
+  });
+
+  it("treats an absent unlisted field as listed, not as a reason to withhold", () => {
+    const list = buildRecipientList([candidate({ unlisted: undefined })]);
+    expect(list.copied).toBe(1);
+    expect(list.skippedPrivate).toBe(0);
   });
 
   it("skips a deceased brother and a de-brothered one, counted together", () => {
