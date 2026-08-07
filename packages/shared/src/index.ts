@@ -31,6 +31,12 @@ export {
   uatPhotoName,
 } from "./uat-photos.js";
 export { normalizeEmail } from "./email.js";
+export {
+  type RecipientCandidate,
+  type RecipientList,
+  buildRecipientList,
+  formatRecipient,
+} from "./email-recipients.js";
 export { BANNER_SEVERITIES, type BannerSeverity } from "./banner.js";
 export type {
   BounceReport,

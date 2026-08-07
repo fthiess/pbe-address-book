@@ -103,6 +103,12 @@ export const helpContent: HelpContent = {
     toggleTip:
       "Export downloads a spreadsheet (CSV) of the brothers you've selected. Your selection is kept as you search and filter, so it can span the whole directory — not just the rows on screen now. Photos and staff roles are never included.",
   },
+  "directory.copyEmails": {
+    key: "directory.copyEmails",
+    label: "Copy Emails",
+    toggleTip:
+      "Copies the email addresses of the brothers you've selected to your clipboard, so you can paste them straight into an email. Your selection is kept as you search and filter, so it can span the whole directory — not just the rows on screen now. Brothers with no email address are left out, as are brothers who have chosen to keep their address private and brothers who are deceased or de-brothered; the message afterwards tells you how many, and why.",
+  },
 
   // ── Profile: fields ──────────────────────────────────────────────────────
   "profile.fullLegalName": {
