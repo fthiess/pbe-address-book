@@ -96,6 +96,19 @@ export interface DirectoryNav {
 }
 
 /**
+ * How many history entries back the Directory sits, read straight from a page's
+ * `location.state`. Falls back to 1 for a `fromDirectory` entry that predates the
+ * counter, and to 0 — no Directory entry at all — for a cold deep-link.
+ *
+ * Exported because callers outside the Profile container need the same answer from
+ * the same input: the app shell's "My profile" link has a `location.state` but no
+ * derived {@link DirectoryNav} to read it from (OFC-396).
+ */
+export function deltaFrom(state: DirectoryNavState | null | undefined): number {
+  return state?.directoryDelta ?? (state?.fromDirectory ? 1 : 0);
+}
+
+/**
  * Derive the prev/next model from a Profile page's `location.state`, its id, and
  * the stash already resolved from the stash store. `delta` falls back to 1 for
  * a `fromDirectory` entry that predates the counter, and to 0 (→ "← Directory"
@@ -110,7 +123,7 @@ export function deriveDirectoryNav(
   const total = ids.length;
   const index = ids.indexOf(currentId);
   const hasStash = total > 0 && index >= 0;
-  const delta = state?.directoryDelta ?? (state?.fromDirectory ? 1 : 0);
+  const delta = deltaFrom(state);
   return {
     hasStash,
     ids,
@@ -132,6 +145,36 @@ export function deriveDirectoryNav(
  */
 export function stepNavState(nav: DirectoryNav): DirectoryNavState {
   return { fromDirectory: true, stashId: nav.stashId, directoryDelta: nav.delta };
+}
+
+/**
+ * The state for a navigation that **branches off** the current profile rather than
+ * continuing along it — a Big/Little Brother hop, or the app shell's "My profile"
+ * (OFC-396). Both were bare links carrying no state at all, so the brother they
+ * landed on read as a cold deep-link: "← Directory" degraded to its `<Link to="/">`
+ * escape hatch (OFC-145, a correct branch fed the wrong input) and returned a
+ * fresh, unfiltered Directory, losing the user's search, sort, place and set.
+ *
+ * Unlike a Prev/Next step — which *replaces*, so the walk never deepens (D169) — a
+ * branch is a genuine new destination: it **pushes**, so the browser's Back button
+ * returns to the brother whose relationships were being read, and the delta grows
+ * by the one entry the push added.
+ *
+ * `undefined` on a cold deep-link (delta 0), because there is no Directory entry to
+ * point back at and claiming one would send "← Directory" popping to whatever
+ * happens to sit behind the tab. The control correctly stays its real anchor.
+ *
+ * **The stash travels with the hop** (Forrest's call on OFC-396): if the brother
+ * being jumped to is himself a member of the set being browsed, he gets Prev/Next
+ * at *his* position rather than losing the affordance mid-walk. When he is outside
+ * the set, `hasStash` is false and the controls hide exactly as they already do.
+ */
+export function branchNavState(
+  nav: Pick<DirectoryNav, "stashId" | "delta">,
+): DirectoryNavState | undefined {
+  return nav.delta > 0
+    ? { fromDirectory: true, stashId: nav.stashId, directoryDelta: nav.delta + 1 }
+    : undefined;
 }
 
 /**

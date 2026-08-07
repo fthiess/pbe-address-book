@@ -8,6 +8,11 @@ import { trackMastheadLogoClicked, trackPbeNewsLinkClicked } from "../lib/analyt
 import { PBE_NEWS_URL } from "../lib/externalLinks.js";
 import type { Me } from "../lib/types.js";
 import { useDetailsAutoClose } from "../lib/useDetailsAutoClose.js";
+import {
+  type DirectoryNavState,
+  branchNavState,
+  deltaFrom,
+} from "../pages/profile/directory-nav.js";
 import { AvatarThumbnail } from "./AvatarThumbnail.js";
 import { FontSizeToggle } from "./FontSizeToggle.js";
 import { PrivacyFooter } from "./PrivacyFooter.js";
@@ -52,7 +57,18 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   // query string. When the admin opens Admin Tools *from* the Directory, mark the
   // navigation so the Admin page's "← Directory" can pop back to it (preserving
   // scroll + filters) rather than push a fresh one — mirroring the Profile page.
-  const fromDirectory = useLocation().pathname === "/";
+  const location = useLocation();
+  const fromDirectory = location.pathname === "/";
+  // "My profile" is a *branch* off wherever the brother currently is, so it carries
+  // the directory-return state forward (OFC-396). Jumping to your own record from a
+  // filtered Directory used to drop it, and "← Directory" then handed back a fresh,
+  // unfiltered one — the same complaint the relationship links produced, from the
+  // same cause. `undefined` anywhere there is no Directory entry to point at (the
+  // Directory itself, a cold deep-link, the edit page), which is the status quo.
+  const myProfileState = branchNavState({
+    stashId: (location.state as DirectoryNavState | null)?.stashId,
+    delta: deltaFrom(location.state as DirectoryNavState | null),
+  });
   // The shell shows the signed-in brother's own name; a single record carries no
   // ambiguity context, so render the plain (non-disambiguated) Canonical Name.
   const name = me.profile ? formatCanonicalName(me.profile, false) : "Brother";
@@ -147,7 +163,12 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
                 <p className="truncate px-3 py-2 text-xs text-muted-foreground">
                   {me.profile?.email ?? name}
                 </p>
-                <Link to={`/brother/${me.profileId}`} onClick={closeMenu} className={MENU_ITEM}>
+                <Link
+                  to={`/brother/${me.profileId}`}
+                  state={myProfileState}
+                  onClick={closeMenu}
+                  className={MENU_ITEM}
+                >
                   My profile
                 </Link>
                 {/* Open to every brother, so it sits with "My profile" above the

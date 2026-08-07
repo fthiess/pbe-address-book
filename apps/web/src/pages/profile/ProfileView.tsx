@@ -17,7 +17,12 @@ import { DirectoryNav } from "./DirectoryNav.js";
 import { type ProfileActions, StaffControls, VerifyControl } from "./ProfileControls.js";
 import { ProfileHeadshot } from "./ProfileHeadshot.js";
 import { SWITCH_KEYS, activeConsequence, switchCopy } from "./consent.js";
-import type { DirectoryNav as DirectoryNavModel, StepDirection } from "./directory-nav.js";
+import {
+  type DirectoryNav as DirectoryNavModel,
+  type DirectoryNavState,
+  type StepDirection,
+  branchNavState,
+} from "./directory-nav.js";
 import {
   addressLines,
   canonicalName,
@@ -115,7 +120,13 @@ export function ProfileView({
               its own Band, so a section with nothing to show contributes no rule
               either — see Band (OFC-318). */}
           <ProfessionalSection record={record} viewer={viewer} />
-          <RelationshipsSection record={record} roster={roster} names={names} viewer={viewer} />
+          <RelationshipsSection
+            record={record}
+            roster={roster}
+            names={names}
+            viewer={viewer}
+            branchState={branchNavState(directoryNav)}
+          />
 
           {restricted ? (
             <Row>
@@ -436,11 +447,14 @@ function RelationshipsSection({
   roster,
   names,
   viewer,
+  branchState,
 }: {
   record: ProfileRecord;
   roster: DirectoryProfile[] | null;
   names: Map<number, string> | null;
   viewer: Viewer;
+  /** The directory-return state to carry across a relationship hop (OFC-396). */
+  branchState: DirectoryNavState | undefined;
 }) {
   const littles = useMemo(
     () => littleBrotherEntries(roster, names, record.id, record.hiddenLittleBrothers),
@@ -457,7 +471,7 @@ function RelationshipsSection({
       <Section title="Relationships">
         {big && (
           <ReadField label="Big Brother">
-            <RelationshipEntryView entry={big} viewer={viewer} />
+            <RelationshipEntryView entry={big} viewer={viewer} branchState={branchState} />
           </ReadField>
         )}
         {littles.length > 0 && (
@@ -468,7 +482,7 @@ function RelationshipsSection({
                 // They are interchangeable by construction — that is the point —
                 // so a positional key reorders nothing observable.
                 <li key={entry.kind === "private" ? `private-${index}` : entry.id}>
-                  <RelationshipEntryView entry={entry} viewer={viewer} />
+                  <RelationshipEntryView entry={entry} viewer={viewer} branchState={branchState} />
                 </li>
               ))}
             </ul>
@@ -492,8 +506,20 @@ function RelationshipsSection({
  * avatar is anonymous *and* unseeded, so every withheld brother renders
  * identically — a per-id colour family would otherwise let a viewer tell two
  * withheld brothers apart, and match one against a `bigBrotherId` he can read.
+ *
+ * The link carries `branchState` so the brother it lands on still knows the way
+ * back to the Directory the reader came from (OFC-396). Without it he read as a
+ * cold deep-link and "← Directory" returned a fresh, unfiltered one.
  */
-function RelationshipEntryView({ entry, viewer }: { entry: RelationshipEntry; viewer: Viewer }) {
+function RelationshipEntryView({
+  entry,
+  viewer,
+  branchState,
+}: {
+  entry: RelationshipEntry;
+  viewer: Viewer;
+  branchState: DirectoryNavState | undefined;
+}) {
   if (entry.kind === "private") {
     return (
       <span className="inline-flex items-center gap-2.5">
@@ -512,6 +538,7 @@ function RelationshipEntryView({ entry, viewer }: { entry: RelationshipEntry; vi
     <span className="inline-flex items-center gap-2.5">
       <Link
         to={`/brother/${entry.id}`}
+        state={branchState}
         className="group inline-flex items-center gap-2.5 rounded-[var(--radius-md)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         {entry.kind === "known" ? (
