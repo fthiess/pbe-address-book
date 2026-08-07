@@ -83,6 +83,34 @@ const CONTROL_CHARS = /[\u0000-\u001F\u007F-\u009F]/gu;
 const QUOTED_STRING_SPECIALS = /(["\\])/gu;
 
 /**
+ * Characters that must never appear raw in the address half. Unlike the display
+ * name, an address **cannot be escaped into safety** — it sits between `<` and `>`
+ * in a comma-separated list, so any of these ends the address early and turns the
+ * remainder into extra, unintended recipients.
+ *
+ * ⚠ **Book's own validator does not prevent this.** `EMAIL_RE` in `validation.ts`
+ * is `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` — it rejects whitespace and a second `@` and
+ * nothing else, so `x@evil.com>,y.z` is a *valid* stored email by Book's rules and
+ * renders as `"Name" <x@evil.com>,y.z>`: two recipients, one of them never
+ * selected. Tightening `EMAIL_RE` is a separate, riskier change (it governs every
+ * write path and would reject addresses already in the roster), so the recipient
+ * list defends itself here instead.
+ */
+// biome-ignore lint/suspicious/noControlCharactersInRegex: excluding them is the point.
+const UNSAFE_IN_ADDRESS = /[<>,;:"\\()[\]\s\u0000-\u001F\u007F-\u009F]/u;
+
+/**
+ * Whether an address can be emitted into a recipient list without risk of breaking
+ * out of its own `addr-spec`. A stored address that fails this cannot be rendered
+ * safely at all — see {@link UNSAFE_IN_ADDRESS} — so {@link buildRecipientList}
+ * omits it rather than emitting something that would mail an unintended party.
+ */
+export function isEmittableAddress(email: string): boolean {
+  const address = email.trim();
+  return address !== "" && !UNSAFE_IN_ADDRESS.test(address);
+}
+
+/**
  * Render one `Name <address>` recipient in RFC 5322 form, with the display name
  * **always** in a quoted-string (§3.2.4/§3.4).
  *
@@ -94,6 +122,11 @@ const QUOTED_STRING_SPECIALS = /(["\\])/gu;
  *
  * A name that reduces to nothing yields the bare address, which is still a valid
  * `addr-spec`; an empty quoted string in front of it would only look broken.
+ *
+ * ⚠ **Precondition: `email` has already passed {@link isEmittableAddress}.** The
+ * address half is spliced in verbatim because it cannot be escaped — the check
+ * belongs in front of this function, and {@link buildRecipientList} is where it
+ * lives. This is deliberately not exported from the package index for that reason.
  */
 export function formatRecipient(displayName: string, email: string): string {
   const name = displayName.replace(CONTROL_CHARS, " ").trim().replace(/\s+/gu, " ");
@@ -130,11 +163,19 @@ export function buildRecipientList(profiles: readonly RecipientCandidate[]): Rec
       skippedPrivate += 1;
       continue;
     }
-    // `hasUsableEmail` already covers `undefined`; the explicit check in front of it
-    // is what narrows `email` to `string` for the call below (the shared predicate
-    // returns a plain boolean, and widening its signature is not this ticket's job).
+    // Two conditions, both landing in the same bucket. `hasUsableEmail` is the
+    // shared "is there an address at all" predicate; `isEmittableAddress` then asks
+    // whether it can be put in a recipient list without breaking out of its own
+    // `addr-spec` — a stored address Book considers valid can still do that. A
+    // brother who fails either has, for this feature's purposes, no address that
+    // can be safely copied, so both are reported as "no email address" rather than
+    // growing a fourth reason for a case that should never occur in real data.
+    //
+    // The `undefined` check is not redundant with `hasUsableEmail` (which accepts
+    // `string | undefined`): it is what narrows `email` to `string` for the two
+    // calls below, since the shared predicate is not a type guard.
     const email = profile.email;
-    if (email === undefined || !hasUsableEmail(email)) {
+    if (email === undefined || !hasUsableEmail(email) || !isEmittableAddress(email)) {
       skippedNoEmail += 1;
       continue;
     }

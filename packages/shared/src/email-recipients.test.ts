@@ -4,7 +4,9 @@ import {
   type RecipientCandidate,
   buildRecipientList,
   formatRecipient,
+  isEmittableAddress,
 } from "./email-recipients.js";
+import { validateProfile } from "./validation.js";
 
 /** A living brother who shares his email — the baseline every case varies from. */
 function candidate(overrides: Partial<RecipientCandidate> = {}): RecipientCandidate {
@@ -63,6 +65,44 @@ describe("formatRecipient — RFC 5322 quoted display names (D167)", () => {
   });
 });
 
+describe("isEmittableAddress — the address half cannot be escaped, so it is screened", () => {
+  it("accepts an ordinary address", () => {
+    expect(isEmittableAddress("james@example.test")).toBe(true);
+    expect(isEmittableAddress("  james+tag@example.test  ")).toBe(true);
+  });
+
+  it("rejects the characters that would end the address early in a recipient list", () => {
+    for (const bad of [
+      "x@evil.com>,y.z", // closes the <...> and starts a second recipient
+      "x@evil<z.test",
+      "x@evil.test,y@z.test",
+      "x@evil.test;y@z.test",
+      'x@"evil".test',
+      "x@evil\\.test",
+      "x@evil.test (comment)",
+      "x@evil.test\r\nBcc: y@z.test",
+    ]) {
+      expect(isEmittableAddress(bad), bad).toBe(false);
+    }
+  });
+
+  it("rejects an empty or whitespace-only address", () => {
+    expect(isEmittableAddress("")).toBe(false);
+    expect(isEmittableAddress("   ")).toBe(false);
+  });
+
+  it("⚠ THE PREMISE: Book's own validator ACCEPTS the injecting address", () => {
+    // Without this the screen above looks like defence against nothing. `EMAIL_RE`
+    // is `/^[^\s@]+@[^\s@]+\.[^\s@]+$/` — it rejects whitespace and a second `@`
+    // and nothing else, so this really can be stored on a real record, by a brother
+    // editing his own profile. If a future change tightens EMAIL_RE, this test
+    // fails and tells whoever did it that the screen may now be redundant, rather
+    // than leaving a dead guard nobody dares remove.
+    expect(validateProfile({ email: "x@evil.com>,y.z" }).ok).toBe(true);
+    expect(isEmittableAddress("x@evil.com>,y.z")).toBe(false);
+  });
+});
+
 describe("buildRecipientList — the copy set and the skip tally (D167)", () => {
   it("copies a living, sharing brother with an email", () => {
     expect(buildRecipientList([candidate()])).toEqual({
@@ -90,6 +130,22 @@ describe("buildRecipientList — the copy set and the skip tally (D167)", () => 
     expect(list.text).toBe("");
     expect(list.copied).toBe(0);
     expect(list.skippedNoEmail).toBe(2);
+  });
+
+  it("skips a brother whose stored address would inject a second recipient", () => {
+    // The repro for the review finding. Before the screen, this produced
+    // `"Ivan Inject" <x@evil.com>,y.z>` — which a mail client reads as TWO
+    // recipients, the second never selected by anyone. The address half sits
+    // between `<` and `>` in a comma-separated list and so cannot be escaped into
+    // safety the way the display name can; the only correct move is to omit it.
+    const list = buildRecipientList([
+      candidate({ firstName: "Ivan", lastName: "Inject", email: "x@evil.com>,y.z" }),
+      candidate({ email: "good@example.test" }),
+    ]);
+    expect(list.text).toBe('"James Smyth" <good@example.test>');
+    expect(list.text).not.toContain("y.z");
+    expect(list.copied).toBe(1);
+    expect(list.skippedNoEmail).toBe(1);
   });
 
   it("skips a brother whose shareEmail is off", () => {

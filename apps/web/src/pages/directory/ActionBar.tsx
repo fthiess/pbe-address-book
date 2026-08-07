@@ -15,7 +15,8 @@ import {
 /**
  * The manager/administrator action bar above the grid (§5.6.8, D41). Gated by the
  * same capability predicate as the Select column, so ordinary brothers never see
- * it. It carries **Export** (manager + admin) and, for admins, **Add Brother**.
+ * it. It carries **Export** and **Copy Emails** (manager + admin) and, for admins,
+ * **Add Brother**.
  * The bulk Delete and Regenerate-Thumbnails actions were removed (D100/D114), so
  * no destructive bulk action remains.
  *
@@ -33,13 +34,16 @@ import {
  *
  * **Copy Emails** (D167; OFC-391) sits beside Export and serves the workflow Export
  * only half-served: filter to a subset, select it, and get a pasteable `To:` line
- * instead of a spreadsheet detour. Two ways it deliberately differs from Export:
- * it has **no whole-view fallback** (an empty selection explains itself rather than
- * mailing the entire brotherhood — that is what the mailing lists are for), and it
- * honours `privacy.shareEmail` at *every* role, admins included, because a `To:`
- * line publishes an address to the other recipients in a way a downloaded CSV never
- * does. The rules live in `buildRecipientList` (`@pbe/shared`); read its module note
- * before changing any of them.
+ * instead of a spreadsheet detour. **Three** ways it deliberately differs from
+ * Export: it has **no whole-view fallback** (an empty selection explains itself
+ * rather than mailing the entire brotherhood — that is what the mailing lists are
+ * for); it **omits deceased and de-brothered brothers**, on the reasoning that
+ * force-clears `allowNewsletterEmail` at mark-deceased (D80), since composing an
+ * email is an outbound action; and it honours `privacy.shareEmail` at *every* role,
+ * admins included, because a `To:` line publishes an address to the other
+ * recipients in a way a downloaded CSV never does. The rules live in
+ * `buildRecipientList` (`@pbe/shared`); read its module note before changing any of
+ * them.
  */
 export interface ActionBarProps {
   role: Role;
