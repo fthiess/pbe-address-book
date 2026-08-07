@@ -16,6 +16,7 @@ import { RelationshipsEditor } from "./RelationshipsEditor.js";
 import { EmergencyContactsEditor, LinksEditor } from "./RepeatableEditors.js";
 import { classYearErrorText } from "./class-year.js";
 import { SWITCH_KEYS } from "./consent.js";
+import type { DirectoryNavState } from "./directory-nav.js";
 import { canonicalName } from "./display.js";
 import {
   FIELD_LABEL_CLASS,
@@ -95,6 +96,7 @@ export function ProfileEdit({
   saveHeadshot,
   showToast,
   exitEdit,
+  branchState,
 }: {
   record: ProfileRecord;
   viewer: Viewer;
@@ -104,6 +106,8 @@ export function ProfileEdit({
   saveHeadshot: (change: HeadshotChange) => Promise<boolean>;
   showToast: (message: string) => void;
   exitEdit: () => void;
+  /** The directory-return state to carry across a relationship-chip hop (D170). */
+  branchState: DirectoryNavState | undefined;
 }) {
   const form = useProfileDraft(record, viewer);
 
@@ -578,6 +582,7 @@ export function ProfileEdit({
               hiddenLittleBrothers={record.hiddenLittleBrothers}
               onChange={form.setBigBrother}
               error={form.errorFor("bigBrotherId")}
+              branchState={branchState}
             />
           </div>
 

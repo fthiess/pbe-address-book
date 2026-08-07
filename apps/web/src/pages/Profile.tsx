@@ -47,6 +47,7 @@ import {
   type DirectoryNav as DirectoryNavModel,
   type DirectoryNavState,
   type StepDirection,
+  branchNavState,
   deriveDirectoryNav,
   stepNavState,
 } from "./profile/directory-nav.js";
@@ -528,8 +529,17 @@ export function ProfileViewRoute() {
  * the view (replace, so Back still reaches the Directory).
  */
 export function ProfileEditRoute() {
-  const { record, viewer, roster, rosterError, submit, saveHeadshot, showToast, exitEdit } =
-    useOutletContext<ProfileOutletContext>();
+  const {
+    record,
+    viewer,
+    roster,
+    rosterError,
+    submit,
+    saveHeadshot,
+    showToast,
+    exitEdit,
+    directoryNav,
+  } = useOutletContext<ProfileOutletContext>();
   if (!canEdit(viewer)) {
     return <Navigate to={`/brother/${record.id}`} replace />;
   }
@@ -543,6 +553,13 @@ export function ProfileEditRoute() {
       saveHeadshot={saveHeadshot}
       showToast={showToast}
       exitEdit={exitEdit}
+      // Usually `undefined` here — the Edit button pushes `{fromProfile: true}` on
+      // purpose (N33), so there is no directory state on this entry. The exception
+      // is the Add-Brother handoff, which lands on this route carrying
+      // `{fromDirectory: true, directoryDelta: 1}` (OFC-233); an admin who sets a
+      // Big Brother there and clicks the chip before saving would otherwise arrive
+      // on a cold deep-link. D170's first draft missed that second path.
+      branchState={branchNavState(directoryNav)}
     />
   );
 }

@@ -63,8 +63,11 @@ export function AppShell({ me, children }: { me: Me; children: ReactNode }) {
   // the directory-return state forward (OFC-396). Jumping to your own record from a
   // filtered Directory used to drop it, and "← Directory" then handed back a fresh,
   // unfiltered one — the same complaint the relationship links produced, from the
-  // same cause. `undefined` anywhere there is no Directory entry to point at (the
-  // Directory itself, a cold deep-link, the edit page), which is the status quo.
+  // same cause. `undefined` anywhere there is no Directory entry to point at — the
+  // Directory itself, a cold deep-link, or an edit page reached by the Edit button
+  // (whose state is `{fromProfile: true}`, N33) — which is the status quo. ⚠ Not
+  // every edit page: the Add-Brother handoff lands on that route carrying real
+  // directory state (OFC-233), and there this correctly resolves to a live delta.
   const myProfileState = branchNavState({
     stashId: (location.state as DirectoryNavState | null)?.stashId,
     delta: deltaFrom(location.state as DirectoryNavState | null),
