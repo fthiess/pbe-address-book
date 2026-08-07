@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   type DirectoryNavState,
   type DirectoryStash,
+  branchNavState,
+  deltaFrom,
   deriveDirectoryNav,
   directoryEntryIsReachable,
   stepNavState,
@@ -106,6 +108,39 @@ describe("stepNavState", () => {
       nav = deriveDirectoryNav(stepNavState(nav), 20, stash);
     }
     expect(nav.delta).toBe(1);
+  });
+});
+
+describe("branchNavState", () => {
+  it("pushes: the delta grows by the one entry the hop adds", () => {
+    // A relationship hop is a genuine branch, not a step along the walk, so unlike
+    // stepNavState it stays a push — Back returns to the brother whose
+    // relationships were being read (OFC-396).
+    const nav = deriveDirectoryNav({ ...state, directoryDelta: 2 }, 20, stash);
+    expect(branchNavState(nav)).toEqual({
+      fromDirectory: true,
+      stashId: "abc",
+      directoryDelta: 3,
+    });
+  });
+
+  it("carries the stash, so the target gets Prev/Next at his own position", () => {
+    expect(branchNavState(deriveDirectoryNav(state, 20, stash))?.stashId).toBe("abc");
+  });
+
+  it("is undefined on a cold deep-link — there is no Directory entry to point at", () => {
+    // Claiming delta 1 here would send "← Directory" popping to whatever happens to
+    // sit behind the tab. The control correctly stays its real <a href="/"> anchor.
+    expect(branchNavState(deriveDirectoryNav(null, 20, empty))).toBeUndefined();
+  });
+});
+
+describe("deltaFrom", () => {
+  it("reads the counter, the legacy fromDirectory flag, and the cold deep-link", () => {
+    expect(deltaFrom({ directoryDelta: 4 })).toBe(4);
+    expect(deltaFrom({ fromDirectory: true })).toBe(1);
+    expect(deltaFrom(null)).toBe(0);
+    expect(deltaFrom({ fromProfile: true } as DirectoryNavState)).toBe(0);
   });
 });
 
