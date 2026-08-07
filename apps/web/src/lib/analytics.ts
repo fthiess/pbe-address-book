@@ -304,6 +304,21 @@ export function trackExportPerformed(scope: ExportScope, rowCount: number): void
 }
 
 /**
+ * The Directory's Copy Emails action ran (D167) — a bucketed recipient count and
+ * whether anything was skipped. Audited server-side for security by the same D92
+ * ping the CSV export uses (scope `clipboard`); this is the usage-shape view.
+ *
+ * **No addresses, no names, no ids** (P6) — the whole payload is one bucket label
+ * and one boolean, which is the point: the event exists to answer "is this feature
+ * used, and does the privacy exclusion bite?", not to reconstruct who was mailed.
+ * Callers guard on a non-empty copy, exactly as `onExport` does, so `rowCountBucket`
+ * never sees a zero.
+ */
+export function trackEmailsCopied(copied: number, anySkipped: boolean): void {
+  emit("Emails Copied", { Copied: rowCountBucket(copied), "Any Skipped": anySkipped });
+}
+
+/**
  * The below-`md` "Options" disclosure fold was opened (7a-4; N92). Phone use has
  * been assumed rather than measured.
  */

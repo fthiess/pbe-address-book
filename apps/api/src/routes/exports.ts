@@ -29,8 +29,16 @@ export interface ExportRoutesConfig {
   cache: ProfileCache;
 }
 
-/** The egress scopes the client reports — the selected rows, or the whole current view. */
-const SCOPES = new Set(["selection", "view"]);
+/**
+ * The egress scopes the client reports — the selected rows, the whole current view,
+ * or (D167) the **clipboard** copy of the selected brothers' email addresses.
+ *
+ * `clipboard` shares this endpoint rather than getting one of its own because it is
+ * the same event in every way that matters to the audit: staff-gated, client-side,
+ * bulk PII leaving the app with no other server-side trace. The alternative was a
+ * silent second egress door beside the one D92 exists to close.
+ */
+const SCOPES = new Set(["selection", "view", "clipboard"]);
 
 export function registerExportRoutes(app: FastifyInstance, config: ExportRoutesConfig): void {
   app.post(
@@ -59,7 +67,8 @@ export function registerExportRoutes(app: FastifyInstance, config: ExportRoutesC
       if (scope === undefined || count === undefined) {
         return reply.code(400).send({
           error: "bad_request",
-          message: "An export ping needs a scope ('selection' | 'view') and a non-negative count.",
+          message:
+            "An export ping needs a scope ('selection' | 'view' | 'clipboard') and a non-negative count.",
         });
       }
 

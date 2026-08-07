@@ -193,14 +193,16 @@ Remove brother `{id}` from the caller's star list. Idempotent — implemented as
 - **Auth:** any authenticated user.
 - **Response 200:** `{ "stars": [5012, 5305] }`
 
-## 4a. Export-audit ping
+## 4a. Bulk-egress audit ping
 
 CSV export is generated **client-side** from the already-projected in-memory dataset (decision D41), so it leaves no server-side trail. This thin notify endpoint closes that gap (decision D92): after generating the file, the client POSTs here and the server writes one `export` audit entry. It carries **no profile data** — only a coarse scope label and a row count — so it stays inside the §1.4 names-not-values boundary.
 
+The Directory's **Copy Emails** action (decision D167) shares this endpoint under the `clipboard` scope. It is the same event in every way the audit cares about — staff-gated, client-side, bulk PII leaving the app with no other server-side trace — so giving it its own endpoint would only have split one trail in two; the `scope` distinguishes them.
+
 ### `POST /api/exports`
-Record that a CSV export occurred. Fire-and-forget — the client does not block its download on the response.
-- **Auth:** **manager or admin only** (`403` otherwise) — export is a staff directory-maintenance action and the action bar that triggers it is staff-only (decision D41).
-- **Request:** `{ "scope": "selection" | "view", "count": 42 }` — the egress scope (the selected rows, or the whole current view) and the exported row count.
+Record that a bulk egress occurred. Fire-and-forget — the client does not block the download or the clipboard write on the response.
+- **Auth:** **manager or admin only** (`403` otherwise) — both actions are staff directory-maintenance actions and the action bar that triggers them is staff-only (decisions D41/D167).
+- **Request:** `{ "scope": "selection" | "view" | "clipboard", "count": 42 }` — the egress scope (the selected rows, the whole current view, or the email addresses copied to the clipboard) and the row count.
 - **Response 204:** no body; the `export` audit entry (actor, scope, count, timestamp) is written to the audit stream (§6.1, decision D92).
 - **Errors:** `400` on a missing/invalid `scope` or a non-integer/negative `count`.
 

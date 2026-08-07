@@ -278,6 +278,13 @@ export interface EventProperties {
   /** A staff CSV export ran — its scope and a bucketed row count (audited separately
    *  for security by D92; this is the usage-shape view). */
   "Export Performed": { Scope: ExportScope; "Row Count": RowCountBucket };
+  /** The staff Copy Emails action ran (D167) — a bucketed recipient count and whether
+   *  anyone was left out. Deliberately its own event rather than a third
+   *  `Export Performed` scope, so the CSV series keeps its historical meaning.
+   *  `Any Skipped` is a boolean, not a bucket: it answers "does the exclusion rule
+   *  bite in practice?" without implying a precision the tally doesn't have (a
+   *  brother with no email *and* privacy off counts once, as private). */
+  "Emails Copied": { Copied: RowCountBucket; "Any Skipped": boolean };
   /** The below-`md` "Options" fold was opened (N92) — phone use, finally measured. */
   "Mobile Options Opened": NoProperties;
 

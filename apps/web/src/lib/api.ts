@@ -817,10 +817,18 @@ export async function removeStar(id: number): Promise<number[]> {
 
 /**
  * The export-audit ping (API-SPEC §4a; D92). Fire-and-forget — the CSV download
- * has already happened client-side, so a failed ping must never surface to the
- * user; it is swallowed. `scope` is the egress scope, `count` the row count.
+ * or clipboard write has already happened client-side, so a failed ping must never
+ * surface to the user; it is swallowed. `scope` is the egress scope, `count` the
+ * row count.
+ *
+ * `"clipboard"` is the D167 Copy Emails action: a different control, but the same
+ * kind of event — staff-gated bulk PII leaving the app with no other server-side
+ * trace — so it shares the endpoint and is told apart by its scope.
  */
-export async function notifyExport(scope: "selection" | "view", count: number): Promise<void> {
+export async function notifyExport(
+  scope: "selection" | "view" | "clipboard",
+  count: number,
+): Promise<void> {
   try {
     await fetch("/api/exports", {
       method: "POST",

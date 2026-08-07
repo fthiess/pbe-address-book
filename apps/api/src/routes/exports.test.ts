@@ -154,6 +154,42 @@ describe("POST /api/exports", () => {
     });
   });
 
+  it("records a clipboard email copy under the same audit action (D167)", async () => {
+    // Copy Emails is bulk PII egress with no other server-side trace, so it rides
+    // the D92 ping rather than becoming a silent second door. The `scope` is what
+    // separates it from a CSV export in the audit stream.
+    const cookie = await ctx.cookieFor(5005, "manager");
+    const response = await ctx.app.inject({
+      method: "POST",
+      url: "/api/exports",
+      headers: { cookie },
+      payload: { scope: "clipboard", count: 2 },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(ctx.audited).toHaveLength(1);
+    expect(ctx.audited[0]).toMatchObject({
+      action: "export",
+      actorId: 5005,
+      outcome: "ok",
+      scope: "clipboard",
+      count: 2,
+      role: "manager",
+      available: 3,
+    });
+  });
+
+  it("still refuses a clipboard ping from a brother — the copy is staff-only", async () => {
+    const cookie = await ctx.cookieFor(5247, "brother");
+    const response = await ctx.app.inject({
+      method: "POST",
+      url: "/api/exports",
+      headers: { cookie },
+      payload: { scope: "clipboard", count: 2 },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(ctx.audited).toHaveLength(0);
+  });
+
   it("rejects a bad scope or count with 400 and writes nothing", async () => {
     const cookie = await ctx.cookieFor(5247, "admin");
     const bad = await ctx.app.inject({

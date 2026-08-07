@@ -31,6 +31,15 @@ export {
   uatPhotoName,
 } from "./uat-photos.js";
 export { normalizeEmail } from "./email.js";
+// `formatRecipient` is deliberately NOT re-exported: it splices the address half in
+// verbatim and depends on `isEmittableAddress` having been checked first, so
+// `buildRecipientList` is the only supported entry point (D167).
+export {
+  type RecipientCandidate,
+  type RecipientList,
+  buildRecipientList,
+  isEmittableAddress,
+} from "./email-recipients.js";
 export { BANNER_SEVERITIES, type BannerSeverity } from "./banner.js";
 export type {
   BounceReport,
