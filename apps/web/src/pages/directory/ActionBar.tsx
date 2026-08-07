@@ -1,5 +1,5 @@
 import { type Role, buildRecipientList, profilesToCsv } from "@pbe/shared";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ControlHelp } from "../../components/ControlHelp.js";
 import { trackEmailsCopied, trackExportPerformed } from "../../lib/analytics.js";
@@ -11,6 +11,14 @@ import {
   type CopyEmailsMessage,
   copyEmailsMessage,
 } from "./copy-emails-message.js";
+
+/**
+ * How long a **successful** Copy Emails notice stays up before clearing itself
+ * (N165; Forrest's call). Long enough to read two lines and glance at the grid to
+ * check the count, and paused entirely while the notice is hovered or focused.
+ * Errors are exempt — see `CopyEmailsToast`.
+ */
+const AUTO_DISMISS_MS = 10_000;
 
 /**
  * The manager/administrator action bar above the grid (§5.6.8, D41). Gated by the
@@ -68,6 +76,9 @@ export function ActionBar({
 }: ActionBarProps) {
   const hasSelection = selectedCount > 0;
   const [message, setMessage] = useState<CopyEmailsMessage | null>(null);
+  // Stable, so the notice's auto-dismiss timer is not restarted by every re-render
+  // of this bar (a new closure in the dependency array would reset it forever).
+  const dismissMessage = useCallback(() => setMessage(null), []);
 
   const onExport = () => {
     // A Copy Emails toast left standing over an export would read as this export's
@@ -169,7 +180,7 @@ export function ActionBar({
         )}
       </div>
 
-      {message && <CopyEmailsToast message={message} onDismiss={() => setMessage(null)} />}
+      {message && <CopyEmailsToast message={message} onDismiss={dismissMessage} />}
     </div>
   );
 }
@@ -180,11 +191,20 @@ export function ActionBar({
  * assistive tech announces it without focus being stolen — with no motion and a
  * 44px dismiss control.
  *
- * **It does not auto-dismiss**, deliberately. A timed disappearance is a time limit
- * on reading, which the a11y gate (D79) gives no reason to invent here; the notice
- * carries a count the user may well want to check against the grid, and a second
- * press of either action button replaces it anyway. `VersionToast` made the same
- * call, so the two behave alike.
+ * **A success notice clears itself after {@link AUTO_DISMISS_MS}; an error notice
+ * never does** (N165). The a11y objection to a self-clearing message is that it
+ * imposes a time limit on reading (SC 2.2.1) — but a *status message* is governed by
+ * SC 4.1.3, which the live region already satisfies in full: a screen reader is
+ * given the entire text the moment it appears, however briefly it is on screen. The
+ * only reader actually at risk is a sighted slow one, and the fix for that is to
+ * **pause the countdown on hover and on focus**, which is what `paused` does — not
+ * to leave the notice standing forever. An error is different in kind: it reports
+ * that the copy did *not* happen, so it waits to be acknowledged.
+ *
+ * ⚠ **The timer restarts in full when the pointer or focus leaves**, rather than
+ * resuming a remainder. That is deliberate: tracking elapsed time across pauses buys
+ * a nicety nobody can perceive, at the cost of state that has to stay correct across
+ * re-renders and message changes.
  *
  * ⚠ **Positioned `absolute` against the action bar, NOT `fixed` to the viewport —
  * and that difference is the whole point (N163).** It lands just under the bar,
@@ -205,8 +225,34 @@ function CopyEmailsToast({
   onDismiss: () => void;
 }) {
   const error = message.tone === "error";
+  const [paused, setPaused] = useState(false);
+
+  // `message` is in the dependency list as a **re-run trigger**, not as a value the
+  // effect reads — which is why the linter is suppressed rather than obeyed here.
+  // Two presses in a row can produce messages of the same `tone`, so `error` does
+  // not change and the countdown would not restart: the second notice would inherit
+  // the first's remaining time and vanish early. Dropping it is a real bug.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: message re-runs the timer; see above
+  useEffect(() => {
+    // An error waits to be acknowledged; a hovered or focused notice is being read.
+    if (error || paused) {
+      return;
+    }
+    const timer = window.setTimeout(onDismiss, AUTO_DISMISS_MS);
+    return () => window.clearTimeout(timer);
+  }, [error, paused, onDismiss, message]);
+
   return (
-    <output className="absolute inset-x-0 top-full z-40 mt-2 flex justify-center px-4">
+    <output
+      className="absolute inset-x-0 top-full z-40 mt-2 flex justify-center px-4"
+      // Pointer *and* keyboard: React's onFocus/onBlur map to focusin/focusout, so
+      // they fire for the dismiss button inside. Without the focus half, tabbing to
+      // the button could have it vanish under the user's hands.
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+    >
       {/* `items-center` centres the text against the dismiss control, and the button's
           `-my-2` lets its 44px hit area overhang the padding box instead of setting the
           notice's height. Without both, a one-line message rendered the same height as

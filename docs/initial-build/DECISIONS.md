@@ -3055,6 +3055,8 @@ Two findings from Forrest's live test of D167, both about the result notice, and
 
 **Also live-confirmed by Forrest in the same pass, and worth recording because they were the open risks:** pasting into **Gmail gives each recipient its own chip**, which is the entire premise of the quoted-name form (D167 fork 3) — and it works on **iPadOS Gmail** too; the exclusion messages "were very helpful in explaining why the exclusions were made"; and Mixpanel is receiving `Emails Copied`. **Outlook and Apple Mail remain unverified** — Forrest has neither, so they go to UAT testers.
 
+*Later updated by: **N165 (⚠ REVERSES "it does not auto-dismiss, deliberately" above** — a success notice now clears itself after 10s, paused on hover and focus; an error notice still never does).*
+
 ### N164 — **Unlisted brothers are skipped by Copy Emails too.** Amends D167, whose "unlisted brothers stay in" was reasoned from the wrong question *(Stage 2.1 / UAT — OFC-391 live test)*
 
 **Reported by Forrest in live testing:** as an administrator he ticked several brothers including an **unlisted** one, and Copy Emails put that brother's address on the clipboard with the rest. His framing: *"If a brother marks their record as unlisted, the privacy for their record includes their email address, so they should also be omitted."*
@@ -3070,3 +3072,19 @@ Two findings from Forrest's live test of D167, both about the result notice, and
 **Verified:** the two new unit tests were watched **failing against the pre-fix module and passing after** (the repro-before-fix discipline), 25 unit tests green in `email-recipients.test.ts`; `verify:fast` green; the e2e spec gains an unlisted brother to the shared fixture — so the select-all case now exercises every bucket at once — plus a dedicated test that his address never reaches the clipboard. The help toggle-tip and the generated USER-MANUAL §10 name the new exclusion.
 
 *Amends D167 (fork 2's scope, and its "deliberately not done" list).*
+
+### N165 — The Copy Emails notice **self-dismisses after 10s, paused on hover and focus**; an **error notice never does**. Amends N163 *(Stage 2.1 / UAT — OFC-391 live test)*
+
+**Forrest, in live testing:** *"the toasts don't disappear — you have to manually close them. Is there a UX reason for this?"* There was one, and it was too cautious.
+
+**The reason N163 gave, and why it does not hold.** A self-clearing message imposes a time limit on reading, which is SC 2.2.1 territory, and with a11y a CI-gated hard requirement (D79) the conservative option looked free. It is not: a **status message** is governed by **SC 4.1.3**, which the `<output>` live region already satisfies completely — a screen reader is handed the entire text the instant it appears, no matter how briefly it stays on screen. The only reader genuinely at risk is a **sighted slow one**, and the accepted mitigation for that is to **pause the countdown on hover and on focus**, not to leave the notice standing indefinitely. Permanence was buying nothing for the user it was nominally protecting, and costing every other user a click.
+
+⚠ **An error notice is exempt and stays until acknowledged.** The distinction is in kind, not degree: a success notice reports something that already happened and whose result is visible on the clipboard, while the error reports that the copy **did not happen**. Letting that one time out re-creates precisely the failure D167 built it to prevent — the user pastes stale clipboard contents into an email without ever learning the copy failed.
+
+**Two implementation details worth keeping.** The dismiss callback is `useCallback`-stable in `ActionBar`: passing a fresh closure would land in the effect's dependency list and restart the countdown on **every re-render of the bar**, so the notice would never clear — a bug that looks exactly like the feature not working. And the pause covers **focus as well as hover** (React's `onFocus`/`onBlur` map to `focusin`/`focusout`, so they catch the dismiss button inside), or a keyboard user tabbing toward the button could have it vanish under their hands.
+
+⚠ **The timer restarts in full when the pointer or focus leaves**, rather than resuming a remainder — deliberate: tracking elapsed time across pauses buys a nicety nobody can perceive at the cost of state that must stay correct across re-renders and message changes.
+
+**Verified:** both new e2e tests were watched **failing against the pre-change component and passing after**. They use **Playwright's fake clock** (`page.clock.install()` before navigation, then `runFor`) rather than real waits, so the assertions are deterministic and the spec still runs in ~6 seconds instead of growing by a minute. ⚠ `clock.runFor` takes **milliseconds or `'mm:ss'`** — a `"9s"` string is rejected at runtime. Three tests: the notice survives 9s and is gone by 11s (so the disappearance is provably the timer's doing, not some other unmount); hovering holds it through 30s and moving away lets it clear; and the error notice survives 60s.
+
+*Amends N163's "it does not auto-dismiss, deliberately".*
