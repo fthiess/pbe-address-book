@@ -1,6 +1,6 @@
-import { Navigate, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
-import { BackToDirectory } from "../components/BackToDirectory.js";
+import { BackToDirectory, useDirectoryReturn } from "../components/BackToDirectory.js";
 import { BackupCard } from "./admin/BackupCard.js";
 import { BannerCard } from "./admin/BannerCard.js";
 import { BounceReportCard } from "./admin/BounceReportCard.js";
@@ -22,20 +22,28 @@ import { GhostAuditCard } from "./admin/GhostAuditCard.js";
 export function Admin() {
   const { state } = useSession();
   const location = useLocation();
-  const navigate = useNavigate();
-  if (state.status !== "authenticated" || state.me.role !== "admin") {
-    return <Navigate to="/" replace />;
-  }
-
   // If the admin opened this page from the Directory, "← Directory" pops the history
   // entry (like browser Back), so the Directory's search/sort/filter/scroll are
   // restored — matching the Profile page's ← Directory (N45). On a cold deep-link
   // (no such state) it is a real `<Link to="/">` escape hatch to a fresh Directory.
+  //
+  // The pop goes through the shared `useDirectoryReturn` (D169) rather than a local
+  // `navigate(-1)`: a pop whose target has been pruned out of the session history is
+  // a **silent** no-op, so the bare version leaves a button that visibly does
+  // nothing. This page stashes no Directory URL, so its fallback is a clean
+  // Directory — lossy, but a working control rather than a dead one.
+  //
+  // Hooks run before the admin guard below: an early return must not sit between
+  // them, or the hook order changes with the session.
   const fromDirectory = (location.state as { fromDirectory?: boolean } | null)?.fromDirectory;
+  const backToDirectory = useDirectoryReturn(fromDirectory ? 1 : 0);
+  if (state.status !== "authenticated" || state.me.role !== "admin") {
+    return <Navigate to="/" replace />;
+  }
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      <BackToDirectory onPop={fromDirectory ? () => navigate(-1) : null} />
+      <BackToDirectory onPop={fromDirectory ? backToDirectory : null} />
       <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">
           Administrative Tools

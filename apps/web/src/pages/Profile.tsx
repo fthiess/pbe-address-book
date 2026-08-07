@@ -9,6 +9,7 @@ import {
   useParams,
 } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
+import { useDirectoryReturn } from "../components/BackToDirectory.js";
 import {
   LoadingOverlay,
   OVERLAY_DELAY_MS,
@@ -47,7 +48,6 @@ import {
   type DirectoryNavState,
   type StepDirection,
   deriveDirectoryNav,
-  directoryEntryIsReachable,
   stepNavState,
 } from "./profile/directory-nav.js";
 import { getDirectoryStash } from "./profile/directory-stash.js";
@@ -338,22 +338,9 @@ export function ProfileContainer() {
   // URL filters/search/sort and `location.key`-keyed scroll are restored, not
   // `navigate("/")` (which would open a fresh, unfiltered Directory at the top and
   // lose the user's place). Shared by "← Directory" and the post-delete return
-  // (OFC-143).
-  //
-  // The pop is asked for only when the target is actually still in the session
-  // history (OFC-395): `history.go()` past the start of the stack navigates
-  // nowhere, reports nothing, and leaves the button looking broken — which is how
-  // this reached UAT. When the entry is gone (or on a cold deep-link, delta 0,
-  // where there was never one), we rebuild the view from the URL stashed with the
-  // id-list instead. That restores search/filter/sort exactly and loses only
-  // scroll, since a freshly-created entry has a new `location.key`.
-  const popToDirectory = useCallback(() => {
-    if (directoryEntryIsReachable(directoryNav.delta, window.history.length)) {
-      navigate(-directoryNav.delta);
-    } else {
-      navigate(directoryNav.directoryUrl || "/");
-    }
-  }, [directoryNav.delta, directoryNav.directoryUrl, navigate]);
+  // (OFC-143), and — since D169 — with the Admin and Add Brother pages, which
+  // render the same control and used to carry their own copy of this pop.
+  const popToDirectory = useDirectoryReturn(directoryNav.delta, directoryNav.directoryUrl);
 
   const removeProfile = useCallback(async () => {
     const outcome = await deleteProfile(id);
