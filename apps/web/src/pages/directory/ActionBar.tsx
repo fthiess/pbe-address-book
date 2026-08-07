@@ -115,8 +115,10 @@ export function ActionBar({
   };
 
   return (
-    <>
-      <div className="mb-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+    // `relative` so the result notice can anchor to the bar's own bottom edge —
+    // see CopyEmailsToast on why that beats a viewport-fixed position.
+    <div className="relative mb-3">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
         {/* Each button + its ? is one tight unit (gap-1.5); the parent's gap-x-6 sets
           the units apart. The 4:1 ratio is deliberate and was OFC-391's explicit
           request — with two adjacent `?` controls, a narrower parent gap leaves it
@@ -168,13 +170,13 @@ export function ActionBar({
       </div>
 
       {message && <CopyEmailsToast message={message} onDismiss={() => setMessage(null)} />}
-    </>
+    </div>
   );
 }
 
 /**
- * The Copy Emails result notice (D167). Follows `VersionToast`: a fixed, centred
- * `<output>` — which carries an implicit `role="status"` polite live region, so
+ * The Copy Emails result notice (D167). Borrows `VersionToast`'s semantics — an
+ * `<output>`, which carries an implicit `role="status"` polite live region, so
  * assistive tech announces it without focus being stolen — with no motion and a
  * 44px dismiss control.
  *
@@ -184,13 +186,16 @@ export function ActionBar({
  * press of either action button replaces it anyway. `VersionToast` made the same
  * call, so the two behave alike.
  *
- * **Anchored to the bottom**, unlike `VersionToast`, whose comment records that the
- * bottom edge was "easy to miss" and moved it to a fifth of the way down. That
- * finding does not transfer: `VersionToast` is an unsolicited announcement nobody
- * asked for, so it has to catch the eye, while this one answers a button the user
- * just pressed and is already waiting on. At the top it *covers the action bar* at
- * desktop width and the search box on a phone — obscuring the controls in play to
- * report on them — which is plainly worse than being a little quieter.
+ * ⚠ **Positioned `absolute` against the action bar, NOT `fixed` to the viewport —
+ * and that difference is the whole point (N163).** It lands just under the bar,
+ * which is to say just below the top of the grid: close enough to the button that
+ * pressed it to read as its answer, without covering the controls still in play.
+ * Two viewport-fixed attempts each failed one end of the page — a top-percentage
+ * offset covered the action bar at desktop width and the search box on a phone,
+ * while the bottom edge stranded the notice a screen away from the button. Anchoring
+ * to the bar is right at *every* viewport height and every amount of content above
+ * it (banner, heading, filter panel, the phone's Options fold), with no magic number
+ * to re-tune. `z-40` clears the grid's sticky header, which tops out at 22.
  */
 function CopyEmailsToast({
   message,
@@ -201,12 +206,17 @@ function CopyEmailsToast({
 }) {
   const error = message.tone === "error";
   return (
-    <output className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+    <output className="absolute inset-x-0 top-full z-40 mt-2 flex justify-center px-4">
+      {/* `items-center` centres the text against the dismiss control, and the button's
+          `-my-2` lets its 44px hit area overhang the padding box instead of setting the
+          notice's height. Without both, a one-line message rendered the same height as
+          a two-line one with the text pinned to the top — which reads as a blank second
+          line (OFC-391 live test). The 44px target itself is untouched. */}
       <div
         className={
           error
-            ? "flex max-w-md items-start gap-3 rounded-[var(--radius-lg)] border border-destructive bg-card px-4 py-3 text-destructive shadow-[var(--shadow-popover-strong)]"
-            : "flex max-w-md items-start gap-3 rounded-[var(--radius-lg)] border border-[var(--gold-border-2)] bg-[var(--gold-bg-2)] px-4 py-3 text-[var(--gold-text-strong)] shadow-[var(--shadow-popover-strong)]"
+            ? "flex max-w-md items-center gap-3 rounded-[var(--radius-lg)] border border-destructive bg-card px-4 py-3 text-destructive shadow-[var(--shadow-popover-strong)]"
+            : "flex max-w-md items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--gold-border-2)] bg-[var(--gold-bg-2)] px-4 py-3 text-[var(--gold-text-strong)] shadow-[var(--shadow-popover-strong)]"
         }
       >
         <div className="text-sm">
@@ -219,8 +229,8 @@ function CopyEmailsToast({
           aria-label="Dismiss"
           className={
             error
-              ? "inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-lg text-destructive hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              : "inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-lg text-[var(--gold-text-strong)] hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              ? "-my-2 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-lg text-destructive hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              : "-my-2 inline-flex size-11 shrink-0 items-center justify-center rounded-lg text-lg text-[var(--gold-text-strong)] hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           }
         >
           <span aria-hidden="true">×</span>
