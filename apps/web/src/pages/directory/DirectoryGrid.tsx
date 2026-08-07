@@ -154,8 +154,10 @@ export function DirectoryGrid({
   // from (`commitStash`, OFC-141 follow-up) — so searching/filtering/sorting
   // without opening a profile writes nothing. Shared by every row/link.
   // A fresh handle per distinct displayed set (mint the id alongside the id-list
-  // so `rows` is a real dependency); the id-list is written to the store only on
-  // an actual navigation (`commitStash`).
+  // so `rows` is a real dependency); the id-list — and the Directory URL this view
+  // is showing, which "← Directory" rebuilds from when its history entry has been
+  // pruned (D169) — are written to the store only on an actual navigation
+  // (`commitStash`).
   const { orderedIds, stashId } = useMemo(
     () => ({ orderedIds: rows.map((r) => r.id), stashId: newStashId() }),
     [rows],
@@ -619,7 +621,7 @@ interface RowProps {
   selection?: Selection;
   /** The prev/next stash handle carried into the Profile page (4d, N45). */
   linkState: DirectoryNavState;
-  /** Write the id-list to the stash store — called only when this row is navigated from (OFC-141). */
+  /** Write the id-list + this view's Directory URL (D169) to the stash store — called only when this row is navigated from (OFC-141). */
   commitStash: () => void;
 }
 

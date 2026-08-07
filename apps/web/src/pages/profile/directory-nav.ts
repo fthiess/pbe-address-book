@@ -139,13 +139,24 @@ export function stepNavState(nav: DirectoryNav): DirectoryNavState {
  * *before* the pop, because `go()` past the start of the stack neither navigates
  * nor throws nor returns anything (OFC-395).
  *
- * The test is conservative and exact for our flows. The current entry's index is
- * at most `historyLength - 1`, and every entry carries a `delta` no larger than
- * its own index at the time it was created, so `delta > historyLength - 1` means
- * entries have been **pruned** off the old end of the stack and the Directory went
- * with them. Asking the browser is what makes this robust: `historyLength` is
- * `window.history.length`, which the browser itself caps, so we never have to
- * model the cap's value (50 in Chrome today) or notice when it changes.
+ * The current entry's index is at most `historyLength - 1`, and every entry
+ * carries a `delta` no larger than its own index at the time it was created, so
+ * `delta > historyLength - 1` means entries have been **pruned** off the old end
+ * of the stack and the Directory went with them. Asking the browser is what makes
+ * this robust: `historyLength` is `window.history.length`, which the browser
+ * itself caps, so we never have to model the cap's value (50 in Chrome today) or
+ * notice when it changes.
+ *
+ * ⚠ **The test is one-sided, not exact: it never rejects a reachable entry, but it
+ * can still accept an unreachable one.** `history.length` counts *forward* entries
+ * too, so after the user has walked back with the browser's own Back button the
+ * current index is strictly below `historyLength - 1` and the bound goes slack.
+ * There is no API for the current index (React Router's `history.state.idx` is
+ * stamped at push time and is itself stale after a prune), so this is the tightest
+ * sound test available. It fails in the safe direction: an over-optimistic accept
+ * produces exactly the pre-D169 behaviour — a click that does nothing — never a
+ * wrong navigation. Reaching it requires being at the very oldest surviving entry
+ * with a stack full of forward entries, which no ordinary use of Book produces.
  *
  * Deliberately *not* the after-the-fact check the ticket first sketched ("see on
  * the next tick whether the location changed"): a history traversal is

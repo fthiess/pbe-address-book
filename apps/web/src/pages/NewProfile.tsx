@@ -2,7 +2,7 @@ import { type Profile, firstIssueByField, validateProfile } from "@pbe/shared";
 import { useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
-import { BackToDirectory } from "../components/BackToDirectory.js";
+import { BackToDirectory, useDirectoryReturn } from "../components/BackToDirectory.js";
 import { ApiError, createProfile } from "../lib/api.js";
 import {
   CLASS_YEAR_HELPER,
@@ -41,11 +41,18 @@ export function NewProfile() {
   const [saving, setSaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
 
+  // Read before the admin guard, and with the hook beside it: an early return must
+  // not sit between two hook calls, or the hook order changes with the session.
+  const fromDirectory = (location.state as { fromDirectory?: boolean } | null)?.fromDirectory;
+  // The shared return-to-Directory action rather than a local `navigate(-1)` (D169)
+  // — a pop whose target has been pruned out of the session history is a **silent**
+  // no-op, which leaves a button that visibly does nothing. This page stashes no
+  // Directory URL, so its fallback is a clean Directory: lossy, but not dead.
+  const backToDirectory = useDirectoryReturn(fromDirectory ? 1 : 0);
+
   if (state.status !== "authenticated" || state.me.role !== "admin") {
     return <Navigate to="/" replace />;
   }
-
-  const fromDirectory = (location.state as { fromDirectory?: boolean } | null)?.fromDirectory;
 
   /** Clear one field's error as the admin edits it (so a fixed field stops shouting). */
   const clearError = (field: string) =>
@@ -151,7 +158,7 @@ export function NewProfile() {
 
   return (
     <div className="mx-auto w-full max-w-2xl">
-      <BackToDirectory onPop={fromDirectory ? () => navigate(-1) : null} />
+      <BackToDirectory onPop={fromDirectory ? backToDirectory : null} />
       <header className="mt-4 mb-6">
         <h1 className="text-[length:var(--text-display)] font-bold tracking-tight">Add Brother</h1>
         <p className="mt-2 max-w-prose text-[length:var(--text-body)] text-muted-foreground">

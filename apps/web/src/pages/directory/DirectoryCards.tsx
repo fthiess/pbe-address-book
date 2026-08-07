@@ -65,9 +65,11 @@ export function DirectoryCards({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   // The prev/next stash carried into a Profile page (4d, N45). The handle is
-  // computed at render; the id-list is written to the store only when a card is
-  // actually navigated from (`commitStash`) — so searching/filtering/sorting
-  // without opening a profile writes nothing (OFC-141 follow-up).
+  // computed at render; the id-list — and the Directory URL this view is showing,
+  // which "← Directory" rebuilds from when its history entry has been pruned
+  // (D169) — are written to the store only when a card is actually navigated from
+  // (`commitStash`), so searching/filtering/sorting without opening a profile
+  // writes nothing (OFC-141 follow-up).
   const { orderedIds, stashId } = useMemo(
     () => ({ orderedIds: rows.map((r) => r.id), stashId: newStashId() }),
     [rows],
