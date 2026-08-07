@@ -7,7 +7,7 @@ import type { DirectoryProfile } from "../../lib/types.js";
 import { useNameSearch } from "../directory/search/useNameSearch.js";
 import { RelationshipChip } from "./RelationshipChip.js";
 import { FIELD_LABEL_CLASS, Section } from "./fields.js";
-import { littleBrothers, rosterNames } from "./relationships.js";
+import { bigBrotherEntry, littleBrotherEntries, rosterNames } from "./relationships.js";
 
 /**
  * The Relationships editor (§5.7.4, D46). **Big Brother** is set through a
@@ -24,6 +24,7 @@ export function RelationshipsEditor({
   roster,
   rosterError,
   bigBrotherId,
+  hiddenLittleBrothers,
   onChange,
   error,
 }: {
@@ -31,18 +32,35 @@ export function RelationshipsEditor({
   roster: DirectoryProfile[] | null;
   rosterError: boolean;
   bigBrotherId: number | null | undefined;
+  /** The server's D168 count of Little Brothers withheld from this viewer. */
+  hiddenLittleBrothers?: number;
   onChange: (id: number | null) => void;
   error?: string;
 }) {
   const errorId = useId();
   const names = useMemo(() => (roster ? rosterNames(roster) : null), [roster]);
   const littles = useMemo(
-    () => (roster && names ? littleBrothers(roster, names, selfId) : []),
-    [roster, names, selfId],
+    () => littleBrotherEntries(roster, names, selfId, hiddenLittleBrothers),
+    [roster, names, selfId, hiddenLittleBrothers],
   );
 
-  const bigBrotherName =
-    bigBrotherId != null ? (names?.get(bigBrotherId) ?? `#${bigBrotherId}`) : null;
+  // D168 reaches the edit page too, and it matters most here: the *only* viewer
+  // who can see a withheld Big Brother in edit mode is the owner himself (a
+  // manager or admin resolves every record from his own roster), so this is
+  // precisely the brother the ticket was filed about. Before D168 the fallback
+  // `names.get(id) ?? \`#${id}\`` rendered his Big Brother as the clickable raw
+  // Constitution id "#5043" — the same conflation of "unknown" with "withheld"
+  // that produced "VP" on the view page, in a different disguise.
+  const big = bigBrotherEntry(roster, names, bigBrotherId);
+  // Only a `known` entry has a name; `private` says so, and `pending` keeps the
+  // view page's neutral invitation until the roster lands.
+  const bigBrotherName = big?.kind === "known" ? big.name : null;
+  const bigChipLabel =
+    big?.kind === "known"
+      ? big.name
+      : big?.kind === "private"
+        ? "Info is private"
+        : "View his profile";
 
   return (
     <Section title="Relationships">
@@ -55,13 +73,19 @@ export function RelationshipsEditor({
           <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
             The brotherhood list couldn't load, so the Big Brother picker is unavailable right now.
           </p>
-        ) : bigBrotherId != null ? (
+        ) : big !== null ? (
           <div className="flex flex-wrap items-center gap-2">
+            {/* Remove stays available on a withheld Big Brother: the owner may not
+              see who he is, but the pointer is still his to clear — and a manager
+              can set it back for him (the ticket's item 4). The remove label drops
+              the name it cannot know rather than reading "Remove Big Brother #5043". */}
             <RelationshipChip
-              id={bigBrotherId}
-              name={bigBrotherName ?? `#${bigBrotherId}`}
+              id={big.kind === "private" ? null : big.id}
+              name={bigChipLabel}
               onRemove={() => onChange(null)}
-              removeLabel={`Remove Big Brother ${bigBrotherName}`}
+              removeLabel={
+                bigBrotherName ? `Remove Big Brother ${bigBrotherName}` : "Remove Big Brother"
+              }
             />
           </div>
         ) : roster && names ? (
@@ -97,9 +121,14 @@ export function RelationshipsEditor({
             </span>
           </p>
           <ul className="mt-1 flex flex-wrap gap-1.5">
-            {littles.map((little) => (
-              <li key={little.id}>
-                <RelationshipChip id={little.id} name={little.name} />
+            {littles.map((little, index) => (
+              // Private placeholders carry no id and are interchangeable by
+              // construction, so they are keyed by position (D168).
+              <li key={little.kind === "private" ? `private-${index}` : little.id}>
+                <RelationshipChip
+                  id={little.kind === "private" ? null : little.id}
+                  name={little.kind === "known" ? little.name : "Info is private"}
+                />
               </li>
             ))}
           </ul>

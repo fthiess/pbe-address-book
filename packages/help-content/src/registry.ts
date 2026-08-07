@@ -247,7 +247,7 @@ export const helpContent: HelpContent = {
     // guarantee — the Big-Brother pointer is a `public` field on someone *else's*
     // record, so it was never ours to hide. What is hidden is who he is.
     toggleTip:
-      "This switch lets you be “unlisted”, so none of your information is visible to the brotherhood at large. You'll still be in PBE's official records, and Address Book staff can still see your information. One thing does remain visible: on the profile of your Big Brother or a Little Brother, other brothers see that a brother is there, marked “Info is private” — never your name, photo, or anything else about you.",
+      "This switch lets you be “unlisted”, so your name, photo, and details are hidden from the brotherhood at large — with one exception: on the profile of your Big Brother or a Little Brother, other brothers see that a brother is there, marked “Info is private”, and nothing more. You'll still be in PBE's official records, and Address Book staff can still see your information.",
   },
 
   // ── Admin (D111; PRD §5.8) — descriptions folded off the cards so the manual reads them too ──

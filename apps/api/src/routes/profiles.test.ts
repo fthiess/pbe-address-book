@@ -563,6 +563,44 @@ describe("GET /api/profiles/:id", () => {
       expect(response.json()).toMatchObject({ hiddenLittleBrothers: 2 });
       await app.close();
     });
+
+    // ⚠ The PATCH reply is not a write acknowledgement — it is **the record the
+    // client keeps**: N33 retired the post-save `GET` precisely because this
+    // response substitutes for one, and the client replaces its held record
+    // wholesale rather than merging (OFC-137). A count supplied only by the read
+    // therefore vanished the instant a brother saved any edit to his own profile,
+    // taking the "Info is private" placeholders with it and re-creating OFC-392 on
+    // the save path until a reload. Caught in code review of the original fix.
+    it("carries the count on a PATCH reply, so a save does not drop the placeholders", async () => {
+      const { app, cookieAs, etagOf } = await buildWriteServer(family());
+      const cookie = await cookieAs(5001, "brother");
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/profiles/5001",
+        headers: { cookie, "if-match": await etagOf(5001, cookie) },
+        payload: { jobTitle: "Principal Engineer" },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ hiddenLittleBrothers: 2 });
+      await app.close();
+    });
+
+    it("carries the count on a no-op PATCH too (the short-circuit branch)", async () => {
+      // The no-change branch returns early with the stored record, a separate
+      // `sendRecord` call site — and a re-save of an unchanged form is exactly the
+      // kind of no-op a user makes without noticing.
+      const { app, cookieAs, etagOf } = await buildWriteServer(family());
+      const cookie = await cookieAs(5001, "brother");
+      const response = await app.inject({
+        method: "PATCH",
+        url: "/api/profiles/5001",
+        headers: { cookie, "if-match": await etagOf(5001, cookie) },
+        payload: { firstName: "James" },
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ hiddenLittleBrothers: 2 });
+      await app.close();
+    });
   });
 
   it("lets a manager read an unlisted record", async () => {

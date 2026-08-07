@@ -206,14 +206,7 @@ function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteD
         .send({ error: "private", message: "This brother's information is private." });
     }
 
-    return sendRecord(
-      reply,
-      stored,
-      role,
-      isOwner,
-      cache.concurrencyToken(id) ?? "",
-      hiddenLittleBrotherCount(cache, id, role),
-    );
+    return sendRecord(reply, cache, stored, role, isOwner, cache.concurrencyToken(id) ?? "");
   });
 }
 
@@ -414,7 +407,7 @@ function registerCreate(app: FastifyInstance, deps: ProfileRouteDeps): void {
         { action: "profile.create", actorId: actor.profileId, targetId: id, outcome: "ok", trace },
         now.toISOString(),
       );
-      return sendRecord(reply.code(201), candidate, role, false, token);
+      return sendRecord(reply.code(201), cache, candidate, role, false, token);
     },
   );
 }
@@ -680,7 +673,14 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
       );
       if (changed.length === 0) {
         // A no-op save: nothing changed, so no write, no verification touch, no audit.
-        return sendRecord(reply, stored, role, isOwner, cache.concurrencyToken(id) ?? ifMatch);
+        return sendRecord(
+          reply,
+          cache,
+          stored,
+          role,
+          isOwner,
+          cache.concurrencyToken(id) ?? ifMatch,
+        );
       }
 
       // 6. Verification side-effect (D28) + server-stamped housekeeping.
@@ -776,7 +776,7 @@ function registerPatch(app: FastifyInstance, deps: ProfileRouteDeps): void {
         now.toISOString(),
       );
 
-      return sendRecord(reply, committedNext, role, isOwner, token);
+      return sendRecord(reply, cache, committedNext, role, isOwner, token);
     },
   );
 }
@@ -1034,23 +1034,32 @@ function mergeNext(stored: Profile, set: Partial<Profile>, remove: (keyof Profil
 /** Send a single record at the caller's projection, `no-store`, with its `ETag`. */
 function sendRecord(
   reply: FastifyReply,
+  /**
+   * The read cache, so **every** record reply computes the D168 derived count for
+   * itself. It is deliberately a required parameter rather than an optional
+   * addendum the record read opts into: `PATCH` is not merely a write
+   * acknowledgement, it is the record the client *keeps* — N33 retired the
+   * post-save `GET` precisely because the PATCH response substitutes for one, and
+   * the client replaces its held record wholesale rather than merging (OFC-137).
+   * An opt-in count therefore silently vanished from a brother's own profile the
+   * moment he saved any edit, taking the "Info is private" placeholders with it
+   * and re-creating OFC-392 on the save path until a reload. Computing it here
+   * makes that class of omission unrepresentable.
+   */
+  cache: ProfileCache,
   profile: Profile,
   role: Role,
   isOwner: boolean,
   token: string,
-  /**
-   * The D168 derived count, folded in as a sibling of the projected fields. It is
-   * **not** a `Profile` field — it describes records *other* than this one — so it
-   * is added here rather than by the projection, which stays a pure per-field
-   * filter over stored data. Additive and optional, so every existing consumer of
-   * this body is unaffected. Only the record read supplies it; the create and
-   * PATCH replies leave it undefined, where it would be meaningless anyway.
-   */
-  hiddenLittleBrothers?: number,
 ): FastifyReply {
   const projected: ProjectedProfile | SelfProfile = isOwner
     ? projectSelf(profile)
     : projectRecord(profile, role);
+  // Folded in as a sibling of the projected fields — **not** a `Profile` field,
+  // since it describes records *other* than this one — so the projection stays a
+  // pure per-field filter over stored data. Omitted entirely when there is nothing
+  // to report, so every existing consumer of this body is unaffected.
+  const hiddenLittleBrothers = hiddenLittleBrotherCount(cache, profile.id, role);
   const body =
     hiddenLittleBrothers === undefined ? projected : { ...projected, hiddenLittleBrothers };
   return (
