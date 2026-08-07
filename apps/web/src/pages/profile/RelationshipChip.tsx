@@ -15,19 +15,30 @@ export function RelationshipChip({
   onRemove,
   removeLabel,
 }: {
-  id: number;
+  /**
+   * The brother's id, or **null** when he is withheld from this viewer (D168) —
+   * in which case the chip is inert text rather than a link, matching the view
+   * page's "Info is private" placeholder. Before D168 a withheld Big Brother fell
+   * through the caller's `names.get(id) ?? \`#${id}\`` fallback and rendered as a
+   * clickable raw Constitution id, which is both uglier and a dead link.
+   */
+  id: number | null;
   name: string;
   onRemove?: () => void;
   removeLabel?: string;
 }) {
   return (
     <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2.5 py-1 text-[length:var(--text-body)]">
-      <Link
-        to={`/brother/${id}`}
-        className="font-medium text-foreground underline-offset-2 hover:underline"
-      >
-        {name}
-      </Link>
+      {id == null ? (
+        <span className="text-muted-foreground italic">{name}</span>
+      ) : (
+        <Link
+          to={`/brother/${id}`}
+          className="font-medium text-foreground underline-offset-2 hover:underline"
+        >
+          {name}
+        </Link>
+      )}
       {onRemove && (
         <button
           type="button"

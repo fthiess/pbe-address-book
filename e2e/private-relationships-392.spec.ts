@@ -66,9 +66,13 @@ async function mock(
     viewed: Record<string, unknown>;
     /** The bulk roster this role receives — a withheld brother is simply absent. */
     roster: Record<string, unknown>[];
+    /** The viewer's own Constitution id; 5247 makes him the owner of the record. */
+    viewerId?: number;
   },
 ) {
-  await page.route("**/api/me", (route) => route.fulfill({ json: me(options.role, 9001) }));
+  await page.route("**/api/me", (route) =>
+    route.fulfill({ json: me(options.role, options.viewerId ?? 9001) }),
+  );
   await page.route("**/api/profiles", (route) =>
     route.fulfill({ json: { profiles: options.roster, majors: [] } }),
   );
@@ -163,6 +167,28 @@ test.describe("OFC-392 — a withheld Little Brother", () => {
 
     await expect(page.getByRole("heading", { level: 1, name: /Smyth/ })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Relationships" })).toHaveCount(0);
+  });
+
+  test("the edit page says the same thing, and never the raw Constitution id", async ({ page }) => {
+    // The owner is the ONLY viewer who meets a withheld Big Brother in edit mode —
+    // a manager or admin resolves every record from his own roster. Before D168 the
+    // editor's `names.get(id) ?? \`#${id}\`` fallback rendered him as the clickable
+    // raw id "#5001": the same unknown/withheld conflation as "VP", in disguise.
+    await mock(page, {
+      role: "brother",
+      viewerId: 5247,
+      viewed: record({ bigBrotherId: 5001, hiddenLittleBrothers: 1 }),
+      roster: [{ id: 5247, firstName: "James", lastName: "Smyth", classYear: 1984 }],
+    });
+    await page.goto("/brother/5247/edit");
+    await expect(page.getByText("Editing", { exact: true })).toBeVisible();
+
+    await expect(page.getByText("Info is private")).toHaveCount(2); // Big + one Little
+    await expect(page.getByText("#5001")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /5001/ })).toHaveCount(0);
+    // The pointer stays the owner's to clear even though he can't see who it is,
+    // and the control names no one rather than naming an id.
+    await expect(page.getByRole("button", { name: "Remove Big Brother" })).toBeVisible();
   });
 
   test("the private placeholders keep the page WCAG 2.2 AA clean (D79)", async ({ page }) => {

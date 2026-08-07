@@ -575,6 +575,7 @@ export function ProfileEdit({
               roster={roster}
               rosterError={rosterError}
               bigBrotherId={form.draft.bigBrotherId}
+              hiddenLittleBrothers={record.hiddenLittleBrothers}
               onChange={form.setBigBrother}
               error={form.errorFor("bigBrotherId")}
             />
