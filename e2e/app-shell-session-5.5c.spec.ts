@@ -191,13 +191,14 @@ test.describe("5.5c app shell + session (OFC-202/193/63/192)", () => {
       const profiles = role === "brother" ? [ownProfile] : [ownProfile, unlistedProfile];
       return route.fulfill({ json: { profiles, majors: [] } });
     });
-    // Single read: role-aware, exactly like the server — a brother 404s the unlisted
-    // record; an admin gets it.
+    // Single read: role-aware, exactly like the server — a brother gets the D168
+    // `403 private` for the unlisted record (distinct from the `404` of a record
+    // that isn't there at all); an admin gets it.
     await page.route(/\/api\/profiles\/\d+$/, (route) => {
       const id = idFromUrl(route);
       const role = effective ?? "admin";
       if (id === UNLISTED_ID && role === "brother") {
-        return route.fulfill({ status: 404, json: { error: "not_found" } });
+        return route.fulfill({ status: 403, json: { error: "private" } });
       }
       const profile = id === UNLISTED_ID ? unlistedProfile : ownProfile;
       return route.fulfill({ headers: { ETag: "v1" }, json: profile });
@@ -207,15 +208,20 @@ test.describe("5.5c app shell + session (OFC-202/193/63/192)", () => {
     await page.goto(`/brother/${UNLISTED_ID}`);
     await expect(page.getByRole("heading", { name: "Hidden Member" })).toBeVisible();
 
-    // Step 2 — view as brother: the record is correctly not found.
+    // Step 2 — view as brother: the record is correctly withheld, and says so in
+    // the words of a deliberate state rather than of a broken link (D168).
     await openAvatarMenu(page);
     await page.getByRole("button", { name: "View as Brother" }).click();
-    await expect(page.getByRole("heading", { name: "Brother not found" })).toBeVisible();
+    const privateHeading = page.getByRole("heading", {
+      name: "This brother's information is private",
+    });
+    await expect(privateHeading).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Brother not found" })).toBeHidden();
 
     // Step 3 — stop viewing as: back to admin, the record must be visible again.
     await openAvatarMenu(page);
     await page.getByRole("button", { name: "Stop viewing as Brother" }).click();
-    await expect(page.getByRole("heading", { name: "Brother not found" })).toBeHidden();
+    await expect(privateHeading).toBeHidden();
     await expect(page.getByRole("heading", { name: "Hidden Member" })).toBeVisible();
   });
 });

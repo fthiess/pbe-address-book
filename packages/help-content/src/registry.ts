@@ -241,8 +241,13 @@ export const helpContent: HelpContent = {
     whenOn: "You appear in the directory for all brothers.",
     whenOff:
       "You don't appear in the directory for other brothers; managers and administrators can still see your record.",
+    // The last sentence is the D168 disclosure. It is not a nicety: a brother
+    // choosing this switch is entitled to know the one place his record leaves a
+    // mark, and the previous copy's "none of your information" overstated the
+    // guarantee — the Big-Brother pointer is a `public` field on someone *else's*
+    // record, so it was never ours to hide. What is hidden is who he is.
     toggleTip:
-      "This switch lets you be “unlisted”, so none of your information is visible to the brotherhood at large. You'll still be in PBE's official records, and Address Book staff can still see your information.",
+      "This switch lets you be “unlisted”, so none of your information is visible to the brotherhood at large. You'll still be in PBE's official records, and Address Book staff can still see your information. One thing does remain visible: on the profile of your Big Brother or a Little Brother, other brothers see that a brother is there, marked “Info is private” — never your name, photo, or anything else about you.",
   },
 
   // ── Admin (D111; PRD §5.8) — descriptions folded off the cards so the manual reads them too ──

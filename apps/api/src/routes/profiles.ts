@@ -152,16 +152,26 @@ function registerBulkRead(app: FastifyInstance, { cache, gate }: ProfileRouteDep
  *
  * The owner sees their own record in full ({@link projectSelf}); everyone else
  * sees the role projection. A **brother** asking for a whole-record-hidden record
- * (`unlisted`/`debrothered`, D124/D115) gets `404` — the single-record
+ * (`unlisted`/`debrothered`, D124/D115) gets `403 private` — the single-record
  * consequence of the directory hide; managers/admins project it normally.
+ *
+ * D168 split that `403` out of the `404` D124 had left as "404/403": one
+ * catch-all "this record doesn't exist, or it isn't visible to you" was read by
+ * UAT as a broken link. The residual disclosure — a brother can now learn which
+ * ids are withheld — is one a brother can already derive from the gaps in the
+ * dense, sequential Constitution ids his own roster carries, and the reply never
+ * says *which* hide applies (Forrest's call, 2026-08-07).
+ *
+ * The response body additionally carries {@link hiddenLittleBrotherCount}, the
+ * one signal that lets the SPA show that a withheld Little Brother exists at all.
  */
 function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteDeps): void {
   app.get("/api/profiles/:id", { preHandler: gate }, async (request, reply) => {
-    // `no-store` on every branch this handler emits (400/404/200), set before any
-    // reply — not just the success path (OFC-192). This read's visibility is
-    // per-role: the *same* URL is a `404` for a brother (an unlisted/de-brothered
-    // record, D124/D115) and a `200` for an admin. A cacheable `404` lets a shared
-    // cache replay the brother's `404` to the admin's later request for the same id —
+    // `no-store` on every branch this handler emits (400/403/404/200), set before
+    // any reply — not just the success path (OFC-192). This read's visibility is
+    // per-role: the *same* URL is a `403` for a brother (an unlisted/de-brothered
+    // record, D124/D115) and a `200` for an admin. A cacheable `403` lets a shared
+    // cache replay the brother's `403` to the admin's later request for the same id —
     // the record "disappears" and stays gone across a hard reload and a new tab (the
     // shared-cache signature). Confirmed on staging: Firebase Hosting (which fronts
     // Cloud Run, D126) injects a default `Cache-Control: max-age=600` on `/api/**`
@@ -175,8 +185,8 @@ function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteD
       return reply.code(401).send({ error: "unauthenticated", message: "Sign in to continue." });
     }
     // Identity (who/own-row) stays real; the **effective** role drives the
-    // projection and the brother-hidden 404 — a "View as brother" admin sees the
-    // brother projection and 404s on hidden records, exactly as a brother would (N31).
+    // projection and the brother-hidden 403 — a "View as brother" admin sees the
+    // brother projection and 403s on hidden records, exactly as a brother would (N31).
     const actor = session.identity;
     const role = effectiveRole(session);
     const id = parseId(request);
@@ -191,11 +201,55 @@ function registerRecordRead(app: FastifyInstance, { cache, gate }: ProfileRouteD
 
     const isOwner = actor.profileId === id;
     if (!isOwner && role === "brother" && hiddenFromBrothers(stored)) {
-      return reply.code(404).send({ error: "not_found", message: "No such brother." });
+      return reply
+        .code(403)
+        .send({ error: "private", message: "This brother's information is private." });
     }
 
-    return sendRecord(reply, stored, role, isOwner, cache.concurrencyToken(id) ?? "");
+    return sendRecord(
+      reply,
+      stored,
+      role,
+      isOwner,
+      cache.concurrencyToken(id) ?? "",
+      hiddenLittleBrotherCount(cache, id, role),
+    );
   });
+}
+
+/**
+ * How many of this record's Little Brothers are hidden from the caller (D168) —
+ * `undefined` for managers and admins, who see every record and so resolve the
+ * whole edge from their own roster.
+ *
+ * Little Brothers are **derived**, not stored: the SPA computes them by filtering
+ * its roster for records naming this id as their Big Brother (PRD §5.7.4). A
+ * whole-record hide omits those records from the brother roster entirely, so for
+ * that viewer the edge is not merely nameless — it is absent from the client's
+ * data, and no client-side work can recover it. That is why an unlisted Little
+ * Brother used to render exactly like *no* Little Brother, collapsing the whole
+ * Relationships section (OFC-392). The Big-Brother direction never had the
+ * problem, because `bigBrotherId` is `public` and rides on the record being read.
+ *
+ * A bare count, never ids: the viewer learns only that someone is there. It is
+ * derived per-request rather than projected onto the record, so it stays off the
+ * `Profile` type and out of `FIELD_VISIBILITY` — whose exhaustiveness over
+ * `keyof Profile` is the guarantee that no *stored* field can leak by being
+ * forgotten (N9), and which a derived, role-dependent count would only muddy.
+ *
+ * ⚠ The count includes the viewer himself when he is both unlisted and a Little
+ * Brother of this record: his own record is omitted from the brother-role bulk
+ * roster too (there is no self-overlay), so from the roster's point of view he is
+ * exactly as hidden as anyone else. He sees one "Info is private" entry that is
+ * him. Excluding him would restore the original bug for the one reader most
+ * likely to notice it, so it is left in deliberately.
+ */
+function hiddenLittleBrotherCount(cache: ProfileCache, id: number, role: Role): number | undefined {
+  if (role !== "brother") {
+    return undefined;
+  }
+  const hidden = cache.referrersOf(id).filter(hiddenFromBrothers).length;
+  return hidden > 0 ? hidden : undefined;
 }
 
 /**
@@ -984,10 +1038,21 @@ function sendRecord(
   role: Role,
   isOwner: boolean,
   token: string,
+  /**
+   * The D168 derived count, folded in as a sibling of the projected fields. It is
+   * **not** a `Profile` field — it describes records *other* than this one — so it
+   * is added here rather than by the projection, which stays a pure per-field
+   * filter over stored data. Additive and optional, so every existing consumer of
+   * this body is unaffected. Only the record read supplies it; the create and
+   * PATCH replies leave it undefined, where it would be meaningless anyway.
+   */
+  hiddenLittleBrothers?: number,
 ): FastifyReply {
-  const body: ProjectedProfile | SelfProfile = isOwner
+  const projected: ProjectedProfile | SelfProfile = isOwner
     ? projectSelf(profile)
     : projectRecord(profile, role);
+  const body =
+    hiddenLittleBrothers === undefined ? projected : { ...projected, hiddenLittleBrothers };
   return (
     reply
       .header("Cache-Control", "no-store")

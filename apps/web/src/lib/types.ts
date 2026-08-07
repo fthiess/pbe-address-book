@@ -28,7 +28,24 @@ export interface ProfilesResponse {
  * optional and reads them defensively (the Profile page, like the Directory,
  * cannot tell "not visible" from "not set").
  */
-export type ProfileRecord = Partial<Profile> & Pick<Profile, "id">;
+export type ProfileRecord = Partial<Profile> & Pick<Profile, "id"> & RecordExtras;
+
+/**
+ * The derived, non-`Profile` fields the record read adds alongside the projected
+ * ones (D168). Deliberately a separate shape: these describe records *other* than
+ * the one being read, so they are not stored fields and must not be mistaken for
+ * any — in particular they never travel through the visibility table or a PATCH.
+ */
+export interface RecordExtras {
+  /**
+   * How many of this brother's Little Brothers are hidden from the viewer.
+   * Present only for the brother role, and only when non-zero. The Little-Brother
+   * edge is derived by filtering the roster on `bigBrotherId`, and a hidden record
+   * is absent from that roster entirely, so this count is the *only* evidence the
+   * SPA has that a withheld Little Brother exists (OFC-392).
+   */
+  hiddenLittleBrothers?: number;
+}
 
 /** `GET /api/me` — the caller's own private state and own full record (D82). */
 export interface Me {
