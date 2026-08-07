@@ -6,6 +6,7 @@ import { ControlHelp } from "../../components/ControlHelp.js";
 import type { DirectoryProfile } from "../../lib/types.js";
 import { useNameSearch } from "../directory/search/useNameSearch.js";
 import { RelationshipChip } from "./RelationshipChip.js";
+import type { DirectoryNavState } from "./directory-nav.js";
 import { FIELD_LABEL_CLASS, Section } from "./fields.js";
 import { bigBrotherEntry, littleBrotherEntries, rosterNames } from "./relationships.js";
 
@@ -27,6 +28,7 @@ export function RelationshipsEditor({
   hiddenLittleBrothers,
   onChange,
   error,
+  branchState,
 }: {
   selfId: number;
   roster: DirectoryProfile[] | null;
@@ -36,6 +38,8 @@ export function RelationshipsEditor({
   hiddenLittleBrothers?: number;
   onChange: (id: number | null) => void;
   error?: string;
+  /** The directory-return state to carry across a chip hop (D170) — see {@link RelationshipChip}. */
+  branchState: DirectoryNavState | undefined;
 }) {
   const errorId = useId();
   const names = useMemo(() => (roster ? rosterNames(roster) : null), [roster]);
@@ -82,6 +86,7 @@ export function RelationshipsEditor({
             <RelationshipChip
               id={big.kind === "private" ? null : big.id}
               name={bigChipLabel}
+              state={branchState}
               onRemove={() => onChange(null)}
               removeLabel={
                 bigBrotherName ? `Remove Big Brother ${bigBrotherName}` : "Remove Big Brother"
@@ -128,6 +133,7 @@ export function RelationshipsEditor({
                 <RelationshipChip
                   id={little.kind === "private" ? null : little.id}
                   name={little.kind === "known" ? little.name : "Info is private"}
+                  state={branchState}
                 />
               </li>
             ))}

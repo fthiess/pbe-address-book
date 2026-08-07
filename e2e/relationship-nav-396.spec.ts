@@ -27,13 +27,14 @@ function baseRecord(
   firstName: string,
   lastName: string,
   classYear: number,
-  overrides: Record<string, unknown> = {},
+  bigBrotherId?: number,
 ) {
   return {
     id,
     firstName,
     lastName,
     classYear,
+    bigBrotherId,
     deceased: { isDeceased: false },
     debrothered: { isDebrothered: false },
     hasHeadshot: false,
@@ -49,14 +50,14 @@ function baseRecord(
     allowShareWithMITAA: false,
     lastModified: "2026-03-14T12:00:00.000Z",
     newsletterConsentChangedAt: "2026-03-14T12:00:00.000Z",
-    ...overrides,
   };
 }
 
 // Adams's Big Brother is Smyth, so following the link from Adams lands on a
-// brother who is himself in the directory set.
+// brother who is himself in the directory set — and, read the other way, Smyth has
+// Adams as a Little Brother, which is how the reverse edge gets exercised too.
 const RECORDS: Record<number, ReturnType<typeof baseRecord>> = {
-  5300: baseRecord(5300, "Aaron", "Adams", 1980, { bigBrotherId: 5247 }),
+  5300: baseRecord(5300, "Aaron", "Adams", 1980, 5247),
   5247: baseRecord(5247, "James", "Smyth", 1984),
   5301: baseRecord(5301, "Carl", "Young", 1990),
 };
@@ -71,6 +72,10 @@ const ME = {
   profile: RECORDS[5301],
 };
 
+// ⚠ `bigBrotherId` must ride on the ROSTER entries, not just the full records:
+// Little Brothers are a derived reverse edge computed by filtering the roster on
+// `bigBrotherId` (D168), so a fixture that drops it from the roster can never
+// render a Little-Brother link at all — the test would pass for the wrong reason.
 const LIST = {
   profiles: Object.values(RECORDS).map((r) => ({
     id: r.id,
@@ -79,6 +84,7 @@ const LIST = {
     classYear: r.classYear,
     deceased: { isDeceased: false },
     hasHeadshot: false,
+    bigBrotherId: r.bigBrotherId,
   })),
   majors: [],
 };
@@ -156,6 +162,25 @@ test.describe("relationship links carry the directory-return state (OFC-396)", (
     await expect(page.getByRole("button", { name: "Next brother" })).toBeEnabled();
   });
 
+  test("the Little Brother direction carries it too, not just Big Brother", async ({ page }) => {
+    // Both directions render through the same RelationshipEntryView, but D168's
+    // history is that this reverse edge fails *differently* from the Big-Brother
+    // one — it is derived by filtering the roster, so it has its own ways to go
+    // wrong. Exercise it rather than infer it from the shared component.
+    await mock(page);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+
+    await openRow(page, "Smyth");
+    // Adams names Smyth as his Big Brother, so he is Smyth's Little Brother.
+    await page.getByRole("link", { name: /Adams/ }).first().click();
+    await expect(page.getByRole("heading", { level: 1, name: /Adams/ })).toBeVisible();
+
+    await expect(page.getByRole("link", { name: /Directory/ })).toHaveCount(0);
+    await page.getByRole("button", { name: /Directory/ }).click();
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+  });
+
   test("a relationship hop stays a push, so Back returns to the brother you came from", async ({
     page,
   }) => {
@@ -188,6 +213,72 @@ test.describe("relationship links carry the directory-return state (OFC-396)", (
 
     const back = page.getByRole("link", { name: /Directory/ });
     await expect(back).toHaveAttribute("href", "/");
+  });
+
+  test("a hop chain past the history cap falls back to rebuilding the Directory (D169)", async ({
+    page,
+  }) => {
+    // D170 re-introduces delta growth that D169 removed from Prev/Next, and its
+    // safety claim is that D169's guard bounds it. That guard's fallback — rebuild
+    // the Directory from its stashed URL when the entry has been pruned — had NO
+    // end-to-end coverage: OFC-395's long-chain test proves the *pop* works,
+    // because replacing keeps delta at 1 so the fallback never fires there. A
+    // relationship chain is the one path that reaches it, so it is tested here.
+    //
+    // 60 hops puts delta at ~61 against a stack Chrome caps at 50, so
+    // `directoryEntryIsReachable` is provably false and the URL rebuild is what
+    // returns the filtered view.
+    const CHAIN = 60;
+    const chain: Record<number, ReturnType<typeof baseRecord>> = {};
+    for (let i = 0; i <= CHAIN; i++) {
+      const id = 5400 + i;
+      // Each brother's Big Brother is the next in the line, so one link is always
+      // there to follow.
+      chain[id] = baseRecord(id, "Walker", `Hop${String(i).padStart(2, "0")}`, 1980, 5400 + i + 1);
+    }
+    const list = {
+      profiles: Object.values(chain).map((r) => ({
+        id: r.id,
+        firstName: r.firstName,
+        lastName: r.lastName,
+        classYear: r.classYear,
+        deceased: { isDeceased: false },
+        hasHeadshot: false,
+        bigBrotherId: r.bigBrotherId,
+      })),
+      majors: [],
+    };
+    await page.route("**/api/me", (route) => route.fulfill({ json: ME }));
+    await page.route("**/api/profiles", (route) => route.fulfill({ json: list }));
+    await page.route(/\/api\/profiles\/\d+$/, (route) => {
+      const id = Number(
+        route
+          .request()
+          .url()
+          .match(/\/(\d+)$/)?.[1],
+      );
+      const record = chain[id];
+      if (!record) {
+        return route.fulfill({ status: 404, json: { error: "not_found" } });
+      }
+      return route.fulfill({ headers: { ETag: 'W/"v1"' }, json: record });
+    });
+
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    await page.getByRole("searchbox").fill("Hop");
+    await openRow(page, "Hop00");
+
+    for (let i = 1; i <= CHAIN; i++) {
+      const target = new RegExp(`Hop${String(i).padStart(2, "0")}`);
+      await page.getByRole("link", { name: target }).first().click();
+      await expect(page.getByRole("heading", { level: 1, name: target })).toBeVisible();
+    }
+
+    // Dead before D169's guard; now it rebuilds the view from the stashed URL.
+    await page.getByRole("button", { name: /Directory/ }).click();
+    await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
+    await expect(page.getByRole("searchbox")).toHaveValue("Hop");
   });
 
   test("the avatar menu's 'My profile' keeps the Directory you were working in", async ({
