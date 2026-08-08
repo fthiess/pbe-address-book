@@ -271,15 +271,23 @@ describe("buildFilterPredicate — Unlisted and De-brothered (staff-only, OFC-39
     p({ id: 3, unlisted: false, debrothered: { isDebrothered: true } }),
     p({ id: 4 }), // neither field on the wire → hidden by neither
   ];
-  const kept = (filters: Parameters<typeof buildFilterPredicate>[0], viewer: "brother" | "admin") =>
-    rows.filter(buildFilterPredicate(filters, viewer)).map((r) => r.id);
+  const kept = (
+    filters: Parameters<typeof buildFilterPredicate>[0],
+    viewer: "brother" | "manager" | "admin",
+  ) => rows.filter(buildFilterPredicate(filters, viewer)).map((r) => r.id);
 
+  // Both staff roles, not just admin: `canUseStaffFilters` gates on manager OR
+  // admin, so an admin-only assertion would pass unchanged if the gate were ever
+  // narrowed to admin — and "managers and administrators" is what the panel's own
+  // divider and the user manual promise.
   it("keeps only unlisted records for staff", () => {
     expect(kept({ ...EMPTY_FILTERS, unlisted: "yes" }, "admin")).toEqual([2]);
+    expect(kept({ ...EMPTY_FILTERS, unlisted: "yes" }, "manager")).toEqual([2]);
   });
 
   it("keeps only de-brothered records for staff", () => {
     expect(kept({ ...EMPTY_FILTERS, debrothered: "yes" }, "admin")).toEqual([3]);
+    expect(kept({ ...EMPTY_FILTERS, debrothered: "yes" }, "manager")).toEqual([3]);
   });
 
   it("AND-composes: no record is both, so the pair yields nothing", () => {

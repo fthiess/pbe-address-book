@@ -2,9 +2,14 @@ import { type Page, expect, test } from "@playwright/test";
 
 /**
  * The pinned control cells' **hit target** (OFC-397). Both the Select checkbox and
- * the Star are documented to fill their whole cell (`fill` → `size-full`, with the
- * cell at `p-0`) so that a click anywhere in the cell works the control and never
- * falls through to the row's open-profile handler (§5.6.7, WCAG 2.5.8).
+ * the Star fill their whole cell — `fill` → **`absolute inset-0`** against a
+ * positioned cell at `p-0` — so that a click anywhere in the cell works the control
+ * and never falls through to the row's open-profile handler (§5.6.7, WCAG 2.5.8).
+ *
+ * ⚠ `size-full` is what this replaced, and it is what these tests exist to keep out:
+ * `height: 100%` needs a containing block with a *definite* height, which a `<td>`
+ * does not supply, so the controls silently stood 16px tall in a 56px row. Read
+ * `RowControls`' module note before touching either half of the mechanism.
  *
  * ⚠ **The pre-existing guard in `directory-3c.spec.ts` cannot see this.** It drives
  * the control with Playwright's `.check()` / `.click()`, which target the *element's*

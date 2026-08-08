@@ -29,7 +29,10 @@ export interface DirectoryQuery {
   includeDeceased: boolean;
   /**
    * Whether the structured **Deceased filter** is asking for deceased brothers
-   * (OFC-399/D171) — i.e. `filters.deceased === "yes"`.
+   * (OFC-399/D171) — i.e. `filters.deceasedOnly === "yes"`. ⚠ `deceasedOnly`, not
+   * `deceased`: the latter is the D36 URL toggle, and keeping the two names apart is
+   * the whole reason this override is needed rather than a second parser on one key
+   * (see the field's own note in `filters.ts`).
    *
    * ⚠ This is a second, independent way to switch the living-only default off, and
    * it exists because without it the new filter would have been **unusable in its

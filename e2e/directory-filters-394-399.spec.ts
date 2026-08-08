@@ -9,7 +9,7 @@ import { type Page, expect, test } from "@playwright/test";
  * first would pass just as well against the old layout.
  */
 
-function meFor(role: "admin" | "brother") {
+function meFor(role: "admin" | "manager" | "brother") {
   return {
     profileId: 5002,
     role,
@@ -101,7 +101,11 @@ const PROFILES = {
   majors: [],
 };
 
-async function gotoDirectory(page: Page, role: "admin" | "brother" = "admin", url = "/") {
+async function gotoDirectory(
+  page: Page,
+  role: "admin" | "manager" | "brother" = "admin",
+  url = "/",
+) {
   await page.route("**/api/me", (route) => route.fulfill({ json: meFor(role) }));
   await page.route("**/api/profiles", (route) => route.fulfill({ json: PROFILES }));
   await page.route("**/img/thumbnails/**", (route) => route.fulfill({ status: 404 }));
@@ -229,6 +233,16 @@ test.describe("OFC-399 — Unlisted and De-brothered (staff only)", () => {
     await page.getByLabel("De-brothered", { exact: true }).selectOption("yes");
     await expect(row(page, /Dexter Dropped/)).toBeVisible();
     await expect(row(page, /Aaron Adams/)).toHaveCount(0);
+  });
+
+  test("a MANAGER is offered both, not just an admin", async ({ page }) => {
+    // `canUseStaffFilters` gates on manager OR admin, and the panel's own divider
+    // says "managers & admins" — so an admin-only assertion would pass unchanged if
+    // the gate were ever narrowed. Exercise the role that would go silently missing.
+    await gotoDirectory(page, "manager");
+    await filtersFold(page).click();
+    await expect(page.getByLabel("Unlisted", { exact: true })).toBeVisible();
+    await expect(page.getByLabel("De-brothered", { exact: true })).toBeVisible();
   });
 
   test("a brother is offered neither — filterable ⟺ visible", async ({ page }) => {
