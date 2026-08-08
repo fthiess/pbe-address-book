@@ -296,17 +296,29 @@ export function Directory() {
   );
 
   // Reset clears Name Search, all filters, and the sort — but not the column lens (D38).
+  // Reset clears every dimension that narrows *which brothers are listed*, wherever
+  // it is held — the URL, History state, or a checkbox (N169, Forrest's call after
+  // live-testing N166). ⚠ "Starred only" was originally left out because it is a
+  // view toggle rather than a structured filter. That distinction is real but not
+  // one a user has any reason to draw: it sits in the same control group as
+  // "Include deceased", which Reset does clear, so leaving exactly one of an
+  // adjacent pair standing read as a bug rather than as a principle.
   const onReset = useCallback(() => {
     void setQ("");
     void setIncludeDeceased(false);
+    setStarredOnly(false);
     filters.reset();
     sort.reset();
-  }, [setQ, setIncludeDeceased, filters, sort]);
+  }, [setQ, setIncludeDeceased, setStarredOnly, filters, sort]);
 
   // Whether Reset would change anything — one term per thing `onReset` clears, so
-  // the two stay honest together (OFC-394). "Starred only" and the column lens are
-  // absent on purpose: Reset does not touch either, and the label does not claim to.
-  const canReset = filters.activeCount > 0 || q.trim() !== "" || includeDeceased || !sort.isDefault;
+  // the two stay honest together (OFC-394). ⚠ The column lens stays absent: Reset
+  // does not touch it and the label does not claim to. ⚠ This is deliberately NOT
+  // the masthead clean-slate's list either — that also drops the row selection,
+  // which persists across views by design and has its own explicit Clear in the
+  // action bar (N79), so it is not something Reset should silently discard.
+  const canReset =
+    filters.activeCount > 0 || q.trim() !== "" || includeDeceased || starredOnly || !sort.isDefault;
 
   const loading = profiles === null && !error;
   const showOverlay = useDelayedFlag(loading, OVERLAY_DELAY_MS);

@@ -42,19 +42,23 @@ export interface FilterPanelProps {
   options: FilterOptions;
   role: Role;
   activeCount: number;
-  /** Clears Name Search, all filters, and the sort — but not the column lens (D38). */
+  /**
+   * Clears Name Search, all filters, the sort, "Include deceased" and "Starred
+   * only" (N169) — but not the column lens (D38) and not the row selection.
+   */
   onReset: () => void;
   /**
    * Whether {@link onReset} would actually change anything — the Reset button's
    * enabled state (OFC-394).
    *
    * ⚠ **Deliberately not `activeCount > 0`.** That was the old test, and it was
-   * already wrong: Reset clears the Name Search, the sort and "Include deceased"
-   * as well as the filters, so a view narrowed *only* by the search box offered a
-   * greyed-out Reset. Invisible while the button was buried in the fold; the whole
-   * point of moving it to the header is the case where someone wants to clear a
-   * search, so the enabled test has to cover everything Reset touches. The count
-   * badge still reports filters alone — it answers a different question.
+   * already wrong: Reset clears the Name Search, the sort, "Include deceased" and
+   * "Starred only" as well as the filters, so a view narrowed *only* by the search
+   * box offered a greyed-out Reset. Invisible while the button was buried in the
+   * fold; the whole point of moving it to the header is the case where someone
+   * wants to clear a search, so the enabled test has to cover everything Reset
+   * touches. The count badge still reports filters alone — it answers a different
+   * question.
    */
   canReset: boolean;
 }
@@ -250,9 +254,11 @@ export function FilterPanel({
 
 /**
  * "Reset search & filters" — one button, rendered once, on the panel header row
- * (OFC-394). Clears the Name Search, every structured filter, the sort and
- * "Include deceased"; it deliberately leaves the column lens (D38) and "Starred
- * only" alone, neither of which the label claims.
+ * (OFC-394). Clears the Name Search, every structured filter, the sort, "Include
+ * deceased" and "Starred only" (N169) — everything that narrows which brothers are
+ * listed. It deliberately leaves the **column lens** (D38, which changes what each
+ * row shows, not which rows there are) and the **row selection** (N79, which has
+ * its own Clear in the action bar) alone.
  */
 function ResetButton({ onReset, canReset }: { onReset: () => void; canReset: boolean }) {
   return (

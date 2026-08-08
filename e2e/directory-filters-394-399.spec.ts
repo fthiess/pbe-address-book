@@ -157,6 +157,23 @@ test.describe("OFC-394 — Reset lives on the Filters header row", () => {
     await expect(resetButton(page)).toBeEnabled();
   });
 
+  test("clears 'Starred only', and is enabled by it alone (N169)", async ({ page }) => {
+    // ⚠ "Starred only" is History-state, not URL state (stars are per-viewer and
+    // must never travel in a shared link), so it cannot be set by deep link the way
+    // every other case here is — it has to be driven through the checkbox.
+    await gotoDirectory(page);
+    await page.getByRole("checkbox", { name: "Starred only" }).check();
+    await expect(resetButton(page)).toBeEnabled();
+
+    await resetButton(page).click();
+
+    await expect(page.getByRole("checkbox", { name: "Starred only" })).not.toBeChecked();
+    // The view really came back, not just the checkbox: nothing is starred in this
+    // fixture, so a still-restricted grid would be empty.
+    await expect(row(page, /Aaron Adams/)).toBeVisible();
+    await expect(resetButton(page)).toBeDisabled();
+  });
+
   test("is disabled on a pristine view", async ({ page }) => {
     await gotoDirectory(page);
     await expect(resetButton(page)).toBeDisabled();

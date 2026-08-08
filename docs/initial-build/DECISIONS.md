@@ -3187,6 +3187,8 @@ Two further cases came out of the code review. ⚠ **The first fixture could not
 
 ⚠ **The move exposed a pre-existing bug, and fixing it was in scope** (Forrest's call). Reset was `disabled={activeCount === 0}` — but `activeCount` counts only the *structured filters*, while `onReset` also clears the Name Search, the sort and "Include deceased". A view narrowed purely by the search box therefore offered a greyed-out Reset. That was invisible while the button was buried in a fold; it is the **first thing you meet** once it is on the header row, and the ticket's own motivation was the search case. The enabled test is now one term per thing Reset touches (`canReset`), with `DirectorySort.isDefault` exposed so the call site does not restate what the default sort is. The badge still counts filters alone — it answers a different question. "Starred only" and the column lens stay absent: Reset does not touch either, and the label does not claim to.
 
+*Later updated by: N169 — Reset now clears "Starred only" as well; live testing rejected the view-toggle-vs-filter distinction this entry drew.*
+
 ### N167 — The pinned Select and Star cells were **16px tall, not 56**: `height: 100%` never resolved inside a `<td>` *(UAT bug — OFC-397)*
 
 **The bug.** Ticking a brother on the Directory kept opening his profile instead. A click a few pixels above or below the checkbox missed the control, reached the row, and navigated — punishing exactly the fine-motor users WCAG 2.5.8 exists for, in the one workflow (select many rows, then Export or Copy Emails) where the click is repeated dozens of times.
@@ -3200,3 +3202,13 @@ Fixed for **both** controls, not just the reported one — Star uses the identic
 ### N168 — The Big Brother picker is **one column wide**, like every other field on the page *(UAT cosmetic — OFC-384)*
 
 Relationships is a full-width row so the Little Brothers chips can wrap across it, and the Big Brother combobox silently inherited that width — leaving one control stretched edge to edge among half-width neighbours. Its wrapper now repeats `EditRow`'s own grid (`gap-x-12` + `md:grid-cols-2`) with a single occupied cell, rather than hand-computing `calc(50% - 1.5rem)`, so the two stay aligned if that row's geometry is ever retuned. Little Brothers keeps the full width.
+
+### N169 — Reset clears **"Starred only"** too. Amends N166 *(UAT live test — OFC-394)* **(Forrest's call)**
+
+N166 shipped Reset clearing the Name Search, every structured filter, the sort and "Include deceased", and deliberately **not** "Starred only" — on the reasoning that the latter is a *view toggle* rather than a structured filter, and that the button's label does not claim it. That reasoning was flagged for live testing precisely because moving the button to the header row made the omission conspicuous, and live testing duly rejected it.
+
+**Forrest's call, and the transferable part of it: the distinction was real but not one the user has any reason to draw.** "Starred only" and "Include deceased" sit in the *same control group*, rendered by the same `quickToggles` block, one checkbox apart — and Reset clears one of them. An adjacent pair treated differently reads as a bug, whatever principle separates them internally. The governing question for a "reset" affordance is not "which state category is this?" but **"does it narrow which brothers are listed?"** — and by that test both belong.
+
+⚠ **What Reset still does not touch, and why each is a different case rather than an inconsistency.** The **column lens** (D38) changes what each row *shows*, not which rows exist, so it fails the governing test above. The **row selection** (N79) does not narrow the view at all, persists across filters by design, and already has its own explicit **Clear selection** in the action bar — Reset silently discarding a selection assembled across several filters would be a data-loss surprise, not a convenience. So Reset's list is deliberately **not** the masthead clean-slate's list (N80/OFC-194), which does drop the selection because "home, fresh" is a different promise from "clear the view".
+
+⚠ **"Starred only" is History-API state, not URL state** (`useHistoryFlag`, D39/D31 — stars are per-viewer and must never travel in a shared link), so unlike every other dimension Reset clears it cannot be set by deep link. Its e2e case has to drive the checkbox; the others can arrive by URL.
