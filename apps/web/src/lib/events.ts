@@ -193,8 +193,21 @@ export const FILTER_DIMENSIONS = {
   // nothing about *whom* he was looking for — and the underlying field is public
   // anyway, unlike the toggle/restricted case the note above warns about (D166).
   willingToMentor: "Willing to Mentor",
+  // Same P6 reading as Willing to Mentor: `deceased` is a public field, and the
+  // dimension says only that someone narrowed to brothers who have passed — not
+  // which one, and the URL that would name him is stripped by BLOCKED_PROPERTIES.
+  deceasedOnly: "Deceased",
   email: "Has Email",
   phone: "Has Phone",
+  // ⚠ These two are the closest this map comes to the note above's warning, so the
+  // reasoning is written down rather than assumed. They pass, for two reasons that
+  // must BOTH hold: the dimension names a *staff workflow* ("someone gathered the
+  // unlisted records"), never a brother — and only managers and admins can set
+  // them at all, so the event cannot reveal that some particular brother went
+  // looking. If either ever stops holding, drop the entry and add a named
+  // exception to the completeness test; do not keep the label to satisfy it.
+  unlisted: "Unlisted",
+  debrothered: "De-brothered",
   allowNewsletterEmail: "Newsletter Consent",
   allowShareWithMITAA: "MITAA Consent",
   verification: "Verification",

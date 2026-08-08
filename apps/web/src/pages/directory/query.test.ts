@@ -16,9 +16,13 @@ const ids = (rows: DirectoryProfile[]) => rows.map((r) => r.id);
 const base = {
   matchedIds: null,
   includeDeceased: false,
+  deceasedRequested: false,
   starredOnly: false,
   stars: new Set<number>(),
 };
+
+/** The Deceased filter's own clause, as `buildFilterPredicate` composes it (OFC-399). */
+const deceasedClause = (row: DirectoryProfile) => row.deceased?.isDeceased === true;
 
 describe("filterRows — deceased default (D36)", () => {
   it("hides deceased brothers by default", () => {
@@ -27,6 +31,47 @@ describe("filterRows — deceased default (D36)", () => {
 
   it("includes the deceased when the toggle is on", () => {
     expect(ids(filterRows(all, { ...base, includeDeceased: true }))).toEqual([1, 2, 3]);
+  });
+});
+
+describe("filterRows — the Deceased filter overrides the living-only default (D171)", () => {
+  // The regression this override exists to prevent. Without `deceasedRequested`,
+  // "Deceased: Yes" ∧ "living only" is the empty set — and "living only" is the
+  // DEFAULT, so the filter would have shipped returning nothing at all until the
+  // user found a separate checkbox elsewhere on the page.
+  it("returns the deceased even with 'Include deceased' off", () => {
+    const rows = filterRows(all, {
+      ...base,
+      predicate: deceasedClause,
+      deceasedRequested: true,
+    });
+    expect(ids(rows)).toEqual([3]);
+  });
+
+  it("is not enough on its own — the predicate still has to match", () => {
+    // The override only lifts the default; it never *adds* rows. A view that asked
+    // for deceased brothers by a different route must not gain them from this flag.
+    expect(ids(filterRows(all, { ...base, deceasedRequested: true }))).toEqual([1, 2, 3]);
+    expect(ids(filterRows(all, { ...base, deceasedRequested: false }))).toEqual([1, 2]);
+  });
+
+  it("AND-composes with the other filters rather than escaping them", () => {
+    const rows = filterRows(all, {
+      ...base,
+      predicate: (row) => deceasedClause(row) && row.lastName === "Adams",
+      deceasedRequested: true,
+    });
+    expect(ids(rows)).toEqual([]);
+  });
+
+  it("still intersects with an active name search", () => {
+    const rows = filterRows(all, {
+      ...base,
+      predicate: deceasedClause,
+      deceasedRequested: true,
+      matchedIds: new Set([1, 2]),
+    });
+    expect(ids(rows)).toEqual([]);
   });
 });
 

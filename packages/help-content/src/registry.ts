@@ -79,11 +79,35 @@ export const helpContent: HelpContent = {
     toggleTip:
       "Finds brothers who have said they are willing to provide professional information and advice.",
   },
+  // The `?` carries the one thing the control cannot show: that choosing "Yes"
+  // reveals deceased brothers on its own, without also ticking "Include deceased"
+  // (D171). Without that sentence the two controls look contradictory.
+  "directory.filter.deceasedOnly": {
+    key: "directory.filter.deceasedOnly",
+    label: "Deceased",
+    toggleTip:
+      "Shows only brothers who have passed. You do not also need to turn on Include deceased — choosing Yes here shows them by itself.",
+  },
   "directory.filter.staff": {
     key: "directory.filter.staff",
     label: "Staff",
     toggleTip:
       "Use this filter to find PBE Address Book staff — the managers and administrators who have extra powers to help keep brother information up to date and to maintain the system.",
+  },
+  // Manager/admin only, like the columns they mirror. Both say what the state
+  // means as well as what the filter does — "de-brothered" in particular is a rare
+  // enough action that a new manager may never have met the term.
+  "directory.filter.unlisted": {
+    key: "directory.filter.unlisted",
+    label: "Unlisted",
+    toggleTip:
+      "Shows only brothers who have asked to be left out of the Directory. Their records are hidden from other brothers entirely, but stay visible to managers and administrators, marked UNLISTED.",
+  },
+  "directory.filter.debrothered": {
+    key: "directory.filter.debrothered",
+    label: "De-brothered",
+    toggleTip:
+      "Shows only brothers whose membership has been revoked. Like unlisted records, these are hidden from other brothers and visible only to managers and administrators.",
   },
   "directory.filter.verification": {
     key: "directory.filter.verification",

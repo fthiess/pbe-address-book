@@ -211,6 +211,10 @@ export function Directory() {
       matchedIds,
       predicate: filters.predicate,
       includeDeceased,
+      // Asking for deceased brothers by name carries its own inclusion (D171) —
+      // otherwise this filter would return an empty grid in its default state. See
+      // `DirectoryQuery.deceasedRequested`.
+      deceasedRequested: filters.filters.deceasedOnly === "yes",
       starredOnly,
       stars: stars.set,
     });
@@ -219,6 +223,7 @@ export function Directory() {
     profiles,
     matchedIds,
     filters.predicate,
+    filters.filters.deceasedOnly,
     includeDeceased,
     starredOnly,
     stars.set,
@@ -298,6 +303,11 @@ export function Directory() {
     sort.reset();
   }, [setQ, setIncludeDeceased, filters, sort]);
 
+  // Whether Reset would change anything — one term per thing `onReset` clears, so
+  // the two stay honest together (OFC-394). "Starred only" and the column lens are
+  // absent on purpose: Reset does not touch either, and the label does not claim to.
+  const canReset = filters.activeCount > 0 || q.trim() !== "" || includeDeceased || !sort.isDefault;
+
   const loading = profiles === null && !error;
   const showOverlay = useDelayedFlag(loading, OVERLAY_DELAY_MS);
   // The neutral line, not the wake-the-server one: the session fetch has already
@@ -348,6 +358,7 @@ export function Directory() {
       role={role}
       activeCount={filters.activeCount}
       onReset={onReset}
+      canReset={canReset}
     />
   );
   const actionBar = staff ? (

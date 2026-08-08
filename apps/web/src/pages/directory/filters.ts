@@ -39,6 +39,16 @@ export type StaffFilter = "" | "staffOnly";
  * the roster. "Any" already covers everyone the negative case would.
  */
 export type MentorFilter = "" | "yes";
+/**
+ * A **narrow-to-yes** filter: unset ("Any"), or keep only the records where the
+ * flag is true (OFC-399). Deliberately has no "No", for the same reason
+ * {@link MentorFilter} doesn't — but arrived at from the other direction: here the
+ * negative case is not ambiguous, it is simply the overwhelming default (almost
+ * every brother is living, listed and un-de-brothered), so a "No" option would be a
+ * control whose only effect is to remove a handful of records from a view that
+ * already excludes them or shows them plainly marked. "Any" covers it.
+ */
+export type YesFilter = "" | "yes";
 
 /** Every structured filter, in its URL-serialisable form (strings + string lists). */
 export interface DirectoryFilters {
@@ -75,9 +85,45 @@ export interface DirectoryFilters {
    * gate: filterable ⟺ visible holds outright.
    */
   willingToMentor: MentorFilter;
+  /**
+   * All-brothers — keep only brothers who have passed (OFC-399). The flag is
+   * public (the grid badges it, the profile carries the In Memoriam treatment), so
+   * like Mentoring and Staff this needs no role gate.
+   *
+   * ⚠ **Named `deceasedOnly`, not `deceased`, because the URL key `deceased` is
+   * already taken** — it is the D36 "Include deceased" boolean (`deceased=true`,
+   * owned by `Directory.tsx`). Every filter field here maps to a same-named query
+   * param, so calling this one `deceased` would have put two hooks with two
+   * different parsers on one key: the filter would write `deceased=yes`, the
+   * toggle would read that as "not true", and `reset()` would silently clear the
+   * toggle along with the filters. The name also states the semantics correctly —
+   * `deceased=true` *includes*, `deceasedOnly=yes` *narrows to*.
+   *
+   * ⚠ **This filter overrides the living-only default** (Forrest's call, D171).
+   * The Directory hides deceased brothers unless "Include deceased" is ticked
+   * (D36), and that default is applied by the query engine *after* this predicate —
+   * so on its own, "Deceased: Yes" would have intersected with "living only" and
+   * returned an empty grid whenever the box was unticked, which is its default
+   * state. `filterRows` therefore treats an explicit request for deceased brothers
+   * as its own inclusion, exactly as "Starred only" already does (D39). The two
+   * controls are consequently **not** independent: read them together or neither
+   * makes sense.
+   */
+  deceasedOnly: YesFilter;
   /** Staff-only — presence of an email / phone. */
   email: PresenceFilter;
   phone: PresenceFilter;
+  /**
+   * Staff-only — the whole-record hides (OFC-399). Both are classified
+   * `staff-internal`, so they are already in the manager/admin bulk projection and
+   * absent from a brother's entirely: filterable ⟺ visible holds by the same gate
+   * as the restricted columns, and an out-of-role filter could not match anything
+   * even if it were somehow set. They exist so staff can *find* the records the
+   * brother view omits (D124 unlisted / D115 de-brothered) rather than scrolling
+   * for the badge.
+   */
+  unlisted: YesFilter;
+  debrothered: YesFilter;
   /** Staff-only — the consent flags. */
   allowNewsletterEmail: BoolFilter;
   allowShareWithMITAA: BoolFilter;
@@ -97,8 +143,11 @@ export const EMPTY_FILTERS: DirectoryFilters = {
   employer: "",
   staff: "",
   willingToMentor: "",
+  deceasedOnly: "",
   email: "",
   phone: "",
+  unlisted: "",
+  debrothered: "",
   allowNewsletterEmail: "",
   allowShareWithMITAA: "",
   verification: "",
@@ -109,6 +158,8 @@ export const EMPTY_FILTERS: DirectoryFilters = {
 const STAFF_FILTER_KEYS: readonly (keyof DirectoryFilters)[] = [
   "email",
   "phone",
+  "unlisted",
+  "debrothered",
   "allowNewsletterEmail",
   "allowShareWithMITAA",
   "verification",
@@ -137,8 +188,11 @@ export function countActiveFilters(filters: DirectoryFilters): number {
   if (filters.employer.trim()) n++;
   if (filters.staff) n++;
   if (filters.willingToMentor) n++;
+  if (filters.deceasedOnly) n++;
   if (filters.email) n++;
   if (filters.phone) n++;
+  if (filters.unlisted) n++;
+  if (filters.debrothered) n++;
   if (filters.allowNewsletterEmail) n++;
   if (filters.allowShareWithMITAA) n++;
   if (filters.verification) n++;
@@ -287,6 +341,16 @@ export function buildFilterPredicate(
     clauses.push((p) => isWillingToMentor(p));
   }
 
+  // Deceased, all roles (OFC-399): a plain "keep only the flagged records" clause.
+  // ⚠ It does NOT reach in and disable the living-only default — that stays the
+  // query engine's business (`filterRows`), which is where the D36 toggle already
+  // lives; this module remains a pure predicate over one record at a time and knows
+  // nothing about the view's defaults. See the field's doc comment for the
+  // interaction, and `query.ts` for the override that makes it produce rows.
+  if (filters.deceasedOnly === "yes") {
+    clauses.push((p) => p.deceased?.isDeceased === true);
+  }
+
   if (canUseStaffFilters(role)) {
     addStaffClauses(filters, clauses);
   }
@@ -308,6 +372,16 @@ function addStaffClauses(
   };
   presence(filters.email, (p) => Boolean(p.email));
   presence(filters.phone, (p) => Boolean(p.phone));
+
+  // The whole-record hides (OFC-399). Both read defensively: `unlisted` is a bare
+  // boolean and `debrothered` a block, and either can be absent from a projected
+  // record — an absent flag means "not hidden", never "unknown, so keep it".
+  if (filters.unlisted === "yes") {
+    clauses.push((p) => p.unlisted === true);
+  }
+  if (filters.debrothered === "yes") {
+    clauses.push((p) => p.debrothered?.isDebrothered === true);
+  }
 
   const bool = (value: BoolFilter, read: (p: DirectoryProfile) => boolean | undefined) => {
     if (value === "yes") {
