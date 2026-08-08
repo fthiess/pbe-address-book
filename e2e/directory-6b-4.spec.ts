@@ -94,9 +94,16 @@ async function gotoDirectory(page: Page) {
   await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
 }
 
-/** Opens the Filters disclosure and returns the Course filter's <details>. */
+/**
+ * Opens the Filters disclosure and returns the Course filter's <details>.
+ *
+ * ⚠ The name is **anchored**. Playwright's string `name` is a *substring* match, so
+ * a bare `"Filters"` also selects **"Reset search & filters"**, which now sits on
+ * this same header row (OFC-394) — a strict-mode violation, not a miss. Every other
+ * spec already used `/^Filters/`; these two were the outliers.
+ */
 async function openCourseFilter(page: Page) {
-  await page.getByRole("button", { name: "Filters" }).click();
+  await page.getByRole("button", { name: /^Filters/ }).click();
   // The Course multiselect is the only <details> carrying a course description
   // (present in the DOM even while collapsed); the grid shows chips, not names.
   const courseField = page.locator("details", {
@@ -206,7 +213,7 @@ test.describe("directory 6b-4 — UI batch", () => {
 
   test("OFC-266 / OFC-267: filter labels are self-explanatory", async ({ page }) => {
     await gotoDirectory(page);
-    await page.getByRole("button", { name: "Filters" }).click();
+    await page.getByRole("button", { name: /^Filters/ }).click();
 
     await expect(
       page.locator("option", { hasText: "PBE Address Book Managers and Administrators" }),

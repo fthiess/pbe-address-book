@@ -14,6 +14,7 @@ import {
   type PresenceFilter,
   type StaffFilter,
   type VerificationFilter,
+  type YesFilter,
   canUseStaffFilters,
   parseNumericGrammar,
 } from "./filters.js";
@@ -43,6 +44,19 @@ export interface FilterPanelProps {
   activeCount: number;
   /** Clears Name Search, all filters, and the sort — but not the column lens (D38). */
   onReset: () => void;
+  /**
+   * Whether {@link onReset} would actually change anything — the Reset button's
+   * enabled state (OFC-394).
+   *
+   * ⚠ **Deliberately not `activeCount > 0`.** That was the old test, and it was
+   * already wrong: Reset clears the Name Search, the sort and "Include deceased"
+   * as well as the filters, so a view narrowed *only* by the search box offered a
+   * greyed-out Reset. Invisible while the button was buried in the fold; the whole
+   * point of moving it to the header is the case where someone wants to clear a
+   * search, so the enabled test has to cover everything Reset touches. The count
+   * badge still reports filters alone — it answers a different question.
+   */
+  canReset: boolean;
 }
 
 export function FilterPanel({
@@ -52,6 +66,7 @@ export function FilterPanel({
   role,
   activeCount,
   onReset,
+  canReset,
 }: FilterPanelProps) {
   // Start collapsed on every mount, regardless of whether filters are active. The
   // panel's open/closed state is deliberately NOT persisted (Forrest's call): the
@@ -65,25 +80,41 @@ export function FilterPanel({
 
   return (
     <div className="mb-4 rounded-xl border border-border bg-card">
-      <h2>
-        <button
-          type="button"
-          aria-expanded={open}
-          aria-controls={regionId}
-          onClick={() => setOpen((v) => !v)}
-          className="flex w-full items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <span className="flex items-center gap-2">
-            <Chevron open={open} />
-            Filters
-            {activeCount > 0 && (
-              <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
-                {activeCount} active
-              </span>
-            )}
-          </span>
-        </button>
-      </h2>
+      {/* Reset sits on the header row, right-justified, NOT at the foot of the open
+        panel (OFC-394). Coming back from a profile, clearing the view used to mean
+        open the fold → Reset → close it again; and because the control was inside
+        the fold, someone wanting to clear the *search box* had no reason to think
+        to look for it there at all. On the header row it is reachable without
+        opening anything.
+
+        ⚠ The two controls are **siblings**, not nested: Reset cannot go inside the
+        disclosure `<button>` (nested interactive elements are invalid HTML and the
+        inner control is unreachable for assistive tech), which is why the
+        disclosure gives up `w-full` and this flex row owns the layout instead. The
+        `<h2>` wraps only the disclosure, so the heading still names the region it
+        expands and Reset is not read as part of that name. */}
+      <div className="flex items-center gap-2 pr-2">
+        <h2 className="min-w-0 flex-1">
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={regionId}
+            onClick={() => setOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <span className="flex items-center gap-2">
+              <Chevron open={open} />
+              Filters
+              {activeCount > 0 && (
+                <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground">
+                  {activeCount} active
+                </span>
+              )}
+            </span>
+          </button>
+        </h2>
+        <ResetButton onReset={onReset} canReset={canReset} />
+      </div>
 
       {open && (
         <div id={regionId} className="border-border border-t px-4 py-4">
@@ -144,6 +175,13 @@ export function FilterPanel({
               value={filters.willingToMentor}
               onChange={(v) => setFilter("willingToMentor", v, "push")}
             />
+            {/* Deceased sits between Mentoring and Staff (Forrest's call, OFC-399). */}
+            <YesSelect
+              label="Deceased"
+              value={filters.deceasedOnly}
+              onChange={(v) => setFilter("deceasedOnly", v, "push")}
+              helpKey="directory.filter.deceasedOnly"
+            />
             {/* Staff sits last in the all-roles block (Forrest's call, OFC-386): it
               filters on who administers the Book rather than on anything about the
               brother himself, so it reads as the odd one out and belongs at the end. */}
@@ -165,6 +203,21 @@ export function FilterPanel({
                   label="Telephone"
                   value={filters.phone}
                   onChange={(v) => setFilter("phone", v, "push")}
+                />
+                {/* The whole-record hides, between Telephone and the consent flags
+                  (Forrest's call, OFC-399) — they find the records a brother's view
+                  omits entirely (D124/D115). */}
+                <YesSelect
+                  label="Unlisted"
+                  value={filters.unlisted}
+                  onChange={(v) => setFilter("unlisted", v, "push")}
+                  helpKey="directory.filter.unlisted"
+                />
+                <YesSelect
+                  label="De-brothered"
+                  value={filters.debrothered}
+                  onChange={(v) => setFilter("debrothered", v, "push")}
+                  helpKey="directory.filter.debrothered"
                 />
                 <BoolSelect
                   label="Subscribed to PBE News"
@@ -189,20 +242,28 @@ export function FilterPanel({
               </div>
             </div>
           )}
-
-          <div className="mt-4 flex justify-end">
-            <button
-              type="button"
-              onClick={onReset}
-              disabled={activeCount === 0}
-              className="rounded-lg border border-input px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Reset search &amp; filters
-            </button>
-          </div>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * "Reset search & filters" — one button, rendered once, on the panel header row
+ * (OFC-394). Clears the Name Search, every structured filter, the sort and
+ * "Include deceased"; it deliberately leaves the column lens (D38) and "Starred
+ * only" alone, neither of which the label claims.
+ */
+function ResetButton({ onReset, canReset }: { onReset: () => void; canReset: boolean }) {
+  return (
+    <button
+      type="button"
+      onClick={onReset}
+      disabled={!canReset}
+      className="shrink-0 rounded-lg border border-input px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      Reset search &amp; filters
+    </button>
   );
 }
 
@@ -519,6 +580,45 @@ function MentorSelect({
         id={id}
         value={value}
         onChange={(e) => onChange(e.target.value as MentorFilter)}
+        className={inputClass}
+      >
+        <option value="">Any</option>
+        <option value="yes">Yes</option>
+      </select>
+    </Field>
+  );
+}
+
+/**
+ * A **narrow-to-yes** select — "Any / Yes" (OFC-399), the shape {@link YesFilter}
+ * describes. `MentorSelect` above is deliberately *not* folded into this: it carries
+ * its own label, help key and the D166 reasoning for why it has no "No", and
+ * collapsing them would bury that. This one is shared by the three OFC-399 filters,
+ * which differ only in their label and help entry.
+ */
+function YesSelect({
+  label,
+  value,
+  onChange,
+  helpKey,
+}: {
+  label: string;
+  value: YesFilter;
+  onChange: (value: YesFilter) => void;
+  helpKey?: string;
+}) {
+  const id = useId();
+  return (
+    <Field
+      label={label}
+      htmlFor={id}
+      helpKey={helpKey}
+      onClear={value ? () => onChange("") : undefined}
+    >
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value as YesFilter)}
         className={inputClass}
       >
         <option value="">Any</option>

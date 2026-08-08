@@ -171,8 +171,11 @@ describe("countActiveFilters", () => {
       employer: "acme",
       staff: "staffOnly" as const,
       willingToMentor: "yes" as const,
+      deceasedOnly: "yes" as const,
       email: "has" as const,
       phone: "has" as const,
+      unlisted: "yes" as const,
+      debrothered: "yes" as const,
       allowNewsletterEmail: "yes" as const,
       allowShareWithMITAA: "yes" as const,
       verification: "verified" as const,
@@ -231,6 +234,77 @@ describe("buildFilterPredicate — Willing to mentor (all roles, D166/OFC-386)",
   it("constrains nothing when unset", () => {
     const kept = rows.filter(buildFilterPredicate(EMPTY_FILTERS, "brother")).map((r) => r.id);
     expect(kept).toEqual([1, 2, 3, 4]);
+  });
+});
+
+describe("buildFilterPredicate — Deceased (all roles, OFC-399/D171)", () => {
+  const rows = [
+    p({ id: 1, deceased: { isDeceased: false } }),
+    p({ id: 2, deceased: { isDeceased: true } }),
+    p({ id: 3 }), // block absent from the projection → not deceased, never "unknown"
+  ];
+  const keptFor = (viewer: "brother" | "manager" | "admin") =>
+    rows
+      .filter(buildFilterPredicate({ ...EMPTY_FILTERS, deceasedOnly: "yes" }, viewer))
+      .map((r) => r.id);
+
+  it("keeps only brothers flagged deceased", () => {
+    expect(keptFor("brother")).toEqual([2]);
+  });
+
+  it("is available to every viewing role — the flag is public", () => {
+    expect(keptFor("manager")).toEqual([2]);
+    expect(keptFor("admin")).toEqual([2]);
+  });
+
+  it("constrains nothing when unset", () => {
+    expect(rows.filter(buildFilterPredicate(EMPTY_FILTERS, "brother")).map((r) => r.id)).toEqual([
+      1, 2, 3,
+    ]);
+  });
+});
+
+describe("buildFilterPredicate — Unlisted and De-brothered (staff-only, OFC-399)", () => {
+  const rows = [
+    p({ id: 1, unlisted: false, debrothered: { isDebrothered: false } }),
+    p({ id: 2, unlisted: true, debrothered: { isDebrothered: false } }),
+    p({ id: 3, unlisted: false, debrothered: { isDebrothered: true } }),
+    p({ id: 4 }), // neither field on the wire → hidden by neither
+  ];
+  const kept = (
+    filters: Parameters<typeof buildFilterPredicate>[0],
+    viewer: "brother" | "manager" | "admin",
+  ) => rows.filter(buildFilterPredicate(filters, viewer)).map((r) => r.id);
+
+  // Both staff roles, not just admin: `canUseStaffFilters` gates on manager OR
+  // admin, so an admin-only assertion would pass unchanged if the gate were ever
+  // narrowed to admin — and "managers and administrators" is what the panel's own
+  // divider and the user manual promise.
+  it("keeps only unlisted records for staff", () => {
+    expect(kept({ ...EMPTY_FILTERS, unlisted: "yes" }, "admin")).toEqual([2]);
+    expect(kept({ ...EMPTY_FILTERS, unlisted: "yes" }, "manager")).toEqual([2]);
+  });
+
+  it("keeps only de-brothered records for staff", () => {
+    expect(kept({ ...EMPTY_FILTERS, debrothered: "yes" }, "admin")).toEqual([3]);
+    expect(kept({ ...EMPTY_FILTERS, debrothered: "yes" }, "manager")).toEqual([3]);
+  });
+
+  it("AND-composes: no record is both, so the pair yields nothing", () => {
+    expect(kept({ ...EMPTY_FILTERS, unlisted: "yes", debrothered: "yes" }, "admin")).toEqual([]);
+  });
+
+  it("treats an absent flag as 'not hidden', never as a reason to keep the record", () => {
+    // The record with neither field present must not survive either filter — a
+    // projection that omits the field must not read as a match (the same defensive
+    // rule the email-recipient rules follow for `unlisted`).
+    expect(kept({ ...EMPTY_FILTERS, unlisted: "yes" }, "admin")).not.toContain(4);
+    expect(kept({ ...EMPTY_FILTERS, debrothered: "yes" }, "admin")).not.toContain(4);
+  });
+
+  it("is ignored for a brother — the fields are staff-internal and never projected to him", () => {
+    expect(kept({ ...EMPTY_FILTERS, unlisted: "yes" }, "brother")).toEqual([1, 2, 3, 4]);
+    expect(kept({ ...EMPTY_FILTERS, debrothered: "yes" }, "brother")).toEqual([1, 2, 3, 4]);
   });
 });
 

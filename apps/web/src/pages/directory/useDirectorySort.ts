@@ -40,6 +40,12 @@ export interface DirectorySort {
   setDirection: (direction: SortDirection) => void;
   /** Restore the default sort (Canonical Name ascending) — used by Reset (D38). */
   reset: () => void;
+  /**
+   * Whether the sort is still the pristine default, i.e. `reset()` would be a no-op.
+   * Exposed so Reset's enabled state can ask "is there anything to reset?" without
+   * the call site re-stating what the default sort is (OFC-394).
+   */
+  isDefault: boolean;
 }
 
 export function useDirectorySort(): DirectorySort {
@@ -97,8 +103,13 @@ export function useDirectorySort(): DirectorySort {
     void setDir(null);
   }, [setKey, setDir]);
 
+  // Derived from the clamped values, not the raw params: a stale `?sort=bogus`
+  // resolves to the default column, so the view IS pristine even though the URL
+  // carries a param — and Reset would indeed change nothing visible.
+  const isDefault = sortKey === DEFAULT_KEY && direction === DEFAULT_DIRECTION;
+
   return useMemo(
-    () => ({ sortKey, direction, toggleSort, setSortKey, setDirection, reset }),
-    [sortKey, direction, toggleSort, setSortKey, setDirection, reset],
+    () => ({ sortKey, direction, toggleSort, setSortKey, setDirection, reset, isDefault }),
+    [sortKey, direction, toggleSort, setSortKey, setDirection, reset, isDefault],
   );
 }

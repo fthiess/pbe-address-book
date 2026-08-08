@@ -26,6 +26,8 @@ The **Directory** is the Address Book's home page: a searchable, sortable list o
 
 **Filtering.** The filter panel lets you narrow the list — by class year, course, city, state or province, country, employer, and (for managers and administrators) a few additional fields. Filters combine sensibly: choosing two courses shows brothers in *either*, while also setting a class-year range shows only brothers who match *both*. The class-year filter is more capable than it looks — it accepts single years, ranges, and lists together (for example, `1980-1989, 1992`), and ranges can be left open at either end (`1990-`, or `-1975`); the "?" beside the field explains this where you type.
 
+**Clearing everything at once.** **Reset search & filters** sits on the **Filters** bar itself, at the right-hand end, so you can clear the view without opening the panel first — useful when you come back from a brother's page and want to start again. It empties the Name Search box, clears every filter, returns the sort to name order, and turns off **Include deceased**. It leaves your starred-only switch and your choice of columns alone. The button is greyed out when there is nothing to clear.
+
 **Finding brothers at a company.** The **Employer** filter answers "who else works at …": type any part of a company name and the list narrows to the brothers whose employer contains it (`acme` finds Acme Corporation). One thing is worth knowing, and the "?" beside the field says it too: a record holds a brother's **current** employer only, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all. If you would rather see employers beside every brother than filter by one, **Employer** is also available as an optional column (add it from **Columns**, or **Fields** on a phone).
 
 On a small phone screen the filters, the view options, the sort, and the choice of which details to show tuck behind a single **Options** button so the list of brothers gets the room; tap it to open them (the Name Search box always stays in view).
@@ -40,7 +42,7 @@ On a small phone screen the filters, the view options, the sort, and the choice 
 
 **Stars.** The star in each row is yours alone — a private bookmark. Star the brothers you look up often, then turn on **Starred only** to see just them. Your stars are visible only to you, and the starred view shows your starred brothers whether or not they're living.
 
-**Brothers who have passed.** Out of respect, the Directory shows living brothers by default. Turn on **Include deceased** to see brothers who have passed; they are marked clearly, with an "In Memoriam" note, and their pages show only the information appropriate to share in memory. Where the dates are known, a brother's page shows the years he lived — for example, "1940–2024." If you have additional information that should be on a deceased brother’s profile, such as a link to an obituary, please share it with an Address Book manager or administrator so they can add it.
+**Brothers who have passed.** Out of respect, the Directory shows living brothers by default. Turn on **Include deceased** to see brothers who have passed *alongside* the living; they are marked clearly, with an "In Memoriam" note, and their pages show only the information appropriate to share in memory. If you want to see **only** the brothers who have passed, use the **Deceased** filter and choose "Yes" — that shows them on its own, whether or not **Include deceased** is turned on. Where the dates are known, a brother's page shows the years he lived — for example, "1940–2024." If you have additional information that should be on a deceased brother’s profile, such as a link to an obituary, please share it with an Address Book manager or administrator so they can add it.
 
 **Opening a brother's page.** Click a brother's name to open his full profile. As with any link, you can open it in a new browser tab if you like (the usual Ctrl-click or middle-click), and the Back button returns you to exactly where you were in the list. Once you're on a brother's page, **Prev** and **Next** at the top step you through the brothers just as they were listed — in the same order, and narrowed by whatever search, filters, and sorting you had applied — with a "12 of 431" marker so you know where you are; **← Directory** takes you back to the list, right where you left it, however far you've stepped.
 
@@ -71,6 +73,8 @@ Another brother's profile shows the contact information he has chosen to share. 
 ## 6. For managers
 
 If you help maintain the membership, you may have a **manager** role, which the badge by your name at the top of the page will show. Managers can see everything a brother sees, plus a few additional fields that help with membership upkeep, and managers can **export** a list from the Directory for offline work. A slim action bar above the grid has an **Export CSV** button: it produces a spreadsheet of the rows you have **selected** (using the checkbox column at the left edge, with a select-all in its header), or — if you've selected nothing — of the whole list as you've currently filtered it. The export contains only the information your role is allowed to see, and never includes photographs. Managers see a brother's privacy and consent settings and the dates on his record, but — like everyone else — a manager does not see a contact detail a brother has chosen to keep private; only an administrator can see through those settings. Managers can correct a brother's information; note that correcting another brother's profile removes its "verified" mark. Managers can also **confirm** a record is current on a brother's behalf, from the record-status area of his profile, which marks it verified again.
+
+**Finding the records other brothers can't see.** Two records are hidden from the brotherhood at large but stay visible to you: those of brothers who have asked to be **unlisted**, and those of members who have been **de-brothered**. The filter panel's manager-and-administrator section has an **Unlisted** and a **De-brothered** filter, each offering "Any" or "Yes", so you can gather either group in one view instead of scanning the list for the badge.
 
 **Marking a brother as deceased.** When a brother passes, a manager or administrator marks it from the **Staff controls** at the foot of his profile. A plain confirmation explains what will happen first, and only then are the memorial details revealed to fill in — the date he passed (or just the year, if the day isn't known), his birth year, if known, and links to an obituary and a PBE News tribute, all optional. Marking a brother deceased opens the respectful In Memoriam treatment on his page, turns off his PBE News email, and removes his PBE-website account (no one will be able to sign in on his behalf); his previous email settings are remembered, so if he was marked deceased in error, his information can be restored — his website account and all — exactly. You can come back to the same place later to correct a memorial detail — a mistyped obituary link, say — or to remove the deceased mark entirely.
 
@@ -159,9 +163,21 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Behind the “?”:** Finds brothers who have said they are willing to provide professional information and advice.
 
+#### Deceased
+
+- **Behind the “?”:** Shows only brothers who have passed. You do not also need to turn on Include deceased — choosing Yes here shows them by itself.
+
 #### Staff
 
 - **Behind the “?”:** Use this filter to find PBE Address Book staff — the managers and administrators who have extra powers to help keep brother information up to date and to maintain the system.
+
+#### Unlisted
+
+- **Behind the “?”:** Shows only brothers who have asked to be left out of the Directory. Their records are hidden from other brothers entirely, but stay visible to managers and administrators, marked UNLISTED.
+
+#### De-brothered
+
+- **Behind the “?”:** Shows only brothers whose membership has been revoked. Like unlisted records, these are hidden from other brothers and visible only to managers and administrators.
 
 #### Verification
 

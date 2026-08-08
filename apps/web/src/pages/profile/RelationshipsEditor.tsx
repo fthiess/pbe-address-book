@@ -68,49 +68,59 @@ export function RelationshipsEditor({
 
   return (
     <Section title="Relationships">
-      <div>
-        <div className="mb-1 flex items-center gap-1.5">
-          <p className={`block ${FIELD_LABEL_CLASS}`}>Big Brother</p>
-          <ControlHelp entryKey="profile.bigBrother" />
-        </div>
-        {rosterError ? (
-          <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
-            The brotherhood list couldn't load, so the Big Brother picker is unavailable right now.
-          </p>
-        ) : big !== null ? (
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Remove stays available on a withheld Big Brother: the owner may not
+      {/* Big Brother is **one column wide**, matching every other field on the page
+        (OFC-384). Relationships is a full-width row so the Little Brothers chips
+        below can wrap across it, and the picker inherited that width — leaving a
+        single combobox stretched edge to edge while its neighbours sat at half.
+        The wrapper repeats `EditRow`'s own grid (`gap-x-12` + `md:grid-cols-2`)
+        with one occupied cell rather than hand-computing `calc(50% - 1.5rem)`, so
+        the two stay aligned if that row's geometry is ever retuned. */}
+      <div className="grid gap-x-12 md:grid-cols-2">
+        <div className="min-w-0">
+          <div className="mb-1 flex items-center gap-1.5">
+            <p className={`block ${FIELD_LABEL_CLASS}`}>Big Brother</p>
+            <ControlHelp entryKey="profile.bigBrother" />
+          </div>
+          {rosterError ? (
+            <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
+              The brotherhood list couldn't load, so the Big Brother picker is unavailable right
+              now.
+            </p>
+          ) : big !== null ? (
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Remove stays available on a withheld Big Brother: the owner may not
               see who he is, but the pointer is still his to clear — and a manager
               can set it back for him (the ticket's item 4). The remove label drops
               the name it cannot know rather than reading "Remove Big Brother #5043". */}
-            <RelationshipChip
-              id={big.kind === "private" ? null : big.id}
-              name={bigChipLabel}
-              state={branchState}
-              onRemove={() => onChange(null)}
-              removeLabel={
-                bigBrotherName ? `Remove Big Brother ${bigBrotherName}` : "Remove Big Brother"
-              }
+              <RelationshipChip
+                id={big.kind === "private" ? null : big.id}
+                name={bigChipLabel}
+                state={branchState}
+                onRemove={() => onChange(null)}
+                removeLabel={
+                  bigBrotherName ? `Remove Big Brother ${bigBrotherName}` : "Remove Big Brother"
+                }
+              />
+            </div>
+          ) : roster && names ? (
+            <BigBrotherPicker
+              roster={roster}
+              names={names}
+              selfId={selfId}
+              onSelect={onChange}
+              describedBy={error ? errorId : undefined}
             />
-          </div>
-        ) : roster && names ? (
-          <BigBrotherPicker
-            roster={roster}
-            names={names}
-            selfId={selfId}
-            onSelect={onChange}
-            describedBy={error ? errorId : undefined}
-          />
-        ) : (
-          <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
-            Loading the brotherhood…
-          </p>
-        )}
-        {error && (
-          <p id={errorId} className="mt-1 text-[length:var(--text-body-sm)] text-destructive">
-            {error}
-          </p>
-        )}
+          ) : (
+            <p className="text-[length:var(--text-body-sm)] text-muted-foreground">
+              Loading the brotherhood…
+            </p>
+          )}
+          {error && (
+            <p id={errorId} className="mt-1 text-[length:var(--text-body-sm)] text-destructive">
+              {error}
+            </p>
+          )}
+        </div>
       </div>
 
       {littles.length > 0 && (
