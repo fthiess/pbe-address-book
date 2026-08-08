@@ -11,6 +11,21 @@ import type { MouseEvent } from "react";
  * dead padding that could fall through to the row's open-profile click; in the
  * card overlay they keep their intrinsic size. State is shown by shape + fill
  * (and an accessible label / pressed state), never colour alone (D32).
+ *
+ * ⚠ **`fill` is `absolute inset-0`, NOT `size-full`, and the difference is the
+ * whole of OFC-397.** `size-full` sets `height: 100%`, which needs a containing
+ * block with a *definite* height to resolve against — and a `<td>` does not supply
+ * one: its height is a used value that table layout computes, so the percentage
+ * fell back to `auto` and each control was left at its own content height. The
+ * cells looked filled (percentage *widths* do resolve, against the column's
+ * definite width) while standing 16px tall in a 56px row, so a click a few pixels
+ * above or below the glyph missed the control, reached the row, and opened a
+ * profile. Absolute positioning sidesteps the rule entirely — `inset-0` resolves
+ * against the positioned cell's padding box, whose used height is the row's — so
+ * the control cells must stay positioned (`relative`, or the `sticky` a pinned
+ * column already carries). The e2e in `row-controls-397.spec.ts` clicks at an
+ * explicit inset and asserts the box is ≥24px; a `.click()` on the control itself
+ * cannot see this regression, which is exactly how it reached UAT.
  */
 
 /** Keep a control's click from bubbling to the row's open-profile handler. */
@@ -48,7 +63,7 @@ export function StarButton({
         onToggle();
       }}
       className={`flex items-center justify-center rounded outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
-        fill ? "size-full" : prominent ? "size-10" : "size-8"
+        fill ? "absolute inset-0" : prominent ? "size-10" : "size-8"
       }`}
     >
       <StarIcon filled={starred} size={prominent ? 22 : 18} />
@@ -87,7 +102,9 @@ export function SelectCheckbox({
   return (
     // biome-ignore lint/a11y/useKeyWithClickEvents: the label is only a click-propagation guard around a natively-interactive, keyboard-reachable checkbox — activation and keyboard both go through the <input>; the label just keeps a selection click from opening the row's profile (§5.6.7).
     <label
-      className={`flex cursor-pointer items-center justify-center ${fill ? "size-full" : "size-8"}`}
+      className={`flex cursor-pointer items-center justify-center ${
+        fill ? "absolute inset-0" : "size-8"
+      }`}
       onClick={stopRowOpen}
     >
       <input

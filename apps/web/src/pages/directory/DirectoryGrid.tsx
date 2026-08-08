@@ -478,18 +478,25 @@ function HeaderCell({
         {selectAll ? (
           // The Select header is a select-all checkbox over the whole filtered
           // view (§5.6.8); "some but not all" shows the indeterminate state.
-          <input
-            type="checkbox"
-            checked={selectAll.all}
-            ref={(el) => {
-              if (el) {
-                el.indeterminate = selectAll.some;
-              }
-            }}
-            aria-label="Select all brothers in the current view"
-            onChange={selectAll.onToggle}
-            className="size-4 cursor-pointer rounded border-input accent-[var(--brand-gold)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          />
+          // The <label> is the 24×24 target (WCAG 2.5.8), the same shortfall the
+          // row checkboxes had in OFC-397 — a header miss only does nothing rather
+          // than opening a profile, but a 16px box is under the minimum either way.
+          // No click handler, so nothing to suppress: the label only enlarges the
+          // target around a natively-interactive, keyboard-reachable checkbox.
+          <label className="flex size-6 shrink-0 cursor-pointer items-center justify-center">
+            <input
+              type="checkbox"
+              checked={selectAll.all}
+              ref={(el) => {
+                if (el) {
+                  el.indeterminate = selectAll.some;
+                }
+              }}
+              aria-label="Select all brothers in the current view"
+              onChange={selectAll.onToggle}
+              className="size-4 cursor-pointer rounded border-input accent-[var(--brand-gold)] outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            />
+          </label>
         ) : column.sortable ? (
           <button
             type="button"
@@ -723,9 +730,16 @@ function Cell({
     column.align === "end" ? "text-right tabular-nums" : "text-left",
   );
 
-  // The control cells carry no padding, so the Star/Select control fills the cell
-  // and there is no dead zone that would fall through to the row's open-profile click.
-  const controlCell = cn("border-b border-border p-0 align-middle bg-[var(--row-bg)]");
+  // The control cells carry no padding and are **positioned**, so the Star/Select
+  // control can fill the cell (`fill` → `absolute inset-0`) and leave no dead zone
+  // that would fall through to the row's open-profile click (OFC-397).
+  // ⚠ `relative` is load-bearing, not decoration: it is what makes the cell the
+  // containing block the control resolves `inset-0` against. A pinned column's
+  // inline `position: sticky` also positions the cell and simply wins over this
+  // class, so both the pinned and unpinned cases are covered — dropping `relative`
+  // would silently reattach the control to the page and only break once the column
+  // is unpinned. Read `RowControls`' module note before changing either half.
+  const controlCell = cn("relative border-b border-border p-0 align-middle bg-[var(--row-bg)]");
 
   if (column.key === "select") {
     return (
