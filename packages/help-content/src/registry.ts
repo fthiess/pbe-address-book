@@ -149,10 +149,18 @@ export const helpContent: HelpContent = {
     toggleTip:
       "The year you and your pledge brothers associate with. Usually, but not necessarily, the same as your graduation year.",
   },
+  // Widened from "Mug Name" (OFC-402). Mug names are an era-specific PBE custom:
+  // in some eras brothers used nicknames unconnected to any mug, and in others
+  // the mug name became a joke or a long phrase nobody would want used as a name
+  // for him. The field is therefore *any* name a brother is happy to be called
+  // by, with the mug name named only as the common case. The old inline helper
+  // ("The nickname printed on your PBE mug.") stated the narrow reading as fact
+  // and is superseded by this `?` text, which carries it as the parenthetical.
   "profile.mugName": {
     key: "profile.mugName",
-    label: "Mug name",
-    helperText: "The nickname printed on your PBE mug.",
+    label: "Mug Name / Nickname",
+    toggleTip:
+      "A name other than your given name that you're comfortable with brothers calling you by. Often (but not always) the nickname printed on your PBE mug.",
   },
   "profile.email": {
     key: "profile.email",
