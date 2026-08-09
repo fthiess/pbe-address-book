@@ -30,6 +30,8 @@ The **Directory** is the Address Book's home page: a searchable, sortable list o
 
 **Finding brothers at a company.** The **Employer** filter answers "who else works at …": type any part of a company name and the list narrows to the brothers whose employer contains it (`acme` finds Acme Corporation). One thing is worth knowing, and the "?" beside the field says it too: a record holds a brother's **current** employer only, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all. If you would rather see employers beside every brother than filter by one, **Employer** is also available as an optional column (add it from **Columns**, or **Fields** on a phone).
 
+**Finding brothers who share a background or an interest.** Three more filters work exactly like Employer, over three things brothers write about themselves: **Post-PBE education** (degrees earned after PBE), **Sports**, and **Activities**. Type any part of what you are looking for — `stanford`, `soccer`, `sailing` — and the list narrows to the brothers whose entry contains it, anywhere inside the line. Each is also available as an optional column, so you can read them beside every brother instead of filtering by one. Two things are worth knowing, and each filter's "?" says them too: a brother who has not filled the field in will not turn up under it at all, and these fields are **new**, so for a while most of the directory will be blank in them. If a filter finds nobody, that is far more likely to mean "not filled in yet" than "no such brother."
+
 On a small phone screen the filters, the view options, the sort, and the choice of which details to show tuck behind a single **Options** button so the list of brothers gets the room; tap it to open them (the Name Search box always stays in view).
 
 ![The Directory on a phone: the Options fold open, showing the Starred-only and Include-deceased switches, the Fields control, the Sort by and Order selects, and the Filters fold, above brothers shown as cards rather than table rows.](../images/directory-mobile-options.png)
@@ -53,6 +55,8 @@ Open your own profile from the menu behind your profile icon at the top right of
 ![A brother's profile: headshot, name, class year and course beside the Edit profile button; then contact details, employer, courses and links, his Big Brother, and a preferences-and-consent summary beside the record's verification status.](../images/profile-view.png)
 
 **Editing and saving.** Edit any field, then **Save**. If you try to leave with unsaved changes, you'll be warned first. Because your email address is how you sign in, you'll also be asked to confirm before saving a change that *removes* it — clearing your email would lock you out of both the Address Book and PBE News until a new address is added. In the rare case that someone else (an administrator, say) changed your profile while you had it open, neither their change nor yours is silently overwritten — you're told what changed and given the chance to reconcile, so no edit is quietly lost.
+
+**Telling other brothers about yourself.** Under **Professional & personal** there are three optional free-text fields beyond your employer and courses: **Post-PBE education** for degrees you earned after PBE ("Ph.D. in Computer Science, Stanford"), **Sports** for what you play or follow ("Varsity soccer and basketball"), and **Activities** for interests and affiliations outside work ("Community orchestra, second violin"). Each holds a short line rather than an account of your life — up to 120 characters, and the box simply stops accepting text at that point, so nothing you type is ever quietly cut off when you save. All three are visible to every brother, and each can be filtered on and shown as a column in the Directory, which is the point of them: they are how a brother finds the others who share his field, his sport, or his enthusiasm. Leave any of them blank and it simply doesn't appear on your profile.
 
 **Your contact preferences — the switches.** Several settings on your profile are simple two-position switches, each labeled in plain words for exactly what it controls — what you will and won't receive, or who can and can't see a given piece of information. Each switch states, in plain language, what it is doing right now: "Brothers can reach you by email" when it is on, "Your email is hidden from other brothers" when it is off. So you never have to work out what flipping it would mean — the switch always describes the situation you are actually in. A few of them carry a "?" as well, where there is more worth explaining than the line itself can carry.
 
@@ -159,6 +163,18 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Behind the “?”:** Finds brothers whose employer contains what you type — acme finds Acme Corporation. Only a brother's current employer is on record, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all.
 
+#### Post-PBE education
+
+- **Behind the “?”:** Finds brothers whose post-PBE education contains what you type — stanford finds “Ph.D. in Computer Science, Stanford”, and law finds every brother who mentioned a law degree. Brothers who have not filled this in will not turn up.
+
+#### Sports
+
+- **Behind the “?”:** Finds brothers whose sports contain what you type — soccer finds “Varsity soccer and basketball”. Brothers who have not filled this in will not turn up.
+
+#### Activities
+
+- **Behind the “?”:** Finds brothers whose activities contain what you type — sailing finds “Sailing and choral singing”. Brothers who have not filled this in will not turn up.
+
 #### Willing to mentor
 
 - **Behind the “?”:** Finds brothers who have said they are willing to provide professional information and advice.
@@ -226,6 +242,21 @@ Everything below this paragraph is **assembled automatically from the same sourc
 #### Courses
 
 - **Behind the “?”:** These are the MIT courses in which you did substantial work toward a degree.
+
+#### Post-PBE education
+
+- **Helper text:** Up to 120 characters.
+- **Behind the “?”:** Degrees or study you completed after PBE — for example “Ph.D. in Computer Science, Stanford” or “MBA, Wharton”. A short line rather than a full history; other brothers can filter on what you put here.
+
+#### Sports
+
+- **Helper text:** Up to 120 characters.
+- **Behind the “?”:** Sports you play or follow — for example “Varsity soccer and basketball” or “Golf and fishing”. Other brothers can filter on what you put here, so it is a good way to be found by brothers who share them.
+
+#### Activities
+
+- **Helper text:** Up to 120 characters.
+- **Behind the “?”:** Interests and affiliations outside work — for example “MIT Education Council and local board member” or “Shakespeare Ensemble and hang gliding”. Sports have their own field just above.
 
 #### Willing to mentor
 

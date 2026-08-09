@@ -100,6 +100,30 @@ const MIN_BIRTH_YEAR = 1850;
 export const MAX_LINKS = 5;
 export const MAX_EMERGENCY_CONTACTS = 2;
 
+/**
+ * The cap on the short free-text profile fields — `postPbeEducation`, `sports`
+ * and `activities` (OFC-404/405/406, Forrest's call). Long enough for "Ph.D. in
+ * Computer Science, Stanford" or "Varsity soccer and basketball" (both under 45
+ * characters) with room for two such phrases; short enough that the field cannot
+ * become an essay, which is what the requests asked for.
+ *
+ * The web editors set their inputs' `maxLength` from this one value, so a brother
+ * simply cannot type past it (Forrest's call: block the input rather than accept
+ * it and then complain). That attribute is a courtesy of the browser, not a
+ * guarantee — it is absent from any non-browser client and trivially removed in
+ * one — so the rule is **also** enforced here, on both the client and the server
+ * validation paths. Neither side ever truncates: over-length input is rejected
+ * whole, so nothing is silently lost.
+ */
+export const MAX_SHORT_TEXT_LENGTH = 120;
+
+/** The short free-text fields governed by {@link MAX_SHORT_TEXT_LENGTH}, with their labels. */
+const SHORT_TEXT_FIELDS: readonly (readonly [keyof Profile, string])[] = [
+  ["postPbeEducation", "Post-PBE education"],
+  ["sports", "Sports"],
+  ["activities", "Activities"],
+];
+
 function currentYearOf(context: ValidationContext): number {
   return context.currentYear ?? new Date().getUTCFullYear();
 }
@@ -339,6 +363,19 @@ export function validateProfile(
         add(`majors.${i}`, "Unknown major code.");
       }
     });
+  }
+
+  // --- short free-text fields (length-capped, OFC-404/405/406) ---
+  // Measured on the trimmed value, so a stray trailing space can't fail an input
+  // that is within the cap as typed. Rejected whole rather than truncated: the
+  // brother keeps what he wrote and is told to shorten it. The `maxLength` on the
+  // web inputs means an ordinary browser never reaches this; a non-browser client
+  // (or an edited page) does, which is exactly why the rule lives here too.
+  for (const [field, label] of SHORT_TEXT_FIELDS) {
+    const value = input[field];
+    if (typeof value === "string" && value.trim().length > MAX_SHORT_TEXT_LENGTH) {
+      add(field, `${label} must be ${MAX_SHORT_TEXT_LENGTH} characters or fewer.`);
+    }
   }
 
   // --- links (max 5; non-empty label; http/https url) ---

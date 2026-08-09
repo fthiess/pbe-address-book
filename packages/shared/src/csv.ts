@@ -63,6 +63,13 @@ const COLUMNS: readonly CsvColumn[] = [
   { header: "spousePartnerName", field: "spousePartnerName", get: (p) => str(p.spousePartnerName) },
   { header: "bigBrotherId", field: "bigBrotherId", get: (p) => str(p.bigBrotherId) },
   { header: "majors", field: "majors", get: (p) => (p.majors ?? []).join(";") },
+  {
+    header: "postPbeEducation",
+    field: "postPbeEducation",
+    get: (p) => str(p.postPbeEducation),
+  },
+  { header: "sports", field: "sports", get: (p) => str(p.sports) },
+  { header: "activities", field: "activities", get: (p) => str(p.activities) },
   ...emergencyColumns(0),
   ...emergencyColumns(1),
   ...linkColumns(0),

@@ -41,6 +41,9 @@ const OPTIONAL_TEXT: ReadonlySet<keyof Profile> = new Set<keyof Profile>([
   "employerName",
   "jobTitle",
   "spousePartnerName",
+  "postPbeEducation",
+  "sports",
+  "activities",
   "adminNote",
 ]);
 

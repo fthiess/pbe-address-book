@@ -184,6 +184,31 @@ export interface Profile {
   spousePartnerName?: string;
   /** Course codes (e.g. ["6-3"]); primary first; validated against `majors`. */
   majors?: string[];
+  /**
+   * Free text, at most {@link MAX_SHORT_TEXT_LENGTH} characters: degrees earned
+   * after PBE — e.g. "Ph.D. in Computer Science, Stanford" (OFC-404). Deliberately
+   * one unstructured line rather than a repeating {degree, field, school, year}
+   * record: brothers span 1940s to today and the shapes vary too widely
+   * (honorary degrees, foreign qualifications, unfinished programmes) for a schema
+   * that would not force most of them to lie. Structured education is Post-MVP.
+   */
+  postPbeEducation?: string;
+  /**
+   * Free text, at most {@link MAX_SHORT_TEXT_LENGTH} characters: sports played or
+   * followed — e.g. "Varsity soccer and basketball" (OFC-405). Distinct from
+   * {@link activities}: PBE has initiated many serious athletes and the request was
+   * specifically that they be able to say so.
+   */
+  sports?: string;
+  /**
+   * Free text, at most {@link MAX_SHORT_TEXT_LENGTH} characters: outside interests
+   * and affiliations — e.g. "MIT Education Council and local 501(c)(3) board"
+   * (OFC-406). Deliberately a separate field from {@link sports} rather than one
+   * merged "Interests": the two filter differently (a brother looking for a squash
+   * partner is not looking for a board member), and merging them would make the
+   * length cap bind on brothers who have both.
+   */
+  activities?: string;
   /** Up to 5 external links. */
   links?: Link[];
 

@@ -58,6 +58,50 @@ describe("profilesToCsv — role-aware columns (§10)", () => {
     }
   });
 
+  it("includes the three free-text columns in every role's export (OFC-404/405/406)", () => {
+    // All three fields are public, so — like the mentoring column above and unlike
+    // the staff-only ones — they must appear in a brother's export too. Each ticket
+    // asked for CSV inclusion by name, so this is the requirement, not a detail.
+    for (const role of ["brother", "manager", "admin"] as const) {
+      const h = header(profilesToCsv(rows({ id: 5247 }), role));
+      expect(h).toContain("postPbeEducation");
+      expect(h).toContain("sports");
+      expect(h).toContain("activities");
+    }
+  });
+
+  it("renders the three free-text values, and neutralizes a formula leader in them", () => {
+    // ⚠ Comma-free values on purpose: this row is read by splitting on "," (as the
+    // other cell tests in this file do), which a quoted comma would shift. The
+    // comma case is asserted separately below, on the whole string.
+    const csv = profilesToCsv(
+      rows({
+        id: 5247,
+        postPbeEducation: "MBA from Wharton",
+        sports: "Golf and fishing",
+        // A leading "-" is a formula leader (S9): the hardening must reach these
+        // new columns exactly as it reaches every other free-text one.
+        activities: "-Beekeeping",
+      }),
+      "brother",
+    );
+    const h = header(csv);
+    const cells = (csv.split("\r\n")[1] ?? "").split(",");
+    expect(cells[h.indexOf("postPbeEducation")]).toBe("MBA from Wharton");
+    expect(cells[h.indexOf("sports")]).toBe("Golf and fishing");
+    expect(cells[h.indexOf("activities")]).toBe("'-Beekeeping");
+  });
+
+  it("RFC-4180-quotes a free-text value containing a comma", () => {
+    // The realistic shape for these fields — "Ph.D. in Computer Science, Stanford"
+    // is the example the ticket itself gave, and it has a comma in it.
+    const csv = profilesToCsv(
+      rows({ id: 5247, postPbeEducation: "Ph.D. in Computer Science, Stanford" }),
+      "brother",
+    );
+    expect(csv).toContain('"Ph.D. in Computer Science, Stanford"');
+  });
+
   it("exports the STORED mentoring opt-in, not the live-offer predicate (D166)", () => {
     // An export is a dump of state: a deceased brother's stored `true` stays `true`
     // here, and the deceased columns travel alongside for the reader to combine.

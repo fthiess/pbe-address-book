@@ -113,6 +113,39 @@ function fakePhone(rng: Random): string {
 /** Generational suffixes occasionally appended to a full legal name. */
 const NAME_SUFFIXES = ["Jr.", "Sr.", "II", "III", "IV"];
 
+/**
+ * Pools for the three free-text fields (OFC-404/405/406). Kept short and varied
+ * rather than exhaustive: their job is to give the Directory columns something to
+ * render, the substring filters something to match on a partial word, and the
+ * sort something to order — not to model the real membership. Every value stays
+ * inside the 120-character cap so a fixture can never be one the editor would
+ * refuse.
+ */
+const POST_PBE_EDUCATION = [
+  "Ph.D. in Computer Science, Stanford",
+  "M.D., Johns Hopkins",
+  "MBA, Wharton",
+  "J.D., Michigan Law",
+  "M.S. in Civil Engineering, Berkeley",
+  "M.Arch., Rhode Island School of Design",
+];
+const SPORTS = [
+  "Varsity soccer and basketball",
+  "Golf and fishing",
+  "Lightweight crew",
+  "Squash, badly",
+  "Masters swimming and cycling",
+  "Ultimate frisbee",
+];
+const ACTIVITIES = [
+  "MIT Education Council and local board member",
+  "Shakespeare Ensemble and hang gliding",
+  "Community orchestra, second violin",
+  "Beekeeping and cider making",
+  "Volunteer firefighter",
+  "Chess club and long-distance hiking",
+];
+
 function makeName(rng: Random): {
   firstName: string;
   lastName: string;
@@ -358,6 +391,21 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
     if (rng.chance(0.6)) profile.jobTitle = "Engineer";
     if (!isDeceased && rng.chance(0.4))
       profile.spousePartnerName = `${rng.pick(FIRST_NAMES)} ${lastName}`;
+
+    // The three free-text fields (OFC-404/405/406), drawn sparsely on purpose: most
+    // brothers will leave them empty for a long time, and a fixture set where every
+    // record is filled would hide exactly the "column of em-dashes" and "filter
+    // matches nothing" cases worth looking at.
+    //
+    // ⚠ These three draws SHIFT THE PRNG STREAM for every field generated after
+    // them, so a record's later values differ from what the same seed produced
+    // before this change. That is safe today only because staging is frozen with
+    // `STAGING_AUTOSEED=false` and the local generator had already diverged from
+    // the frozen staging set (see the D163/D165/D166 divergence). It is the same
+    // trap: never plan a staging test from a local generate.
+    if (rng.chance(0.3)) profile.postPbeEducation = rng.pick(POST_PBE_EDUCATION);
+    if (rng.chance(0.35)) profile.sports = rng.pick(SPORTS);
+    if (rng.chance(0.3)) profile.activities = rng.pick(ACTIVITIES);
 
     const majors = makeMajors(rng);
     if (majors !== undefined) profile.majors = majors;

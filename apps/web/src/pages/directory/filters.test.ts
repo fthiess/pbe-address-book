@@ -144,6 +144,63 @@ describe("buildFilterPredicate — Employer (D164, OFC-379)", () => {
   });
 });
 
+describe("buildFilterPredicate — the three free-text fields (OFC-404/405/406)", () => {
+  const rows = [
+    p({
+      id: 1,
+      classYear: 1984,
+      postPbeEducation: "Ph.D. in Computer Science, Stanford",
+      sports: "Varsity soccer and basketball",
+      activities: "Community orchestra, second violin",
+    }),
+    p({ id: 2, classYear: 1990, postPbeEducation: "MBA, Wharton", sports: "Golf and fishing" }),
+    p({ id: 3, classYear: 1984, activities: "Beekeeping and cider making" }),
+    // Nothing filled in — the case that will describe most of the roster for a long
+    // while, since these fields ship empty for every existing record.
+    p({ id: 4, classYear: 1984 }),
+  ];
+  const keep = (filters: Partial<typeof EMPTY_FILTERS>, role: "brother" | "manager" | "admin") =>
+    rows.filter(buildFilterPredicate({ ...EMPTY_FILTERS, ...filters }, role)).map((r) => r.id);
+
+  it("matches each field as a case-insensitive substring", () => {
+    expect(keep({ postPbeEducation: "stanford" }, "brother")).toEqual([1]);
+    expect(keep({ sports: "GOLF" }, "brother")).toEqual([2]);
+    expect(keep({ activities: "beekeeping" }, "brother")).toEqual([3]);
+  });
+
+  it("matches inside the line, not only at its start", () => {
+    // The contract that makes these useful: a brother wrote a phrase, and another
+    // brother searches for one word of it.
+    expect(keep({ sports: "soccer" }, "brother")).toEqual([1]);
+    expect(keep({ postPbeEducation: "wharton" }, "brother")).toEqual([2]);
+  });
+
+  it("never matches a brother who left the field empty", () => {
+    // "a" appears in every populated value of each field, so the only rows that can
+    // drop are the ones with nothing on record — an absence test, not a substring one.
+    expect(keep({ sports: "a" }, "brother")).toEqual([1, 2]);
+    expect(keep({ activities: "a" }, "brother")).toEqual([1, 3]);
+  });
+
+  it("treats a whitespace-only value as unset, so the filter excludes nobody", () => {
+    expect(keep({ sports: "   " }, "brother")).toEqual([1, 2, 3, 4]);
+  });
+
+  it("is available to EVERY role — all three fields are public, so filterable ⟺ visible", () => {
+    for (const role of ["brother", "manager", "admin"] as const) {
+      expect(keep({ activities: "orchestra" }, role)).toEqual([1]);
+    }
+  });
+
+  it("ANDs across the three, and with other fields (D38)", () => {
+    expect(keep({ sports: "soccer", activities: "orchestra" }, "brother")).toEqual([1]);
+    // Both brothers played a sport; only one is '84.
+    expect(keep({ sports: "and", classYear: "1984" }, "brother")).toEqual([1]);
+    // AND across the three with no common row yields nothing.
+    expect(keep({ sports: "golf", activities: "beekeeping" }, "brother")).toEqual([]);
+  });
+});
+
 describe("countActiveFilters", () => {
   it("counts nothing for a pristine filter set", () => {
     expect(countActiveFilters(EMPTY_FILTERS)).toBe(0);
@@ -169,6 +226,9 @@ describe("countActiveFilters", () => {
       stateProvince: ["MA"],
       city: "boston",
       employer: "acme",
+      postPbeEducation: "stanford",
+      sports: "soccer",
+      activities: "sailing",
       staff: "staffOnly" as const,
       willingToMentor: "yes" as const,
       deceasedOnly: "yes" as const,
