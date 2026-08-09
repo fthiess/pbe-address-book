@@ -299,7 +299,15 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     // A brother's house "mug" name — the fraternity nickname (often whimsical and
     // unrelated to his given name), a public field and one of the searched name
     // fields (D35). Off by default, selectable by any role.
-    label: "Mug Name",
+    //
+    // Headed "Nickname", not the profile page's full "Mug Name / Nickname"
+    // (OFC-402): the long form does not fit this column, and widening it to suit
+    // one optional column was declined (Forrest's call). The short form is a
+    // truncation of the full label rather than a competing name for the field, so
+    // it does not reintroduce the Role/Staff mismatch OFC-407 exists to fix. This
+    // string is also the column-picker menu entry — the picker renders
+    // `column.label` — so the two cannot drift.
+    label: "Nickname",
     group: "optional",
     width: 168,
     align: "start",
@@ -341,7 +349,14 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     // default, selectable by **any** role — the staff roles are official, not
     // secret. Ordinary brothers render as an em-dash rather than a wall of
     // "Brother", so the column reads at a glance as "who's staff".
-    label: "Role",
+    //
+    // Headed "Staff", not "Role" (OFC-407). UAT testers read "Role" as the
+    // fraternity offices a brother had held — President and the like — and the
+    // filter panel already called the same thing "Staff", so the two halves of one
+    // concept disagreed. "Staff" is now the single user-facing name; the field,
+    // the column key, and the analytics property stay `role` (internal naming is
+    // deliberately unchanged). This label is also the column-picker menu entry.
+    label: "Staff",
     group: "optional",
     width: 128,
     align: "start",

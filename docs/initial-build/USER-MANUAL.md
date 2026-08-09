@@ -36,7 +36,7 @@ On a small phone screen the filters, the view options, the sort, and the choice 
 
 **On a phone, columns are "fields."** A phone is too narrow for a table, so the Directory shows each brother as a card rather than a row — which means there are no columns on screen. The control that chooses which details appear is therefore called **Fields** there rather than **Columns**; it is the same control, choosing the same things, and a choice you make on one device is remembered on that device.
 
-**Finding a manager or administrator.** A few brothers serve as the Address Book's managers and administrators — the people to contact for help, or to tell us a brother's information is out of date or that a brother has passed. The filter panel has a **Staff** setting that narrows the list to just those brothers. You can also add an optional **Role** column to the list: it shows "Manager" or "Administrator" beside those brothers and a small dash (—) for everyone else, so you can see at a glance who to reach. Both are open to every brother — staff are official points of contact, not a secret. (Your column choices are remembered, so the Role column stays off until you add it.)
+**Finding a manager or administrator.** A few brothers serve as the Address Book's managers and administrators — the people to contact for help, or to tell us a brother's information is out of date or that a brother has passed. The filter panel has a **Staff** setting that narrows the list to just those brothers, and you can add a matching optional **Staff** column: it shows "Manager" or "Administrator" beside those brothers and a small dash (—) for everyone else, so you can see at a glance who to reach. Both are open to every brother — staff are official points of contact, not a secret. (Your column choices are remembered, so the Staff column stays off until you add it.)
 
 **Sorting.** Click a column heading to sort by that column; click again to reverse it. Whatever you sort by, brothers with the same value fall into name order, so the list never looks arbitrary. On a phone there are no column headings to click, so the sort lives in the **Options** panel instead: **Sort by** chooses the field and **Order** chooses ascending or descending. The fields offered are the ones the cards are currently showing — if you want to sort by something that isn't listed, add it under **Fields** first.
 
@@ -207,9 +207,9 @@ Everything below this paragraph is **assembled automatically from the same sourc
 - **Helper text:** An optional 4-digit year.
 - **Behind the “?”:** The year you and your pledge brothers associate with. Usually, but not necessarily, the same as your graduation year.
 
-#### Mug name
+#### Mug Name / Nickname
 
-- **Helper text:** The nickname printed on your PBE mug.
+- **Behind the “?”:** A name other than your given name that you're comfortable with brothers calling you by. Often (but not always) the nickname printed on your PBE mug.
 
 #### Email
 

@@ -54,7 +54,7 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
   middleName: "Middle name",
   lastName: "Last name",
   fullLegalName: "Full name",
-  mugName: "Mug name",
+  mugName: "Mug Name / Nickname",
   classYear: "Class year",
   email: "Email",
   alternateEmail: "Alternate email",
@@ -368,7 +368,7 @@ export function ProfileEdit({
                   />
                   <TextField
                     id="profile-mugName"
-                    label="Mug name"
+                    label="Mug Name / Nickname"
                     value={form.draft.mugName ?? ""}
                     onChange={(v) => form.setText("mugName", v)}
                     onBlur={() => form.touch("mugName")}

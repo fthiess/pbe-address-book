@@ -293,13 +293,16 @@ test.describe("signed-in directory", () => {
     await expect(fullNameCell.locator("mark")).toHaveText(/Bartholomew/i);
   });
 
-  test("the Mug Name column is selectable, searchable, and highlighted (D35)", async ({ page }) => {
+  // Headed "Nickname" since OFC-402 — the profile page's full "Mug Name / Nickname"
+  // does not fit the column. The picker entry and the header are the same string
+  // (both render `column.label`), so this asserts the rename reached both.
+  test("the Nickname column is selectable, searchable, and highlighted (D35)", async ({ page }) => {
     await gotoDirectory(page);
     await page.locator("[data-search-ready='true']").waitFor();
     // The column is in the picker (it was missing before).
     await page.getByText("Columns", { exact: true }).click();
-    await page.getByRole("checkbox", { name: "Mug Name" }).check();
-    await expect(page.getByRole("columnheader", { name: /Mug Name/ })).toBeVisible();
+    await page.getByRole("checkbox", { name: "Nickname" }).check();
+    await expect(page.getByRole("columnheader", { name: /Nickname/ })).toBeVisible();
     // Searching a mug-name word finds the brother and marks the matched word.
     await page.getByRole("searchbox", { name: /name search/i }).fill("walrus");
     const mugCell = page.getByRole("cell", { name: /Quantum Walrus/ });
