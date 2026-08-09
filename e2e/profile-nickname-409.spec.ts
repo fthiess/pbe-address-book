@@ -56,10 +56,15 @@ function me(role: "brother" | "manager" | "admin", profileId: number) {
   };
 }
 
-async function mock(page: Page, meDoc: ReturnType<typeof me>, target: ReturnType<typeof record>) {
+async function mock(
+  page: Page,
+  meDoc: ReturnType<typeof me>,
+  target: ReturnType<typeof record>,
+  roster: ReturnType<typeof record>[] = [],
+) {
   await page.route("**/api/me", (route) => route.fulfill({ json: meDoc }));
   await page.route("**/api/profiles", (route) =>
-    route.fulfill({ json: { profiles: [], majors: [] } }),
+    route.fulfill({ json: { profiles: roster, majors: [] } }),
   );
   await page.route(/\/api\/profiles\/\d+$/, (route) =>
     route.fulfill({ headers: { ETag: 'W/"v1"' }, json: target }),
@@ -138,6 +143,45 @@ test.describe("profile edit — two independent fields", () => {
       page.getByText("The name you would like other brothers to call you by."),
     ).toBeVisible();
     await expect(page.getByText("The name printed on your PBE mug.")).toBeVisible();
+  });
+
+  // ⚠ The regression guard for the bug review caught in this change. `NameRecord[]`
+  // is hand-built at TWO sites — the Directory and this picker — and the matcher
+  // indexes whatever those objects carry, not whatever `NAME_FIELDS` names. The
+  // first cut added `nickname` only to the Directory's builder, which left a
+  // brother findable by nickname there and NOT here: no type error, no failing
+  // test. Nothing else in the suite searches this picker by a non-given name.
+  test("the Big Brother picker finds a brother by his nickname, like the Directory does", async ({
+    page,
+  }) => {
+    // ⚠ The nickname must be UNREACHABLE by any other route, or this proves
+    // nothing. The first draft used Robert/"Bob" and passed with the fix reverted:
+    // "Bob" finds "Robert" through the common-nickname dictionary (D123), never
+    // touching the `nickname` field at all. "Starlord" matches no given name, no
+    // surname and no dictionary entry, so only the field can produce this hit.
+    const roster = [
+      record({ id: 5248, firstName: "Peter", lastName: "Quill", nickname: "Starlord" }),
+    ];
+    await mock(page, me("admin", 5247), record(), roster);
+    await page.goto("/brother/5247/edit");
+    await expect(page.getByText("Editing", { exact: true })).toBeVisible();
+
+    await page.getByRole("combobox", { name: /Search for a Big Brother/ }).fill("starlord");
+    await expect(page.getByRole("option", { name: /Peter Quill/ })).toBeVisible();
+  });
+
+  test("the Big Brother picker still finds a brother by his mug name", async ({ page }) => {
+    // The other half of D174's "both fields stay searched" — asserted here too,
+    // because this picker's index is built separately from the Directory's.
+    const roster = [
+      record({ id: 5248, firstName: "Peter", lastName: "Quill", mugName: "Quantum All-Star" }),
+    ];
+    await mock(page, me("admin", 5247), record(), roster);
+    await page.goto("/brother/5247/edit");
+    await expect(page.getByText("Editing", { exact: true })).toBeVisible();
+
+    await page.getByRole("combobox", { name: /Search for a Big Brother/ }).fill("quantum");
+    await expect(page.getByRole("option", { name: /Peter Quill/ })).toBeVisible();
   });
 
   test("editing one field does not touch the other", async ({ page }) => {

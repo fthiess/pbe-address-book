@@ -186,10 +186,14 @@ export function DirectoryCards({
                         }
                         const codes = column.key === "major" ? (profile.majors ?? []) : undefined;
                         // ⚠ Was a hardcoded `key === "fullName" || key === "mugName"` — a
-                        // second copy of the grid's highlighted-column set that OFC-409's
-                        // rename of that column would have silently broken, leaving the
-                        // phone view unable to mark a name the desktop grid marks. Same
-                        // drift class as N149/OFC-362. It now reads the one shared set.
+                        // second copy of the grid's highlighted-column set. THIS rename
+                        // would in fact have been caught: dropping `"mugName"` from
+                        // `ColumnKey` makes that comparison a TS2367 "no overlap" error.
+                        // The silent case is the other direction — *adding* a highlighted
+                        // column, where the new key type-checks fine here and the phone
+                        // view simply never marks it, with nothing failing. That is the
+                        // N149/OFC-362 drift class, and it is why this now reads the one
+                        // shared set instead of restating it.
                         const searchable = HIGHLIGHTED_COLUMN_KEYS.has(column.key);
                         return (
                           <div key={column.key} className="contents">

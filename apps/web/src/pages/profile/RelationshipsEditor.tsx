@@ -205,6 +205,14 @@ function BigBrotherPicker({
         lastName: p.lastName,
         fullLegalName: p.fullLegalName,
         mugName: p.mugName,
+        // ⚠ `nickname` must be here too (OFC-409). This is the SECOND site that
+        // hand-builds `NameRecord[]` — the Directory's is the other — and the
+        // matcher indexes whatever these objects carry, not whatever `NAME_FIELDS`
+        // names. Omitting a field here silently narrows *this* search only, so a
+        // brother findable by his nickname on the Directory would not be findable
+        // by it in the Big Brother picker, with nothing failing anywhere. Keep the
+        // two builders in step, or hoist them.
+        nickname: p.nickname,
         canonicalName: names.get(p.id),
       })),
     [candidates, names],

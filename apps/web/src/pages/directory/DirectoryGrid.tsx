@@ -848,9 +848,11 @@ function Cell({
   }
 
   const value = column.display(profile, name);
-  // The other searched name fields (Full Name, Mug Name) carry highlight marks
-  // too, so a match on them is visible when their column is shown (D35). The set is
-  // shared with auto-fit, which has to allow for those marks' width (OFC-358).
+  // The other searched name fields that HAVE a column (Full Name, Nickname) carry
+  // highlight marks too, so a match on them is visible when their column is shown
+  // (D35). The set is shared with auto-fit, which has to allow for those marks'
+  // width (OFC-358). ⚠ Not every searched field is here: the mug name is indexed
+  // but has no column at all (D174), so a match on it highlights nothing.
   const searchable = HIGHLIGHTED_COLUMN_KEYS.has(column.key);
   return (
     <td aria-colindex={colIndex} className={cn(common, "text-muted-foreground")}>
