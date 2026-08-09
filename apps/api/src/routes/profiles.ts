@@ -838,6 +838,7 @@ const CLEARABLE_ON_NULL: ReadonlySet<keyof Profile> = new Set<keyof Profile>([
   "middleName",
   "fullLegalName",
   "mugName",
+  "nickname",
   "email",
   "alternateEmail",
   "phone",

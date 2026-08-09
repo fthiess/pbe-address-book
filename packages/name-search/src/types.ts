@@ -20,6 +20,8 @@ export interface NameRecord {
   lastName?: string;
   fullLegalName?: string;
   mugName?: string;
+  /** The name a brother goes by (OFC-409) — indexed alongside `mugName`, not instead of it. */
+  nickname?: string;
   /** The resolved Canonical Name (`First Last 'YY`), included per D35. */
   canonicalName?: string;
 }

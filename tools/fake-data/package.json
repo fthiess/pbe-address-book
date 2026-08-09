@@ -8,6 +8,7 @@
     "seed:staging": "tsx src/seed-staging.ts",
     "seed:staging-images": "tsx src/seed-staging-images.ts",
     "seed:staging-testers": "tsx src/seed-staging-testers.ts",
+    "backfill:nickname": "tsx src/backfill-nickname.ts",
     "author:thumbnails": "tsx src/author-thumbnails.ts",
     "mirror:ghost-staging": "tsx src/mirror-ghost-staging.ts"
   },

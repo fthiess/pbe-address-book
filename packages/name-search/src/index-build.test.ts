@@ -22,6 +22,10 @@ const RECORDS: NameRecord[] = [
     firstName: "Robert",
     middleName: "James",
     lastName: "Smith-Jones",
+    // The OFC-409 case, and the ticket's own example: a mug name nobody would use
+    // as a form of address, alongside the name he actually goes by. Both indexed.
+    mugName: "Quantum All-Star",
+    nickname: "Bob",
     canonicalName: "Robert Smith-Jones '77",
   },
   { id: 4, firstName: "José", lastName: "García", canonicalName: "José García '02" },
@@ -62,6 +66,24 @@ describe("buildIndex search", () => {
   it("finds a multi-word mug name by any of its words", () => {
     expect(ids(index.search("hilbert"))).toEqual([2]);
     expect(ids(index.search("pilot"))).toEqual([2]);
+  });
+
+  // OFC-409: the mug name and the nickname are BOTH indexed, not one instead of
+  // the other. Either may be the only name a searcher remembers, and the nickname
+  // is now the only one of the two with a Directory column — so if the split had
+  // quietly dropped `mugName` from the index, a brother would have become
+  // unfindable by the name some brothers know him under, with nothing failing.
+  it("finds a brother by his nickname", () => {
+    expect(ids(index.search("bob"))).toContain(3);
+  });
+
+  it("still finds the same brother by his mug name", () => {
+    expect(ids(index.search("quantum"))).toEqual([3]);
+    expect(ids(index.search("all-star"))).toEqual([3]);
+  });
+
+  it("ANDs a mug-name token with a nickname token on the same brother", () => {
+    expect(ids(index.search("quantum bob"))).toEqual([3]);
   });
 
   it("ANDs across query tokens — both must match the same brother", () => {

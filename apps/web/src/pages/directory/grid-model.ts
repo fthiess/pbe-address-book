@@ -40,7 +40,9 @@ export type ColumnKey =
   | "country"
   // Non-default selectable columns (off by default):
   | "fullName"
-  | "mugName"
+  // `nickname`, not `mugName` (OFC-409): the mug name is a historical record shown
+  // only on the Profile page, and never a Directory column.
+  | "nickname"
   | "employer"
   | "postPbeEducation"
   | "sports"
@@ -103,14 +105,22 @@ export const MAX_COLUMN_WIDTH = 640;
 
 /**
  * The columns whose cells render the name search's `<mark>` highlights (D35) — the
- * Canonical Name and the two other searched name fields. Shared by the grid (which
- * decides whether to render marks) and auto-fit (which must add their padding to a
- * measured width, OFC-358), so the two can't disagree about which cells carry them.
+ * Canonical Name and the other searched name fields that have a column. Shared by
+ * the grid (which decides whether to render marks), the phone card view, and
+ * auto-fit (which must add their padding to a measured width, OFC-358), so the
+ * three can't disagree about which cells carry them.
+ *
+ * ⚠ **This is the searched-name-fields set INTERSECTED WITH the columns, not the
+ * searched set itself.** Since OFC-409 the matcher also indexes `mugName`, which
+ * has no column at all — so a brother matched only by his mug name is returned
+ * and listed with nothing marked. That is correct: there is no cell in which to
+ * draw the mark. Don't "fix" it by adding a key with no column, which would put an
+ * undefined entry into `COLUMNS[key]` lookups.
  */
 export const HIGHLIGHTED_COLUMN_KEYS: ReadonlySet<ColumnKey> = new Set<ColumnKey>([
   "name",
   "fullName",
-  "mugName",
+  "nickname",
 ]);
 
 /** A brother's primary major is the first entry in his (owner-ordered) list (§5.6.1). */
@@ -297,27 +307,26 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     display: (p) => p.fullLegalName ?? EMPTY,
     sortValue: (p) => p.fullLegalName?.toLocaleLowerCase() ?? null,
   },
-  mugName: {
-    key: "mugName",
-    // A brother's house "mug" name — the fraternity nickname (often whimsical and
-    // unrelated to his given name), a public field and one of the searched name
+  nickname: {
+    key: "nickname",
+    // The name a brother goes by — a public field and one of the searched name
     // fields (D35). Off by default, selectable by any role.
     //
-    // Headed "Nickname", not the profile page's full "Mug Name / Nickname"
-    // (OFC-402): the long form does not fit this column, and widening it to suit
-    // one optional column was declined (Forrest's call). The short form is a
-    // truncation of the full label rather than a competing name for the field, so
-    // it does not reintroduce the Role/Staff mismatch OFC-407 exists to fix. This
-    // string is also the column-picker menu entry — the picker renders
-    // `column.label` — so the two cannot drift.
+    // ⚠ This column reads `nickname`, NOT `mugName` (OFC-409, superseding N170's
+    // OFC-402 half). N170 headed the *mug name* column "Nickname" while the two
+    // were one field; they are now two, and the mug name — a historical record
+    // that may be a joke the brother would not want used as a name for him —
+    // deliberately has **no** Directory column at all. A stored column lens naming
+    // the old `mugName` key is dropped silently by `parseLens`, so a brother who
+    // had added that column simply finds it gone, which is the intended outcome.
     label: "Nickname",
     group: "optional",
     width: 168,
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.mugName ?? EMPTY,
-    sortValue: (p) => p.mugName?.toLocaleLowerCase() ?? null,
+    display: (p) => p.nickname ?? EMPTY,
+    sortValue: (p) => p.nickname?.toLocaleLowerCase() ?? null,
   },
   employer: {
     key: "employer",

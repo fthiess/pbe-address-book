@@ -120,6 +120,7 @@ const FIELD_TO_GROUP: Readonly<Record<string, FieldGroup>> = {
   lastName: "identity",
   fullLegalName: "identity",
   mugName: "identity",
+  nickname: "identity",
   classYear: "identity",
   // contact
   email: "contact",

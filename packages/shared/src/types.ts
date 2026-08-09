@@ -159,8 +159,29 @@ export interface Profile {
   lastName: string;
   /** Full/rare form, incl. suffixes (Jr., III) and compound names. */
   fullLegalName?: string;
-  /** Nickname printed on the brother's PBE mug. */
+  /**
+   * The name printed on the brother's PBE mug (OFC-409). **Historical record,
+   * not a form of address**: mug names are awarded at initiation and house
+   * culture has moved them from irrelevant to important to a running joke,
+   * sometimes within one year — so a brother may be proud of his, indifferent to
+   * it, or embarrassed by it. Shown on the Profile page under its own label and
+   * searched, but deliberately **not** a Directory column and **not** the name
+   * displayed under the Canonical Name; {@link nickname} is what a brother wants
+   * to be called.
+   */
   mugName?: string;
+  /**
+   * The name a brother would like other brothers to call him by (OFC-409) —
+   * "Robert" with a mug name of "Quantum All-Star" may simply go by "Bob". This
+   * is the name quoted under his Canonical Name on the Profile page, an optional
+   * Directory column, and one of the searched name fields.
+   *
+   * Split out from {@link mugName} because the two answer different questions:
+   * one is "what was written on his mug", the other "what do I call him". A
+   * brother who *wants* his mug name used puts it in both — there is deliberately
+   * no automatic copy, so the field always means what it says.
+   */
+  nickname?: string;
 
   // --- Class year ---
   /** 4-digit graduation year of the class identified with; null = unknown (§4). */

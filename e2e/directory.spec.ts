@@ -118,9 +118,10 @@ const NAMED = [
     hasHeadshot: false,
   },
   // A brother whose given name has a common nickname (exercises D123: "bill"
-  // must find "William" — a match no substring search can make). Also carries a
-  // whimsical mug name (a multi-word, name-unrelated house nickname) to exercise
-  // mug-name search, the Mug Name column, and highlighting on it.
+  // must find "William" — a match no substring search can make). Since OFC-409 he
+  // carries BOTH name fields: a whimsical multi-word mug name, which is searched
+  // but has no Directory column, and a nickname, which is searched, quoted on his
+  // profile, and IS the optional column. Both are needed to exercise the split.
   {
     id: 5006,
     firstName: "William",
@@ -129,6 +130,7 @@ const NAMED = [
     deceased: { isDeceased: false },
     hasHeadshot: false,
     mugName: "Quantum Walrus",
+    nickname: "Billy",
   },
   // A brother whose surname is a phonetic variant (exercises the Beider-Morse
   // arm end-to-end: "smyth" must find "Smith").
@@ -293,9 +295,9 @@ test.describe("signed-in directory", () => {
     await expect(fullNameCell.locator("mark")).toHaveText(/Bartholomew/i);
   });
 
-  // Headed "Nickname" since OFC-402 — the profile page's full "Mug Name / Nickname"
-  // does not fit the column. The picker entry and the header are the same string
-  // (both render `column.label`), so this asserts the rename reached both.
+  // The Nickname column reads `nickname` since OFC-409 — NOT the mug name it was
+  // renamed from in OFC-402, when the two were one field. The picker entry and the
+  // header are the same string (both render `column.label`).
   test("the Nickname column is selectable, searchable, and highlighted (D35)", async ({ page }) => {
     await gotoDirectory(page);
     await page.locator("[data-search-ready='true']").waitFor();
@@ -303,10 +305,35 @@ test.describe("signed-in directory", () => {
     await page.getByText("Columns", { exact: true }).click();
     await page.getByRole("checkbox", { name: "Nickname" }).check();
     await expect(page.getByRole("columnheader", { name: /Nickname/ })).toBeVisible();
-    // Searching a mug-name word finds the brother and marks the matched word.
+    // Searching a nickname finds the brother and marks the matched word in the cell.
+    await page.getByRole("searchbox", { name: /name search/i }).fill("billy");
+    const nicknameCell = page.getByRole("cell", { name: /Billy/ });
+    await expect(nicknameCell.locator("mark")).toHaveText(/Billy/i);
+  });
+
+  // OFC-409: the mug name is still SEARCHED but has no column of its own. So a
+  // mug-name query must still return the brother — and nothing is marked, because
+  // there is no cell holding the matched text. That silent asymmetry is exactly
+  // what a future "tidy-up" of HIGHLIGHTED_COLUMN_KEYS would get wrong.
+  test("a mug-name search still finds the brother, with no column to highlight", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    await page.locator("[data-search-ready='true']").waitFor();
     await page.getByRole("searchbox", { name: /name search/i }).fill("walrus");
-    const mugCell = page.getByRole("cell", { name: /Quantum Walrus/ });
-    await expect(mugCell.locator("mark")).toHaveText(/Walrus/i);
+    await expect(page.getByRole("row", { name: /Webster/ })).toBeVisible();
+    // The mug name appears nowhere in the grid — it is not a column.
+    await expect(page.getByRole("columnheader", { name: /Mug/ })).toHaveCount(0);
+  });
+
+  // Mug Name must NOT be offered as a column (OFC-409): it is a historical record
+  // shown only on the Profile page, and for some brothers a joke they would not
+  // want listed beside their name in a directory.
+  test("Mug Name is not offered in the column picker", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.locator("[data-search-ready='true']").waitFor();
+    await page.getByText("Columns", { exact: true }).click();
+    await expect(page.getByRole("checkbox", { name: /Mug/ })).toHaveCount(0);
   });
 
   test("clicking a column header sorts, toggling direction and updating the URL", async ({

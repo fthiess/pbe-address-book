@@ -65,6 +65,7 @@ export const WRITE_RULE: Record<keyof Profile, WriteRule> = {
   lastName: "editable",
   fullLegalName: "editable",
   mugName: "editable",
+  nickname: "editable",
   classYear: "editable",
   email: "editable",
   alternateEmail: "editable",

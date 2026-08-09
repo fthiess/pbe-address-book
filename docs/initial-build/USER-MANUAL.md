@@ -22,7 +22,7 @@ The **Directory** is the Address Book's home page: a searchable, sortable list o
 
 ![The Directory: a list of brothers with columns for class year, course, email, telephone and location, with the Name Search box and the Columns and Filters controls above it.](../images/directory.png)
 
-**Searching by name.** The Name Search box near the top finds brothers by name. It is forgiving: it tolerates misspellings, matches names that *sound* alike, and knows common nicknames — so "Bill" finds "William" and "Tom" finds "Thomas" — letting you find a brother even if you aren't sure how his name is spelled or what he goes by formally. It searches names only — first, last, middle, and the mug (nickname) — not class years or courses; those you narrow with the filters instead.
+**Searching by name.** The Name Search box near the top finds brothers by name. It is forgiving: it tolerates misspellings, matches names that *sound* alike, and knows common nicknames — so "Bill" finds "William" and "Tom" finds "Thomas" — letting you find a brother even if you aren't sure how his name is spelled or what he goes by formally. It searches names only — first, last, middle, full legal name, nickname, and mug name — not class years or courses; those you narrow with the filters instead. Both name fields are searched, so a brother turns up whether you remember him as "Bob" or as whatever his mug said.
 
 **Filtering.** The filter panel lets you narrow the list — by class year, course, city, state or province, country, employer, and (for managers and administrators) a few additional fields. Filters combine sensibly: choosing two courses shows brothers in *either*, while also setting a class-year range shows only brothers who match *both*. The class-year filter is more capable than it looks — it accepts single years, ranges, and lists together (for example, `1980-1989, 1992`), and ranges can be left open at either end (`1990-`, or `-1975`); the "?" beside the field explains this where you type.
 
@@ -55,6 +55,8 @@ Open your own profile from the menu behind your profile icon at the top right of
 ![A brother's profile: headshot, name, class year and course beside the Edit profile button; then contact details, employer, courses and links, his Big Brother, and a preferences-and-consent summary beside the record's verification status.](../images/profile-view.png)
 
 **Editing and saving.** Edit any field, then **Save**. If you try to leave with unsaved changes, you'll be warned first. Because your email address is how you sign in, you'll also be asked to confirm before saving a change that *removes* it — clearing your email would lock you out of both the Address Book and PBE News until a new address is added. In the rare case that someone else (an administrator, say) changed your profile while you had it open, neither their change nor yours is silently overwritten — you're told what changed and given the chance to reconcile, so no edit is quietly lost.
+
+**What brothers call you — Nickname and Mug name.** These are two separate fields under **Identity**, because they answer two different questions. **Nickname** is the name you would like other brothers to call you by; it is the name shown in quotation marks under your name at the top of your profile, it can be shown as a column in the Directory, and it is searched. **Mug name** is the name printed on your PBE mug — a piece of house history, which some brothers use as their nickname and others would rather not be called at all. It appears on your profile under its own label and is searched too, so a brother who remembers you only by it can still find you, but it is deliberately never a Directory column. If you would like your mug name used as your nickname, simply enter it in both fields; nothing copies one to the other on your behalf.
 
 **Telling other brothers about yourself.** Under **Professional & personal** there are three optional free-text fields beyond your employer and courses: **Post-PBE education** for degrees you earned after PBE ("Ph.D. in Computer Science, Stanford"), **Sports** for what you play or follow ("Varsity soccer and basketball"), and **Activities** for interests and affiliations outside work ("Community orchestra, second violin"). Each holds a short line rather than an account of your life — up to 120 characters, and the box simply stops accepting text at that point, so nothing you type is ever quietly cut off when you save. All three are visible to every brother, and each can be filtered on and shown as a column in the Directory, which is the point of them: they are how a brother finds the others who share his field, his sport, or his enthusiasm. Leave any of them blank and it simply doesn't appear on your profile.
 
@@ -223,9 +225,13 @@ Everything below this paragraph is **assembled automatically from the same sourc
 - **Helper text:** An optional 4-digit year.
 - **Behind the “?”:** The year you and your pledge brothers associate with. Usually, but not necessarily, the same as your graduation year.
 
-#### Mug Name / Nickname
+#### Nickname
 
-- **Behind the “?”:** A name other than your given name that you're comfortable with brothers calling you by. Often (but not always) the nickname printed on your PBE mug.
+- **Helper text:** The name you would like other brothers to call you by.
+
+#### Mug name
+
+- **Helper text:** The name printed on your PBE mug.
 
 #### Email
 

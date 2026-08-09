@@ -40,6 +40,7 @@ function fullProfile(privacy: PrivacyFlags): Profile {
     lastName: "Smyth",
     fullLegalName: "James Quincy Smyth III",
     mugName: "Smitty",
+    nickname: "Jim",
     classYear: 1984,
     email: "james@example.test",
     alternateEmail: "jq@example.test",

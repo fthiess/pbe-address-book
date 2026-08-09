@@ -52,7 +52,8 @@ interface Profile {
   middleName?: string;
   lastName: string;                    // required
   fullLegalName?: string;              // full/rare form, incl. suffixes (Jr., III) and compound names
-  mugName?: string;                    // nickname printed on the brother's PBE mug
+  mugName?: string;                    // the name printed on his PBE mug; historical record (OFC-409)
+  nickname?: string;                   // the name he'd like to be called by; quoted on the Profile page (OFC-409)
 
   // --- Class year ---
   classYear: number | null;            // 4-digit graduation year of the class identified with; null = unknown
@@ -194,7 +195,8 @@ Required / default / visibility / validation for each field. The **Visibility** 
 | `middleName` | `string?` | no | absent | public | |
 | `lastName` | `string` | yes | — | public | Non-empty. |
 | `fullLegalName` | `string?` | no | absent | public | Holds suffixes (Jr., III) and multi-part names. |
-| `mugName` | `string?` | no | absent | public | |
+| `mugName` | `string?` | no | absent | public | Free text; no length cap. Historical record — searched, shown on the Profile page under its own label, and deliberately **not** a Directory column (OFC-409). |
+| `nickname` | `string?` | no | absent | public | Free text; no length cap, like the other name fields. The name quoted under the Canonical Name; an optional Directory column; searched. |
 | `classYear` | `number \| null` | yes (value or null) | `null` | public | 4-digit; `null` = unknown. |
 | `email` | `string?` | no | absent | toggle: `shareEmail` | Email format. |
 | `alternateEmail` | `string?` | no | absent | toggle: `shareEmail` | Email format; requires `email`. |
@@ -424,7 +426,7 @@ The Manager/Admin export and the Admin bulk-import share one CSV format whose he
 
 **Formula-injection neutralization (all exports).** Every text cell whose value begins with `=`, `+`, `-`, `@`, a tab (`\t`), or a carriage return (`\r`) is prefixed with a single quote (`'`) before output (OWASP CSV-injection guidance), so a spreadsheet cannot execute a brother's name, note, or other free-text field as a formula. This applies to **both** the general role-projected export (decision D41) and the MITAA export (decision D90); a malicious-leading-character cell is covered by the §6.6 test plan (finding S9).
 
-- **Scalars** use the field name verbatim: `id`, `firstName`, `middleName`, `lastName`, `fullLegalName`, `mugName`, `classYear`, `email`, `alternateEmail`, `phone`, `employerName`, `jobTitle`, `spousePartnerName`, `postPbeEducation`, `sports`, `activities`, `bigBrotherId`, `willingToMentor`, `allowNewsletterEmail`, `allowShareWithMITAA`, `lastVerifiedDate`, `verifiedBy`, `adminNote`.
+- **Scalars** use the field name verbatim: `id`, `firstName`, `middleName`, `lastName`, `fullLegalName`, `mugName`, `nickname`, `classYear`, `email`, `alternateEmail`, `phone`, `employerName`, `jobTitle`, `spousePartnerName`, `postPbeEducation`, `sports`, `activities`, `bigBrotherId`, `willingToMentor`, `allowNewsletterEmail`, `allowShareWithMITAA`, `lastVerifiedDate`, `verifiedBy`, `adminNote`.
 - **Address** flattens with a prefix: `address.street1`, `address.street2`, `address.street3`, `address.city`, `address.stateProvince`, `address.postalCode`, `address.country` (the ISO code).
 - **Deceased** flattens: `deceased.isDeceased`, `deceased.dateOfDeath`, `deceased.birthYear`, `deceased.deathYear`, `deceased.obituaryUrl`, `deceased.inMemoriamUrl` (decision D122).
 - **Debrothered** flattens: `debrothered.isDebrothered` — a **staff-only status column**: de-brothered records appear only in manager/admin exports (never a brother's, since the record is projected away for brothers, §9) and are **never** in the MITAA file (below, decision D115).

@@ -6,7 +6,15 @@ import type { NameRecord, SearchConfig } from "./types.js";
 
 /**
  * The name fields the matcher indexes (D35) — the structured parts, the
- * full/legal name, the mug name, and the resolved Canonical Name.
+ * full/legal name, the mug name, the nickname, and the resolved Canonical Name.
+ *
+ * ⚠ `mugName` and `nickname` are **both** indexed (OFC-409, Forrest's call), not
+ * one in place of the other. They answer different questions and either may be
+ * the only name a searcher remembers: the mug name is the historical record (a
+ * brother half-remembered as "Quantum Walrus" is findable by it), the nickname is
+ * what he actually goes by. Dropping `mugName` when the Directory column moved to
+ * `nickname` would have made a brother unfindable by the only name some brothers
+ * know him under.
  */
 const NAME_FIELDS: readonly (keyof NameRecord)[] = [
   "firstName",
@@ -14,6 +22,7 @@ const NAME_FIELDS: readonly (keyof NameRecord)[] = [
   "lastName",
   "fullLegalName",
   "mugName",
+  "nickname",
   "canonicalName",
 ];
 
