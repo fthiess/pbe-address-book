@@ -66,6 +66,10 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 - D35 (fuzzy + phonetic over tokenized names) → D66 (A/B criterion) → **N19** (Beider-Morse via bmpm) → **D110** (Web Worker; memo dropped) → **D123** (curated nickname expansion) → **N83** (fold atomic Latin letters NFKD can't — ø/æ/ß/…; worker result ⊇ substring match, so a query never drops a hit it once showed); package + highlighting **N20**.
 
+## Proximity search
+
+- **D172** (current — client-side ZIP-centroid filter over two lazy static tables; `PROXIMITY-SEARCH-DESIGN.md` is authoritative for the full design and the A/B build-session split; OFC-378). ⚠ Four traps live in that entry: **ZIP prefixes do not encode usable proximity** (prefix similarity is *anti-correlated* with distance in the Bay Area — don't retry it); **brotli-11 and delta encoding are substitutes, not complements** (measured — 40% gzip→brotli on plain CSV, 7% on delta, so measure before hand-optimising an already-brotli'd payload); **the Census population join silently deletes New England** unless it keys on (state, name) across SUMLEV 162/157/061, and the build must assert a town spot-check; **ZIP normalisation (trim + truncate ZIP+4) is load-bearing** — ~59% of real member ZIPs are ZIP+4. ⚠ The tables must never be `import`ed — D74's bundle ceiling. Server-embedded per-member centroids were considered and deferred, not rejected on merit: they are the right optimisation later and **OFC-151 needs them anyway**.
+
 ## Profile page
 
 - Model: **D43** (view/edit, two-up layout) + **N33** (edit mode accumulates no history), **D44** (one layout, four role projections), **D50** (validation/save/conflict) with guard order **N11** — ⚠ D50 shares the *validator*, not the string→value parse in front of it, which is what drifted in **N150**.
