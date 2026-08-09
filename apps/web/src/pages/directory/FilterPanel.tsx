@@ -175,6 +175,31 @@ export function FilterPanel({
               // finds nobody (D164).
               helpKey="directory.filter.employer"
             />
+            {/* The three free-text filters (OFC-404/405/406) sit together, directly
+              after Employer: like it they are "find me a brother who…" substring
+              matches over a public field, and grouping them keeps the all-roles
+              block reading as text-matches first, then the narrow-to-yes selects. */}
+            <TextFilter
+              label="Post-PBE education"
+              placeholder="contains…"
+              value={filters.postPbeEducation}
+              onChange={(v) => setFilter("postPbeEducation", v)}
+              helpKey="directory.filter.postPbeEducation"
+            />
+            <TextFilter
+              label="Sports"
+              placeholder="contains…"
+              value={filters.sports}
+              onChange={(v) => setFilter("sports", v)}
+              helpKey="directory.filter.sports"
+            />
+            <TextFilter
+              label="Activities"
+              placeholder="contains…"
+              value={filters.activities}
+              onChange={(v) => setFilter("activities", v)}
+              helpKey="directory.filter.activities"
+            />
             <MentorSelect
               value={filters.willingToMentor}
               onChange={(v) => setFilter("willingToMentor", v, "push")}

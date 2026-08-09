@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { Profile } from "./types.js";
-import { type ValidationContext, normalizePhone, validateProfile } from "./validation.js";
+import {
+  MAX_SHORT_TEXT_LENGTH,
+  type ValidationContext,
+  normalizePhone,
+  validateProfile,
+} from "./validation.js";
 
 const CTX: ValidationContext = { currentYear: 2026, validMajorCodes: new Set(["6-3", "18"]) };
 
@@ -144,6 +149,45 @@ describe("validateProfile — collections", () => {
     expect(fields({ emergencyContacts: [{ phone: "letters" }] })).toEqual([
       "emergencyContacts.0.phone",
     ]);
+  });
+});
+
+describe("validateProfile — short free-text cap (OFC-404/405/406)", () => {
+  const overCap = "x".repeat(MAX_SHORT_TEXT_LENGTH + 1);
+  const atCap = "x".repeat(MAX_SHORT_TEXT_LENGTH);
+
+  it("accepts a value exactly at the cap and rejects one character more", () => {
+    for (const field of ["postPbeEducation", "sports", "activities"] as const) {
+      expect(fields({ [field]: atCap })).toEqual([]);
+      expect(fields({ [field]: overCap })).toEqual([field]);
+    }
+  });
+
+  it("measures the trimmed value, so trailing whitespace alone cannot fail an at-cap entry", () => {
+    // The web input's `maxLength` blocks typing past the cap, so the value that
+    // reaches here is at most `atCap` plus whatever whitespace a paste or an IME
+    // left on the end. Failing that would be indistinguishable from a bug.
+    expect(fields({ sports: `${atCap}   ` })).toEqual([]);
+  });
+
+  it("flags each over-long field separately, so the form can mark all of them at once", () => {
+    expect(fields({ postPbeEducation: overCap, sports: overCap, activities: overCap })).toEqual([
+      "postPbeEducation",
+      "sports",
+      "activities",
+    ]);
+  });
+
+  it("never truncates — validation reports, and the caller keeps the whole value", () => {
+    // The guarantee behind Forrest's "don't silently truncate": a rejected value is
+    // returned to the brother intact for him to shorten, not quietly cut to fit.
+    const input = { sports: overCap };
+    expect(validateProfile(input, CTX).issues).toHaveLength(1);
+    expect(input.sports).toHaveLength(MAX_SHORT_TEXT_LENGTH + 1);
+  });
+
+  it("ignores a non-string value here, leaving it to the malformed-input path (OFC-89)", () => {
+    expect(fields({ sports: 42 as unknown as string })).toEqual([]);
   });
 });
 

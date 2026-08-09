@@ -78,6 +78,17 @@ export const FIELD_VISIBILITY: Record<keyof Profile, FieldVisibility> = {
   // The *classification* is unchanged by that reversal — only the default is.
   spousePartnerName: { cls: "toggle", flag: "shareSpousePartner" },
   majors: { cls: "public" },
+  // The three OFC-404/405/406 free-text fields — public, like `employerName` and
+  // `jobTitle` beside them and unlike `spousePartnerName` above. Each holds only
+  // what a brother chose to publish about himself to his own brotherhood, and the
+  // whole point of asking for them was that other brothers could *find* him by
+  // them (each is filterable and a selectable Directory column). A toggle class
+  // would have meant a sixth `PrivacyFlags` switch, reaching D163's defaults, the
+  // privacy UI, and the D163 cutover obligation on the bulk loader — a large
+  // change to withhold data whose only reason for existing is to be seen.
+  postPbeEducation: { cls: "public" },
+  sports: { cls: "public" },
+  activities: { cls: "public" },
   links: { cls: "public" },
   bigBrotherId: { cls: "public" },
 

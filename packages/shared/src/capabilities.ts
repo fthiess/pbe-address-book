@@ -75,6 +75,9 @@ export const WRITE_RULE: Record<keyof Profile, WriteRule> = {
   jobTitle: "editable",
   spousePartnerName: "editable",
   majors: "editable",
+  postPbeEducation: "editable",
+  sports: "editable",
+  activities: "editable",
   links: "editable",
   bigBrotherId: "editable",
 

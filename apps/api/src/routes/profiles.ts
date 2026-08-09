@@ -847,6 +847,9 @@ const CLEARABLE_ON_NULL: ReadonlySet<keyof Profile> = new Set<keyof Profile>([
   "jobTitle",
   "spousePartnerName",
   "majors",
+  "postPbeEducation",
+  "sports",
+  "activities",
   "links",
   "adminNote",
 ]);

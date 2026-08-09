@@ -73,6 +73,22 @@ export interface DirectoryFilters {
    */
   employer: string;
   /**
+   * Substring (case-insensitive): the three free-text fields added by
+   * OFC-404/405/406. All three are **public**, so like Employer they need no role
+   * gate — filterable ⟺ visible holds outright. An absent value never matches,
+   * exactly like City and Employer, so a brother who left the field empty is not
+   * found by it.
+   *
+   * ⚠ These match the *whole* stored line, not tokens within it, so "soccer"
+   * finds "Varsity soccer and basketball" but "varsity soccer" does not find
+   * "Soccer (varsity)". That is the same contract Employer and City already have,
+   * and deliberately not the name search's forgiving one (D35): these are filters
+   * over a set, not a search for one person (the distinction OFC-354 turns on).
+   */
+  postPbeEducation: string;
+  sports: string;
+  activities: string;
+  /**
    * All-brothers — filter to managers and administrators (OFC-199). Role is public
    * (OFC-139), so unlike the staff-only filters below this is available to every
    * role. A single "staff or not" toggle: with only ~6–8 staff, splitting managers
@@ -141,6 +157,9 @@ export const EMPTY_FILTERS: DirectoryFilters = {
   stateProvince: [],
   city: "",
   employer: "",
+  postPbeEducation: "",
+  sports: "",
+  activities: "",
   staff: "",
   willingToMentor: "",
   deceasedOnly: "",
@@ -186,6 +205,9 @@ export function countActiveFilters(filters: DirectoryFilters): number {
   if (filters.stateProvince.length) n++;
   if (filters.city.trim()) n++;
   if (filters.employer.trim()) n++;
+  if (filters.postPbeEducation.trim()) n++;
+  if (filters.sports.trim()) n++;
+  if (filters.activities.trim()) n++;
   if (filters.staff) n++;
   if (filters.willingToMentor) n++;
   if (filters.deceasedOnly) n++;
@@ -325,6 +347,26 @@ export function buildFilterPredicate(
   const employer = filters.employer.trim().toLocaleLowerCase();
   if (employer !== "") {
     clauses.push((p) => (p.employerName ?? "").toLocaleLowerCase().includes(employer));
+  }
+
+  // The three free-text fields (OFC-404/405/406) — all roles, all public, and each
+  // written out in full rather than folded into a shared helper with City and
+  // Employer above: this module's idiom is one explicit clause per filter (see
+  // `countActiveFilters`), and matching it keeps the diff readable against the
+  // four filters that already work exactly this way.
+  const postPbeEducation = filters.postPbeEducation.trim().toLocaleLowerCase();
+  if (postPbeEducation !== "") {
+    clauses.push((p) => (p.postPbeEducation ?? "").toLocaleLowerCase().includes(postPbeEducation));
+  }
+
+  const sports = filters.sports.trim().toLocaleLowerCase();
+  if (sports !== "") {
+    clauses.push((p) => (p.sports ?? "").toLocaleLowerCase().includes(sports));
+  }
+
+  const activities = filters.activities.trim().toLocaleLowerCase();
+  if (activities !== "") {
+    clauses.push((p) => (p.activities ?? "").toLocaleLowerCase().includes(activities));
   }
 
   // Staff filter — all roles (role is public, OFC-139/OFC-199): keep only managers

@@ -1,5 +1,11 @@
 import { getHelpEntry } from "@pbe/help-content";
-import { MAX_EMAIL_LENGTH, type Profile, type ValidationIssue, canWriteField } from "@pbe/shared";
+import {
+  MAX_EMAIL_LENGTH,
+  MAX_SHORT_TEXT_LENGTH,
+  type Profile,
+  type ValidationIssue,
+  canWriteField,
+} from "@pbe/shared";
 import { TriangleAlert } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 import { useBlocker } from "react-router-dom";
@@ -64,6 +70,9 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
   jobTitle: "Job title",
   spousePartnerName: "Spouse / partner",
   majors: "Courses",
+  postPbeEducation: "Post-PBE education",
+  sports: "Sports",
+  activities: "Activities",
   bigBrotherId: "Big Brother",
   privacy: "Privacy settings",
   unlisted: "Directory listing",
@@ -496,6 +505,23 @@ export function ProfileEdit({
                     error={form.errorFor("jobTitle")}
                     autoComplete="organization-title"
                   />
+                  {/* Post-PBE education sits in the professional column, under Job
+                    title: it is a credential, and the section's left column reads
+                    as the brother's working life while the right reads as his
+                    personal one. Courses (his MIT education) stays where N35 put
+                    it. `maxLength` blocks over-long input outright rather than
+                    accepting and complaining (Forrest's call, OFC-404) — shared
+                    validation enforces the same cap for clients that ignore it. */}
+                  <TextField
+                    id="profile-postPbeEducation"
+                    label="Post-PBE education"
+                    value={form.draft.postPbeEducation ?? ""}
+                    onChange={(v) => form.setText("postPbeEducation", v)}
+                    onBlur={() => form.touch("postPbeEducation")}
+                    error={form.errorFor("postPbeEducation")}
+                    maxLength={MAX_SHORT_TEXT_LENGTH}
+                    helpKey="profile.postPbeEducation"
+                  />
                   <div>
                     <div className="mb-1 flex items-center gap-1.5">
                       <p className={`block ${FIELD_LABEL_CLASS}`}>Links</p>
@@ -567,6 +593,33 @@ export function ProfileEdit({
                       locked={consentLocked}
                     />
                   </div>
+                  {/* Sports and Activities (OFC-405/406) close the personal column,
+                    after Mentoring rather than between it and Courses so N160's
+                    "Mentoring sits beneath Courses" stays literally true. Two
+                    fields, not one merged "Interests": they filter differently,
+                    and merging them would make the 120-character cap bind on a
+                    brother who has both. ProfileView renders them in this same
+                    order — the edit/view correspondence N160 was about. */}
+                  <TextField
+                    id="profile-sports"
+                    label="Sports"
+                    value={form.draft.sports ?? ""}
+                    onChange={(v) => form.setText("sports", v)}
+                    onBlur={() => form.touch("sports")}
+                    error={form.errorFor("sports")}
+                    maxLength={MAX_SHORT_TEXT_LENGTH}
+                    helpKey="profile.sports"
+                  />
+                  <TextField
+                    id="profile-activities"
+                    label="Activities"
+                    value={form.draft.activities ?? ""}
+                    onChange={(v) => form.setText("activities", v)}
+                    onBlur={() => form.touch("activities")}
+                    error={form.errorFor("activities")}
+                    maxLength={MAX_SHORT_TEXT_LENGTH}
+                    helpKey="profile.activities"
+                  />
                 </div>
               </div>
             </Section>

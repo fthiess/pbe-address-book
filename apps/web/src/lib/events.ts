@@ -130,6 +130,9 @@ const FIELD_TO_GROUP: Readonly<Record<string, FieldGroup>> = {
   employerName: "professional",
   jobTitle: "professional",
   majors: "professional",
+  postPbeEducation: "professional",
+  sports: "professional",
+  activities: "professional",
   links: "professional",
   // relationships
   bigBrotherId: "relationships",
@@ -188,6 +191,16 @@ export const FILTER_DIMENSIONS = {
   stateProvince: "State/Province",
   city: "City",
   employer: "Employer",
+  // The three OFC-404/405/406 filters. Labelled rather than omitted, and the P6
+  // question the note above demands is answered the same way Employer's is: all
+  // three underlying fields are **public**, so the dimension says only that some
+  // brother went looking for a shared background or interest — not whom he was
+  // looking for, and never what he typed (the value is not sent, and the URL that
+  // would carry it is stripped by BLOCKED_PROPERTIES). Nothing here approaches the
+  // toggle/restricted case the note warns about.
+  postPbeEducation: "Post-PBE Education",
+  sports: "Sports",
+  activities: "Activities",
   staff: "Staff Role",
   // Safe under P6: the dimension says a brother filtered for mentors, which reveals
   // nothing about *whom* he was looking for — and the underlying field is public

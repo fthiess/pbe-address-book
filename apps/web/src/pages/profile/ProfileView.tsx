@@ -353,6 +353,9 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
         <div className="grid gap-x-12 gap-y-4 sm:grid-cols-2">
           <div className="space-y-4">
             {employer && <ReadField label="Employer">{employer}</ReadField>}
+            {record.postPbeEducation && (
+              <ReadField label="Post-PBE education">{record.postPbeEducation}</ReadField>
+            )}
             {record.links && record.links.length > 0 && (
               <ReadField label="Links">
                 <ul className="space-y-1">
@@ -418,6 +421,14 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
                 </span>
               </ReadField>
             )}
+            {/* Sports and Activities (OFC-405/406), in the same order and the same
+              column as the edit form — the edit/view correspondence N160 restored
+              for Mentoring. Each renders only when filled: an empty line would put
+              a row of blank labels on the great majority of profiles, and these
+              fields carry no "unset is meaningful" case the way a privacy toggle
+              does. */}
+            {record.sports && <ReadField label="Sports">{record.sports}</ReadField>}
+            {record.activities && <ReadField label="Activities">{record.activities}</ReadField>}
           </div>
         </div>
       </Section>

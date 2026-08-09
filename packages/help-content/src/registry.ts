@@ -73,6 +73,29 @@ export const helpContent: HelpContent = {
     toggleTip:
       "Finds brothers whose employer contains what you type — acme finds Acme Corporation. Only a brother's current employer is on record, so a brother who has since moved on will not turn up under a former company, and one who left the field empty will not turn up at all.",
   },
+  // The three OFC-404/405/406 filters. Each `?` carries the same two facts a
+  // brother cannot infer from an empty text box: that it matches anywhere inside
+  // what the brother wrote, and that a brother who left the field blank is not
+  // found by it at all — which matters far more here than for Employer, because
+  // these fields are new and most of the roster will be empty for a long while.
+  "directory.filter.postPbeEducation": {
+    key: "directory.filter.postPbeEducation",
+    label: "Post-PBE education",
+    toggleTip:
+      "Finds brothers whose post-PBE education contains what you type — stanford finds “Ph.D. in Computer Science, Stanford”, and law finds every brother who mentioned a law degree. Brothers who have not filled this in will not turn up.",
+  },
+  "directory.filter.sports": {
+    key: "directory.filter.sports",
+    label: "Sports",
+    toggleTip:
+      "Finds brothers whose sports contain what you type — soccer finds “Varsity soccer and basketball”. Brothers who have not filled this in will not turn up.",
+  },
+  "directory.filter.activities": {
+    key: "directory.filter.activities",
+    label: "Activities",
+    toggleTip:
+      "Finds brothers whose activities contain what you type — sailing finds “Sailing and choral singing”. Brothers who have not filled this in will not turn up.",
+  },
   "directory.filter.willingToMentor": {
     key: "directory.filter.willingToMentor",
     label: "Willing to mentor",
@@ -183,6 +206,32 @@ export const helpContent: HelpContent = {
     key: "profile.majors",
     label: "Courses",
     toggleTip: "These are the MIT courses in which you did substantial work toward a degree.",
+  },
+  // The three OFC-404/405/406 fields. Each `helperText` states the 120-character
+  // cap, because the input simply stops accepting text at that point (Forrest's
+  // call) and a limit a brother meets without warning reads as a broken keyboard.
+  // Each `?` gives an example, which is the fastest way to convey "a phrase, not
+  // an essay" — the shape all three requests asked for.
+  "profile.postPbeEducation": {
+    key: "profile.postPbeEducation",
+    label: "Post-PBE education",
+    helperText: "Up to 120 characters.",
+    toggleTip:
+      "Degrees or study you completed after PBE — for example “Ph.D. in Computer Science, Stanford” or “MBA, Wharton”. A short line rather than a full history; other brothers can filter on what you put here.",
+  },
+  "profile.sports": {
+    key: "profile.sports",
+    label: "Sports",
+    helperText: "Up to 120 characters.",
+    toggleTip:
+      "Sports you play or follow — for example “Varsity soccer and basketball” or “Golf and fishing”. Other brothers can filter on what you put here, so it is a good way to be found by brothers who share them.",
+  },
+  "profile.activities": {
+    key: "profile.activities",
+    label: "Activities",
+    helperText: "Up to 120 characters.",
+    toggleTip:
+      "Interests and affiliations outside work — for example “MIT Education Council and local board member” or “Shakespeare Ensemble and hang gliding”. Sports have their own field just above.",
   },
   // Keyed `profile.willingToMentor`, NOT `profile.consent.*` (N160): the key prefix
   // is what files an entry into a manual group, and this control lives in

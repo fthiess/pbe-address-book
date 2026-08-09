@@ -42,6 +42,9 @@ export type ColumnKey =
   | "fullName"
   | "mugName"
   | "employer"
+  | "postPbeEducation"
+  | "sports"
+  | "activities"
   | "constitutionId"
   | "role"
   | "willingToMentor"
@@ -331,6 +334,46 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     sortable: true,
     display: (p) => p.employerName ?? EMPTY,
     sortValue: (p) => p.employerName?.toLocaleLowerCase() ?? null,
+  },
+  // The three OFC-404/405/406 free-text fields. All public (shared visibility
+  // table), so they are already in every role's projection and cost the roster
+  // read nothing; all off by default, like every optional column — each answers a
+  // specific question ("who else rows?") rather than belonging to the resting view
+  // (D164). Wider than Employer at 224px because they hold a phrase rather than a
+  // company name, and capped at 120 characters, so a full value has a real chance
+  // of fitting; auto-fit (N27) handles the rest.
+  postPbeEducation: {
+    key: "postPbeEducation",
+    label: "Post-PBE Education",
+    group: "optional",
+    width: 224,
+    align: "start",
+    pinned: false,
+    sortable: true,
+    display: (p) => p.postPbeEducation ?? EMPTY,
+    sortValue: (p) => p.postPbeEducation?.toLocaleLowerCase() ?? null,
+  },
+  sports: {
+    key: "sports",
+    label: "Sports",
+    group: "optional",
+    width: 224,
+    align: "start",
+    pinned: false,
+    sortable: true,
+    display: (p) => p.sports ?? EMPTY,
+    sortValue: (p) => p.sports?.toLocaleLowerCase() ?? null,
+  },
+  activities: {
+    key: "activities",
+    label: "Activities",
+    group: "optional",
+    width: 224,
+    align: "start",
+    pinned: false,
+    sortable: true,
+    display: (p) => p.activities ?? EMPTY,
+    sortValue: (p) => p.activities?.toLocaleLowerCase() ?? null,
   },
   constitutionId: {
     key: "constitutionId",
