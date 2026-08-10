@@ -145,6 +145,54 @@ test.describe("profile edit — two independent fields", () => {
     await expect(page.getByText("The name printed on your PBE mug.")).toBeVisible();
   });
 
+  // Forrest's call at live test: Mug name must sit DIRECTLY BENEATH Nickname in the
+  // Identity grid. ⚠ That is a grid fact, not a source-order one — the block is
+  // `sm:grid-cols-2` filling row by row, so the field under Nickname is whatever
+  // takes the right slot of the next row, and the locked Constitution number sits
+  // between the two in the source to put Mug name there. Anyone "tidying" the source
+  // so the two names are adjacent would silently move Mug name diagonally down-left,
+  // which is what this pins.
+  test("Mug name sits directly beneath Nickname in the two-column Identity grid", async ({
+    page,
+  }) => {
+    await mock(page, me("admin", 5247), record({ mugName: "Quantum All-Star", nickname: "Bob" }));
+    await page.goto("/brother/5247/edit");
+    await expect(page.getByText("Editing", { exact: true })).toBeVisible();
+
+    const box = async (locator: Locator, what: string) => {
+      const b = await locator.boundingBox();
+      if (b === null) {
+        throw new Error(`${what} has no bounding box`);
+      }
+      return b;
+    };
+
+    const nickname = await box(textbox(page, "Nickname"), "Nickname");
+    const mug = await box(textbox(page, "Mug name"), "Mug name");
+    const constitution = await box(
+      page.getByText("Constitution signer number", { exact: true }),
+      "Constitution signer number",
+    );
+
+    // Same column: horizontal extents OVERLAP. ⚠ Deliberately not an equality check
+    // on `x` — N154/N163: a guard asserting two controls share a coordinate passed on
+    // Windows and failed CI by 19.5px on Linux font metrics. Overlap is the robust
+    // form of "same column".
+    expect(mug.x).toBeLessThan(nickname.x + nickname.width);
+    expect(nickname.x).toBeLessThan(mug.x + mug.width);
+
+    // And on the row below it, not beside it.
+    expect(mug.y).toBeGreaterThan(nickname.y);
+
+    // The Constitution number is in the OTHER column — no horizontal overlap with
+    // Nickname. This is the half that pins the swap: before it, the Constitution
+    // number was the field directly under Nickname and Mug name was down-left.
+    const disjoint =
+      constitution.x + constitution.width <= nickname.x ||
+      nickname.x + nickname.width <= constitution.x;
+    expect(disjoint).toBe(true);
+  });
+
   // ⚠ The regression guard for the bug review caught in this change. `NameRecord[]`
   // is hand-built at TWO sites — the Directory and this picker — and the matcher
   // indexes whatever those objects carry, not whatever `NAME_FIELDS` names. The

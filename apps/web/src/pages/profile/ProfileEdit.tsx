@@ -376,14 +376,32 @@ export function ProfileEdit({
                     placeholder="YYYY"
                     helpKey="profile.classYear"
                   />
-                  {/* Nickname first, then Mug name (OFC-409, superseding N170's
-                    single "Mug Name / Nickname" field). Nickname leads because it is
-                    the one that matters day to day — it is what the Profile page
-                    quotes under the Canonical Name and what the Directory column
-                    shows — while the mug name is the historical record beneath it.
-                    Neither is length-capped: they are names, and they match the
-                    other name fields here rather than the 120-character free-text
-                    fields in Professional & personal (D173). */}
+                  {/* Nickname, then Mug name DIRECTLY BENEATH IT (Forrest's call at
+                    live test). Nickname leads because it is the one that matters day
+                    to day — it is what the Profile page quotes under the Canonical
+                    Name and what the Directory column shows — while the mug name is
+                    the historical record beneath it. Neither is length-capped: they
+                    are names, and they match the other name fields here rather than
+                    the 120-character free-text fields in Professional & personal
+                    (D173).
+
+                    ⚠ "Beneath" is a GRID FACT, not a DOM-order one, and that is why
+                    the Constitution number sits between them in source order. This
+                    block is `sm:grid-cols-2` filling row by row, so Nickname lands in
+                    the RIGHT column; the field directly under it is whatever takes
+                    the right slot of the next row. Putting Mug name immediately after
+                    Nickname in the source — the obvious reading of "put it under" —
+                    lands it in the LEFT column instead, diagonally down from
+                    Nickname, which is what it did before this change. The locked
+                    Constitution number is the field to displace because it is
+                    read-only and belongs to no pair.
+
+                    ⚠ The cost, accepted deliberately: below `sm` this grid collapses
+                    to ONE column, where the order is purely the source order — so on
+                    a phone the Constitution number now falls between the two names
+                    rather than after them. Reading order still matches visual order
+                    at both widths (WCAG 1.3.2), which is the part that must not
+                    break; only the pairing is looser on a narrow screen. */}
                   <TextField
                     id="profile-nickname"
                     label="Nickname"
@@ -393,6 +411,11 @@ export function ProfileEdit({
                     error={form.errorFor("nickname")}
                     helpKey="profile.nickname"
                   />
+                  <LockedField
+                    label="Constitution signer number"
+                    value={`#${record.id}`}
+                    note="assigned, read-only"
+                  />
                   <TextField
                     id="profile-mugName"
                     label="Mug name"
@@ -401,11 +424,6 @@ export function ProfileEdit({
                     onBlur={() => form.touch("mugName")}
                     error={form.errorFor("mugName")}
                     helpKey="profile.mugName"
-                  />
-                  <LockedField
-                    label="Constitution signer number"
-                    value={`#${record.id}`}
-                    note="assigned, read-only"
                   />
                 </div>
               </div>
