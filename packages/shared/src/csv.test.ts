@@ -58,6 +58,25 @@ describe("profilesToCsv — role-aware columns (§10)", () => {
     }
   });
 
+  it("exports mugName and nickname as separate columns for every role (OFC-409)", () => {
+    // Both are public name fields, so both ride every role's export — and they are
+    // two columns, not one: the export is the record, and collapsing them would
+    // lose exactly the distinction OFC-409 exists to draw.
+    for (const role of ["brother", "manager", "admin"] as const) {
+      const h = header(profilesToCsv(rows({ id: 5247 }), role));
+      expect(h).toContain("mugName");
+      expect(h).toContain("nickname");
+    }
+    const csv = profilesToCsv(
+      rows({ id: 5247, mugName: "Quantum All-Star", nickname: "Bob" }),
+      "brother",
+    );
+    const h = header(csv);
+    const cells = (csv.split("\r\n")[1] ?? "").split(",");
+    expect(cells[h.indexOf("mugName")]).toBe("Quantum All-Star");
+    expect(cells[h.indexOf("nickname")]).toBe("Bob");
+  });
+
   it("includes the three free-text columns in every role's export (OFC-404/405/406)", () => {
     // All three fields are public, so — like the mentoring column above and unlike
     // the staff-only ones — they must appear in a brother's export too. Each ticket

@@ -172,18 +172,26 @@ export const helpContent: HelpContent = {
     toggleTip:
       "The year you and your pledge brothers associate with. Usually, but not necessarily, the same as your graduation year.",
   },
-  // Widened from "Mug Name" (OFC-402). Mug names are an era-specific PBE custom:
-  // in some eras brothers used nicknames unconnected to any mug, and in others
-  // the mug name became a joke or a long phrase nobody would want used as a name
-  // for him. The field is therefore *any* name a brother is happy to be called
-  // by, with the mug name named only as the common case. The old inline helper
-  // ("The nickname printed on your PBE mug.") stated the narrow reading as fact
-  // and is superseded by this `?` text, which carries it as the parenthetical.
+  // OFC-409 splits OFC-402's single widened field into two. OFC-402 was right that
+  // the old label was too narrow, but the fix was insufficient: a mug name and the
+  // name a brother goes by are different facts. "Robert" may have a mug name of
+  // "Quantum All-Star" and still be called "Bob" — and a brother who wants his mug
+  // name used simply enters it in both.
+  //
+  // ⚠ Both are `helperText`, NOT `toggleTip` (Forrest's call, reversing OFC-402's
+  // move of this field's help behind the `?`). These two controls sit adjacent and
+  // the *only* thing a brother needs is to tell them apart — guidance that has to
+  // be readable without a click to do its job at all. Each string is one short
+  // line, which is what `helperText` is for.
+  "profile.nickname": {
+    key: "profile.nickname",
+    label: "Nickname",
+    helperText: "The name you would like other brothers to call you by.",
+  },
   "profile.mugName": {
     key: "profile.mugName",
-    label: "Mug Name / Nickname",
-    toggleTip:
-      "A name other than your given name that you're comfortable with brothers calling you by. Often (but not always) the nickname printed on your PBE mug.",
+    label: "Mug name",
+    helperText: "The name printed on your PBE mug.",
   },
   "profile.email": {
     key: "profile.email",

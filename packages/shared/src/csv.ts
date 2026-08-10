@@ -47,6 +47,7 @@ const COLUMNS: readonly CsvColumn[] = [
   { header: "lastName", field: "lastName", get: (p) => str(p.lastName) },
   { header: "fullLegalName", field: "fullLegalName", get: (p) => str(p.fullLegalName) },
   { header: "mugName", field: "mugName", get: (p) => str(p.mugName) },
+  { header: "nickname", field: "nickname", get: (p) => str(p.nickname) },
   { header: "classYear", field: "classYear", get: (p) => str(p.classYear) },
   { header: "email", field: "email", get: (p) => str(p.email) },
   { header: "alternateEmail", field: "alternateEmail", get: (p) => str(p.alternateEmail) },

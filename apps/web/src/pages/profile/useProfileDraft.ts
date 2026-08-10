@@ -35,6 +35,7 @@ const OPTIONAL_TEXT: ReadonlySet<keyof Profile> = new Set<keyof Profile>([
   "middleName",
   "fullLegalName",
   "mugName",
+  "nickname",
   "email",
   "alternateEmail",
   "phone",

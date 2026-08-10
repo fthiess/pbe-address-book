@@ -60,7 +60,8 @@ const FIELD_LABELS: Partial<Record<string, string>> = {
   middleName: "Middle name",
   lastName: "Last name",
   fullLegalName: "Full name",
-  mugName: "Mug Name / Nickname",
+  mugName: "Mug name",
+  nickname: "Nickname",
   classYear: "Class year",
   email: "Email",
   alternateEmail: "Alternate email",
@@ -375,9 +376,26 @@ export function ProfileEdit({
                     placeholder="YYYY"
                     helpKey="profile.classYear"
                   />
+                  {/* Nickname first, then Mug name (OFC-409, superseding N170's
+                    single "Mug Name / Nickname" field). Nickname leads because it is
+                    the one that matters day to day — it is what the Profile page
+                    quotes under the Canonical Name and what the Directory column
+                    shows — while the mug name is the historical record beneath it.
+                    Neither is length-capped: they are names, and they match the
+                    other name fields here rather than the 120-character free-text
+                    fields in Professional & personal (D173). */}
+                  <TextField
+                    id="profile-nickname"
+                    label="Nickname"
+                    value={form.draft.nickname ?? ""}
+                    onChange={(v) => form.setText("nickname", v)}
+                    onBlur={() => form.touch("nickname")}
+                    error={form.errorFor("nickname")}
+                    helpKey="profile.nickname"
+                  />
                   <TextField
                     id="profile-mugName"
-                    label="Mug Name / Nickname"
+                    label="Mug name"
                     value={form.draft.mugName ?? ""}
                     onChange={(v) => form.setText("mugName", v)}
                     onBlur={() => form.touch("mugName")}

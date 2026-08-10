@@ -364,7 +364,20 @@ export function generateProfiles(options: GenerateOptions = {}): Profile[] {
     };
 
     if (middleName !== undefined) profile.middleName = middleName;
-    if (mugName !== undefined) profile.mugName = mugName;
+    if (mugName !== undefined) {
+      profile.mugName = mugName;
+      // Fixtures mirror the mug name into `nickname` (OFC-409) so a generated
+      // brother has a name quoted under his Canonical Name and a populated
+      // Nickname column, exactly as the staging backfill produces. It is a *test
+      // data* convenience only: production leaves `nickname` empty and brothers
+      // fill it in themselves (Forrest's call), and nothing in the app ever copies
+      // one field to the other.
+      //
+      // ⚠ Deliberately NOT a separate PRNG draw — reusing `mugName` leaves the
+      // stream untouched, so this change alone does not shift any later generated
+      // value the way D173's three draws did.
+      profile.nickname = mugName;
+    }
 
     // ~70% carry a recorded full/legal name (first [middle] last [suffix]),
     // distinct from the constructed Canonical Name, so the Directory's Full Name

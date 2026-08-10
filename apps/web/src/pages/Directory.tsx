@@ -174,6 +174,7 @@ export function Directory() {
         lastName: p.lastName,
         fullLegalName: p.fullLegalName,
         mugName: p.mugName,
+        nickname: p.nickname,
         canonicalName: names.get(p.id),
       })),
     [profiles, names],

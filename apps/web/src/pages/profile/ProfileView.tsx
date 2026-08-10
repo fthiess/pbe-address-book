@@ -228,9 +228,15 @@ function IdentityHeader({
             prominent
           />
         </div>
-        {record.mugName && (
+        {/* The quoted name under the Canonical Name is the NICKNAME, not the mug
+          name (OFC-409). This is the "what do I call him" line, so it must carry the
+          name the brother asked to be called by — a mug name may be a joke he would
+          not want used. A brother who wants his mug name used here puts it in both
+          fields; there is deliberately no automatic copy. The mug name keeps its own
+          labelled read-out in the identity block below. */}
+        {record.nickname && (
           <p className="mt-0.5 text-[length:var(--text-body)] italic text-muted-foreground">
-            “{record.mugName}”
+            “{record.nickname}”
           </p>
         )}
         {lifespan && (
@@ -245,6 +251,19 @@ function IdentityHeader({
             .filter(Boolean)
             .join("  ·  ")}
         </p>
+        {/* The mug name's own labelled read-out (OFC-409). Before the split it had
+          NO labelled display at all — it was only ever the quoted line above, which
+          now carries the nickname — so without this the field would be editable and
+          never shown. It sits here, among the identity facts, because that is where
+          the edit form keeps it (the Identity section), and it is deliberately the
+          quieter of the two: the prominent quoted name is what to call the brother,
+          this is the historical record of what his mug said. Rendered only when
+          filled, like every other optional identity fact on this line. */}
+        {record.mugName && (
+          <p className="mt-1 text-[length:var(--text-body-sm)] text-muted-foreground">
+            Mug name: “{record.mugName}”
+          </p>
+        )}
         {record.majors && record.majors.length > 0 && (
           <ul className="mt-2 flex flex-wrap gap-1.5" aria-label="Courses">
             {record.majors.map((code) => (

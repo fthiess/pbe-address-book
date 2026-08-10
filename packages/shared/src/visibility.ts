@@ -62,6 +62,9 @@ export const FIELD_VISIBILITY: Record<keyof Profile, FieldVisibility> = {
   lastName: { cls: "public" },
   fullLegalName: { cls: "public" },
   mugName: { cls: "public" },
+  // Public like every other name field (OFC-409). It is the name a brother asks
+  // to be called by, so withholding it from the brotherhood would defeat it.
+  nickname: { cls: "public" },
   classYear: { cls: "public" },
 
   // --- Contact — toggle (each behind its owner share-flag) ---

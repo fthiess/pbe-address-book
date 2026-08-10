@@ -13,7 +13,7 @@ import {
 import { CourseChips, DebrotheredBadge, InMemoriamBadge, UnlistedBadge } from "./Chips.js";
 import { SelectCheckbox, StarButton } from "./RowControls.js";
 import type { Selection } from "./SelectionContext.js";
-import type { GridColumn } from "./grid-model.js";
+import { type GridColumn, HIGHLIGHTED_COLUMN_KEYS } from "./grid-model.js";
 import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
@@ -185,7 +185,16 @@ export function DirectoryCards({
                           return null;
                         }
                         const codes = column.key === "major" ? (profile.majors ?? []) : undefined;
-                        const searchable = column.key === "fullName" || column.key === "mugName";
+                        // ⚠ Was a hardcoded `key === "fullName" || key === "mugName"` — a
+                        // second copy of the grid's highlighted-column set. THIS rename
+                        // would in fact have been caught: dropping `"mugName"` from
+                        // `ColumnKey` makes that comparison a TS2367 "no overlap" error.
+                        // The silent case is the other direction — *adding* a highlighted
+                        // column, where the new key type-checks fine here and the phone
+                        // view simply never marks it, with nothing failing. That is the
+                        // N149/OFC-362 drift class, and it is why this now reads the one
+                        // shared set instead of restating it.
+                        const searchable = HIGHLIGHTED_COLUMN_KEYS.has(column.key);
                         return (
                           <div key={column.key} className="contents">
                             <dt className="text-muted-foreground">{column.label}</dt>
