@@ -1,6 +1,6 @@
 # Proximity Search — Design
 
-**Ticket:** OFC-378 · **Related:** OFC-151 (Map View, post-launch) · **Status:** approved 2026-08-09; **session A (data pipeline + resolver) built 2026-08-11 — see D175/N172 for the as-built record and `tools/geo-data/README.md` for operations; session B (Near control) not yet started**
+**Ticket:** OFC-378 · **Related:** OFC-151 (Map View, post-launch) · **Status:** approved 2026-08-09; **session A (data pipeline + resolver) built 2026-08-11 — see D177/N172 for the as-built record and `tools/geo-data/README.md` for operations; session B (Near control) not yet started**
 
 Adds a "Near" filter to the Directory: enter a place — a city, a ZIP, or another
 brother — and the Directory narrows to brothers within a chosen radius, composing
@@ -319,7 +319,7 @@ Book's.
 **Territories work — for locating members.** A small number of brothers are in
 Puerto Rico; PR ZIPs are present in the ZCTA data and resolve normally, and
 `US_SUBDIVISIONS` already carries PR and the other territory codes. *Amended by
-the build (D175): the GeoNames US postal export covers the 50 states and DC
+the build (D177): the GeoNames US postal export covers the 50 states and DC
 only, so territories contribute no city names to the **origin vocabulary**.
 Members there are located correctly; a user cannot type "San Juan, PR" as an
 origin and must use a ZIP. Free ZIP entry, already load-bearing for the reasons
@@ -425,7 +425,7 @@ No UI, no user-visible change.
 *As built, the pipeline produced 41,151 ZIP centroids and 3,590 origin cities
 (147.7 + 29.0 KB brotli, against the 143.8 + 26.4 projected in §4), and the
 tables ship under content-hashed filenames so they can be served immutably.
-**D175** records the two decisions taken during the build and the two coverage
+**D177** records the two decisions taken during the build and the two coverage
 limits the real data revealed; **N172** records the traps; `tools/geo-data/README.md`
 is the operator's page. The resolver's API — what session B consumes — is
 `packages/shared/src/proximity.ts`.*

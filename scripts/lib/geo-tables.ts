@@ -1,5 +1,5 @@
 /**
- * The logic behind `assert:geo-tables` (OFC-378, D175). Pure functions over text
+ * The logic behind `assert:geo-tables` (OFC-378, D177). Pure functions over text
  * so they can be unit tested; the filesystem walk lives in the CLI.
  *
  * Two failure modes are being guarded, and they are unrelated to each other

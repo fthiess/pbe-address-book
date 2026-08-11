@@ -1,5 +1,5 @@
 /**
- * OFC-378 / D175: the committed proximity tables, the generated manifest that
+ * OFC-378 / D177: the committed proximity tables, the generated manifest that
  * names them, and the source tree must all agree.
  *
  * Fails if a table has been hand-edited (its content hash no longer matches its

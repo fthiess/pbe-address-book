@@ -15,7 +15,7 @@ npm-workspaces monorepo, TypeScript end-to-end with one shared `Profile` type (D
 - `apps/web` — React + Vite + Tailwind v4 + shadcn/ui; TanStack Table/Virtual; React Router + nuqs.
 - `apps/api` — Fastify on Cloud Run, bundled by esbuild; Firestore + private GCS image bucket. Firebase Hosting serves the SPA and rewrites `/api/*` and `/img/*` to Cloud Run (single origin).
 - `packages/shared` — the shared `Profile` type, validation, capabilities, canonical names.
-- `packages/help-content`, `tools/fake-data`, `tools/geo-data` (generates the committed proximity tables — D175), `tools/migration`, `infra/`, `e2e/`.
+- `packages/help-content`, `tools/fake-data`, `tools/geo-data` (generates the committed proximity tables — D177), `tools/migration`, `infra/`, `e2e/`.
 
 Tooling: Biome (format + lint), Vitest (unit + Firestore-emulator integration — emulator tests are `*.emulator.test.ts` and need JDK 21), Playwright + @axe-core/playwright, tsx for scripts.
 

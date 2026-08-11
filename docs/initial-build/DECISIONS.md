@@ -3360,7 +3360,7 @@ A UAT tester observed that a manager almost never wants all sixty-odd fields —
 **The audit ping carries `columns`** (`"all" | "displayed"`), absent on a `clipboard` ping. `count` says how many brothers left; this says how much about each, so a 700-row all-data export reads as the larger event it is. ⚠ An unrecognised value is **dropped rather than 400-ing** — the audit entry is worth more than the strictness. The `Export Performed` analytics event gains the same property, which is what will answer whether the new file actually removed the spreadsheet detour it was built to remove.
 
 ⚠ **The two files get different names** (`pbe-directory-…` / `pbe-directory-columns-…`), so a Downloads folder holding both still says which is which instead of the browser appending a meaningless `(1)`.
-### D175 — Proximity tables as built: **content-hashed static CSVs, served immutably** *(OFC-378 session A — Forrest's call on the filenames)*
+### D177 — Proximity tables as built: **content-hashed static CSVs, served immutably** *(OFC-378 session A — Forrest's call on the filenames)*
 
 D172 approved the design; this records what the pipeline actually produced, the two decisions taken during the build, and the coverage limits the real data revealed. `PROXIMITY-SEARCH-DESIGN.md` remains authoritative for the design; `tools/geo-data/README.md` is the operator's page.
 

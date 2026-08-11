@@ -1,5 +1,5 @@
 /**
- * Proximity search: the pure half (OFC-378, D172/D175;
+ * Proximity search: the pure half (OFC-378, D172/D177;
  * `docs/initial-build/PROXIMITY-SEARCH-DESIGN.md` is authoritative for the
  * design). Everything here is a pure function over plain data — no React, no
  * fetch, no module state — so the Directory's "Near" filter is exercisable

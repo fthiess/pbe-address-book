@@ -2,7 +2,7 @@
 
 Generates the two static tables behind the Directory's **Near** filter
 (OFC-378; `docs/initial-build/PROXIMITY-SEARCH-DESIGN.md` is authoritative for
-the design, **D172** and **D175** for the decisions):
+the design, **D172** and **D177** for the decisions):
 
 | Output | Contents | Size |
 |---|---|---|

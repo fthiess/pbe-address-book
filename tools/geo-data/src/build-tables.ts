@@ -1,5 +1,5 @@
 /**
- * Regenerate the proximity search tables (OFC-378, D172/D175).
+ * Regenerate the proximity search tables (OFC-378, D172/D177).
  *
  *   npm run build:tables --workspace tools/geo-data -- [--refresh] [--threshold N]
  *
@@ -150,7 +150,7 @@ function manifestModule(
  * GENERATED FILE — do not edit.
  *
  * Written by \`npm run build:tables --workspace tools/geo-data\`; the URLs carry a
- * content hash so the tables can be served immutably (OFC-378, D175). The gate's
+ * content hash so the tables can be served immutably (OFC-378, D177). The gate's
  * \`assert:geo-tables\` step fails if this manifest and the files in
  * \`apps/web/public/geo/\` ever disagree.
  *
