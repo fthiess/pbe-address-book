@@ -244,14 +244,22 @@ test.describe("OFC-378 — picking an origin", () => {
 });
 
 test.describe("OFC-378 — the chosen origin", () => {
-  test("shows as a chip that replaces the box, and clears from the label row", async ({ page }) => {
+  test("shows as a chip that replaces the box, and clears from inside the chip", async ({
+    page,
+  }) => {
     await gotoDirectory(page, { url: "/?near=c~Boston~MA" });
     await filtersFold(page).click();
 
     await expect(page.getByText("Boston, MA", { exact: true })).toBeVisible();
     await expect(nearBox(page)).toHaveCount(0);
 
-    await page.getByRole("button", { name: /Clear Located near/i }).click();
+    // ⚠ The remove control lives INSIDE the chip, matching the profile page's
+    // course chips rather than this panel's label-row "×" (Forrest's call, live
+    // test 2). Asserted by containment, not just by name, since the whole point
+    // is where it sits: the panel's generic `Clear <label>` button must be absent.
+    await expect(page.getByRole("button", { name: /^Clear Located near/i })).toHaveCount(0);
+    const chip = page.getByText("Boston, MA", { exact: true }).locator("..");
+    await chip.getByRole("button", { name: /Remove Boston, MA/i }).click();
 
     await expect(page).not.toHaveURL(/near=/);
     await expect(nearBox(page)).toBeVisible();
@@ -432,6 +440,30 @@ test.describe("OFC-378 — the proximity card (live-test findings)", () => {
     const staffBox = await page.getByRole("combobox", { name: "Staff", exact: true }).boundingBox();
     const nearBoxRect = await nearBox(page).boundingBox();
     expect(nearBoxRect?.y).toBeGreaterThan(staffBox?.y ?? 0);
+  });
+
+  test("the card spans two filter columns, not the whole panel", async ({ page }) => {
+    // ⚠ It holds two controls, so a card the full width of the panel advertises a
+    // third that does not exist (Forrest's call, live test 2). Asserted against
+    // the filter grid's own tracks rather than a pixel width: the card's right
+    // edge must stop short of the grid's, by roughly the third column.
+    await page.setViewportSize({ width: 1400, height: 1000 });
+    await gotoDirectory(page);
+    await filtersFold(page).click();
+
+    const card = page
+      .locator("div")
+      .filter({ hasText: /^Proximity search/ })
+      .last();
+    // The Employer field is in the first column of the grid above; Sports is in
+    // the third at this width, which is the column the card must NOT reach into.
+    const cardBox = await card.boundingBox();
+    const thirdColumn = await page
+      .getByRole("textbox", { name: "Sports", exact: true })
+      .boundingBox();
+    expect(cardBox).not.toBeNull();
+    expect(thirdColumn).not.toBeNull();
+    expect((cardBox?.x ?? 0) + (cardBox?.width ?? 0)).toBeLessThan(thirdColumn?.x ?? 0);
   });
 
   test("the two controls sit on a shared line rather than stepping", async ({ page }) => {

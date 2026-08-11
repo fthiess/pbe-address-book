@@ -268,31 +268,37 @@ export function FilterPanel({
             consequence, and deliberately the same border/tint/heading so the two
             pages read as one system.
 
-            ⚠ The inner grid repeats the outer one's column counts rather than
-            using its own two-up layout: the controls then line up with the filters
-            above them instead of being two wider boxes sitting under twelve
-            narrower ones. The third slot stays empty on purpose. */}
-          <div className="mt-4 rounded-[var(--radius-lg)] border border-border bg-muted/40 p-3">
-            <p className="mb-2 text-[length:var(--text-label-up)] font-bold uppercase tracking-wide text-muted-foreground">
-              Proximity search
-            </p>
-            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
-              <NearFilter
-                // "push", like the other discrete controls: picking a place is a
-                // deliberate step, and Back should walk out of it. The text filters
-                // replace because they fire per keystroke; this fires once per pick.
-                onChange={(v) => setFilter("near", v, "push")}
-                context={nearContext}
-                status={geoStatus}
-                origin={nearOrigin}
-                resolved={nearResolved}
-                onEngaged={onNearEngaged}
-              />
-              <RadiusSelect
-                value={radiusMiles}
-                onChange={onRadiusChange}
-                disabled={nearOrigin === undefined}
-              />
+            ⚠ The card is **laid on the same grid tracks as the filters above it**
+            and spans two of them, rather than being a full-width block below them
+            (Forrest's call, live test 2). Two controls need two columns, so a card
+            stretching the full width of the panel advertised a third control that
+            does not exist and left a large empty space where it would have been.
+            The outer wrapper exists only to establish those tracks; the card is its
+            single item. */}
+          <div className="mt-4 grid grid-cols-1 gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-[var(--radius-lg)] border border-border bg-muted/40 p-3 sm:col-span-2">
+              <p className="mb-2 text-[length:var(--text-label-up)] font-bold uppercase tracking-wide text-muted-foreground">
+                Proximity search
+              </p>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                <NearFilter
+                  // "push", like the other discrete controls: picking a place is a
+                  // deliberate step, and Back should walk out of it. The text
+                  // filters replace because they fire per keystroke; this fires
+                  // once per pick.
+                  onChange={(v) => setFilter("near", v, "push")}
+                  context={nearContext}
+                  status={geoStatus}
+                  origin={nearOrigin}
+                  resolved={nearResolved}
+                  onEngaged={onNearEngaged}
+                />
+                <RadiusSelect
+                  value={radiusMiles}
+                  onChange={onRadiusChange}
+                  disabled={nearOrigin === undefined}
+                />
+              </div>
             </div>
           </div>
 
@@ -712,7 +718,14 @@ function NearFilter({
       label="Located near"
       htmlFor={origin === undefined ? id : undefined}
       helpKey="directory.filter.near"
-      onClear={origin !== undefined ? () => onChange("") : undefined}
+      // ⚠ Deliberately **no** `onClear`, unlike every other field in this panel.
+      // The clear lives *inside* the chip below (Forrest's call, live test 2).
+      // The panel's idiom is a label-row "×" because its controls are boxes with
+      // no natural place to put one; a chip has one, and every other chip in the
+      // app — the profile page's course chips, its Big-Brother chip — carries its
+      // own. Matching the panel here would have meant this one chip behaving
+      // unlike all the others, which is the more surprising inconsistency of the
+      // two.
     >
       {origin === undefined ? (
         <Combobox
@@ -740,10 +753,29 @@ function NearFilter({
           adornment={<MapPin size={15} strokeWidth={1.5} aria-hidden="true" />}
         />
       ) : (
+        // min-h matches the combobox the chip replaces, so swapping between them
+        // does not move the row.
         <div className="flex min-h-[2.375rem] items-center">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-sm font-medium">
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted py-1 pl-2.5 pr-1 text-sm font-medium">
             <MapPin size={13} strokeWidth={1.5} aria-hidden="true" />
-            {nearLabel(origin, context)}
+            {/* The label is its own element so the chip has a node whose text is
+                exactly the place name — the remove button beside it would
+                otherwise make the pill's own text read "Brookline, MA×". */}
+            <span>{nearLabel(origin, context)}</span>
+            {/* The same remove control the profile page's course chips carry
+                (`MajorsEditor`): a round button inside the pill, `×` hidden from
+                assistive tech behind a full accessible name. Kept as its own
+                element rather than making the whole chip clickable — a chip that
+                vanishes when you click anywhere on it is a trap for anyone who
+                clicks to read it. */}
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              aria-label={`Remove ${nearLabel(origin, context)}`}
+              className="flex size-5 items-center justify-center rounded-full text-current opacity-70 outline-none hover:bg-black/5 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
           </span>
         </div>
       )}
