@@ -58,6 +58,20 @@ interface ComboboxProps {
   /** A leading adornment inside the input frame (e.g. a search glyph). */
   adornment?: ReactNode;
   /**
+   * Size the input to match a **compact form row** rather than the profile
+   * page's roomier fields.
+   *
+   * ⚠ Opt-in, and it stays that way. The default metrics (`py-2.5`, body-lg
+   * text) are the profile page's, where this component has lived since Phase
+   * 4b-1 and where the majors and Big-Brother pickers depend on them. The
+   * Directory's filter panel is built from `text-sm`/`py-2` controls laid out in
+   * a grid, so an un-sized combobox there is both taller than its neighbours and
+   * visibly larger in the placeholder — which is exactly how it reached live test
+   * on OFC-378. Changing the default to fix that would have silently reflowed two
+   * profile-page controls to fix a Directory one.
+   */
+  dense?: boolean;
+  /**
    * Custom option-row content; defaults to the `label` with the `hint` right-
    * aligned. When provided, the row left-aligns and top-aligns its content (so a
    * wrapping renderer reads cleanly). The option's accessible name still comes
@@ -89,6 +103,7 @@ export function Combobox({
   describedBy,
   disabled = false,
   adornment,
+  dense = false,
   renderOption,
 }: ComboboxProps) {
   const fallbackId = useId();
@@ -213,7 +228,8 @@ export function Combobox({
             onClick={show}
             onKeyDown={onKeyDown}
             className={cn(
-              "w-full rounded-[var(--radius-md)] border border-input bg-background py-2.5 text-[length:var(--text-body-lg)] outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring",
+              "w-full rounded-[var(--radius-md)] border border-input bg-background outline-none focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring",
+              dense ? "py-2 text-sm" : "py-2.5 text-[length:var(--text-body-lg)]",
               adornment ? "pl-9 pr-3" : "px-3",
               disabled && "bg-muted text-muted-foreground",
             )}

@@ -207,27 +207,6 @@ export function FilterPanel({
               value={filters.city}
               onChange={(v) => setFilter("city", v)}
             />
-            {/* Near and Within sit together, directly after City: they are the
-              geography block's third and fourth controls, and separating a filter
-              from its own radius would read as two unrelated settings. Both are
-              all-roles — a brother's address is in his own projection or it is in
-              nobody's, so filterable ⟺ visible holds without a gate (D172 §8). */}
-            <NearFilter
-              // "push", like the other discrete controls: picking a place is a
-              // deliberate step, and Back should walk out of it. The text filters
-              // replace because they fire per keystroke; this fires once per pick.
-              onChange={(v) => setFilter("near", v, "push")}
-              context={nearContext}
-              status={geoStatus}
-              origin={nearOrigin}
-              resolved={nearResolved}
-              onEngaged={onNearEngaged}
-            />
-            <RadiusSelect
-              value={radiusMiles}
-              onChange={onRadiusChange}
-              disabled={nearOrigin === undefined}
-            />
             <TextFilter
               label="Employer"
               placeholder="contains…"
@@ -278,6 +257,43 @@ export function FilterPanel({
               filters on who administers the Book rather than on anything about the
               brother himself, so it reads as the odd one out and belongs at the end. */}
             <StaffSelect value={filters.staff} onChange={(v) => setFilter("staff", v, "push")} />
+          </div>
+
+          {/* Proximity sits at the foot of the all-roles filters, in a card of its
+            own (Forrest's call, OFC-378 live test). Every other control here is a
+            filter you can set by itself; these two are one filter and its
+            parameter, and "Located within" means nothing without "Located near".
+            Boxing them says that before anyone reads a word — the same device the
+            profile page's privacy `Subgroup` uses to bind a switch to its
+            consequence, and deliberately the same border/tint/heading so the two
+            pages read as one system.
+
+            ⚠ The inner grid repeats the outer one's column counts rather than
+            using its own two-up layout: the controls then line up with the filters
+            above them instead of being two wider boxes sitting under twelve
+            narrower ones. The third slot stays empty on purpose. */}
+          <div className="mt-4 rounded-[var(--radius-lg)] border border-border bg-muted/40 p-3">
+            <p className="mb-2 text-[length:var(--text-label-up)] font-bold uppercase tracking-wide text-muted-foreground">
+              Proximity search
+            </p>
+            <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-3">
+              <NearFilter
+                // "push", like the other discrete controls: picking a place is a
+                // deliberate step, and Back should walk out of it. The text filters
+                // replace because they fire per keystroke; this fires once per pick.
+                onChange={(v) => setFilter("near", v, "push")}
+                context={nearContext}
+                status={geoStatus}
+                origin={nearOrigin}
+                resolved={nearResolved}
+                onEngaged={onNearEngaged}
+              />
+              <RadiusSelect
+                value={radiusMiles}
+                onChange={onRadiusChange}
+                disabled={nearOrigin === undefined}
+              />
+            </div>
           </div>
 
           {staff && (
@@ -693,7 +709,7 @@ function NearFilter({
 
   return (
     <Field
-      label="Near"
+      label="Located near"
       htmlFor={origin === undefined ? id : undefined}
       helpKey="directory.filter.near"
       onClear={origin !== undefined ? () => onChange("") : undefined}
@@ -701,6 +717,11 @@ function NearFilter({
       {origin === undefined ? (
         <Combobox
           id={id}
+          // ⚠ Without this the box is 4px taller than every control beside it and
+          // its placeholder is visibly larger, because the component's defaults
+          // are the profile page's. That is what live test saw as "the Near field
+          // is misaligned with Within".
+          dense
           options={options}
           // The options are already the match set for the current query, so the
           // Combobox's own substring filter would be a second, weaker pass over
@@ -712,7 +733,7 @@ function NearFilter({
             onEngaged();
           }}
           onSelect={onChange}
-          inputLabel="Near — search for a city, ZIP code, or brother"
+          inputLabel="Located near — search for a city, ZIP code, or brother"
           placeholder="City, ZIP, or brother…"
           emptyMessage={emptyMessage}
           describedBy={statusText ? statusId : undefined}
@@ -758,7 +779,7 @@ function RadiusSelect({
 }) {
   const id = useId();
   return (
-    <Field label="Within" htmlFor={id}>
+    <Field label="Located within" htmlFor={id}>
       <select
         id={id}
         value={String(value)}

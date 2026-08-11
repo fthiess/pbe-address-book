@@ -194,7 +194,13 @@ function makeAddress(rng: Random): Address {
   const address: Address = {
     street1: `${rng.int(1, 9999)} ${rng.pick(LAST_NAMES)} St`,
     city: place.city,
-    postalCode: String(rng.int(10000, 99999)),
+    // ⚠ Drawn from the place's OWN postal codes, never invented. See the comment
+    // on `Place.postalCodes`: this was `rng.int(10000, 99999)` until OFC-378's
+    // live test, and a postal code unrelated to the city it sits beside makes
+    // proximity search — which locates by ZIP, not by the written city — look
+    // comprehensively broken while behaving perfectly. One draw, as before, so
+    // the PRNG stream keeps its shape.
+    postalCode: rng.pick(place.postalCodes),
     country: place.country,
   };
   if (place.state !== null) {
