@@ -1,9 +1,12 @@
 import {
+  type GeoPoint,
   type Role,
+  type ZipCentroids,
   compareCourseCodes,
   countryName,
   courseLabel,
   isWillingToMentor,
+  makeProximityPredicate,
   subdivisionName,
 } from "@pbe/shared";
 import type { DirectoryProfile } from "../../lib/types.js";
@@ -89,6 +92,28 @@ export interface DirectoryFilters {
   sports: string;
   activities: string;
   /**
+   * All-brothers — **proximity** (OFC-378, D172): the chosen origin as a URL
+   * token, `""` when the filter is off. `near.ts` owns the grammar (`z~02445`,
+   * `c~Brookline~MA`, `b~5247`) and this module never inspects it — the resolved
+   * coordinate arrives through {@link ProximityFilter} instead.
+   *
+   * ⚠ **The token is not sufficient on its own.** Every other filter here answers
+   * from the record in hand; this one needs a 170 KB lookup table that is fetched
+   * lazily, so `near` can be set while the filter cannot yet be applied. The
+   * contract is that an unresolved origin contributes **no clause at all** — the
+   * view stays unnarrowed and the control says why. It must never become an
+   * empty result set: "no brothers live near Boston" and "we have not worked out
+   * where Boston is" are different answers, and only one of them is true.
+   *
+   * ⚠ The radius deliberately lives **outside** this model, as its own URL
+   * parameter owned by `Directory.tsx` (alongside `deceased`). It narrows
+   * nothing by itself — it is a parameter *of* this filter — so counting it in
+   * `countActiveFilters` would inflate the panel badge, and `FILTER_DIMENSIONS`
+   * (whose key set must equal this one's, by test) would gain a Mixpanel
+   * dimension that reports no user intent.
+   */
+  near: string;
+  /**
    * All-brothers — filter to managers and administrators (OFC-199). Role is public
    * (OFC-139), so unlike the staff-only filters below this is available to every
    * role. A single "staff or not" toggle: with only ~6–8 staff, splitting managers
@@ -160,6 +185,7 @@ export const EMPTY_FILTERS: DirectoryFilters = {
   postPbeEducation: "",
   sports: "",
   activities: "",
+  near: "",
   staff: "",
   willingToMentor: "",
   deceasedOnly: "",
@@ -208,6 +234,10 @@ export function countActiveFilters(filters: DirectoryFilters): number {
   if (filters.postPbeEducation.trim()) n++;
   if (filters.sports.trim()) n++;
   if (filters.activities.trim()) n++;
+  // Counted on the token alone, deliberately — the badge answers "what have I
+  // asked for", not "what has finished loading", so it must not flicker from 1 to
+  // 0 and back while the tables are in flight.
+  if (filters.near.trim()) n++;
   if (filters.staff) n++;
   if (filters.willingToMentor) n++;
   if (filters.deceasedOnly) n++;
@@ -299,14 +329,33 @@ function numericMatches(grammar: NumericGrammar, value: number | null | undefine
 }
 
 /**
+ * A **resolved** Near filter: the lookup table, the origin the user picked, and
+ * the radius. Assembled by `Directory.tsx` once the tables have loaded and the
+ * `near` token has resolved to a point; absent at every other moment, including
+ * while the tables are fetching and when the token names a place that is not
+ * there. See {@link DirectoryFilters.near} for why absence means "no clause"
+ * rather than "no rows".
+ */
+export interface ProximityFilter {
+  readonly centroids: ZipCentroids;
+  readonly origin: GeoPoint;
+  readonly radiusMiles: number;
+}
+
+/**
  * Build the row predicate for a filter set. Each active field contributes an
  * AND-ed clause; an inactive field contributes nothing. Within a field, lists and
  * grammars are OR. Staff-only fields are honoured only for staff roles (a brother
  * cannot set them in the UI, and they would never match projected-away data).
+ *
+ * `proximity` is the one clause that cannot be built from `filters` alone — it
+ * needs a fetched table — so it arrives separately rather than as a second
+ * source of truth about what the user asked for.
  */
 export function buildFilterPredicate(
   filters: DirectoryFilters,
   role: Role,
+  proximity?: ProximityFilter,
 ): (profile: DirectoryProfile) => boolean {
   const clauses: ((p: DirectoryProfile) => boolean)[] = [];
 
@@ -367,6 +416,24 @@ export function buildFilterPredicate(
   const activities = filters.activities.trim().toLocaleLowerCase();
   if (activities !== "") {
     clauses.push((p) => (p.activities ?? "").toLocaleLowerCase().includes(activities));
+  }
+
+  // Proximity, all roles (OFC-378/D172). The whole geometry lives in
+  // `@pbe/shared`'s `makeProximityPredicate`, which closes over the table and the
+  // origin so the per-row cost is one Map lookup and one haversine.
+  //
+  // ⚠ Keyed on `proximity` being present, NOT on `filters.near` being set: those
+  // two are not the same condition, and treating them as one is how this filter
+  // would come to return an empty grid while the tables are still loading. A
+  // brother who cannot be located is excluded — proximity narrows, and "we don't
+  // know where he is" is not "he is nearby" (the predicate's own contract).
+  if (proximity) {
+    const withinRadius = makeProximityPredicate(
+      proximity.centroids,
+      proximity.origin,
+      proximity.radiusMiles,
+    );
+    clauses.push((p) => withinRadius(p.address));
   }
 
   // Staff filter — all roles (role is public, OFC-139/OFC-199): keep only managers

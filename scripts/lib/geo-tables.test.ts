@@ -5,6 +5,8 @@ import {
   checkTables,
   contentHash,
   countDataRows,
+  declaredRows,
+  findDuplicateKeys,
   findTableImports,
   hashFromFilename,
   parseManifest,
@@ -19,9 +21,13 @@ const ZIPS_CSV = [
   "94041,37.39,-122.08",
   "",
 ].join("\n");
-const CITIES_CSV = ["# generated", "city,state,lat,lon", "Brookline,MA,42.34,-71.13", ""].join(
-  "\n",
-);
+const CITIES_CSV = [
+  "# generated",
+  "# rows: 1",
+  "city,state,lat,lon",
+  "Brookline,MA,42.34,-71.13",
+  "",
+].join("\n");
 
 const ZIPS_NAME = `zips.${contentHash(ZIPS_CSV)}.csv`;
 const CITIES_NAME = `cities.${contentHash(CITIES_CSV)}.csv`;
@@ -76,6 +82,66 @@ describe("countDataRows", () => {
     expect(countDataRows(ZIPS_CSV)).toBe(2);
     expect(countDataRows(CITIES_CSV)).toBe(1);
     expect(countDataRows("# only a comment\nzip,lat,lon\n")).toBe(0);
+  });
+});
+
+describe("declaredRows (OFC-378 session B)", () => {
+  it("reads the provenance block's row count", () => {
+    expect(declaredRows(ZIPS_CSV)).toBe(2);
+    expect(declaredRows(CITIES_CSV)).toBe(1);
+  });
+
+  it("returns undefined when there is no such line", () => {
+    expect(declaredRows(["# generated", "zip,lat,lon", "02139,42.36,-71.1", ""].join("\n"))).toBe(
+      undefined,
+    );
+  });
+
+  it("stops at the header — a data row can never be mistaken for the declaration", () => {
+    const sneaky = ["# generated", "zip,lat,lon", "# rows: 9999", ""].join("\n");
+    expect(declaredRows(sneaky)).toBeUndefined();
+  });
+});
+
+describe("findDuplicateKeys (OFC-378 session B)", () => {
+  it("finds nothing in a healthy table", () => {
+    expect(findDuplicateKeys(ZIPS_CSV, 1)).toEqual([]);
+    expect(findDuplicateKeys(CITIES_CSV, 2)).toEqual([]);
+  });
+
+  it("catches a repeated ZIP", () => {
+    const doubled = ZIPS_CSV.replace("94041,37.39,-122.08", "02139,37.39,-122.08");
+    expect(findDuplicateKeys(doubled, 1)).toEqual(["02139"]);
+  });
+
+  it("keys a city on (name, state), so two Portlands are not a duplicate", () => {
+    const twoPortlands = [
+      "# generated",
+      "city,state,lat,lon",
+      "Portland,ME,43.66,-70.26",
+      "Portland,OR,45.54,-122.65",
+      "",
+    ].join("\n");
+    expect(findDuplicateKeys(twoPortlands, 2)).toEqual([]);
+    // ...but the same town twice in one state is.
+    expect(findDuplicateKeys(`${twoPortlands}Portland,OR,45.54,-122.65\n`, 2)).toEqual([
+      "Portland,OR",
+    ]);
+  });
+
+  it("skips the provenance block and the header, like every other reader here", () => {
+    const noRows = ["# zip,lat,lon", "# zip,lat,lon", "zip,lat,lon", ""].join("\n");
+    expect(findDuplicateKeys(noRows, 1)).toEqual([]);
+  });
+
+  it("reports at most `limit` keys — the message only has to be actionable", () => {
+    const many = [
+      "# generated",
+      "zip,lat,lon",
+      ...Array.from({ length: 20 }, (_, i) => `0213${i % 2},42.36,-71.1`),
+      "",
+    ].join("\n");
+    expect(findDuplicateKeys(many, 1, 3)).toHaveLength(3);
   });
 });
 
@@ -158,6 +224,52 @@ describe("checkTables", () => {
       sources: [{ path: "apps/web/src/x.ts", text: 'import z from "./zips.aaaaaaaa.csv?raw";' }],
     });
     expect(problems.some((problem) => problem.includes("imports a .csv as a module"))).toBe(true);
+  });
+
+  it("catches a provenance header that no longer matches the rows beneath it", () => {
+    // The client trusts this line to detect a truncated download, so a stale one
+    // would quietly disarm that check.
+    const lying = ZIPS_CSV.replace("# rows: 2", "# rows: 3");
+    const name = `zips.${contentHash(lying)}.csv`;
+    const problems = checkTables({
+      manifest: parseManifest(manifestSource(name, CITIES_NAME)),
+      present: new Map([
+        [name, lying],
+        [CITIES_NAME, CITIES_CSV],
+      ]),
+      sources: [],
+    });
+    expect(problems.some((problem) => problem.includes('declares "# rows: 3" but holds 2'))).toBe(
+      true,
+    );
+  });
+
+  it("catches a table with no row declaration at all", () => {
+    const bare = ZIPS_CSV.replace("# rows: 2\n", "");
+    const name = `zips.${contentHash(bare)}.csv`;
+    const problems = checkTables({
+      manifest: parseManifest(manifestSource(name, CITIES_NAME)),
+      present: new Map([
+        [name, bare],
+        [CITIES_NAME, CITIES_CSV],
+      ]),
+      sources: [],
+    });
+    expect(problems.some((problem) => problem.includes('carries no "# rows:" line'))).toBe(true);
+  });
+
+  it("catches a duplicate key, which would make the client's row-count check lie", () => {
+    const doubled = ZIPS_CSV.replace("94041,37.39,-122.08", "02139,37.39,-122.08");
+    const name = `zips.${contentHash(doubled)}.csv`;
+    const problems = checkTables({
+      manifest: parseManifest(manifestSource(name, CITIES_NAME)),
+      present: new Map([
+        [name, doubled],
+        [CITIES_NAME, CITIES_CSV],
+      ]),
+      sources: [],
+    });
+    expect(problems.some((problem) => problem.includes("repeats a key: 02139"))).toBe(true);
   });
 
   it("catches an unhashed filename", () => {

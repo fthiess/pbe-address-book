@@ -105,6 +105,73 @@ export function countDataRows(text: string): number {
 }
 
 /**
+ * The row count a table declares in its own `#` provenance block, or `undefined`
+ * if it declares none.
+ *
+ * ⚠ Checked because the **client** trusts it: `useGeoTables.ts` compares its
+ * parsed row count against this line to tell a truncated download from a
+ * complete one, since the header survives a truncation and the rows do not. That
+ * makes the line load-bearing rather than documentation, and this is the only
+ * place that can notice it drifting from the rows beneath it.
+ */
+export function declaredRows(text: string): number | undefined {
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("#")) {
+      return undefined;
+    }
+    const match = /^#\s*rows:\s*(\d+)$/.exec(trimmed);
+    if (match) {
+      return Number(match[1]);
+    }
+  }
+  return undefined;
+}
+
+/**
+ * How many leading columns form each table's key: a ZIP is unique on its own, a
+ * city on (name, state) — "Aberdeen" alone is four different towns.
+ */
+const KEY_COLUMNS: Readonly<Record<string, number>> = { zips: 1, cities: 2 };
+
+/**
+ * Keys appearing on more than one data row (at most `limit` of them, since the
+ * message only needs to be actionable).
+ *
+ * ⚠ This exists because the **client** checks its parsed row count against the
+ * manifest's, to tell a truncated fetch from a complete one (`useGeoTables.ts`) —
+ * and both tables parse into keyed structures, so that comparison is only
+ * meaningful while the keys are unique. Nothing else asserts it: the generator
+ * merges three sources and a future vintage could introduce a collision without
+ * anything noticing. The check belongs at build time, where a data problem is a
+ * red build; at runtime the same problem would take the feature dark for everyone.
+ */
+export function findDuplicateKeys(text: string, columns: number, limit = 5): string[] {
+  const seen = new Set<string>();
+  const duplicates: string[] = [];
+  let headerSeen = false;
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed === "" || trimmed.startsWith("#")) {
+      continue;
+    }
+    if (!headerSeen) {
+      headerSeen = true;
+      continue;
+    }
+    const key = trimmed.split(",").slice(0, columns).join(",");
+    if (seen.has(key)) {
+      if (duplicates.length < limit) {
+        duplicates.push(key);
+      }
+    } else {
+      seen.add(key);
+    }
+  }
+  return duplicates;
+}
+
+/**
  * Source files that pull a table in as a module. Matches every import form that
  * can reach a JS chunk — `from "…"`, dynamic `import("…")`, `require("…")` and
  * the **bare side-effect `import "…"`**, which has neither a `from` nor a
@@ -129,11 +196,65 @@ export interface TableInputs {
   sources: readonly SourceFile[];
 }
 
+/** Everything checked about one table's *bytes*, once it has been located. */
+function checkTableContents(
+  name: string,
+  filename: string,
+  contents: string,
+  claimedRows: number,
+): string[] {
+  const problems: string[] = [];
+
+  const declaredHash = hashFromFilename(filename);
+  if (declaredHash === undefined) {
+    problems.push(`${filename} does not carry a content hash — it cannot be cached immutably`);
+  } else if (declaredHash !== contentHash(contents)) {
+    problems.push(
+      `${filename} has been edited: its bytes hash to ${contentHash(contents)}, not ${declaredHash}. Regenerate with \`npm run build:tables --workspace tools/geo-data\` rather than editing a table.`,
+    );
+  }
+
+  const actualRows = countDataRows(contents);
+  if (actualRows !== claimedRows) {
+    problems.push(
+      `manifest "${name}" claims ${claimedRows} rows, but ${filename} holds ${actualRows}`,
+    );
+  }
+
+  const declaredCount = declaredRows(contents);
+  if (declaredCount === undefined) {
+    problems.push(
+      `${filename} carries no "# rows:" line in its provenance block. The client checks its parsed row count against that line to detect a truncated download, so it must be there.`,
+    );
+  } else if (declaredCount !== actualRows) {
+    problems.push(
+      `${filename} declares "# rows: ${declaredCount}" but holds ${actualRows}. Regenerate rather than editing a table.`,
+    );
+  }
+
+  const keyColumns = KEY_COLUMNS[name];
+  if (keyColumns !== undefined) {
+    const duplicates = findDuplicateKeys(contents, keyColumns);
+    if (duplicates.length > 0) {
+      problems.push(
+        `${filename} repeats ${duplicates.length === 1 ? "a key" : "keys"}: ${duplicates.join(", ")}. Each row must be uniquely keyed on its first ${keyColumns} column(s) — the client counts parsed entries against the manifest to detect a truncated download, and a duplicate makes that count lie.`,
+      );
+    }
+  }
+
+  return problems;
+}
+
 /** Every problem found; an empty array means the tables and manifest agree. */
 export function checkTables({ manifest, present, sources }: TableInputs): string[] {
   const problems: string[] = [];
   const expected = new Set<string>();
 
+  // This loop resolves each manifest entry to a file; everything that can then be
+  // said about the file itself is `checkTableContents`' business. Split because
+  // the two are different questions — "is this table where the manifest says" and
+  // "is this table well-formed" — and keeping them in one body put the function
+  // over Biome's cognitive-complexity ceiling as the second grew.
   for (const [name, table] of Object.entries(manifest) as Array<[string, ManifestEntry]>) {
     const filename = tableFilename(table.url);
     if (filename === undefined) {
@@ -150,21 +271,7 @@ export function checkTables({ manifest, present, sources }: TableInputs): string
       continue;
     }
 
-    const declared = hashFromFilename(filename);
-    if (declared === undefined) {
-      problems.push(`${filename} does not carry a content hash — it cannot be cached immutably`);
-    } else if (declared !== contentHash(contents)) {
-      problems.push(
-        `${filename} has been edited: its bytes hash to ${contentHash(contents)}, not ${declared}. Regenerate with \`npm run build:tables --workspace tools/geo-data\` rather than editing a table.`,
-      );
-    }
-
-    const actualRows = countDataRows(contents);
-    if (actualRows !== table.rows) {
-      problems.push(
-        `manifest "${name}" claims ${table.rows} rows, but ${filename} holds ${actualRows}`,
-      );
-    }
+    problems.push(...checkTableContents(name, filename, contents, table.rows));
   }
 
   for (const filename of present.keys()) {
