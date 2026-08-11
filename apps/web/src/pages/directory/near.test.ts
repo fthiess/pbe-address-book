@@ -6,6 +6,7 @@ import {
   type NearOrigin,
   formatNearToken,
   indexCities,
+  nearDescription,
   nearLabel,
   nearOptions,
   parseNearToken,
@@ -128,13 +129,34 @@ describe("resolveNearPoint", () => {
   });
 });
 
+describe("nearLabel / nearDescription", () => {
+  it("shows a ZIP bare in the chip, and names it in prose", () => {
+    // The chip carries a pin glyph and shows the bare value for all three kinds;
+    // prefixing only ZIPs with their type made that one the odd one out
+    // (Forrest's call, live test 3). The prose and accessible-name form keeps the
+    // word, because "Remove 02445" alone is a bare number to a screen reader —
+    // the same split `CourseChip` already draws between "6-3" and "Course 6-3,
+    // Computer Science and Engineering".
+    const zip: NearOrigin = { kind: "zip", zip: "02445" };
+    expect(nearLabel(zip, EMPTY_CONTEXT)).toBe("02445");
+    expect(nearDescription(zip, EMPTY_CONTEXT)).toBe("ZIP 02445");
+  });
+
+  it("leaves the other two kinds identical in both forms", () => {
+    const city: NearOrigin = { kind: "city", name: "Brookline", state: "MA" };
+    const brother: NearOrigin = { kind: "brother", id: 5247 };
+    expect(nearDescription(city, CONTEXT)).toBe(nearLabel(city, CONTEXT));
+    expect(nearDescription(brother, CONTEXT)).toBe(nearLabel(brother, CONTEXT));
+  });
+});
+
 describe("nearLabel", () => {
   it("labels a city and a ZIP without needing the tables at all", () => {
     // What a brother following a shared proximity link sees while it loads.
     expect(nearLabel({ kind: "city", name: "Brookline", state: "MA" }, EMPTY_CONTEXT)).toBe(
       "Brookline, MA",
     );
-    expect(nearLabel({ kind: "zip", zip: "02445" }, EMPTY_CONTEXT)).toBe("ZIP 02445");
+    expect(nearLabel({ kind: "zip", zip: "02445" }, EMPTY_CONTEXT)).toBe("02445");
   });
 
   it("falls back to the id for a brother it cannot name", () => {

@@ -211,6 +211,15 @@ test.describe("OFC-378 — picking an origin", () => {
     await nearOption(page, /02138/).click();
 
     await expect(page).toHaveURL(/near=z~02138/);
+    // ⚠ The chip shows the bare ZIP — not "ZIP 02138" (Forrest's call, live test
+    // 3): a city chip shows the city and a brother chip his name, so prefixing
+    // only this kind with its type made it the odd one out. The pin glyph beside
+    // it already says what the chip is.
+    await expect(page.getByText("02138", { exact: true })).toBeVisible();
+    await expect(page.getByText("ZIP 02138")).toHaveCount(0);
+    // ...but the remove button still NAMES it, because "Remove 02138" alone is a
+    // bare number to a screen reader.
+    await expect(page.getByRole("button", { name: "Remove ZIP 02138" })).toBeVisible();
     await expect(row(page, /Colin Cambridge/)).toBeVisible();
     await expect(row(page, /Vic Valley/)).toHaveCount(0);
   });
