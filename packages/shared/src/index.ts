@@ -37,7 +37,10 @@ export { normalizeEmail } from "./email.js";
 export {
   type RecipientCandidate,
   type RecipientList,
+  BROTHER_COPY_LIMIT,
   buildRecipientList,
+  copyEmailsLimit,
+  exceedsCopyEmailsLimit,
   isEmittableAddress,
 } from "./email-recipients.js";
 export { BANNER_SEVERITIES, type BannerSeverity } from "./banner.js";
@@ -94,6 +97,7 @@ export {
   type WriteRule,
   WRITE_RULE,
   canActOnProfile,
+  canExportCsv,
   canImpersonate,
   canWriteField,
   canWriteFieldOnRecord,

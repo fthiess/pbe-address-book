@@ -41,6 +41,28 @@
  *
  *  3. **No usable email**, via the shared {@link hasUsableEmail}.
  *
+ * **Who may press it, and how many at once (OFC-411, Forrest's call).** The action
+ * was staff-only until UAT, on the fear that an ordinary brother would use it to
+ * spam the roster. It is now available to **every** role, with the fear addressed
+ * by a cap instead of a lock: a brother may copy at most {@link BROTHER_COPY_LIMIT}
+ * records in one press; managers and administrators are uncapped.
+ *
+ * Three things about that cap are worth being explicit about, because each has
+ * been mistaken for something it isn't:
+ *
+ *  - **It counts records *selected*, not addresses *copied*.** Fifty-one selected
+ *    is refused even if only three of them have an address to copy. The cap limits
+ *    how far one press can *reach*, which is the spam concern; yield is beside the
+ *    point.
+ *  - **It is a speed bump, not an access control.** Every address it would copy is
+ *    already in that brother's own projection, in his own browser — the exclusion
+ *    rules above are what actually protect an address, and they run at every role.
+ *    What the cap buys is friction against the bulk-mail impulse, not secrecy.
+ *  - **Nothing stops repeated presses**, so the thing that makes sustained bulk use
+ *    *visible* is the server-side audit ping (D92), which OFC-411 opens to every
+ *    role for exactly this reason. Tightening the cap without that trail would have
+ *    bought nothing.
+ *
  * The order matters for more than tidiness: testing the *flag* before the *value*
  * is what makes a manager and an admin produce identical counts. `privacy` is
  * `restricted`, so both staff roles receive it, but only the admin receives the
@@ -53,7 +75,32 @@
  */
 
 import { hasUsableEmail } from "./capabilities.js";
-import type { Profile } from "./types.js";
+import type { Profile, Role } from "./types.js";
+
+/**
+ * How many records an ordinary brother may copy in one press (OFC-411). See the
+ * module note for what this cap is and — more importantly — what it is not.
+ */
+export const BROTHER_COPY_LIMIT = 50;
+
+/**
+ * The per-press ceiling for a role: `null` means uncapped (manager, admin). Kept
+ * as a function rather than a table so the uncapped roles read as the deliberate
+ * exception they are.
+ */
+export function copyEmailsLimit(role: Role): number | null {
+  return role === "brother" ? BROTHER_COPY_LIMIT : null;
+}
+
+/**
+ * Whether a selection of `selectedCount` records is too large for `role` to copy.
+ * Asked of the **raw selection count**, before any list is built — see the module
+ * note on why the cap counts records rather than addresses.
+ */
+export function exceedsCopyEmailsLimit(role: Role, selectedCount: number): boolean {
+  const limit = copyEmailsLimit(role);
+  return limit !== null && selectedCount > limit;
+}
 
 /**
  * The minimal record shape this needs. Written against a partial `Profile`

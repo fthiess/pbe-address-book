@@ -284,11 +284,21 @@ describe("7a-4 feature events (D145) — names/buckets only, never whom (P6)", (
     expect(client.track).toHaveBeenCalledExactlyOnceWith("Help Opened", { Topic: "Class Year" });
   });
 
-  it("Export Performed carries scope and a bucketed row count, never the rows", () => {
-    trackExportPerformed("selection", 42);
+  it("Export Performed carries scope, column set and a bucketed row count, never the rows", () => {
+    trackExportPerformed("selection", 42, "all");
     expect(client.track).toHaveBeenCalledExactlyOnceWith("Export Performed", {
       Scope: "selection",
+      Columns: "all",
       "Row Count": "11-100",
+    });
+  });
+
+  it("Export Performed distinguishes the displayed-columns export (OFC-403)", () => {
+    trackExportPerformed("view", 5, "displayed");
+    expect(client.track).toHaveBeenCalledExactlyOnceWith("Export Performed", {
+      Scope: "view",
+      Columns: "displayed",
+      "Row Count": "2-10",
     });
   });
 
@@ -310,7 +320,7 @@ describe("7a-4 feature events (D145) — names/buckets only, never whom (P6)", (
       trackColumnLayoutChanged("email", false);
       trackColumnsReset();
       trackHelpOpened("t");
-      trackExportPerformed("view", 5);
+      trackExportPerformed("view", 5, "all");
       trackMobileOptionsOpened();
     }).not.toThrow();
   });

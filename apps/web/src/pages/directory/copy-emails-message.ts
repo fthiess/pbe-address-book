@@ -30,6 +30,34 @@ export const CLIPBOARD_FAILURE: CopyEmailsMessage = {
   tone: "error",
 };
 
+/**
+ * The selection is larger than this role may copy at once (OFC-411) — nothing was
+ * read, nothing was written, and the clipboard still holds whatever it held.
+ *
+ * In the **error** tone, like {@link CLIPBOARD_FAILURE} and for the same reason:
+ * it reports that the copy did *not* happen, so it waits to be acknowledged rather
+ * than clearing itself after ten seconds (N165). It is a refusal, not a fault — so
+ * the wording states the ceiling and what the user has, and leaves out the apology.
+ * The detail names the number selected because the count that matters is the one
+ * the user can't see: the selection persists across filters (N79), so the brothers
+ * over the line may well be off-screen.
+ *
+ * **It ends by naming the way through** (Forrest's call, OFC-411): a brother who
+ * genuinely needs a larger list should ask a staff member, who is uncapped. Without
+ * that line the cap reads as a wall, and the brother's next move is to press it
+ * again with a slightly smaller selection — which is friction spent on nothing. The
+ * word is **staff**, the Directory's own name for the role since OFC-407, not
+ * "manager or administrator": the reader is being told whom to find, not taught the
+ * role model.
+ */
+export function overLimitMessage(selectedCount: number, limit: number): CopyEmailsMessage {
+  return {
+    headline: `You can copy up to ${limit} brothers at a time.`,
+    detail: `You have ${selectedCount} selected. Narrow the selection, or ask a staff member if you need a longer list.`,
+    tone: "error",
+  };
+}
+
 /** "1 brother" / "3 brothers". */
 function brothers(n: number): string {
   return n === 1 ? "1 brother" : `${n} brothers`;

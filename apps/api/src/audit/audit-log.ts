@@ -153,6 +153,15 @@ export interface AuditEntry {
    */
   role?: string;
   /**
+   * Which CSV an `export` wrote (OFC-403): `"all"` (every field the role may see)
+   * or `"displayed"` (the columns the user had on screen). Absent on a `clipboard`
+   * ping, which writes no file. A coarse label like {@link scope}, and the second
+   * half of an export's breadth — `count` says how many brothers left, this says
+   * how much about each — so a 700-row all-data export reads as the larger event
+   * it is.
+   */
+  columns?: string;
+  /**
    * The server-derived ceiling on exportable rows for an `export` (OFC-117): how
    * many records the caller's role can access. Because the CSV is generated
    * client-side (D41), the reported `count` is client-supplied; recording this
@@ -269,6 +278,7 @@ export class AuditLog {
       ...(entry.count !== undefined ? { count: entry.count } : {}),
       ...(entry.role !== undefined ? { role: entry.role } : {}),
       ...(entry.available !== undefined ? { available: entry.available } : {}),
+      ...(entry.columns !== undefined ? { columns: entry.columns } : {}),
       ...(entry.fromRole !== undefined ? { fromRole: entry.fromRole } : {}),
       ...(entry.toRole !== undefined ? { toRole: entry.toRole } : {}),
       ...(entry.sessionsRevoked !== undefined ? { sessionsRevoked: entry.sessionsRevoked } : {}),

@@ -97,18 +97,6 @@ describe("POST /api/exports", () => {
     expect(ctx.audited).toHaveLength(0);
   });
 
-  it("rejects a brother with 403 — export is staff-only (D41)", async () => {
-    const cookie = await ctx.cookieFor(5247, "brother");
-    const response = await ctx.app.inject({
-      method: "POST",
-      url: "/api/exports",
-      headers: { cookie },
-      payload: { scope: "view", count: 10 },
-    });
-    expect(response.statusCode).toBe(403);
-    expect(ctx.audited).toHaveLength(0);
-  });
-
   it("records a manager export with scope, count, role, ceiling, actor and timestamp — and no data", async () => {
     const cookie = await ctx.cookieFor(5247, "manager");
     const response = await ctx.app.inject({
@@ -178,7 +166,11 @@ describe("POST /api/exports", () => {
     });
   });
 
-  it("still refuses a clipboard ping from a brother — the copy is staff-only", async () => {
+  it("records a clipboard ping from a brother — Copy Emails is his too now (OFC-411)", async () => {
+    // The inverse of this test used to assert a 403. Copy Emails is available at
+    // every role under a per-press cap, and a brother's bulk copy is exactly the
+    // egress D92 exists to make visible — refusing his ping would have left the
+    // widest audience as the one with no trail.
     const cookie = await ctx.cookieFor(5247, "brother");
     const response = await ctx.app.inject({
       method: "POST",
@@ -186,8 +178,74 @@ describe("POST /api/exports", () => {
       headers: { cookie },
       payload: { scope: "clipboard", count: 2 },
     });
-    expect(response.statusCode).toBe(403);
-    expect(ctx.audited).toHaveLength(0);
+    expect(response.statusCode).toBe(204);
+    expect(ctx.audited).toHaveLength(1);
+    expect(ctx.audited[0]).toMatchObject({
+      action: "export",
+      actorId: 5247,
+      outcome: "ok",
+      scope: "clipboard",
+      count: 2,
+      // The role is what makes a brother's copy legible in the stream at all.
+      role: "brother",
+      available: 3,
+    });
+  });
+
+  it.each(["selection", "view"] as const)(
+    "still refuses a %s CSV ping from a brother — export stays staff-only",
+    async (scope) => {
+      // OFC-411 widened `clipboard` and nothing else. The CSV scopes consult
+      // `canExportCsv`, the same predicate the button does, so a brother who has no
+      // Export control cannot forge an export record either.
+      const cookie = await ctx.cookieFor(5247, "brother");
+      const response = await ctx.app.inject({
+        method: "POST",
+        url: "/api/exports",
+        headers: { cookie },
+        payload: { scope, count: 2 },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(ctx.audited).toHaveLength(0);
+    },
+  );
+
+  it("records which of the two CSVs ran (OFC-403)", async () => {
+    const cookie = await ctx.cookieFor(5005, "manager");
+    const response = await ctx.app.inject({
+      method: "POST",
+      url: "/api/exports",
+      headers: { cookie },
+      payload: { scope: "view", count: 3, columns: "displayed" },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(ctx.audited[0]).toMatchObject({ scope: "view", count: 3, columns: "displayed" });
+  });
+
+  it("drops an unrecognised columns value but still records the export (OFC-403)", async () => {
+    // The audit entry is worth more than the strictness: a ping with a garbled
+    // variant should still record that an export happened, minus the variant.
+    const cookie = await ctx.cookieFor(5005, "manager");
+    const response = await ctx.app.inject({
+      method: "POST",
+      url: "/api/exports",
+      headers: { cookie },
+      payload: { scope: "view", count: 3, columns: "everything" },
+    });
+    expect(response.statusCode).toBe(204);
+    expect(ctx.audited).toHaveLength(1);
+    expect(ctx.audited[0]).not.toHaveProperty("columns");
+  });
+
+  it("omits columns from a clipboard ping — no file was written", async () => {
+    const cookie = await ctx.cookieFor(5005, "manager");
+    await ctx.app.inject({
+      method: "POST",
+      url: "/api/exports",
+      headers: { cookie },
+      payload: { scope: "clipboard", count: 2 },
+    });
+    expect(ctx.audited[0]).not.toHaveProperty("columns");
   });
 
   it("rejects a bad scope or count with 400 and writes nothing", async () => {

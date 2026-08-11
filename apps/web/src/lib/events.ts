@@ -78,6 +78,14 @@ export function rowCountBucket(count: number): RowCountBucket {
 export type ExportScope = "view" | "selection";
 
 /**
+ * Which of the two CSVs ran (OFC-403): every field the role may see, or the columns
+ * the user had on screen. Orthogonal to {@link ExportScope} — scope says *which
+ * brothers*, this says *how much about each*, and the pair is what makes an export's
+ * breadth legible rather than one number that conflates them.
+ */
+export type ExportColumns = "all" | "displayed";
+
+/**
  * The coarse groups a `Profile Saved` reports as changed — *which kinds* of data a
  * brother maintains, never *what* he changed it to. `identity`, `photo` and `other`
  * extend OFC-296's illustrative five (contact/professional/privacy/photo/
@@ -302,15 +310,25 @@ export interface EventProperties {
   "Columns Reset": NoProperties;
   /** A help toggle-tip opened — the control's help title, never brother data. */
   "Help Opened": { Topic: string };
-  /** A staff CSV export ran — its scope and a bucketed row count (audited separately
-   *  for security by D92; this is the usage-shape view). */
-  "Export Performed": { Scope: ExportScope; "Row Count": RowCountBucket };
-  /** The staff Copy Emails action ran (D167) — a bucketed recipient count and whether
+  /** A staff CSV export ran — its scope, which of the two column sets it wrote
+   *  (OFC-403), and a bucketed row count (audited separately for security by D92;
+   *  this is the usage-shape view). `Columns` is what will answer whether the
+   *  displayed-columns export actually removed the spreadsheet detour it was built
+   *  to remove. */
+  "Export Performed": { Scope: ExportScope; Columns: ExportColumns; "Row Count": RowCountBucket };
+  /** The Copy Emails action ran (D167) — a bucketed recipient count and whether
    *  anyone was left out. Deliberately its own event rather than a third
    *  `Export Performed` scope, so the CSV series keeps its historical meaning.
    *  `Any Skipped` is a boolean, not a bucket: it answers "does the exclusion rule
    *  bite in practice?" without implying a precision the tally doesn't have (a
-   *  brother with no email *and* privacy off counts once, as private). */
+   *  brother with no email *and* privacy off counts once, as private).
+   *
+   *  Fired at **every** role since OFC-411. It deliberately carries no role of its
+   *  own: `Role` already rides as a Mixpanel *user* property (D88), so brother-vs-
+   *  staff use is a breakdown on the existing profile rather than a fourth property
+   *  that could disagree with it. ⚠ A press **refused** by the per-role cap emits
+   *  nothing — no copy happened. How often the cap bites is answerable from the
+   *  server-side audit trail, which records every copy that did. */
   "Emails Copied": { Copied: RowCountBucket; "Any Skipped": boolean };
   /** The below-`md` "Options" fold was opened (N92) — phone use, finally measured. */
   "Mobile Options Opened": NoProperties;

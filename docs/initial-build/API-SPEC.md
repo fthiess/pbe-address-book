@@ -197,14 +197,17 @@ Remove brother `{id}` from the caller's star list. Idempotent — implemented as
 
 CSV export is generated **client-side** from the already-projected in-memory dataset (decision D41), so it leaves no server-side trail. This thin notify endpoint closes that gap (decision D92): after generating the file, the client POSTs here and the server writes one `export` audit entry. It carries **no profile data** — only a coarse scope label and a row count — so it stays inside the §1.4 names-not-values boundary.
 
-The Directory's **Copy Emails** action (decision D167) shares this endpoint under the `clipboard` scope. It is the same event in every way the audit cares about — staff-gated, client-side, bulk PII leaving the app with no other server-side trace — so giving it its own endpoint would only have split one trail in two; the `scope` distinguishes them.
+The Directory's **Copy Emails** action (decision D167) shares this endpoint under the `clipboard` scope. It is the same event in every way the audit cares about — client-side, bulk PII leaving the app with no other server-side trace — so giving it its own endpoint would only have split one trail in two; the `scope` distinguishes them.
+
+**The role gate is per-scope, not per-endpoint** (decision D175). Copy Emails is available at every role, so a `clipboard` ping is accepted from any authenticated caller: refusing it would have left the widest audience as the one bulk egress with no server-side trace at all, which is the gap this endpoint exists to close. The two CSV scopes remain staff-only, gated by the shared `canExportCsv` predicate — the same one the Export control consults, so the client and the server cannot drift into disagreeing about who may export.
 
 ### `POST /api/exports`
 Record that a bulk egress occurred. Fire-and-forget — the client does not block the download or the clipboard write on the response.
-- **Auth:** **manager or admin only** (`403` otherwise) — both actions are staff directory-maintenance actions and the action bar that triggers them is staff-only (decisions D41/D167).
-- **Request:** `{ "scope": "selection" | "view" | "clipboard", "count": 42 }` — the egress scope (the selected rows, the whole current view, or the email addresses copied to the clipboard) and the row count.
-- **Response 204:** no body; the `export` audit entry (actor, scope, count, timestamp) is written to the audit stream (§6.1, decision D92).
-- **Errors:** `400` on a missing/invalid `scope` or a non-integer/negative `count`.
+- **Auth:** any authenticated caller for `scope: "clipboard"`; **manager or admin only** for the two CSV scopes (`403` otherwise) — export is a staff directory-maintenance action, while Copy Emails is available at every role (decisions D41/D167/D175).
+- **Request:** `{ "scope": "selection" | "view" | "clipboard", "count": 42, "columns": "all" | "displayed" }` — the egress scope (the selected rows, the whole current view, or the email addresses copied to the clipboard), the row count, and optionally which of the two CSVs was written (decision D176; omitted on a `clipboard` ping, which writes no file).
+- **Response 204:** no body; the `export` audit entry (actor, scope, count, role, ceiling, column set, timestamp) is written to the audit stream (§6.1, decision D92).
+- **Errors:** `400` on a missing/invalid `scope` or a non-integer/negative `count`. An unrecognised `columns` value is **dropped**, not rejected: the audit entry is worth more than the strictness, so a ping with a garbled variant still records that an export happened.
+- **Note:** the body is validated before the role gate, so a malformed request is answered with the `400` that describes it rather than a `403` that would misattribute the problem to the caller's role.
 
 ## 5. Roles
 
