@@ -1,8 +1,13 @@
 import { getHelpEntry } from "@pbe/help-content";
 import type { NameRecord } from "@pbe/name-search";
-import { resolveCanonicalNames } from "@pbe/shared";
+import {
+  DEFAULT_RADIUS_MILES,
+  type RadiusMiles,
+  isRadiusMiles,
+  resolveCanonicalNames,
+} from "@pbe/shared";
 import { ChevronRight } from "lucide-react";
-import { parseAsBoolean, useQueryState } from "nuqs";
+import { parseAsBoolean, parseAsInteger, useQueryState } from "nuqs";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useSession } from "../auth/SessionContext.js";
@@ -48,6 +53,7 @@ import { useNameSearch } from "./directory/search/useNameSearch.js";
 import { useColumnLens } from "./directory/useColumnLens.js";
 import { useDirectoryFilters } from "./directory/useDirectoryFilters.js";
 import { useDirectorySort } from "./directory/useDirectorySort.js";
+import { useNearFilter } from "./directory/useNearFilter.js";
 import { clearDirectoryStashes } from "./profile/directory-stash.js";
 
 /**
@@ -77,6 +83,19 @@ export function Directory() {
     "deceased",
     parseAsBoolean.withDefault(false),
   );
+  // The proximity radius (OFC-378). It lives here rather than in `DirectoryFilters`
+  // — alongside "Include deceased", which is the same kind of thing — because it
+  // narrows nothing by itself: it is a parameter of the Near filter, so counting it
+  // in the panel badge or reporting it as a Mixpanel filter dimension would both
+  // be wrong. See the `near` field's note in `filters.ts`.
+  const [rawRadius, setRawRadius] = useQueryState(
+    "radius",
+    parseAsInteger.withDefault(DEFAULT_RADIUS_MILES),
+  );
+  // A hand-edited `?radius=37` must not reach the haversine: validate against the
+  // offered set and fall back rather than honouring an arbitrary number, so the
+  // control and the filter can never disagree about what is applied.
+  const radiusMiles: RadiusMiles = isRadiusMiles(rawRadius) ? rawRadius : DEFAULT_RADIUS_MILES;
 
   // Once we're back on the Directory, any prev/next stash is for a profile we've
   // left; drop them all (the next click-through regenerates one). Keeps
@@ -163,6 +182,15 @@ export function Directory() {
     [names],
   );
 
+  // Proximity (OFC-378, D172): the `near` token, the lazily-fetched tables, and
+  // the filter they resolve to. All of it — including the three load triggers and
+  // the "why isn't this applied" copy — lives in the hook.
+  const near = useNearFilter(filters.filters.near, radiusMiles, profiles, nameOf);
+  const predicate = useMemo(
+    () => filters.buildPredicate(near.proximity),
+    [filters.buildPredicate, near.proximity],
+  );
+
   // The lean name-only records the Name-Search worker indexes (D35/D110).
   const nameRecords = useMemo<NameRecord[]>(
     () =>
@@ -206,7 +234,7 @@ export function Directory() {
   const rows = useMemo(() => {
     const matched = filterRows(profiles ?? [], {
       matchedIds,
-      predicate: filters.predicate,
+      predicate,
       includeDeceased,
       // Asking for deceased brothers by name carries its own inclusion (D171) —
       // otherwise this filter would return an empty grid in its default state. See
@@ -219,7 +247,7 @@ export function Directory() {
   }, [
     profiles,
     matchedIds,
-    filters.predicate,
+    predicate,
     filters.filters.deceasedOnly,
     includeDeceased,
     starredOnly,
@@ -300,13 +328,18 @@ export function Directory() {
   // one a user has any reason to draw: it sits in the same control group as
   // "Include deceased", which Reset does clear, so leaving exactly one of an
   // adjacent pair standing read as a bug rather than as a principle.
+  // ⚠ The radius is cleared here explicitly: `filters.reset()` clears the `near`
+  // token, but the radius is a separate query key this component owns, so without
+  // this line a Reset would leave `?radius=100` standing to be silently inherited
+  // by the next place the brother picks.
   const onReset = useCallback(() => {
     void setQ("");
     void setIncludeDeceased(false);
     setStarredOnly(false);
+    void setRawRadius(null);
     filters.reset();
     sort.reset();
-  }, [setQ, setIncludeDeceased, setStarredOnly, filters, sort]);
+  }, [setQ, setIncludeDeceased, setStarredOnly, setRawRadius, filters, sort]);
 
   // Whether Reset would change anything — one term per thing `onReset` clears, so
   // the two stay honest together (OFC-394). ⚠ The column lens stays absent: Reset
@@ -315,7 +348,24 @@ export function Directory() {
   // which persists across views by design and has its own explicit Clear in the
   // action bar (N79), so it is not something Reset should silently discard.
   const canReset =
-    filters.activeCount > 0 || q.trim() !== "" || includeDeceased || starredOnly || !sort.isDefault;
+    filters.activeCount > 0 ||
+    q.trim() !== "" ||
+    includeDeceased ||
+    starredOnly ||
+    !sort.isDefault ||
+    // One term per thing `onReset` clears — including the radius, which Reset does
+    // touch. A non-default radius with no origin narrows nothing, so this enables
+    // Reset for a view that looks pristine; that is the honest reading, because
+    // Reset would in fact change the URL.
+    //
+    // ⚠ Reads `rawRadius`, **not** the validated `radiusMiles`. Validation folds a
+    // hand-typed `?radius=37` down to the default, so testing the validated value
+    // would have left Reset disabled on a URL that Reset does in fact change —
+    // the exact dishonesty OFC-394 removed from this button once already. Found in
+    // the OFC-378 review round. (A non-*numeric* `?radius=abc` still parses to the
+    // default and so still slips through; that is one edge past what the URL can
+    // tell us without giving up `clearOnDefault`, and it is knowingly left.)
+    rawRadius !== DEFAULT_RADIUS_MILES;
 
   const loading = profiles === null && !error;
   const showOverlay = useDelayedFlag(loading, OVERLAY_DELAY_MS);
@@ -367,6 +417,13 @@ export function Directory() {
       activeCount={filters.activeCount}
       onReset={onReset}
       canReset={canReset}
+      nearContext={near.context}
+      geoStatus={near.status}
+      nearOrigin={near.origin}
+      nearResolved={near.proximity !== undefined}
+      radiusMiles={radiusMiles}
+      onRadiusChange={(miles) => void setRawRadius(miles)}
+      onNearEngaged={near.engage}
     />
   );
   // Rendered for every role since OFC-411 (it was staff-only, alongside the Select
@@ -421,6 +478,29 @@ export function Directory() {
           </h1>
           <p className="text-sm text-muted-foreground" aria-live="polite">
             {profiles ? countLabel(rows.length, profiles.length) : "Loading…"}
+          </p>
+          {/* Why the Directory may be showing more brothers than the URL asked
+              for. The Near control carries this line too, but that one is inside a
+              fold that starts collapsed on every mount — and a *shared proximity
+              link* arrives with the fold closed, which is precisely the case where
+              an unexplained full result set reads as the link being broken.
+
+              ⚠ **Its own live region, and always mounted.** The first draft leaned
+              on the count line above, reasoning that it is already polite and
+              announces when the rows narrow. That is exactly backwards for the two
+              states this line actually covers: when the tables fail or the place is
+              unknown the Directory stays UNNARROWED by design (D178), so the count
+              text never changes and its region never fires — and the panel's copy of
+              this message is not mounted either, because `FilterPanel` renders its
+              body only when open. A screen-reader user following a shared link to an
+              unresolvable place would have been told nothing at all while a sighted
+              one read the notice. Mounted unconditionally because a live region
+              created *with* its content is not reliably announced; the default
+              `aria-relevant` is "additions text", so the region emptying when the
+              origin finally resolves announces nothing and cannot double up with the
+              count. Found in the OFC-378 review round. */}
+          <p aria-live="polite" className="text-sm text-muted-foreground empty:hidden">
+            {near.notice ?? ""}
           </p>
         </div>
 

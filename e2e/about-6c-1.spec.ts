@@ -104,6 +104,29 @@ test.describe("6c-1 About page (OFC-244)", () => {
     await expect(gitHub.first()).toHaveAttribute("target", "_blank");
   });
 
+  test("carries the GeoNames attribution the CC BY licence requires (OFC-378)", async ({
+    page,
+  }) => {
+    await signedIn(page);
+    await page.goto("/about");
+
+    // ⚠ Not decoration and not a nicety: the proximity tables are built from
+    // GeoNames data under CC BY 4.0, and a link to geonames.org is the whole of
+    // what that licence asks for in return. If this section is ever reworded, the
+    // link and the licence's name must survive the edit — which is what this
+    // pins. (A fuller acknowledgements list across every dependency is OFC-408;
+    // this is the minimum the feature must ship with.)
+    await expect(page.getByRole("heading", { level: 2, name: "Acknowledgements" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "GeoNames" })).toHaveAttribute(
+      "href",
+      "https://www.geonames.org/",
+    );
+    await expect(
+      page.getByRole("link", { name: /Creative Commons Attribution 4\.0/ }),
+    ).toHaveAttribute("href", "https://creativecommons.org/licenses/by/4.0/");
+    await expect(page.getByRole("link", { name: "United States Census Bureau" })).toBeVisible();
+  });
+
   test("the page points at the user manual (OFC-313)", async ({ page }) => {
     await signedIn(page);
     await page.goto("/about");

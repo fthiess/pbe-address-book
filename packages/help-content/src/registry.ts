@@ -96,6 +96,19 @@ export const helpContent: HelpContent = {
     toggleTip:
       "Finds brothers whose activities contain what you type — sailing finds “Sailing and choral singing”. Brothers who have not filled this in will not turn up.",
   },
+  // Proximity (OFC-378). The `?` carries the three things the control cannot show
+  // and that design §8 and §12 both identify as the feature's real failure mode:
+  // that it is US-only, that a small town may be missing from the list of places
+  // (about a quarter of brothers live in one), and that a ZIP code always works
+  // when a town name does not. A brother who types his town, sees nothing, and
+  // does not think to try his ZIP will conclude the feature is broken — this
+  // sentence is the whole mitigation.
+  "directory.filter.near": {
+    key: "directory.filter.near",
+    label: "Located near",
+    toggleTip:
+      "Finds brothers within the distance you choose of a place — start typing a town, a ZIP code, or another brother's name, and pick from the list. Smaller towns may not be listed by name; a ZIP code always works, and finds the brothers around it just as well. Proximity search covers the United States only — use the Country filter for brothers living elsewhere. Brothers who keep their address private will not be found by this filter.",
+  },
   "directory.filter.willingToMentor": {
     key: "directory.filter.willingToMentor",
     label: "Willing to mentor",

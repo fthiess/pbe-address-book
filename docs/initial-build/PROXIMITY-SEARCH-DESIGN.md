@@ -1,6 +1,6 @@
 # Proximity Search — Design
 
-**Ticket:** OFC-378 · **Related:** OFC-151 (Map View, post-launch) · **Status:** approved 2026-08-09; **session A (data pipeline + resolver) built 2026-08-11 — see D177/N172 for the as-built record and `tools/geo-data/README.md` for operations; session B (Near control) not yet started**
+**Ticket:** OFC-378 · **Related:** OFC-151 (Map View, post-launch) · **Status:** approved 2026-08-09; **both build sessions complete 2026-08-11 — session A (data pipeline + resolver) at D177/N172 with `tools/geo-data/README.md` as the operator's page, session B (Near control + Directory integration) at D178. §7 carries an as-built amendment.**
 
 Adds a "Near" filter to the Directory: enter a place — a city, a ZIP, or another
 brother — and the Directory narrows to brothers within a chosen radius, composing
@@ -162,6 +162,14 @@ has been universal in browsers since ~2016, but it is a real if small edge-case
 risk for the oldest devices). Recommend starting simple and measuring; this is a
 build-time measurable, not a design fork.
 
+**Measured on staging after session A deployed (D177) — the simple path wins, and
+the escape hatch should not be built.** Firebase Hosting serves the ZIP table at
+**151,276 bytes** with `Accept-Encoding: br` (238,237 with gzip only), against
+**151,245 bytes** for a local brotli-11 pass of the same file: a 31-byte
+difference. Hosting's brotli is q11 for practical purposes, so shipping a
+precompressed `.br` would buy nothing and would cost the identity fallback. This
+question is closed.
+
 **The algorithm is deliberately dull.** Resolve the origin to a centroid, then
 haversine from it to each roster member's centroid and keep those inside the
 radius. Roughly 1,200 records against one origin is sub-millisecond; there is no
@@ -236,6 +244,30 @@ The active filter appears as a chip alongside the others ("Near: Brookline, MA �
 50 mi"), clearable the same way, and participates in the existing URL-state
 serialisation so a proximity-filtered Directory is linkable and survives
 navigation.
+
+*Amended by the build (D178). Three details of this section did not survive
+contact with the code, and all three are recorded here rather than silently
+diverged from:*
+
+- *There is **no active-filter chip bar** in the Directory to sit alongside — each
+  filter states itself inside its own panel field, with its own clear "×". The
+  chip therefore lives **in** the Near field, replacing the combobox once an
+  origin is chosen, exactly as the Big-Brother picker does (§5.7.4). The radius
+  is not repeated in it, because its own select sits beside it.*
+- *A ZIP row reads **"02445"**, not "02445 — Brookline, MA". `zips.csv` is
+  `zip,lat,lon`; session A pruned the town name out of it and `cities.csv`
+  carries no ZIP column, so the town for a given ZIP is not recoverable from the
+  shipped data. Naming the nearest city in the vocabulary instead was considered
+  and rejected — for a rural ZIP it would confidently print a town fifty miles
+  away.*
+- *The dropdown offers **nothing until something is typed**. The vocabulary is
+  about 45,000 entries and `Combobox` renders every match into the DOM, so the
+  usual "show the list on focus" default would be both useless ("Abbeville, LA")
+  and thousands of nodes.*
+
+*The URL carries an **identifier, not coordinates** — `near=c~Brookline~MA`,
+`near=z~02445`, `near=b~5247`, plus a separate `radius`. See D178 for why, and
+for what the Directory does in the window before the tables have loaded.*
 
 **Accessibility** is a hard requirement, and a typeahead is one of the easier
 things to get wrong: the combobox pattern needs correct `aria-expanded` /
@@ -440,7 +472,14 @@ is the operator's page. The resolver's API — what session B consumes — is
 - **Exit:** PR merged, tables committed, resolver exported behind a documented API.
 - **Review depth:** deep — new subsystem.
 
-### Session B — Near control and Directory integration
+### Session B — Near control and Directory integration — **built 2026-08-11**
+
+*As built: the Near typeahead and the radius selector sit together in the filter
+panel's geography block; `useGeoTables.ts` is the lazy store and
+`useNearFilter.ts` turns the URL token into a runnable filter; **D178** records
+the decisions and the traps. The one scope item that moved is `Chips.tsx`, which
+turned out to be the course-chip and status-badge module rather than an
+active-filter bar — see the §7 amendment.*
 
 - **Scope:** the lazy loader, modelled on `useRoster.ts`'s module-level store
   pattern; the Near typeahead built on the existing `Combobox`; the radius

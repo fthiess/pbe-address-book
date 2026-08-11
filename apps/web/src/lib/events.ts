@@ -210,6 +210,19 @@ export const FILTER_DIMENSIONS = {
   postPbeEducation: "Post-PBE Education",
   sports: "Sports",
   activities: "Activities",
+  // Proximity (OFC-378). Safe under P6 on the same reading as Employer and the
+  // three free-text filters: the dimension says a brother used proximity search,
+  // never *where* — the origin he picked is the value, values are not sent, and
+  // the URL that would carry the token is stripped by BLOCKED_PROPERTIES. Worth
+  // stating plainly because the value here is the one filter value that could
+  // name another brother (a `b~<id>` origin): that is exactly why it stays a
+  // dimension name and nothing more.
+  //
+  // ⚠ There is deliberately **no `radius` entry**, because there is no `radius`
+  // filter — the radius is a separate query key owned by `Directory.tsx`. The
+  // completeness test below pins this map's key set to `EMPTY_FILTERS`, so adding
+  // one here would fail the build, which is the intended outcome.
+  near: "Near",
   staff: "Staff Role",
   // Safe under P6: the dimension says a brother filtered for mentors, which reveals
   // nothing about *whom* he was looking for — and the underlying field is public

@@ -6,6 +6,7 @@ import {
   type DirectoryFilters,
   type MentorFilter,
   type PresenceFilter,
+  type ProximityFilter,
   type StaffFilter,
   type VerificationFilter,
   type YesFilter,
@@ -34,6 +35,7 @@ const filterParsers = {
   postPbeEducation: parseAsString.withDefault(""),
   sports: parseAsString.withDefault(""),
   activities: parseAsString.withDefault(""),
+  near: parseAsString.withDefault(""),
   staff: parseAsString.withDefault(""),
   willingToMentor: parseAsString.withDefault(""),
   deceasedOnly: parseAsString.withDefault(""),
@@ -59,8 +61,23 @@ export interface DirectoryFiltersControl {
   reset: () => void;
   /** Number of constraining filter fields (the panel badge). */
   activeCount: number;
-  /** The composed row predicate for the active role. */
-  predicate: (profile: import("../../lib/types.js").DirectoryProfile) => boolean;
+  /**
+   * Compose the row predicate for the active role.
+   *
+   * ⚠ A **factory**, not a ready-made `predicate`, and the shape is forced by
+   * OFC-378 rather than chosen. Every other filter is answerable from the URL and
+   * the record in hand, so the hook could own the finished predicate; the Near
+   * filter's clause additionally needs a lazily-fetched lookup table *and* the
+   * origin resolved against it, and the origin is derived from the `near`
+   * parameter this hook owns. Returning a finished predicate would therefore
+   * require the caller to have resolved something it can only obtain from the
+   * return value — a circle. Handing back the factory breaks it, and keeps a
+   * single subscription to the `near` query key (two hooks on one key is the
+   * mistake D171 already documents from the other direction).
+   */
+  buildPredicate: (
+    proximity?: ProximityFilter,
+  ) => (profile: import("../../lib/types.js").DirectoryProfile) => boolean;
 }
 
 export function useDirectoryFilters(role: Role): DirectoryFiltersControl {
@@ -83,6 +100,7 @@ export function useDirectoryFilters(role: Role): DirectoryFiltersControl {
       postPbeEducation: raw.postPbeEducation,
       sports: raw.sports,
       activities: raw.activities,
+      near: raw.near,
       staff: raw.staff as StaffFilter,
       willingToMentor: raw.willingToMentor as MentorFilter,
       deceasedOnly: raw.deceasedOnly as YesFilter,
@@ -114,7 +132,10 @@ export function useDirectoryFilters(role: Role): DirectoryFiltersControl {
   }, [setRaw]);
 
   const activeCount = useMemo(() => countActiveFilters(filters), [filters]);
-  const predicate = useMemo(() => buildFilterPredicate(filters, role), [filters, role]);
+  const buildPredicate = useCallback(
+    (proximity?: ProximityFilter) => buildFilterPredicate(filters, role, proximity),
+    [filters, role],
+  );
 
-  return { filters, setFilter, reset, activeCount, predicate };
+  return { filters, setFilter, reset, activeCount, buildPredicate };
 }

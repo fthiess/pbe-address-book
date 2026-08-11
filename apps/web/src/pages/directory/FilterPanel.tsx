@@ -1,9 +1,12 @@
+import { RADIUS_OPTIONS, type RadiusMiles } from "@pbe/shared";
 import type { Role } from "@pbe/shared";
-import { ChevronRight } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import { ChevronRight, MapPin } from "lucide-react";
+import { useId, useMemo, useRef, useState } from "react";
 import { ClearButton } from "../../components/ClearButton.js";
+import { Combobox } from "../../components/Combobox.js";
 import { ControlHelp } from "../../components/ControlHelp.js";
 import { useDetailsAutoClose } from "../../lib/useDetailsAutoClose.js";
+import type { GeoTablesStatus } from "../../lib/useGeoTables.js";
 import { CourseChipName } from "./Chips.js";
 import {
   type BoolFilter,
@@ -18,6 +21,13 @@ import {
   canUseStaffFilters,
   parseNumericGrammar,
 } from "./filters.js";
+import {
+  type NearContext,
+  type NearOrigin,
+  nearDescription,
+  nearLabel,
+  nearOptions,
+} from "./near.js";
 
 /**
  * The structured filter panel above the grid (§5.6.4, D38). A collapsible region
@@ -61,6 +71,23 @@ export interface FilterPanelProps {
    * question.
    */
   canReset: boolean;
+  /** Everything the Near typeahead needs (OFC-378); see {@link NearContext}. */
+  nearContext: NearContext;
+  /** The lazy tables' state — drives the Near control's loading/error copy. */
+  geoStatus: GeoTablesStatus;
+  /** The chosen origin, parsed from the `near` token; `undefined` when unset or malformed. */
+  nearOrigin: NearOrigin | undefined;
+  /**
+   * Whether {@link nearOrigin} resolved to a coordinate. False while the tables
+   * load *and* when the token names a place that is not in them — the control
+   * distinguishes the two by {@link geoStatus}.
+   */
+  nearResolved: boolean;
+  /** The proximity radius. Lives outside {@link DirectoryFilters} — see the `near` field's note. */
+  radiusMiles: RadiusMiles;
+  onRadiusChange: (miles: RadiusMiles) => void;
+  /** Called when the control is engaged, so the caller can start the table fetch. */
+  onNearEngaged: () => void;
 }
 
 export function FilterPanel({
@@ -71,6 +98,13 @@ export function FilterPanel({
   activeCount,
   onReset,
   canReset,
+  nearContext,
+  geoStatus,
+  nearOrigin,
+  nearResolved,
+  radiusMiles,
+  onRadiusChange,
+  onNearEngaged,
 }: FilterPanelProps) {
   // Start collapsed on every mount, regardless of whether filters are active. The
   // panel's open/closed state is deliberately NOT persisted (Forrest's call): the
@@ -103,7 +137,21 @@ export function FilterPanel({
             type="button"
             aria-expanded={open}
             aria-controls={regionId}
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => {
+              const next = !open;
+              setOpen(next);
+              // Opening the panel is the proximity tables' primary load trigger
+              // (Forrest's call on the ticket, 2026-08-11): it is a deliberate
+              // signal, it costs nothing for the majority who never open the fold,
+              // and it buys several seconds before the first keystroke. Firing on
+              // app idle instead would spend 170 KB on every reader to serve the
+              // minority who use proximity. The Near control's own focus handler is
+              // the backstop, and a `near` parameter in the URL is the third
+              // trigger (`Directory.tsx`) — a deep link opens nothing.
+              if (next) {
+                onNearEngaged();
+              }
+            }}
             className="flex w-full items-center justify-between gap-2 rounded-xl px-4 py-3 text-left text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="flex items-center gap-2">
@@ -215,6 +263,49 @@ export function FilterPanel({
               filters on who administers the Book rather than on anything about the
               brother himself, so it reads as the odd one out and belongs at the end. */}
             <StaffSelect value={filters.staff} onChange={(v) => setFilter("staff", v, "push")} />
+          </div>
+
+          {/* Proximity sits at the foot of the all-roles filters, in a card of its
+            own (Forrest's call, OFC-378 live test). Every other control here is a
+            filter you can set by itself; these two are one filter and its
+            parameter, and "Located within" means nothing without "Located near".
+            Boxing them says that before anyone reads a word — the same device the
+            profile page's privacy `Subgroup` uses to bind a switch to its
+            consequence, and deliberately the same border/tint/heading so the two
+            pages read as one system.
+
+            ⚠ The card is **laid on the same grid tracks as the filters above it**
+            and spans two of them, rather than being a full-width block below them
+            (Forrest's call, live test 2). Two controls need two columns, so a card
+            stretching the full width of the panel advertised a third control that
+            does not exist and left a large empty space where it would have been.
+            The outer wrapper exists only to establish those tracks; the card is its
+            single item. */}
+          <div className="mt-4 grid grid-cols-1 gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-[var(--radius-lg)] border border-border bg-muted/40 p-3 sm:col-span-2">
+              <p className="mb-2 text-[length:var(--text-label-up)] font-bold uppercase tracking-wide text-muted-foreground">
+                Proximity search
+              </p>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
+                <NearFilter
+                  // "push", like the other discrete controls: picking a place is a
+                  // deliberate step, and Back should walk out of it. The text
+                  // filters replace because they fire per keystroke; this fires
+                  // once per pick.
+                  onChange={(v) => setFilter("near", v, "push")}
+                  context={nearContext}
+                  status={geoStatus}
+                  origin={nearOrigin}
+                  resolved={nearResolved}
+                  onEngaged={onNearEngaged}
+                />
+                <RadiusSelect
+                  value={radiusMiles}
+                  onChange={onRadiusChange}
+                  disabled={nearOrigin === undefined}
+                />
+              </div>
+            </div>
           </div>
 
           {staff && (
@@ -549,6 +640,200 @@ function MultiSelectFilter({
           )}
         </fieldset>
       </details>
+    </Field>
+  );
+}
+
+/**
+ * The **Near** filter (OFC-378, design §7): one typeahead over three vocabularies
+ * — cities, ZIPs, and brothers — with no mode switch and no free text.
+ *
+ * Typeahead is doing more work here than it looks. It removes dead ends: a user
+ * can only choose something that resolves, which is the answer to the city
+ * vocabulary's coverage gap (design §8 — at a population threshold of 10,000 the
+ * list holds the towns of only about three quarters of brothers). Someone in an
+ * unlisted town sees no match and reaches for his ZIP instead of typing a name
+ * that silently fails. It also disposes of ambiguity by display rather than by
+ * error handling — "Portland, OR" and "Portland, ME" are simply two rows — so
+ * there is no validation state and no "location not found" path to design.
+ *
+ * ⚠ Once an origin is chosen the combobox is **replaced by a chip**, not left
+ * showing the picked value. That is the Big-Brother picker's shape (§5.7.4), and
+ * it is the local translation of design §7's "the active filter appears as a chip
+ * alongside the others": the Directory has no active-filter chip bar — every
+ * filter states itself inside its own panel field — so the chip lives here, and
+ * the `Field`'s "×" clears it exactly as it clears every other filter.
+ */
+function NearFilter({
+  onChange,
+  context,
+  status,
+  origin,
+  resolved,
+  onEngaged,
+}: {
+  /**
+   * Sets the `near` token — the empty string clears the filter. There is
+   * deliberately no `value` prop to pair with it: the parsed {@link origin} is
+   * the same information already narrowed to what this control can render, and
+   * carrying both would invite the two to disagree.
+   */
+  onChange: (value: string) => void;
+  context: NearContext;
+  status: GeoTablesStatus;
+  origin: NearOrigin | undefined;
+  resolved: boolean;
+  onEngaged: () => void;
+}) {
+  const id = useId();
+  const statusId = useId();
+  const [query, setQuery] = useState("");
+
+  // Recomputed per keystroke over ~41,000 ZIPs and ~3,600 cities. That is a few
+  // milliseconds of string work and no allocation beyond the capped result — the
+  // reason it stays cheap is `nearOptions`' per-kind limit, not this memo.
+  const options = useMemo(() => nearOptions(query, context), [query, context]);
+
+  // One line, and only ever one, under the control. Ordered by what the reader
+  // most needs to know: a hard failure first, then a pending fetch, then a token
+  // that arrived (almost always by shared link) naming a place we do not have.
+  let statusText: string | undefined;
+  if (status === "error") {
+    statusText = "Location data couldn't be loaded, so Near is unavailable just now.";
+  } else if (origin !== undefined && status === "loading") {
+    statusText = "Finding brothers near there…";
+  } else if (origin !== undefined && status === "ready" && !resolved) {
+    statusText = "We couldn't find that place, so this filter isn't being applied.";
+  }
+
+  let emptyMessage: string;
+  if (status === "loading") {
+    emptyMessage = "Loading places…";
+  } else if (status === "error") {
+    emptyMessage = "Location data couldn't be loaded.";
+  } else if (query.trim() === "") {
+    // The vocabulary is ~45,000 entries; there is no useful "here are some to
+    // start with". Say what to type instead of listing Abbeville, LA.
+    emptyMessage = "Type a city, a ZIP code, or a brother's name.";
+  } else {
+    emptyMessage = "No matching place or brother.";
+  }
+
+  return (
+    <Field
+      label="Located near"
+      htmlFor={origin === undefined ? id : undefined}
+      helpKey="directory.filter.near"
+      // ⚠ Deliberately **no** `onClear`, unlike every other field in this panel.
+      // The clear lives *inside* the chip below (Forrest's call, live test 2).
+      // The panel's idiom is a label-row "×" because its controls are boxes with
+      // no natural place to put one; a chip has one, and every other chip in the
+      // app — the profile page's course chips, its Big-Brother chip — carries its
+      // own. Matching the panel here would have meant this one chip behaving
+      // unlike all the others, which is the more surprising inconsistency of the
+      // two.
+    >
+      {origin === undefined ? (
+        <Combobox
+          id={id}
+          // ⚠ Without this the box is 4px taller than every control beside it and
+          // its placeholder is visibly larger, because the component's defaults
+          // are the profile page's. That is what live test saw as "the Near field
+          // is misaligned with Within".
+          dense
+          options={options}
+          // The options are already the match set for the current query, so the
+          // Combobox's own substring filter would be a second, weaker pass over
+          // the same text — and would re-apply "label or hint contains", which
+          // would let the word "City" in a hint match a query.
+          filter={() => true}
+          onQueryChange={(next) => {
+            setQuery(next);
+            onEngaged();
+          }}
+          onSelect={onChange}
+          inputLabel="Located near — search for a city, ZIP code, or brother"
+          placeholder="City, ZIP, or brother…"
+          emptyMessage={emptyMessage}
+          describedBy={statusText ? statusId : undefined}
+          adornment={<MapPin size={15} strokeWidth={1.5} aria-hidden="true" />}
+        />
+      ) : (
+        // min-h matches the combobox the chip replaces, so swapping between them
+        // does not move the row.
+        <div className="flex min-h-[2.375rem] items-center">
+          <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted py-1 pl-2.5 pr-1 text-sm font-medium">
+            <MapPin size={13} strokeWidth={1.5} aria-hidden="true" />
+            {/* The label is its own element so the chip has a node whose text is
+                exactly the place name — the remove button beside it would
+                otherwise make the pill's own text read "Brookline, MA×". */}
+            <span>{nearLabel(origin, context)}</span>
+            {/* The same remove control the profile page's course chips carry
+                (`MajorsEditor`): a round button inside the pill, `×` hidden from
+                assistive tech behind a full accessible name. Kept as its own
+                element rather than making the whole chip clickable — a chip that
+                vanishes when you click anywhere on it is a trap for anyone who
+                clicks to read it. */}
+            <button
+              type="button"
+              onClick={() => onChange("")}
+              // `nearDescription`, not `nearLabel`: the chip can show a bare
+              // `02445` because a pin sits beside it, but "Remove 02445" alone is
+              // a number to a screen reader.
+              aria-label={`Remove ${nearDescription(origin, context)}`}
+              className="flex size-5 items-center justify-center rounded-full text-current opacity-70 outline-none hover:bg-black/5 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          </span>
+        </div>
+      )}
+      {/* Always mounted, so the region is live before the text arrives — a
+          live region created *with* its content is not reliably announced. */}
+      <p id={statusId} aria-live="polite" className="text-xs text-muted-foreground empty:hidden">
+        {statusText ?? ""}
+      </p>
+    </Field>
+  );
+}
+
+/**
+ * The proximity radius (D172 decision 4) — 25 / 50 / 100 miles, default 50.
+ *
+ * A fixed radius was considered and rejected: 50 miles is one metro in Los
+ * Angeles and three states in New England, and design §8's measurements bear it
+ * out — around Boston the 25→50 step adds about ten brothers, around San
+ * Francisco it nearly doubles the result set by reaching the South Bay.
+ *
+ * Disabled until an origin is chosen, since on its own it narrows nothing. It
+ * carries no clear "×" for the same reason: there is no "unset" radius to return
+ * to, and Reset takes it back to 50 with everything else.
+ */
+function RadiusSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: RadiusMiles;
+  onChange: (value: RadiusMiles) => void;
+  disabled: boolean;
+}) {
+  const id = useId();
+  return (
+    <Field label="Located within" htmlFor={id}>
+      <select
+        id={id}
+        value={String(value)}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value) as RadiusMiles)}
+        className={`${inputClass} disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground`}
+      >
+        {RADIUS_OPTIONS.map((miles) => (
+          <option key={miles} value={miles}>
+            {miles} miles
+          </option>
+        ))}
+      </select>
     </Field>
   );
 }

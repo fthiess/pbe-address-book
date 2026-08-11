@@ -1,11 +1,18 @@
+import { readFileSync } from "node:fs";
 import {
   COURSE_FAMILIES,
+  type GeoPoint,
   MAJOR_CODES,
   courseFamily,
+  haversineMiles,
+  isUsAddress,
+  parseCityTable,
+  parseZipTable,
   resolveCanonicalNames,
   validateProfile,
 } from "@pbe/shared";
 import { describe, expect, it } from "vitest";
+import { PLACES } from "./fixtures.js";
 import {
   COLLISION_COUNT,
   COLLISION_IDENTITY,
@@ -139,5 +146,95 @@ describe("generateProfiles", () => {
       expect(result.issues.map((issue) => `${profile.id}:${issue.field}`)).toEqual([]);
       expect(result.ok).toBe(true);
     }
+  });
+});
+
+/**
+ * Every fake brother must be findable where he says he lives (OFC-378 live
+ * test). Proximity search locates by **ZIP**, so a postal code unrelated to the
+ * city beside it does not produce a slightly scruffy fixture — it produces a
+ * feature that cannot be evaluated at all, while looking comprehensively broken.
+ * That is exactly what shipped to staging: `postalCode` was a random integer,
+ * and a search near San Francisco returned brothers displayed in Pittsburgh,
+ * Washington and Boston.
+ *
+ * These assertions read the **committed proximity tables** rather than a fixture
+ * copy of them, because the question is not "is this string ZIP-shaped" but
+ * "does this ZIP resolve, to somewhere near this city, in the data the app will
+ * actually use".
+ */
+describe("PLACES postal codes resolve to their own city (OFC-378)", () => {
+  const manifest = readFileSync("apps/web/src/generated/geoTables.ts", "utf8");
+  // Literal patterns rather than one built from `name`: a template literal eats
+  // the backslashes, which turns `\s` into a plain `s` and the match into a
+  // silent miss.
+  const TABLE_URL = {
+    zips: /zips:\s*\{\s*url:\s*"([^"]+)"/,
+    cities: /cities:\s*\{\s*url:\s*"([^"]+)"/,
+  } as const;
+  const tablePath = (name: "zips" | "cities") => {
+    const url = TABLE_URL[name].exec(manifest)?.[1];
+    if (url === undefined) {
+      throw new Error(`no ${name} entry in the generated geo manifest`);
+    }
+    return `apps/web/public${url}`;
+  };
+  const centroids = parseZipTable(readFileSync(tablePath("zips"), "utf8"));
+  const cities = parseCityTable(readFileSync(tablePath("cities"), "utf8"));
+  const cityPoint = (city: string, state: string) =>
+    cities.find((c) => c.name === city && c.state === state)?.point;
+
+  const US_PLACES = PLACES.filter((place) => place.country === "US");
+
+  it("covers every US place, so this test cannot pass by filtering everything out", () => {
+    // The guard on the guard: if `PLACES` were ever restructured so that no entry
+    // matched, every assertion below would vacuously pass.
+    expect(US_PLACES.length).toBeGreaterThanOrEqual(15);
+  });
+
+  it.each(US_PLACES.map((place) => [`${place.city}, ${place.state}`, place] as const))(
+    "%s — every ZIP resolves, and lands within 15 miles of the city",
+    (_label, place) => {
+      const origin = cityPoint(place.city, place.state as string);
+      expect(origin, `${place.city} is not in the origin vocabulary`).toBeDefined();
+      expect(place.postalCodes.length).toBeGreaterThan(0);
+      for (const zip of place.postalCodes) {
+        const point = centroids.get(zip);
+        expect(point, `${zip} is not a real ZIP`).toBeDefined();
+        // 15 miles is loose on purpose: a large city's outer ZIPs are genuinely
+        // several miles from its centroid. It is tight enough to catch the failure
+        // that matters — a ZIP belonging to a different metro altogether.
+        expect(
+          haversineMiles(origin as GeoPoint, point as GeoPoint),
+          `${zip} is nowhere near ${place.city}`,
+        ).toBeLessThan(15);
+      }
+    },
+  );
+
+  it("reaches leading-zero ZIPs — the whole of New England was unreachable before", () => {
+    // The old `rng.int(10000, 99999)` could not produce one, so no fake brother
+    // could ever be found near Boston or Cambridge: the region with the largest
+    // share of real brothers, and the first place anyone would search.
+    const all = PLACES.flatMap((place) => (place.country === "US" ? place.postalCodes : []));
+    expect(all.some((zip) => zip.startsWith("0"))).toBe(true);
+  });
+
+  it("gives a generated US brother a ZIP that resolves", () => {
+    // End to end through the generator, not just over the fixture table.
+    const located = generateProfiles({ count: 200 }).filter(
+      (p) => p.address?.country === "US" && centroids.has(p.address.postalCode ?? ""),
+    );
+    const us = generateProfiles({ count: 200 }).filter((p) => p.address?.country === "US");
+    expect(located.length).toBe(us.length);
+    expect(us.length).toBeGreaterThan(0);
+  });
+
+  it("keeps a non-US brother unlocatable even when his postal code is ZIP-shaped", () => {
+    // Munich's 80331 is a live Colorado ZIP; the country is the only thing that
+    // keeps a Munich brother out of a search near Denver (D177).
+    const munich = PLACES.find((place) => place.city === "Munich");
+    expect(munich?.postalCodes.some((code) => centroids.has(code))).toBe(true);
+    expect(isUsAddress({ country: munich?.country })).toBe(false);
   });
 });
