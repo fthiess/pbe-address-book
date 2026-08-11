@@ -122,3 +122,20 @@ export {
   courseLabel,
   compareCourseCodes,
 } from "./majors.js";
+export {
+  type CityOrigin,
+  type GeoPoint,
+  type RadiusMiles,
+  type ZipCentroids,
+  DEFAULT_RADIUS_MILES,
+  RADIUS_OPTIONS,
+  haversineMiles,
+  isRadiusMiles,
+  isUsAddress,
+  isWithinRadius,
+  makeProximityPredicate,
+  memberPoint,
+  normalizeZip,
+  parseCityTable,
+  parseZipTable,
+} from "./proximity.js";

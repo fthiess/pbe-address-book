@@ -84,6 +84,19 @@ describe("firebase.json Hosting cache headers", () => {
     expect(img).toBeGreaterThan(byExtension);
   });
 
+  // The proximity tables are public reference data — no member is named in
+  // them — under content-hashed filenames, which is what makes a year-long
+  // immutable cache safe: regenerating them changes the filename (D177/OFC-378).
+  // They are *not* covered by the extension rule, whose list has no `csv`, so
+  // without this rule they would inherit the catch-all's revalidate-every-time.
+  it("serves the proximity tables immutably (D177)", () => {
+    const rules = hostingHeaders();
+    const geo = rules.find((rule) => rule.source === "/geo/*.csv");
+    expect(geo, "the /geo/*.csv Cache-Control rule is missing").toBeDefined();
+    expect(cacheControlOf(geo)).toBe("public, max-age=31536000, immutable");
+    expect(indexOfSource(rules, "/geo/*.csv")).toBeGreaterThan(indexOfSource(rules, "**"));
+  });
+
   it("leaves the SPA shell revalidating and hashed assets immutable (D73)", () => {
     const rules = hostingHeaders();
     expect(cacheControlOf(rules.find((rule) => rule.source === "**"))).toBe(
