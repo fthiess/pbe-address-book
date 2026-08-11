@@ -47,6 +47,17 @@ describe("normalizeZip", () => {
     expect(normalizeZip("02139-")).toBe("02139");
   });
 
+  // A hyphen declares the tail to be the +4, so a short one is cruft on a
+  // sound ZIP. Run-together digits do not declare anything, so seven of them
+  // are a malformed value — and truncating it would resolve to a real and
+  // confidently wrong place.
+  it("accepts a short tail after a hyphen but not run-together stray digits", () => {
+    expect(normalizeZip("02139-43")).toBe("02139");
+    expect(normalizeZip("0213943")).toBeUndefined();
+    expect(normalizeZip("02139123")).toBeUndefined();
+    expect(normalizeZip("0213943070")).toBeUndefined();
+  });
+
   it("trims surrounding and embedded whitespace", () => {
     expect(normalizeZip("  02139  ")).toBe("02139");
     expect(normalizeZip("02139\t")).toBe("02139");

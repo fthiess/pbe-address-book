@@ -70,13 +70,21 @@ export function isRadiusMiles(value: unknown): value is RadiusMiles {
  * Accepts `02139`, `02139-4307`, `021394307` and any of them padded with
  * whitespace; rejects a four-digit value rather than guessing a leading zero,
  * because an invented ZIP resolves to a real and wrong place.
+ *
+ * ⚠ The two ZIP+4 forms are deliberately **not** equally permissive. A hyphen
+ * says "what follows is the +4", so a short or empty tail after one (`02139-`,
+ * `02139-43`) is cruft on an unambiguous five-digit ZIP and is accepted. Without
+ * a hyphen the digits run together, so only exactly nine are a ZIP+4: `0213943`
+ * is seven digits of *something else*, and truncating it to 02139 would resolve
+ * a malformed value to a real and confidently wrong place — the same failure the
+ * four-digit rule above exists to prevent.
  */
 export function normalizeZip(raw: string | null | undefined): string | undefined {
   if (typeof raw !== "string") {
     return undefined;
   }
   const compact = raw.replace(/\s+/g, "");
-  const match = /^(\d{5})(?:-?\d{0,4})?$/.exec(compact);
+  const match = /^(\d{5})(?:-\d{0,4}|\d{4})?$/.exec(compact);
   return match?.[1];
 }
 

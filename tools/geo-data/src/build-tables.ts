@@ -11,8 +11,11 @@
  *
  * ⚠ This script is **never** run by CI or by the verification gate: it needs the
  * network and downloads ~8 MB. The gate instead asserts (in
- * `scripts/assert-geo-tables.mjs`) that the committed tables and the manifest
- * still agree. The pipeline's own logic is unit-tested over fixtures.
+ * `scripts/assert-geo-tables.ts`) that the committed tables and the manifest
+ * still agree. Everything this script orchestrates — the source parsers, the
+ * archive reader, the merge and population join, and the spot-check
+ * assertions — is unit-tested over fixtures in `src/*.test.ts`; what is not
+ * covered is the fetching and the writing, which is all that is left here.
  *
  * Output is deterministic — the same three input files always produce the same
  * bytes, so a rebuild that changes nothing also changes no filename.

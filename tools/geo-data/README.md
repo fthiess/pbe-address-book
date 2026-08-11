@@ -29,8 +29,10 @@ same bytes, so a rebuild that changes nothing changes no filename either.
 The script **is not run by CI** — it needs the network. What CI checks instead
 is `npm run assert:geo-tables`: the committed tables still hash to the names they
 are served under, the manifest agrees with them, no stale table is left behind,
-and no source file imports a table as a module. The pipeline's own logic is
-covered by unit tests over fixtures (`src/*.test.ts`).
+and no source file imports a table as a module. Everything the script
+orchestrates — the source parsers, the archive reader, the merge and population
+join, and the spot-check assertions — is covered by unit tests over fixtures
+(`src/*.test.ts`); only the fetching and the writing are not.
 
 After regenerating, commit the two `.csv` files and the manifest together, and
 run `npm run verify:fast`.
@@ -43,10 +45,14 @@ run `npm run verify:fast`.
 | [GeoNames US postal codes](https://download.geonames.org/export/zip/) | CC BY 4.0 | Place names; centroids for the ~8,000 ZIPs with no ZCTA |
 | [Census sub-county population estimates](https://www.census.gov/programs-surveys/popest.html) | Public domain | The city vocabulary's population threshold |
 
-**GeoNames requires attribution.** A link to geonames.org satisfies it; the
-About page carries the credit (session B). The Census data is public domain and
-needs none. Each generated file repeats its sources, with a SHA-256 of the exact
-input, in a `#` provenance header.
+**GeoNames requires attribution** under CC BY 4.0; a link to geonames.org
+satisfies it. Today that link travels with the data itself: the `#` provenance
+header at the top of each generated file names every source, with a SHA-256 of
+the exact input, and carries the geonames.org URL. ⚠ **The user-facing credit on
+the About page is session B's** and does not exist yet — do not read the line
+above as saying it does. The Census data is public domain and needs none; a
+general OSS acknowledgements list, where the credit belongs long-term, is
+OFC-408.
 
 ## Things that will bite you
 

@@ -85,17 +85,25 @@ describe("findTableImports", () => {
       { path: "a.ts", text: 'import zips from "../public/geo/zips.aaaaaaaa.csv?raw";' },
       { path: "b.ts", text: 'const url = await import("./zips.csv?url");' },
       { path: "c.ts", text: 'const t = require("./cities.csv");' },
-      { path: "d.ts", text: 'const url = "/geo/zips.aaaaaaaa.csv"; await fetch(url);' },
-      { path: "e.ts", text: 'import { GEO_TABLES } from "./generated/geoTables.js";' },
+      // The bare side-effect form: no `from`, no parenthesis. A pattern
+      // anchored on `from` misses it, and Vite would still bundle it.
+      { path: "d.ts", text: 'import "../public/geo/zips.aaaaaaaa.csv";' },
+      { path: "e.ts", text: 'const url = "/geo/zips.aaaaaaaa.csv"; await fetch(url);' },
+      { path: "f.ts", text: 'import { GEO_TABLES } from "./generated/geoTables.js";' },
     ]);
-    expect(flagged).toEqual(["a.ts", "b.ts", "c.ts"]);
+    expect(flagged).toEqual(["a.ts", "b.ts", "c.ts", "d.ts"]);
   });
 
   // The whole point of the feature is that the table is *fetched*; a string
   // literal naming it must stay legal or the guard would forbid using it.
   it("does not flag a fetch of the same path", () => {
     expect(
-      findTableImports([{ path: "f.ts", text: 'await fetch("/geo/zips.aaaaaaaa.csv");' }]),
+      findTableImports([{ path: "g.ts", text: 'await fetch("/geo/zips.aaaaaaaa.csv");' }]),
+    ).toEqual([]);
+    expect(
+      findTableImports([
+        { path: "h.ts", text: 'const url = new URL("/geo/cities.bbbbbbbb.csv", origin);' },
+      ]),
     ).toEqual([]);
   });
 });

@@ -105,13 +105,18 @@ export function countDataRows(text: string): number {
 }
 
 /**
- * Source files that pull a table in as a module. Matches a static or dynamic
- * import of any `.csv`, with or without a Vite query suffix (`?raw`, `?url`),
- * which is the only way one of these could reach a JS chunk.
+ * Source files that pull a table in as a module. Matches every import form that
+ * can reach a JS chunk — `from "…"`, dynamic `import("…")`, `require("…")` and
+ * the **bare side-effect `import "…"`**, which has neither a `from` nor a
+ * parenthesis and is the one a `from`-anchored pattern quietly misses. With or
+ * without a Vite query suffix (`?raw`, `?url`).
+ *
+ * ⚠ A *string literal* naming a table must stay legal: fetching one is the whole
+ * design, so the pattern is anchored on the import keywords, never on the path.
  */
 export function findTableImports(files: readonly SourceFile[]): string[] {
   const pattern =
-    /(?:\bfrom\s*|\bimport\s*\(\s*|\brequire\s*\(\s*)["'][^"']*\.csv(?:\?[^"']*)?["']/;
+    /(?:\bfrom\s*|\bimport\s*\(?\s*|\brequire\s*\(\s*)["'][^"']*\.csv(?:\?[^"']*)?["']/;
   return files.filter((file) => pattern.test(file.text)).map((file) => file.path);
 }
 
