@@ -229,6 +229,7 @@ describe("countActiveFilters", () => {
       postPbeEducation: "stanford",
       sports: "soccer",
       activities: "sailing",
+      near: "c~Boston~MA",
       staff: "staffOnly" as const,
       willingToMentor: "yes" as const,
       deceasedOnly: "yes" as const,
@@ -396,6 +397,119 @@ describe("buildFilterPredicate — staff gating (filterable ⟺ visible)", () =>
     const never = p({ id: 3 });
     const pred = buildFilterPredicate({ ...EMPTY_FILTERS, verifiedBefore: "2026-01-01" }, "admin");
     expect([fresh, stale, never].filter(pred).map((r) => r.id)).toEqual([2, 3]);
+  });
+});
+
+describe("buildFilterPredicate — proximity (OFC-378, D172)", () => {
+  // Real coordinates, so "within 25 miles" means what it says.
+  const BOSTON = { lat: 42.34, lon: -71.02 };
+  const CENTROIDS = new Map([
+    ["02139", { lat: 42.36, lon: -71.1 }], // Cambridge, ~4 mi
+    ["01960", { lat: 42.53, lon: -70.96 }], // Peabody, ~14 mi
+    ["01060", { lat: 42.32, lon: -72.65 }], // Northampton, ~84 mi
+    ["94041", { lat: 37.39, lon: -122.08 }], // Mountain View, a continent away
+    ["95050", { lat: 37.35, lon: -121.96 }], // Santa Clara, ~7 mi from 94041
+    ["94901", { lat: 37.97, lon: -122.51 }], // San Rafael, ~35 mi from 94041
+  ]);
+  const near = (radiusMiles: number) => ({ centroids: CENTROIDS, origin: BOSTON, radiusMiles });
+
+  const cambridge = p({ id: 1, classYear: 1984, address: { postalCode: "02139" } });
+  const peabody = p({ id: 2, classYear: 1990, address: { postalCode: "01960" } });
+  const northampton = p({ id: 3, classYear: 1984, address: { postalCode: "01060" } });
+  const mountainView = p({ id: 4, classYear: 1984, address: { postalCode: "94041" } });
+  const ALL = [cambridge, peabody, northampton, mountainView];
+
+  it("keeps only the brothers inside the radius", () => {
+    const pred = buildFilterPredicate(
+      { ...EMPTY_FILTERS, near: "c~Boston~MA" },
+      "brother",
+      near(25),
+    );
+    expect(ALL.filter(pred).map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  it("widens with the radius", () => {
+    const pred = buildFilterPredicate(
+      { ...EMPTY_FILTERS, near: "c~Boston~MA" },
+      "brother",
+      near(100),
+    );
+    expect(ALL.filter(pred).map((r) => r.id)).toEqual([1, 2, 3]);
+  });
+
+  it("⚠ narrows NOTHING when the token is set but proximity is absent", () => {
+    // The load-bearing case, and the one a naive implementation gets wrong: the
+    // tables are fetched lazily, so `near` is set for a while before the filter
+    // can be applied. Returning the empty set here would answer "no brothers live
+    // near Boston" to a question that has not been asked yet — and it would do it
+    // on exactly the path a shared proximity link takes.
+    const pred = buildFilterPredicate({ ...EMPTY_FILTERS, near: "c~Boston~MA" }, "brother");
+    expect(ALL.filter(pred).map((r) => r.id)).toEqual([1, 2, 3, 4]);
+  });
+
+  it("applies proximity even with no token — the resolved filter is the authority", () => {
+    // The two are separate inputs on purpose; this module never reads the token.
+    const pred = buildFilterPredicate(EMPTY_FILTERS, "brother", near(25));
+    expect(ALL.filter(pred).map((r) => r.id)).toEqual([1, 2]);
+  });
+
+  it("ANDs with the other filters rather than replacing them", () => {
+    const pred = buildFilterPredicate(
+      { ...EMPTY_FILTERS, near: "c~Boston~MA", classYear: "1984" },
+      "brother",
+      near(100),
+    );
+    // Peabody is in range but class of 1990; Mountain View is 1984 but far away.
+    expect(ALL.filter(pred).map((r) => r.id)).toEqual([1, 3]);
+  });
+
+  it("excludes a brother it cannot locate — 'unknown' is not 'nearby'", () => {
+    const noAddress = p({ id: 10 });
+    const noZip = p({ id: 11, address: { city: "Boston" } });
+    const unknownZip = p({ id: 12, address: { postalCode: "99999" } });
+    // 75008 is Paris and collides with a real US ZIP; the country is what settles it.
+    const paris = p({ id: 13, address: { postalCode: "75008", country: "FR" } });
+    const pred = buildFilterPredicate(EMPTY_FILTERS, "brother", near(100));
+    expect([noAddress, noZip, unknownZip, paris].filter(pred)).toEqual([]);
+  });
+
+  it("reaches through ZIP+4 and stray whitespace — a majority of real records", () => {
+    // §8: about 59% of member ZIPs are ZIP+4 and some carry trailing spaces. A
+    // lookup that skipped either step would work on hand-picked examples and fail
+    // for most of the roster.
+    const plusFour = p({ id: 20, address: { postalCode: "02139-4307" } });
+    const padded = p({ id: 21, address: { postalCode: "  02139   " } });
+    const pred = buildFilterPredicate(EMPTY_FILTERS, "brother", near(25));
+    expect([plusFour, padded].filter(pred).map((r) => r.id)).toEqual([20, 21]);
+  });
+
+  it("⚠ is not a ZIP-prefix rule — the Bay Area case that disproves one (D172)", () => {
+    // From 94041: Santa Clara is ~7 miles away and diverges at the SECOND digit,
+    // while San Rafael at ~35 miles shares two. Any "optimisation" into prefix
+    // arithmetic flips both of these.
+    const santaClara = p({ id: 30, address: { postalCode: "95050" } });
+    const sanRafael = p({ id: 31, address: { postalCode: "94901" } });
+    const fromMountainView = {
+      centroids: CENTROIDS,
+      origin: { lat: 37.39, lon: -122.08 },
+      radiusMiles: 25,
+    };
+    const pred = buildFilterPredicate(EMPTY_FILTERS, "brother", fromMountainView);
+    expect([santaClara, sanRafael].filter(pred).map((r) => r.id)).toEqual([30]);
+  });
+
+  it("is offered to every role — an address is in a brother's own projection or in nobody's", () => {
+    const pred = buildFilterPredicate(EMPTY_FILTERS, "brother", near(25));
+    expect(ALL.filter(pred).map((r) => r.id)).toEqual([1, 2]);
+  });
+});
+
+describe("countActiveFilters — the Near token", () => {
+  it("counts a set token, independently of whether it has resolved", () => {
+    // The badge answers "what have I asked for", not "what has finished
+    // loading" — so it must not flicker from 1 to 0 while the tables fetch.
+    expect(countActiveFilters({ ...EMPTY_FILTERS, near: "c~Boston~MA" })).toBe(1);
+    expect(countActiveFilters({ ...EMPTY_FILTERS, near: "" })).toBe(0);
   });
 });
 

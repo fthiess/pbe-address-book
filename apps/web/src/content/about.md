@@ -33,6 +33,20 @@ and are **not** covered by that license. The details are in
 [TRADEMARKS.md](https://github.com/fthiess/pbe-address-book/blob/main/TRADEMARKS.md); the code
 license is in [LICENSE](https://github.com/fthiess/pbe-address-book/blob/main/LICENSE).
 
+## Acknowledgements
+
+The Address Book's proximity search — the **Near** filter on the Directory — is built on public
+geographic data, used with thanks:
+
+- Place names and postal-code locations from [GeoNames](https://www.geonames.org/), used under the
+  [Creative Commons Attribution 4.0](https://creativecommons.org/licenses/by/4.0/) licence.
+- ZIP Code Tabulation Area centroids and population estimates from the
+  [United States Census Bureau](https://www.census.gov/), which are in the public domain.
+
+Neither organisation is connected with PBE or with this site, and neither receives anything from
+it: the data is downloaded once when the Address Book is built and served from here, so nothing you
+type into the Near box ever leaves your browser.
+
 ## Privacy
 
 Your profile page in this Address Book has settings you can change that control what

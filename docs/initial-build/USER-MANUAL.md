@@ -32,6 +32,10 @@ The **Directory** is the Address Book's home page: a searchable, sortable list o
 
 **Finding brothers who share a background or an interest.** Three more filters work exactly like Employer, over three things brothers write about themselves: **Post-PBE education** (degrees earned after PBE), **Sports**, and **Activities**. Type any part of what you are looking for — `stanford`, `soccer`, `sailing` — and the list narrows to the brothers whose entry contains it, anywhere inside the line. Each is also available as an optional column, so you can read them beside every brother instead of filtering by one. Two things are worth knowing, and each filter's "?" says them too: a brother who has not filled the field in will not turn up under it at all, and these fields are **new**, so for a while most of the directory will be blank in them. If a filter finds nobody, that is far more likely to mean "not filled in yet" than "no such brother."
 
+**Finding brothers near a place.** The **Near** filter answers "who lives around here?" — useful for organising a regional gathering, or for finding brothers to talk to in a city you are moving to. Start typing in the **Near** box and pick from the list that appears; you can choose a **town**, a **ZIP code**, or **another brother** (which searches around wherever he lives). Then set **Within** to 25, 50, or 100 miles. It combines with every other filter, so "Employer: Google, Near: New York, Class Year: 2000–" is a single question you can ask.
+
+Four things are worth knowing. The list of towns covers places of about 10,000 people and up, so a smaller town may not be there by name — **type your ZIP code instead**, which always works and finds the brothers around it just as well. Distances are measured between the centres of ZIP codes, so treat a result as "in the area" rather than as a precise mileage; that is also why no distance is shown beside each brother. Proximity covers the **United States** only — for brothers living elsewhere, the **Country** filter is the way to narrow. And brothers who have chosen to keep their address private are not found by it, just as they are not found by the City or State filters.
+
 On a small phone screen the filters, the view options, the sort, and the choice of which details to show tuck behind a single **Options** button so the list of brothers gets the room; tap it to open them (the Name Search box always stays in view).
 
 ![The Directory on a phone: the Options fold open, showing the Starred-only and Include-deceased switches, the Fields control, the Sort by and Order selects, and the Filters fold, above brothers shown as cards rather than table rows.](../images/directory-mobile-options.png)
@@ -182,6 +186,10 @@ Everything below this paragraph is **assembled automatically from the same sourc
 #### Activities
 
 - **Behind the “?”:** Finds brothers whose activities contain what you type — sailing finds “Sailing and choral singing”. Brothers who have not filled this in will not turn up.
+
+#### Near
+
+- **Behind the “?”:** Finds brothers within the distance you choose of a place — start typing a town, a ZIP code, or another brother's name, and pick from the list. Smaller towns may not be listed by name; a ZIP code always works, and finds the brothers around it just as well. Proximity search covers the United States only — use the Country filter for brothers living elsewhere. Brothers who keep their address private are not found by it.
 
 #### Willing to mentor
 
