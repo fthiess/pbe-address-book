@@ -271,29 +271,75 @@ export interface Place {
   city: string;
   state: string | null;
   country: string;
+  /**
+   * Real postal codes **for this city**, one of which each fake brother there
+   * gets.
+   *
+   * ⚠ These must genuinely belong to the city beside them, and that is not
+   * decoration. Proximity search locates a brother by his **ZIP**, never by his
+   * written city (D172 decision 1, on design §8's finding that the written city
+   * is the less trustworthy of the two). Before OFC-378's live test the generator
+   * wrote `String(rng.int(10000, 99999))` — a random number, drawn independently
+   * of the city it had just picked — and the consequence was not a slightly
+   * scruffy fixture but a feature that could not be evaluated at all: a search
+   * near San Francisco returned brothers displayed as living in Pittsburgh,
+   * Washington and Boston, because their ZIPs were noise and the six hits were
+   * simply the six random draws that happened to land near the Bay. The
+   * arithmetic was exact — 399 real ZIPs within 50 miles of San Francisco out of
+   * 90,000 drawable integers over 1,208 records predicts 5.4 hits, and 6 were
+   * seen. It read as a broken filter and was a broken fixture.
+   *
+   * Two further consequences of that one line, both worth remembering: only 42%
+   * of the drawable range are real ZIPs at all, so most brothers could not be
+   * located; and starting the range at 10000 made **every leading-zero ZIP
+   * unreachable**, which is the whole of New England — the region holding the
+   * largest share of real brothers.
+   *
+   * `generate.test.ts` now asserts each of these against the committed proximity
+   * tables, so a future edit cannot quietly put a Boston brother in Kansas.
+   */
+  postalCodes: readonly string[];
 }
 
 export const PLACES: readonly Place[] = [
-  { city: "Boston", state: "MA", country: "US" },
-  { city: "Cambridge", state: "MA", country: "US" },
-  { city: "New York", state: "NY", country: "US" },
-  { city: "San Francisco", state: "CA", country: "US" },
-  { city: "Palo Alto", state: "CA", country: "US" },
-  { city: "Seattle", state: "WA", country: "US" },
-  { city: "Austin", state: "TX", country: "US" },
-  { city: "Chicago", state: "IL", country: "US" },
-  { city: "Denver", state: "CO", country: "US" },
-  { city: "Portland", state: "OR", country: "US" },
-  { city: "Atlanta", state: "GA", country: "US" },
-  { city: "Washington", state: "DC", country: "US" },
-  { city: "Pittsburgh", state: "PA", country: "US" },
-  { city: "Ann Arbor", state: "MI", country: "US" },
-  { city: "Minneapolis", state: "MN", country: "US" },
-  { city: "Toronto", state: "ON", country: "CA" },
-  { city: "Vancouver", state: "BC", country: "CA" },
-  { city: "London", state: null, country: "GB" },
-  { city: "Munich", state: null, country: "DE" },
-  { city: "Singapore", state: null, country: "SG" },
+  { city: "Boston", state: "MA", country: "US", postalCodes: ["02108", "02115", "02116", "02127"] },
+  { city: "Cambridge", state: "MA", country: "US", postalCodes: ["02138", "02139", "02140"] },
+  {
+    city: "New York",
+    state: "NY",
+    country: "US",
+    postalCodes: ["10001", "10011", "10023", "10128"],
+  },
+  {
+    city: "San Francisco",
+    state: "CA",
+    country: "US",
+    postalCodes: ["94103", "94110", "94114", "94122"],
+  },
+  { city: "Palo Alto", state: "CA", country: "US", postalCodes: ["94301", "94303", "94306"] },
+  { city: "Seattle", state: "WA", country: "US", postalCodes: ["98101", "98103", "98115"] },
+  { city: "Austin", state: "TX", country: "US", postalCodes: ["78701", "78704", "78745"] },
+  { city: "Chicago", state: "IL", country: "US", postalCodes: ["60601", "60614", "60640"] },
+  { city: "Denver", state: "CO", country: "US", postalCodes: ["80202", "80206", "80211"] },
+  { city: "Portland", state: "OR", country: "US", postalCodes: ["97201", "97209", "97214"] },
+  { city: "Atlanta", state: "GA", country: "US", postalCodes: ["30303", "30306", "30309"] },
+  { city: "Washington", state: "DC", country: "US", postalCodes: ["20001", "20009", "20016"] },
+  { city: "Pittsburgh", state: "PA", country: "US", postalCodes: ["15213", "15217", "15232"] },
+  { city: "Ann Arbor", state: "MI", country: "US", postalCodes: ["48103", "48104", "48105"] },
+  { city: "Minneapolis", state: "MN", country: "US", postalCodes: ["55401", "55408", "55414"] },
+  // Non-US postal codes are left in their own national formats: validation
+  // format-checks US ZIPs only (N38), and the shapes matter here because they are
+  // what a non-US record actually looks like.
+  { city: "Toronto", state: "ON", country: "CA", postalCodes: ["M5V 2T6", "M4W 1A8", "M6J 1H1"] },
+  { city: "Vancouver", state: "BC", country: "CA", postalCodes: ["V6B 1A1", "V5K 0A1"] },
+  { city: "London", state: null, country: "GB", postalCodes: ["SW1A 1AA", "EC1A 1BB", "N1 9GU"] },
+  // ⚠ Munich's postal codes are five digits and therefore **collide with real US
+  // ZIPs** — 80331 is a live Colorado ZIP. That is deliberate: it is the fixture
+  // that exercises D177's country rule, under which a brother whose country says
+  // he is not in the US is never located however ZIP-shaped his postal code
+  // looks. Do not "tidy" these into something unmistakably foreign.
+  { city: "Munich", state: null, country: "DE", postalCodes: ["80331", "80802"] },
+  { city: "Singapore", state: null, country: "SG", postalCodes: ["018956", "238859"] },
 ] as const;
 
 /**

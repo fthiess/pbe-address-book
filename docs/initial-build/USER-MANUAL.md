@@ -32,7 +32,7 @@ The **Directory** is the Address Book's home page: a searchable, sortable list o
 
 **Finding brothers who share a background or an interest.** Three more filters work exactly like Employer, over three things brothers write about themselves: **Post-PBE education** (degrees earned after PBE), **Sports**, and **Activities**. Type any part of what you are looking for — `stanford`, `soccer`, `sailing` — and the list narrows to the brothers whose entry contains it, anywhere inside the line. Each is also available as an optional column, so you can read them beside every brother instead of filtering by one. Two things are worth knowing, and each filter's "?" says them too: a brother who has not filled the field in will not turn up under it at all, and these fields are **new**, so for a while most of the directory will be blank in them. If a filter finds nobody, that is far more likely to mean "not filled in yet" than "no such brother."
 
-**Finding brothers near a place.** The **Near** filter answers "who lives around here?" — useful for organising a regional gathering, or for finding brothers to talk to in a city you are moving to. Start typing in the **Near** box and pick from the list that appears; you can choose a **town**, a **ZIP code**, or **another brother** (which searches around wherever he lives). Then set **Within** to 25, 50, or 100 miles. It combines with every other filter, so "Employer: Google, Near: New York, Class Year: 2000–" is a single question you can ask.
+**Finding brothers near a place.** The **Proximity search** box at the foot of the filter panel answers "who lives around here?" — useful for organising a regional gathering, or for finding brothers to talk to in a city you are moving to. Its two controls always work together, which is why they sit in a panel of their own. Start typing in **Located near** and pick from the list that appears; you can choose a **town**, a **ZIP code**, or **another brother** (which searches around wherever he lives). Then set **Located within** to 25, 50, or 100 miles. It combines with every other filter, so "Employer: Google, Located near: New York, Class Year: 2000–" is a single question you can ask.
 
 Four things are worth knowing. The list of towns covers places of about 10,000 people and up, so a smaller town may not be there by name — **type your ZIP code instead**, which always works and finds the brothers around it just as well. Distances are measured between the centres of ZIP codes, so treat a result as "in the area" rather than as a precise mileage; that is also why no distance is shown beside each brother. Proximity covers the **United States** only — for brothers living elsewhere, the **Country** filter is the way to narrow. And brothers who have chosen to keep their address private are not found by it, just as they are not found by the City or State filters.
 
@@ -187,9 +187,9 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 - **Behind the “?”:** Finds brothers whose activities contain what you type — sailing finds “Sailing and choral singing”. Brothers who have not filled this in will not turn up.
 
-#### Near
+#### Located near
 
-- **Behind the “?”:** Finds brothers within the distance you choose of a place — start typing a town, a ZIP code, or another brother's name, and pick from the list. Smaller towns may not be listed by name; a ZIP code always works, and finds the brothers around it just as well. Proximity search covers the United States only — use the Country filter for brothers living elsewhere. Brothers who keep their address private are not found by it.
+- **Behind the “?”:** Finds brothers within the distance you choose of a place — start typing a town, a ZIP code, or another brother's name, and pick from the list. Smaller towns may not be listed by name; a ZIP code always works, and finds the brothers around it just as well. Proximity search covers the United States only — use the Country filter for brothers living elsewhere. Brothers who keep their address private will not be found by this filter.
 
 #### Willing to mentor
 

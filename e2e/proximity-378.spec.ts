@@ -164,7 +164,7 @@ async function gotoDirectory(
 }
 
 const filtersFold = (page: Page) => page.getByRole("button", { name: /^Filters/ });
-const nearBox = (page: Page) => page.getByRole("combobox", { name: /^Near —/ });
+const nearBox = (page: Page) => page.getByRole("combobox", { name: /^Located near —/ });
 /**
  * ⚠ Scoped to the Near listbox, never a bare `getByRole("option")`. The filter
  * panel is full of native `<select>`s, and every `<option>` inside one carries
@@ -172,8 +172,8 @@ const nearBox = (page: Page) => page.getByRole("combobox", { name: /^Near —/ }
  * make "the dropdown is empty" unassertable.
  */
 const nearOption = (page: Page, name?: RegExp) =>
-  page.getByRole("listbox", { name: /^Near —/ }).getByRole("option", name ? { name } : {});
-const radius = (page: Page) => page.getByLabel("Within", { exact: true });
+  page.getByRole("listbox", { name: /^Located near —/ }).getByRole("option", name ? { name } : {});
+const radius = (page: Page) => page.getByLabel("Located within", { exact: true });
 const row = (page: Page, name: RegExp) => page.getByRole("rowheader", { name });
 const resetButton = (page: Page) => page.getByRole("button", { name: /Reset search & filters/ });
 
@@ -251,7 +251,7 @@ test.describe("OFC-378 — the chosen origin", () => {
     await expect(page.getByText("Boston, MA", { exact: true })).toBeVisible();
     await expect(nearBox(page)).toHaveCount(0);
 
-    await page.getByRole("button", { name: /Clear Near/i }).click();
+    await page.getByRole("button", { name: /Clear Located near/i }).click();
 
     await expect(page).not.toHaveURL(/near=/);
     await expect(nearBox(page)).toBeVisible();
@@ -406,6 +406,63 @@ test.describe("OFC-378 — composition and Reset", () => {
     await expect(resetButton(page)).toBeEnabled();
     await resetButton(page).click();
     await expect(page).not.toHaveURL(/radius=/);
+  });
+});
+
+test.describe("OFC-378 — the proximity card (live-test findings)", () => {
+  test("both controls live inside one card, at the foot of the filters", async ({ page }) => {
+    // They are one filter and its parameter, not two independent settings, and
+    // the card is what says so. Scoping the lookups to it is also what proves
+    // they are inside it rather than merely near it.
+    await gotoDirectory(page);
+    await filtersFold(page).click();
+
+    const card = page
+      .locator("div")
+      .filter({ hasText: /^Proximity search/ })
+      .last();
+    await expect(card.getByRole("combobox", { name: /^Located near —/ })).toBeVisible();
+    await expect(card.getByLabel("Located within", { exact: true })).toBeVisible();
+
+    // At the foot of the all-roles filters: below every other filter control.
+    // ⚠ `getByRole("combobox", …)`, not `getByLabel("Staff")` — that matches the
+    // Columns picker's Staff checkbox as well as this select. Third time in this
+    // file; the rule is to name the role whenever a filter shares its label with
+    // a column.
+    const staffBox = await page.getByRole("combobox", { name: "Staff", exact: true }).boundingBox();
+    const nearBoxRect = await nearBox(page).boundingBox();
+    expect(nearBoxRect?.y).toBeGreaterThan(staffBox?.y ?? 0);
+  });
+
+  test("the two controls sit on a shared line rather than stepping", async ({ page }) => {
+    // ⚠ Overlapping extents, never equal coordinates (N154/N163) — a guard that
+    // asserted a shared `y` once passed on Windows and failed CI by 19.5px on
+    // Linux font metrics. The reported bug was a 4px step, caused by the shared
+    // Combobox carrying the profile page's roomier metrics into a panel built
+    // from compact ones; overlap catches that without pinning a pixel.
+    await gotoDirectory(page);
+    await filtersFold(page).click();
+
+    const near = await nearBox(page).boundingBox();
+    const within = await radius(page).boundingBox();
+    expect(near).not.toBeNull();
+    expect(within).not.toBeNull();
+    const overlap =
+      Math.min((near?.y ?? 0) + (near?.height ?? 0), (within?.y ?? 0) + (within?.height ?? 0)) -
+      Math.max(near?.y ?? 0, within?.y ?? 0);
+    // They must share most of their height, and be the same height to within a
+    // hair — the two ways the old sizing showed up.
+    expect(overlap).toBeGreaterThan(0.9 * Math.min(near?.height ?? 0, within?.height ?? 0));
+    expect(Math.abs((near?.height ?? 0) - (within?.height ?? 0))).toBeLessThan(2);
+  });
+
+  test("the help text says what happens to a private address", async ({ page }) => {
+    await gotoDirectory(page);
+    await filtersFold(page).click();
+    await page.getByRole("button", { name: /Help: Located near/i }).click();
+    await expect(
+      page.getByText(/Brothers who keep their address private will not be found by this filter\./),
+    ).toBeVisible();
   });
 });
 
