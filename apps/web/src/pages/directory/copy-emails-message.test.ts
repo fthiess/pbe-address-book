@@ -1,6 +1,6 @@
 import type { RecipientList } from "@pbe/shared";
 import { describe, expect, it } from "vitest";
-import { copyEmailsMessage, skippedDetail } from "./copy-emails-message.js";
+import { copyEmailsMessage, overLimitMessage, skippedDetail } from "./copy-emails-message.js";
 
 function list(overrides: Partial<RecipientList> = {}): RecipientList {
   return {
@@ -77,5 +77,23 @@ describe("copyEmailsMessage (D167)", () => {
     expect(message.detail).toBe(
       "2 brothers skipped — no email address (1), deceased or de-brothered (1).",
     );
+  });
+});
+
+describe("overLimitMessage (OFC-411)", () => {
+  it("names the ceiling, the selection size, and the way through", () => {
+    const message = overLimitMessage(63, 50);
+    expect(message.headline).toBe("You can copy up to 50 brothers at a time.");
+    expect(message.detail).toContain("63 selected");
+    // The line Forrest asked for: a brother who needs more is told whom to ask,
+    // rather than being left to press the button again with 62.
+    expect(message.detail).toContain("staff member");
+  });
+
+  it("is an error, so it waits to be acknowledged rather than self-clearing (N165)", () => {
+    // Not decoration: `CopyEmailsToast` keys its auto-dismiss on exactly this, and
+    // a refusal that vanished after ten seconds would leave the user believing a
+    // copy had happened.
+    expect(overLimitMessage(51, 50).tone).toBe("error");
   });
 });

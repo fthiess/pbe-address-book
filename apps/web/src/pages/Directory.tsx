@@ -40,8 +40,7 @@ import {
   COLUMNS,
   type ColumnKey,
   HIGHLIGHTED_COLUMN_KEYS,
-  canSelectRows,
-  pinnedColumnsForRole,
+  PINNED_COLUMNS,
   sortRows,
 } from "./directory/grid-model.js";
 import { filterRows } from "./directory/query.js";
@@ -194,13 +193,10 @@ export function Directory() {
     revalidateRoster();
   }, []);
 
-  // The render columns: the pinned block (Select for staff, Star, Thumbnail,
-  // Name), then the lens's data columns in the user's order.
+  // The render columns: the pinned block (Select, Star, Thumbnail, Name), then
+  // the lens's data columns in the user's order.
   const dataColumns = useMemo(() => lens.visible.map((key) => COLUMNS[key]), [lens.visible]);
-  const columns = useMemo(
-    () => [...pinnedColumnsForRole(role), ...dataColumns],
-    [role, dataColumns],
-  );
+  const columns = useMemo(() => [...PINNED_COLUMNS, ...dataColumns], [dataColumns]);
 
   // The multi-select vocabularies for the filter panel, drawn from the data.
   const filterOptions = useMemo(() => collectFilterOptions(profiles ?? []), [profiles]);
@@ -328,7 +324,6 @@ export function Directory() {
   // is ~1 MB, so a long wait here may simply be the transfer (OFC-324).
   const showReassurance = useDelayedFlag(loading, REASSURANCE_DELAY_MS);
   const help = getHelpEntry("directory.search");
-  const staff = canSelectRows(role);
 
   // The badge on the collapsed mobile "Options" fold: how many of the
   // folded controls are currently narrowing the view — typed filters plus the two
@@ -374,15 +369,20 @@ export function Directory() {
       canReset={canReset}
     />
   );
-  const actionBar = staff ? (
+  // Rendered for every role since OFC-411 (it was staff-only, alongside the Select
+  // column). The bar decides internally which of its actions this role has — a
+  // brother sees Copy Emails and, with a selection, Clear.
+  const actionBar = (
     <ActionBar
       role={role}
       viewRows={rows}
+      visibleColumns={lens.visible}
+      nameOf={nameOf}
       selectedRows={selectedRows}
       selectedCount={selection.count}
       onClear={clearSelection}
     />
-  ) : null;
+  );
 
   if (error) {
     return (
@@ -532,7 +532,7 @@ export function Directory() {
           onResize={lens.setWidth}
           onAutoFit={onAutoFit}
           stars={stars}
-          selection={staff ? selection : undefined}
+          selection={selection}
           viewKey={location.key}
           restoreReady={searchSettled}
         />
@@ -544,7 +544,7 @@ export function Directory() {
           highlight={highlight}
           myId={myId}
           stars={stars}
-          selection={staff ? selection : undefined}
+          selection={selection}
           viewKey={location.key}
           restoreReady={searchSettled}
         />

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_PRIVACY } from "./defaults.js";
 import {
+  BROTHER_COPY_LIMIT,
   type RecipientCandidate,
   buildRecipientList,
+  copyEmailsLimit,
+  exceedsCopyEmailsLimit,
   formatRecipient,
   isEmittableAddress,
 } from "./email-recipients.js";
@@ -277,5 +280,40 @@ describe("buildRecipientList — the copy set and the skip tally (D167)", () => 
     expect(list.copied + list.skippedNoEmail + list.skippedPrivate + list.skippedNotLiving).toBe(
       profiles.length,
     );
+  });
+});
+
+describe("the per-role copy cap (OFC-411)", () => {
+  it("caps a brother at 50 and leaves staff uncapped", () => {
+    expect(copyEmailsLimit("brother")).toBe(BROTHER_COPY_LIMIT);
+    expect(copyEmailsLimit("manager")).toBeNull();
+    expect(copyEmailsLimit("admin")).toBeNull();
+  });
+
+  it("allows exactly the limit and refuses one more", () => {
+    // The boundary is the whole rule, so it is asserted from both sides rather
+    // than trusting the comparison operator to be read correctly.
+    expect(exceedsCopyEmailsLimit("brother", BROTHER_COPY_LIMIT)).toBe(false);
+    expect(exceedsCopyEmailsLimit("brother", BROTHER_COPY_LIMIT + 1)).toBe(true);
+  });
+
+  it("never refuses a manager or an admin, however large the selection", () => {
+    expect(exceedsCopyEmailsLimit("manager", 10_000)).toBe(false);
+    expect(exceedsCopyEmailsLimit("admin", 10_000)).toBe(false);
+  });
+
+  it("counts records selected, not addresses copied", () => {
+    // 51 selected, none of them with an address to copy: still refused. The cap
+    // limits how far a press reaches, not what it yields — so it cannot be tested
+    // through `buildRecipientList`, and must not be reimplemented in terms of it.
+    const barren = Array.from({ length: BROTHER_COPY_LIMIT + 1 }, () =>
+      candidate({ email: undefined }),
+    );
+    expect(buildRecipientList(barren).copied).toBe(0);
+    expect(exceedsCopyEmailsLimit("brother", barren.length)).toBe(true);
+  });
+
+  it("passes an empty selection — the cap is a ceiling, not a floor", () => {
+    expect(exceedsCopyEmailsLimit("brother", 0)).toBe(false);
   });
 });

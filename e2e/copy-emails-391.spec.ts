@@ -1,15 +1,15 @@
 import { type Page, type Route, expect, test } from "@playwright/test";
 
 /**
- * The Directory's **Copy Emails** action (D167; OFC-391) against the mocked
- * backend: what actually lands on the clipboard, what the result toast reports,
- * and the staff gate.
+ * The Directory's **Copy Emails** action (D167; OFC-391, widened by OFC-411)
+ * against the mocked backend: what actually lands on the clipboard, what the result
+ * toast reports, and the per-role cap that replaced the staff gate.
  *
- * The exclusion rules themselves are unit-tested in
+ * The exclusion rules and the cap arithmetic are unit-tested in
  * `packages/shared/src/email-recipients.test.ts`; what only a browser can prove is
  * the part in between — that the button writes the built string to the real
- * clipboard, that the toast is announced, and that an ordinary brother has no
- * button at all.
+ * clipboard, that the toast is announced, and that a refused press leaves the
+ * clipboard holding exactly what it held before.
  */
 
 const PRIVACY_SHARING = {
@@ -116,9 +116,36 @@ const PROFILES = {
 /** A sentinel written before the action, so "the clipboard was left alone" is testable. */
 const SENTINEL = "clipboard-was-not-touched";
 
-async function gotoDirectory(page: Page, role: "manager" | "brother" = "manager") {
+/**
+ * A roster of `count` interchangeable, copyable brothers — for the OFC-411 cap,
+ * whose only interesting property is how many records are selected. Ids start
+ * above the fixtures above so the two never collide.
+ */
+function crowd(count: number): typeof PROFILES {
+  return {
+    profiles: Array.from({ length: count }, (_, i) => ({
+      id: 5100 + i,
+      firstName: `Brother${i}`,
+      lastName: "Many",
+      classYear: 1990,
+      deceased: { isDeceased: false },
+      debrothered: { isDebrothered: false },
+      hasHeadshot: false,
+      email: `many${i}@example.test`,
+      privacy: { ...PRIVACY_SHARING },
+      unlisted: false,
+    })),
+    majors: [],
+  };
+}
+
+async function gotoDirectory(
+  page: Page,
+  role: "manager" | "brother" = "manager",
+  profiles: typeof PROFILES = PROFILES,
+) {
   await page.route("**/api/me", (route) => route.fulfill({ json: meFor(role) }));
-  await page.route("**/api/profiles", (route) => route.fulfill({ json: PROFILES }));
+  await page.route("**/api/profiles", (route) => route.fulfill({ json: profiles }));
   await page.route("**/img/thumbnails/**", (route) => route.fulfill({ status: 404 }));
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Directory" })).toBeVisible();
@@ -327,10 +354,51 @@ test.describe("Copy Emails (D167 / OFC-391)", () => {
     expect(twoLine?.height).toBeGreaterThan(oneLine.height);
   });
 
-  test("an ordinary brother has no Copy Emails button at all", async ({ page }) => {
+  test("an ordinary brother copies emails too, and gets the same string (OFC-411)", async ({
+    page,
+  }) => {
+    // The inverse of this test asserted he had no button at all. He has one now;
+    // what he does not have is Export CSV beside it.
     await gotoDirectory(page, "brother");
-    await expect(page.getByRole("button", { name: /^Copy Emails/ })).toHaveCount(0);
-    // The whole staff action bar is absent, not just this control.
-    await expect(page.getByRole("button", { name: /^Export CSV/ })).toHaveCount(0);
+    await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+    expect(await readClipboard(page)).toBe('"Aaron Adams" <aaron.adams@example.test>');
+    await expect(page.locator("summary").filter({ hasText: /^Export CSV/ })).toHaveCount(0);
+  });
+
+  test("a brother is refused above 50 records, and his clipboard is left alone", async ({
+    page,
+  }) => {
+    // 51 selected — one over. The refusal must be a *refusal*: nothing copied, the
+    // previous clipboard contents intact, and a message that says what to do next.
+    await gotoDirectory(page, "brother", crowd(51));
+    await page.evaluate((text) => navigator.clipboard.writeText(text), SENTINEL);
+    await page.getByRole("checkbox", { name: /select all brothers/i }).check();
+    await expect(page.getByRole("button", { name: /Copy Emails \(51 selected\)/ })).toBeVisible();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+
+    await expect(page.getByText("You can copy up to 50 brothers at a time.")).toBeVisible();
+    // Anchored on the detail's opening words: the button's own label also carries
+    // "51 selected", so a bare /51 selected/ matches two elements.
+    await expect(page.getByText(/^You have 51 selected/)).toBeVisible();
+    await expect(page.getByText(/ask a staff member/)).toBeVisible();
+    expect(await readClipboard(page)).toBe(SENTINEL);
+  });
+
+  test("a brother is allowed at exactly 50 — the boundary is inclusive", async ({ page }) => {
+    // The other side of the boundary, in the browser: an off-by-one here would be a
+    // feature that refuses the very selection it advertises.
+    await gotoDirectory(page, "brother", crowd(50));
+    await page.getByRole("checkbox", { name: /select all brothers/i }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+    await expect(page.getByText("50 email addresses copied to your clipboard.")).toBeVisible();
+    expect(await readClipboard(page)).toContain("many0@example.test");
+  });
+
+  test("a manager is not capped at all", async ({ page }) => {
+    await gotoDirectory(page, "manager", crowd(51));
+    await page.getByRole("checkbox", { name: /select all brothers/i }).check();
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+    await expect(page.getByText("51 email addresses copied to your clipboard.")).toBeVisible();
   });
 });

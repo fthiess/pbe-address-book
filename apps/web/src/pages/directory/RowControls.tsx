@@ -2,8 +2,8 @@ import { Star } from "lucide-react";
 import type { MouseEvent } from "react";
 
 /**
- * The interactive pinned-cell controls — the universal **Star** toggle (§5.6.6,
- * D39) and the manager/admin **Select** checkbox (§5.6.8, D41). Both sit inside a
+ * The interactive pinned-cell controls — the **Star** toggle (§5.6.6, D39) and the
+ * **Select** checkbox (§5.6.8, D41), both universal since D175. Both sit inside a
  * clickable row, so both **stop propagation** so starring or selecting never also
  * opens the profile (§5.6.7) — but they must NOT `preventDefault` (that would
  * cancel the checkbox's own toggle). In the grid each control **fills its cell**

@@ -7,9 +7,13 @@ const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"];
 /**
  * The Directory's Phase-3c behaviours, against the mocked backend: the universal
  * Star column and "Starred only" toggle (D39), the Include-deceased toggle (D36),
- * the structured filter panel (D38), the manager/admin Select column + action bar
- * with CSV export (D41/D92), and double-click/Enter auto-fit (N27). Role-gating
- * (Select/Export/staff filters are staff-only) is checked from a brother session.
+ * the structured filter panel (D38), the Select column + action bar with its two
+ * CSV exports (D41/D92/D176), and double-click/Enter auto-fit (N27).
+ *
+ * Role-gating is checked from a brother session, and what it checks changed with
+ * **D175**: selection and the action bar are now every role's, so the brother test
+ * asserts that he *has* them and lacks only **Export** and **Add Brother** — where
+ * it used to assert he had no bar at all.
  */
 
 function meFor(role: "admin" | "brother") {
@@ -83,6 +87,20 @@ const PROFILES = {
   ],
   majors: [],
 };
+
+/**
+ * The Export control became a `<details>` disclosure when OFC-403 gave it two
+ * choices, and Playwright's role engine does not map `<summary>` to a button — so
+ * these assertions target the element itself. Its "(N selected)" readout is
+ * unchanged, and several tests below still use it as the selection counter.
+ */
+const exportTrigger = (page: Page) => page.locator("summary").filter({ hasText: /^Export CSV/ });
+
+/** Open the Export menu and pick one of its two items. */
+async function exportAs(page: Page, choice: "all data" | "displayed columns") {
+  await exportTrigger(page).click();
+  await page.getByRole("button", { name: new RegExp(`^Export ${choice}`) }).click();
+}
 
 async function gotoDirectory(
   page: Page,
@@ -177,17 +195,64 @@ test.describe("Directory 3c — selection, export, auto-fit (admin)", () => {
     });
 
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /^Export CSV/ }).click();
+    await exportAs(page, "all data");
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/^pbe-directory-\d{4}-\d{2}-\d{2}\.csv$/);
     await expect.poll(() => pinged).toBe(true);
+  });
+
+  test("the displayed-columns export writes the on-screen columns (OFC-403)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.route("**/api/exports", (route) => route.fulfill({ status: 204, body: "" }));
+
+    const downloadPromise = page.waitForEvent("download");
+    await exportAs(page, "displayed columns");
+    const download = await downloadPromise;
+    // Its own filename, so both files can sit in one Downloads folder and still say
+    // which is which.
+    expect(download.suggestedFilename()).toMatch(/^pbe-directory-columns-\d{4}-\d{2}-\d{2}\.csv$/);
+    const csv = readFileSync(await download.path(), "utf8");
+    const [header = ""] = csv.split("\r\n");
+    // The grid's labels, in the default lens order — not the schema's field names.
+    expect(header).toBe("Name,Class,Course,Email,Telephone,City,State/Province,Country");
+    // And emphatically not every field: `adminNote` rides the all-data export only.
+    expect(header).not.toContain("adminNote");
+  });
+
+  test("the export menu is operable from the keyboard alone (WCAG 2.1.1)", async ({ page }) => {
+    await gotoDirectory(page);
+    await page.route("**/api/exports", (route) => route.fulfill({ status: 204, body: "" }));
+
+    // A native <summary> toggles on Enter, and the items are ordinary buttons — the
+    // reason this is a disclosure rather than a hand-rolled popover.
+    await exportTrigger(page).focus();
+    await page.keyboard.press("Enter");
+    const item = page.getByRole("button", { name: /^Export displayed columns/ });
+    await expect(item).toBeVisible();
+    // Escape dismisses and returns focus to the trigger (useDetailsAutoClose).
+    await page.keyboard.press("Escape");
+    await expect(item).toBeHidden();
+    await expect(exportTrigger(page)).toBeFocused();
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: /^Export all data/ }).press("Enter");
+    expect((await downloadPromise).suggestedFilename()).toMatch(/^pbe-directory-\d/);
+  });
+
+  test("the open export menu has no accessibility violations (D79)", async ({ page }) => {
+    await gotoDirectory(page);
+    await exportTrigger(page).click();
+    await expect(page.getByRole("button", { name: /^Export all data/ })).toBeVisible();
+    const results = await new AxeBuilder({ page }).withTags(WCAG_TAGS).analyze();
+    expect(results.violations).toEqual([]);
   });
 
   test("select-all scopes the export to the current view", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("checkbox", { name: /select all brothers/i }).check();
     // The Export label reflects the selection count.
-    await expect(page.getByRole("button", { name: /Export CSV \(\d+ selected\)/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/Export CSV \(\d+ selected\)/);
   });
 
   test("Add Brother navigates to the new-profile route", async ({ page }) => {
@@ -325,13 +390,22 @@ test.describe("Directory 3c — selection, export, auto-fit (admin)", () => {
 });
 
 test.describe("Directory 3c — role gating", () => {
-  test("a brother sees no Select column, action bar, or staff filters", async ({ page }) => {
+  test("a brother selects rows and copies emails, but cannot export or see staff filters", async ({
+    page,
+  }) => {
+    // The inverse of this test asserted that a brother had no Select column and no
+    // action bar at all. OFC-411 gave him both — the gate moved from the bar to the
+    // individual actions, so what a brother must *not* have is now a shorter list.
     await gotoDirectory(page, "brother");
-    // The universal Star column is present...
     await expect(page.getByRole("button", { name: /^Star Aaron Adams/ })).toBeVisible();
-    // ...but the staff-only surfaces are not.
-    await expect(page.getByRole("checkbox", { name: /select all brothers/i })).toHaveCount(0);
+    // Selection is his: the row checkbox, the header select-all, and the bar.
+    await expect(page.getByRole("checkbox", { name: /^Select Aaron Adams/ })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: /select all brothers/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Copy Emails/ })).toBeVisible();
+    // Export is not — neither the disclosure nor a bare button in its place.
+    await expect(exportTrigger(page)).toHaveCount(0);
     await expect(page.getByRole("button", { name: /^Export CSV/ })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Add Brother" })).toHaveCount(0);
     await page.getByRole("button", { name: /^Filters/ }).click();
     await expect(page.getByLabel("Class Year", { exact: true })).toBeVisible();
     await expect(page.getByLabel("Verification", { exact: true })).toHaveCount(0);
@@ -347,7 +421,7 @@ test.describe("Directory 3c — follow-up fixes", () => {
     // The selection click must NOT have navigated to the profile (the bug).
     await expect(page).not.toHaveURL(/\/brother\//);
     // ...and the selection feeds the export scope.
-    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/Export CSV \(1 selected\)/);
   });
 
   test("a filter field's clear button empties it", async ({ page }) => {
@@ -619,21 +693,21 @@ test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
 
     // Select Aaron (1984).
     await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
-    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/Export CSV \(1 selected\)/);
 
     // Filter to 1988 — Aaron leaves the view, but the selection survives (the D41 reversal).
     await page.getByRole("button", { name: /^Filters/ }).click();
     await page.getByLabel("Class Year", { exact: true }).fill("1988");
     await expect(page.getByRole("rowheader", { name: /Aaron Adams/ })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/Export CSV \(1 selected\)/);
 
     // Add the now-visible William to build a disjoint set spanning two filters.
     await page.getByRole("checkbox", { name: /^Select William Webster/ }).check();
-    await expect(page.getByRole("button", { name: /Export CSV \(2 selected\)/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/Export CSV \(2 selected\)/);
 
     // Export while Aaron is still filtered out: the CSV must include him anyway.
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /^Export CSV/ }).click();
+    await exportAs(page, "all data");
     const csv = readFileSync(await (await downloadPromise).path(), "utf8");
     expect(csv).toContain("Adams"); // the off-view pick
     expect(csv).toContain("Webster"); // the visible pick
@@ -642,9 +716,9 @@ test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
   test("Clear selection empties the whole selection (OFC-196)", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
-    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/Export CSV \(1 selected\)/);
     await page.getByRole("button", { name: /Clear selection/ }).click();
-    await expect(page.getByRole("button", { name: /^Export CSV$/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/^Export CSV$/);
     await expect(page.getByRole("checkbox", { name: /^Select Aaron Adams/ })).not.toBeChecked();
   });
 
@@ -696,7 +770,7 @@ test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
     await page.getByRole("checkbox", { name: "Starred only" }).check();
     await expect(page.getByRole("rowheader", { name: /William Webster/ })).toHaveCount(0);
     await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
-    await expect(page.getByRole("button", { name: /Export CSV \(1 selected\)/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/Export CSV \(1 selected\)/);
 
     // Click the masthead crest + wordmark — "home, fresh".
     await page.getByRole("link", { name: "PBE Address Book" }).click();
@@ -704,7 +778,7 @@ test.describe("Directory 5.5d — directory state (OFC-194/195/196)", () => {
     // Starred-only is off (William is back) and the selection is cleared.
     await expect(page.getByRole("checkbox", { name: "Starred only" })).not.toBeChecked();
     await expect(page.getByRole("rowheader", { name: /William Webster/ })).toBeVisible();
-    await expect(page.getByRole("button", { name: /^Export CSV$/ })).toBeVisible();
+    await expect(exportTrigger(page)).toHaveText(/^Export CSV$/);
   });
 
   test("the masthead clears Starred-only after visiting a profile (OFC-194 exact repro)", async ({

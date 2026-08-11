@@ -10,23 +10,22 @@ import type { DirectoryProfile } from "../../lib/types.js";
 
 /**
  * The Directory grid's **column model** — the single declarative source the
- * grid, the column-lens menu, the sort logic, and the (future) CSV export all
- * read from (PRD §5.6.1/§5.6.2). Keeping every column's identity, display
- * accessor, sort key, width, and role-visibility in one table means adding or
- * regrouping a column is a one-line change here rather than edits scattered
- * across the render.
+ * grid, the column-lens menu, the sort logic, and the displayed-columns CSV
+ * export all read from (PRD §5.6.1/§5.6.2). Keeping every column's identity,
+ * display accessor, sort key, width, and role-visibility in one table means
+ * adding or regrouping a column is a one-line change here rather than edits
+ * scattered across the render.
  *
- * Phase 3a builds the grid skeleton: the two frozen identity columns
- * (Thumbnail, Canonical Name), the role-identical default data columns, and the
- * manager/administrator restricted columns (off by default). The **Select** and
- * **Star** pinned columns and the structured **filters** (§5.6.4–5.6.8) are not
- * modelled here yet — they arrive with their behaviour in Sessions 3b/3c.
+ * The export was a *future* reader of this table until D176, and is now a real
+ * one: `displayed-csv.ts` builds its file from these `label`s and cell values,
+ * which is why a column's `display` — and, where they differ, its `csvValue` —
+ * are now user-visible in two places rather than one.
  */
 
 /** Every column the grid can show, keyed by a stable id (also its lens key). */
 export type ColumnKey =
   // Frozen pinned block (always present, left, non-reorderable):
-  | "select" // manager/admin row-selection checkbox (capability-gated)
+  | "select" // row-selection checkbox, every role since D175
   | "star" // universal personal-favorite toggle
   | "thumbnail"
   | "name"
@@ -88,6 +87,15 @@ export interface GridColumn {
   /** The comparable sort key, or null when the value is absent/unknown. */
   sortValue: (profile: DirectoryProfile) => string | number | null;
   /**
+   * The displayed-columns CSV cell (OFC-403), when `display` is **not** what the
+   * reader sees. Omitted for all but one column, because a cell normally *is* its
+   * display string — the exception is Course, whose cell renders every course as a
+   * chip strip while `display` returns the primary alone (that string exists for
+   * sorting). Exporting "6" from a cell reading "6, 18" would be a quiet lie about
+   * what was on screen, which is the one thing this export promises not to be.
+   */
+  csvValue?: (profile: DirectoryProfile) => string;
+  /**
    * How to order two **present** sort values, when the column's vocabulary has an
    * order of its own that neither numeric nor locale comparison reproduces. Omitted
    * — the case for every column but Course — means the default {@link compareNonNull}.
@@ -128,8 +136,13 @@ function primaryMajor(profile: DirectoryProfile): string | null {
   return profile.majors?.[0] ?? null;
 }
 
-/** "—" placeholder for an absent/withheld value, kept out of assistive announcements. */
-const EMPTY = "—";
+/**
+ * "—" placeholder for an absent/withheld value, kept out of assistive announcements.
+ *
+ * Exported because the displayed-columns CSV (OFC-403) has to *undo* it: an em-dash
+ * is a reading aid for a screen, and a spreadsheet wants an empty cell.
+ */
+export const EMPTY_CELL = "—";
 
 const STAFF: readonly Role[] = ["manager", "admin"];
 
@@ -148,9 +161,13 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     pinned: true,
     sortable: false,
     resizable: false,
-    // Manager/admin-only row selection for Export (§5.6.8); a single capability
-    // predicate (`canSelectRows`) gates it, not scattered role checks (D33).
-    roles: STAFF,
+    // Row selection for **every** role since OFC-411, which gave brothers Copy
+    // Emails: a selection column with nothing to act on would have been furniture,
+    // and an action with no way to pick its subjects is unusable, so the two moved
+    // together. No `roles` gate — what each role may then *do* with a selection is
+    // the action's own question (`canExportCsv` for Export, the per-role cap for
+    // Copy Emails), which is where it belongs. This column used to carry the
+    // `roles: STAFF` that PRD §3.2 anticipated dropping "with a one-line change".
     display: () => "",
     sortValue: () => null,
   },
@@ -206,7 +223,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     // range-filterable, which the 'YY token inside Canonical Name is not (§5.6.1).
     // Shown as the full 4-digit year here (e.g. "1972"); the apostrophe-two-digit
     // 'YY form belongs only to the Canonical Name in the Name column.
-    display: (p) => (p.classYear == null ? EMPTY : String(p.classYear)),
+    display: (p) => (p.classYear == null ? EMPTY_CELL : String(p.classYear)),
     sortValue: (p) => p.classYear ?? null,
   },
   major: {
@@ -222,7 +239,11 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => primaryMajor(p) ?? EMPTY,
+    display: (p) => primaryMajor(p) ?? EMPTY_CELL,
+    // Every course, matching the chip strip the cell actually renders — see
+    // `csvValue`. The separator is the ";" the canonical export already uses for
+    // `majors`, so the two files agree about how a multi-valued cell is written.
+    csvValue: (p) => (p.majors ?? []).join(";"),
     sortValue: (p) => primaryMajor(p),
     // Courses are numbers, so they must sort as numbers: a plain string compare
     // gives 1, 10, 11, 2 (OFC-290). `compareCourseCodes` is the same comparator the
@@ -238,7 +259,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.email ?? EMPTY,
+    display: (p) => p.email ?? EMPTY_CELL,
     sortValue: (p) => p.email?.toLocaleLowerCase() ?? null,
   },
   phone: {
@@ -249,7 +270,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.phone ?? EMPTY,
+    display: (p) => p.phone ?? EMPTY_CELL,
     sortValue: (p) => p.phone ?? null,
   },
   city: {
@@ -260,7 +281,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.address?.city ?? EMPTY,
+    display: (p) => p.address?.city ?? EMPTY_CELL,
     sortValue: (p) => p.address?.city?.toLocaleLowerCase() ?? null,
   },
   stateProvince: {
@@ -275,7 +296,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     display: (p) =>
       p.address?.stateProvince
         ? subdivisionName(p.address.country, p.address.stateProvince)
-        : EMPTY,
+        : EMPTY_CELL,
     sortValue: (p) =>
       p.address?.stateProvince
         ? subdivisionName(p.address.country, p.address.stateProvince).toLocaleLowerCase()
@@ -289,7 +310,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => (p.address?.country ? countryName(p.address.country) : EMPTY),
+    display: (p) => (p.address?.country ? countryName(p.address.country) : EMPTY_CELL),
     sortValue: (p) =>
       p.address?.country ? countryName(p.address.country).toLocaleLowerCase() : null,
   },
@@ -304,7 +325,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.fullLegalName ?? EMPTY,
+    display: (p) => p.fullLegalName ?? EMPTY_CELL,
     sortValue: (p) => p.fullLegalName?.toLocaleLowerCase() ?? null,
   },
   nickname: {
@@ -325,7 +346,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.nickname ?? EMPTY,
+    display: (p) => p.nickname ?? EMPTY_CELL,
     sortValue: (p) => p.nickname?.toLocaleLowerCase() ?? null,
   },
   employer: {
@@ -341,7 +362,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.employerName ?? EMPTY,
+    display: (p) => p.employerName ?? EMPTY_CELL,
     sortValue: (p) => p.employerName?.toLocaleLowerCase() ?? null,
   },
   // The three OFC-404/405/406 free-text fields. All public (shared visibility
@@ -359,7 +380,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.postPbeEducation ?? EMPTY,
+    display: (p) => p.postPbeEducation ?? EMPTY_CELL,
     sortValue: (p) => p.postPbeEducation?.toLocaleLowerCase() ?? null,
   },
   sports: {
@@ -370,7 +391,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.sports ?? EMPTY,
+    display: (p) => p.sports ?? EMPTY_CELL,
     sortValue: (p) => p.sports?.toLocaleLowerCase() ?? null,
   },
   activities: {
@@ -381,7 +402,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     align: "start",
     pinned: false,
     sortable: true,
-    display: (p) => p.activities ?? EMPTY,
+    display: (p) => p.activities ?? EMPTY_CELL,
     sortValue: (p) => p.activities?.toLocaleLowerCase() ?? null,
   },
   constitutionId: {
@@ -433,7 +454,7 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     // `isWillingToMentor`, not the raw field: a deceased brother's stored opt-in is
     // not a live offer, so he reads as an em-dash here exactly as he is skipped by
     // the filter — the two must agree, which is why both call the shared predicate.
-    display: (p) => (isWillingToMentor(p) ? "Yes" : EMPTY),
+    display: (p) => (isWillingToMentor(p) ? "Yes" : EMPTY_CELL),
     // Not-willing is `null`, not `0`, so it sorts last in BOTH directions and the
     // opted-in brothers gather at the top whichever way the header is clicked — the
     // same single-interesting-value shape as the Role column's `roleRank`, and the
@@ -487,19 +508,19 @@ export const COLUMNS: Readonly<Record<ColumnKey, GridColumn>> = {
     pinned: false,
     sortable: true,
     roles: STAFF,
-    display: (p) => (p.lastModified ? p.lastModified.slice(0, 10) : EMPTY),
+    display: (p) => (p.lastModified ? p.lastModified.slice(0, 10) : EMPTY_CELL),
     sortValue: (p) => p.lastModified ?? null,
   },
 };
 
 /** Yes/No rendering for a boolean consent column (text, never colour alone — D32). */
 function yesNo(value: boolean | undefined): string {
-  return value === undefined ? EMPTY : value ? "Yes" : "No";
+  return value === undefined ? EMPTY_CELL : value ? "Yes" : "No";
 }
 
 /** The Role column's cell: staff labelled, an ordinary brother an em-dash (OFC-199). */
 function roleLabel(role: Role | undefined): string {
-  return role === "admin" ? "Administrator" : role === "manager" ? "Manager" : EMPTY;
+  return role === "admin" ? "Administrator" : role === "manager" ? "Manager" : EMPTY_CELL;
 }
 
 /**
@@ -518,29 +539,18 @@ function boolRank(value: boolean | undefined): number | null {
 }
 
 /**
- * The single capability predicate for the manager/admin **Select** column and
- * its action bar (D33/D41): one place to decide "may this role select rows,"
- * rather than role checks scattered through the grid — so the deferred
- * "share this selection" feature (PRD §3.2) can enable selection for everyone
- * with a one-line change here.
+ * The frozen pinned columns in fixed left-to-right order (§5.6.1): **Select**,
+ * **Star**, then the **Thumbnail** and **Canonical Name** identity block. These
+ * never appear in the lens (they are always present, never reordered) and freeze
+ * as a contiguous block on horizontal scroll.
+ *
+ * Role-independent since OFC-411 — the block used to lose its Select column for
+ * brothers, which is why this was a `pinnedColumnsForRole(role)` function. Every
+ * role now selects, so the same four columns lead every grid.
  */
-export function canSelectRows(role: Role): boolean {
-  return role === "manager" || role === "admin";
-}
-
-/**
- * The frozen pinned columns in fixed left-to-right order (§5.6.1): the
- * capability-gated **Select**, the universal **Star**, then the **Thumbnail** and
- * **Canonical Name** identity block. These never appear in the lens (they are
- * always present, never reordered) and freeze as a contiguous block on
- * horizontal scroll.
- */
-export function pinnedColumnsForRole(role: Role): GridColumn[] {
-  const keys: ColumnKey[] = canSelectRows(role)
-    ? ["select", "star", "thumbnail", "name"]
-    : ["star", "thumbnail", "name"];
-  return keys.map((key) => COLUMNS[key]);
-}
+export const PINNED_COLUMNS: readonly GridColumn[] = (
+  ["select", "star", "thumbnail", "name"] as const
+).map((key) => COLUMNS[key]);
 
 /**
  * The default visible data columns, the *same set for every role* (§5.6.1), so

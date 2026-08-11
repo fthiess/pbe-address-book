@@ -818,26 +818,32 @@ export async function removeStar(id: number): Promise<number[]> {
   return (await response.json()).stars;
 }
 
+/** Which of the two CSVs an `export` ping describes (OFC-403). */
+export type ExportColumns = "all" | "displayed";
+
 /**
  * The export-audit ping (API-SPEC §4a; D92). Fire-and-forget — the CSV download
  * or clipboard write has already happened client-side, so a failed ping must never
  * surface to the user; it is swallowed. `scope` is the egress scope, `count` the
- * row count.
+ * row count, and `columns` (CSV scopes only) which of the two files was written.
  *
  * `"clipboard"` is the D167 Copy Emails action: a different control, but the same
- * kind of event — staff-gated bulk PII leaving the app with no other server-side
- * trace — so it shares the endpoint and is told apart by its scope.
+ * kind of event — bulk PII leaving the app with no other server-side trace — so it
+ * shares the endpoint and is told apart by its scope. Since OFC-411 it is sent at
+ * **every** role, brothers included; that trail is the thing that makes repeated
+ * use of a capped action visible, so it matters more now, not less.
  */
 export async function notifyExport(
   scope: "selection" | "view" | "clipboard",
   count: number,
+  columns?: ExportColumns,
 ): Promise<void> {
   try {
     await fetch("/api/exports", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scope, count }),
+      body: JSON.stringify(columns === undefined ? { scope, count } : { scope, count, columns }),
     });
   } catch {
     // The audit ping is best-effort; the export itself already succeeded.

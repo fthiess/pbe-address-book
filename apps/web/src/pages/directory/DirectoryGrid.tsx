@@ -89,7 +89,8 @@ export interface DirectoryGridProps {
   onAutoFit: (key: ColumnKey) => void;
   /** The viewer's personal stars — the universal Star column (D39). */
   stars: Stars;
-  /** Row selection, present only when the Select column is shown (manager/admin, D41). */
+  /** Row selection. Present at every role since D175; optional only because a
+   *  caller may render the grid without a selection model at all. */
   selection?: Selection;
   /** The active view identity (the history-entry `location.key`) — keys scroll restoration. */
   viewKey: string;

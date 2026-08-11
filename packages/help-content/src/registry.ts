@@ -148,13 +148,13 @@ export const helpContent: HelpContent = {
     key: "directory.export",
     label: "Export CSV",
     toggleTip:
-      "Export downloads a spreadsheet (CSV) of the brothers you've selected. Your selection is kept as you search and filter, so it can span the whole directory — not just the rows on screen now. Photos and staff roles are never included.",
+      'Export downloads a spreadsheet (CSV) of the brothers you\'ve selected, and offers you two of them. "Export displayed columns" gives you just the columns you have on screen, reading as they read here — the usual choice. "Export all data" gives you every field your role can see, which is what you want for a full backup or for loading into another system. Your selection is kept as you search and filter, so it can span the whole directory — not just the rows on screen now. Photos are never included.',
   },
   "directory.copyEmails": {
     key: "directory.copyEmails",
     label: "Copy Emails",
     toggleTip:
-      "Copies the email addresses of the brothers you've selected to your clipboard, so you can paste them straight into an email. Your selection is kept as you search and filter, so it can span the whole directory — not just the rows on screen now. Brothers with no email address are left out, as are brothers who have chosen privacy — either keeping their address private or their whole record unlisted — and brothers who are deceased or de-brothered; the message afterwards tells you how many, and why.",
+      "Copies the email addresses of the brothers you've selected to your clipboard, so you can paste them straight into an email. Your selection is kept as you search and filter, so it can span the whole directory — not just the rows on screen now. Brothers with no email address are left out, as are brothers who have chosen privacy — either keeping their address private or their whole record unlisted — and brothers who are deceased or de-brothered; the message afterwards tells you how many, and why. Up to 50 brothers can be copied at a time; managers and administrators have no limit, so ask a staff member if you need a longer list.",
   },
 
   // ── Profile: fields ──────────────────────────────────────────────────────

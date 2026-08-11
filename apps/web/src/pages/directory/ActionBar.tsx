@@ -1,16 +1,28 @@
-import { type Role, buildRecipientList, profilesToCsv } from "@pbe/shared";
-import { useCallback, useEffect, useState } from "react";
+import {
+  type Role,
+  buildRecipientList,
+  canExportCsv,
+  copyEmailsLimit,
+  exceedsCopyEmailsLimit,
+  profilesToCsv,
+} from "@pbe/shared";
+import { ChevronDown } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ControlHelp } from "../../components/ControlHelp.js";
 import { trackEmailsCopied, trackExportPerformed } from "../../lib/analytics.js";
-import { notifyExport } from "../../lib/api.js";
+import { type ExportColumns, notifyExport } from "../../lib/api.js";
 import type { DirectoryProfile } from "../../lib/types.js";
+import { useDetailsAutoClose } from "../../lib/useDetailsAutoClose.js";
 import { saveBlob } from "../../lib/utils.js";
 import {
   CLIPBOARD_FAILURE,
   type CopyEmailsMessage,
   copyEmailsMessage,
+  overLimitMessage,
 } from "./copy-emails-message.js";
+import { displayedColumnsToCsv } from "./displayed-csv.js";
+import type { ColumnKey } from "./grid-model.js";
 
 /**
  * How long a **successful** Copy Emails notice stays up before clearing itself
@@ -21,17 +33,38 @@ import {
 const AUTO_DISMISS_MS = 10_000;
 
 /**
- * The manager/administrator action bar above the grid (§5.6.8, D41). Gated by the
- * same capability predicate as the Select column, so ordinary brothers never see
- * it. It carries **Export** and **Copy Emails** (manager + admin) and, for admins,
- * **Add Brother**.
- * The bulk Delete and Regenerate-Thumbnails actions were removed (D100/D114), so
- * no destructive bulk action remains.
+ * The shared look of the bar's controls. Extracted when OFC-411 reordered the row
+ * and OFC-403 turned one of them into a `<summary>`: four controls in a row that
+ * must read as one set, across three element types (`button`, `summary`, `Link`),
+ * is exactly the drift N149 caught in the "← Directory" control.
+ */
+const BUTTON_CLASS =
+  "rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+
+/**
+ * The action bar above the grid (§5.6.8, D41), shown to **every role** since
+ * OFC-411 — it was staff-only, gated by the same predicate as the Select column,
+ * until Copy Emails was opened to brothers. What each role gets is decided per
+ * action rather than by hiding the bar: **Copy Emails** for everyone (capped for
+ * brothers), **Export CSV** for managers and admins (`canExportCsv`), **Add
+ * Brother** for admins. The bulk Delete and Regenerate-Thumbnails actions were
+ * removed (D100/D114), so no destructive bulk action remains.
  *
- * Export is **client-side** (D41): it serializes the in-memory, already-projected
- * rows — the current selection, or the whole current view when nothing is
- * selected — to the canonical CSV (§10), triggers the download, then fires the
- * audit ping (D92). Images are never included.
+ * **Button order is fixed by absolute position, not by which buttons exist**
+ * (Forrest's call, OFC-411): Copy Emails, then Export, then Add Brother. A user
+ * promoted to manager gains Export *to the right of* the Copy Emails he already
+ * knew, and an admin gains Add Brother to the right of that — nothing he had
+ * already learned moves. Rare as a promotion is, "View as" performs exactly this
+ * role change several times a session, and the same reasoning applies to it. The
+ * one control that appears and disappears — **Clear selection** — therefore sits
+ * *last*, beyond every button, where it can shift nothing.
+ *
+ * Export is **client-side** (D41) and offers **two files** (OFC-403): the canonical
+ * all-data CSV (§10, `profilesToCsv`) and the displayed-columns CSV
+ * ({@link displayedColumnsToCsv}) — the columns on screen, as they read. Both
+ * serialize the in-memory, already-projected rows (the current selection, or the
+ * whole current view when nothing is selected), trigger the download, then fire the
+ * audit ping (D92) carrying which of the two ran. Images are never included.
  *
  * Since a selection now persists across filters (N79/OFC-196), the export scope is
  * the **whole selected set** — resolved over the full dataset upstream, not just
@@ -51,12 +84,25 @@ const AUTO_DISMISS_MS = 10_000;
  * admins included, because a `To:` line publishes an address to the other
  * recipients in a way a downloaded CSV never does. The rules live in
  * `buildRecipientList` (`@pbe/shared`); read its module note before changing any of
- * them.
+ * them — including the OFC-411 cap, which that note explains and this component
+ * only enforces.
+ *
+ * ⚠ **A brother's tallies mean something slightly different from a staffer's**, and
+ * that is accepted rather than fixed. His projection omits `email` outright for a
+ * brother with `shareEmail` off, and omits `privacy` altogether, so those records
+ * reach `buildRecipientList` looking like records with no address and are reported
+ * as "no email address" rather than "kept private". The exclusion is correct either
+ * way; only the reason he reads is coarser, and it is coarser precisely because the
+ * projection refuses to tell him which it was.
  */
 export interface ActionBarProps {
   role: Role;
   /** The current filtered/sorted view — the export's fallback when nothing is selected. */
   viewRows: DirectoryProfile[];
+  /** The lens's visible data columns, in the user's order — the displayed export's column set. */
+  visibleColumns: readonly ColumnKey[];
+  /** Resolves a row's Canonical Name, for the displayed export's Name column. */
+  nameOf: (profile: DirectoryProfile) => string;
   /** The full selected set across the dataset, already resolved and sorted (may span filters). */
   selectedRows: DirectoryProfile[];
   /** The raw count of selected ids — the count shown and the Clear affordance's gate. It may
@@ -70,6 +116,8 @@ export interface ActionBarProps {
 export function ActionBar({
   role,
   viewRows,
+  visibleColumns,
+  nameOf,
   selectedRows,
   selectedCount,
   onClear,
@@ -79,16 +127,29 @@ export function ActionBar({
   // Stable, so the notice's auto-dismiss timer is not restarted by every re-render
   // of this bar (a new closure in the dependency array would reset it forever).
   const dismissMessage = useCallback(() => setMessage(null), []);
+  const exportMenu = useRef<HTMLDetailsElement>(null);
+  useDetailsAutoClose(exportMenu);
+  // Nothing selected and nothing in view — a filter that matched no one. Both
+  // exports would write a header row and no brothers.
+  const nothingToExport = !hasSelection && viewRows.length === 0;
 
-  const onExport = () => {
+  const onExport = (columns: ExportColumns) => {
+    // A menu item's click leaves the disclosure open; close it, so the download
+    // isn't delivered behind a panel the user then has to dismiss.
+    if (exportMenu.current) {
+      exportMenu.current.open = false;
+    }
     // A Copy Emails toast left standing over an export would read as this export's
     // result. Clear it first.
     setMessage(null);
     const scope = hasSelection ? "selection" : "view";
     const exportRows = hasSelection ? selectedRows : viewRows;
-    const csv = profilesToCsv(exportRows, role);
-    downloadCsv(csv);
-    void notifyExport(scope, exportRows.length);
+    const csv =
+      columns === "all"
+        ? profilesToCsv(exportRows, role)
+        : displayedColumnsToCsv(exportRows, visibleColumns, nameOf);
+    downloadCsv(csv, columns);
+    void notifyExport(scope, exportRows.length, columns);
     // Usage-shape view alongside the D92 security audit ping (7a-4): scope + a
     // bucketed row count, never the exported rows. Guarded on a non-empty export: a
     // stale selection whose brothers were all deleted mid-session leaves the button
@@ -96,11 +157,20 @@ export function ActionBar({
     // and a zero-row export is a no-op, not a usage event — the guard also keeps a 0
     // out of rowCountBucket.
     if (exportRows.length > 0) {
-      trackExportPerformed(scope, exportRows.length);
+      trackExportPerformed(scope, exportRows.length, columns);
     }
   };
 
   const onCopyEmails = async () => {
+    // The cap is asked of the **raw selection count**, before a list is built — it
+    // limits how far one press reaches, not how many addresses it yields (OFC-411;
+    // the reasoning is in `email-recipients.ts`). Refusing here also means the
+    // clipboard is never touched, so whatever the user had is still there.
+    const limit = copyEmailsLimit(role);
+    if (limit !== null && exceedsCopyEmailsLimit(role, selectedCount)) {
+      setMessage(overLimitMessage(selectedCount, limit));
+      return;
+    }
     const list = buildRecipientList(selectedRows);
     // Nothing to write is not a clipboard failure — say so and leave whatever the
     // user already had on their clipboard alone, rather than blanking it.
@@ -134,31 +204,63 @@ export function ActionBar({
           the units apart. The 4:1 ratio is deliberate and was OFC-391's explicit
           request — with two adjacent `?` controls, a narrower parent gap leaves it
           genuinely unclear which tip belongs to which button. */}
-        <div className="inline-flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={onExport}
-            disabled={!hasSelection && viewRows.length === 0}
-            className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Export CSV{hasSelection ? ` (${selectedCount} selected)` : ""}
-          </button>
-          <ControlHelp entryKey="directory.export" />
-        </div>
-
         {/* Deliberately NOT disabled with an empty selection: the ticket asks for an
           explanation, and a disabled control explains nothing. */}
         <div className="inline-flex items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => void onCopyEmails()}
-            className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-          >
+          <button type="button" onClick={() => void onCopyEmails()} className={BUTTON_CLASS}>
             Copy Emails{hasSelection ? ` (${selectedCount} selected)` : ""}
           </button>
           <ControlHelp entryKey="directory.copyEmails" />
         </div>
 
+        {canExportCsv(role) && (
+          <div className="inline-flex items-center gap-1.5">
+            {nothingToExport ? (
+              // With no rows in view and nothing selected there is no file to offer,
+              // so the control stays the plain disabled button it has always been in
+              // that state. A disclosure that opens onto two dead items would be a
+              // worse answer to "why can't I press this" than a disabled button.
+              <button type="button" disabled className={BUTTON_CLASS}>
+                Export CSV
+              </button>
+            ) : (
+              <details ref={exportMenu} className="relative">
+                <summary
+                  className={`flex cursor-pointer list-none items-center gap-1.5 ${BUTTON_CLASS} [&::-webkit-details-marker]:hidden`}
+                >
+                  Export CSV{hasSelection ? ` (${selectedCount} selected)` : ""}
+                  <ChevronDown size={15} strokeWidth={1.4} aria-hidden="true" />
+                </summary>
+                {/* z-30 clears the grid's sticky header (z-22), matching the Columns
+                  picker and the avatar menu. Left-anchored, not right: this menu
+                  hangs off the second control in a left-aligned row, so a
+                  right-anchored panel would drift away from its own trigger. */}
+                <div className="absolute left-0 z-30 mt-2 w-72 rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-lg">
+                  <ExportChoice
+                    title="Export displayed columns"
+                    detail="The columns you have on screen now, as you see them."
+                    onSelect={() => onExport("displayed")}
+                  />
+                  <ExportChoice
+                    title="Export all data"
+                    detail="Every field your role can see — the full spreadsheet."
+                    onSelect={() => onExport("all")}
+                  />
+                </div>
+              </details>
+            )}
+            <ControlHelp entryKey="directory.export" />
+          </div>
+        )}
+
+        {role === "admin" && (
+          <Link to="/brother/new" state={{ fromDirectory: true }} className={BUTTON_CLASS}>
+            Add Brother
+          </Link>
+        )}
+
+        {/* Last, beyond every button — it is the one control that comes and goes, so
+          anywhere earlier it would shift the buttons on either side of a tick. */}
         {hasSelection && (
           <button
             type="button"
@@ -168,20 +270,38 @@ export function ActionBar({
             Clear selection
           </button>
         )}
-
-        {role === "admin" && (
-          <Link
-            to="/brother/new"
-            state={{ fromDirectory: true }}
-            className="rounded-lg border border-input bg-background px-3 py-1.5 text-sm font-medium outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            Add Brother
-          </Link>
-        )}
       </div>
 
       {message && <CopyEmailsToast message={message} onDismiss={dismissMessage} />}
     </div>
+  );
+}
+
+/**
+ * One item in the Export menu (OFC-403): a title and the line that tells the two
+ * files apart. The detail is inside the button rather than beside it so the whole
+ * two-line block is one target — 44px tall without arithmetic — and so a screen
+ * reader hears the distinction as part of the item's name rather than as loose text
+ * it may never reach.
+ */
+function ExportChoice({
+  title,
+  detail,
+  onSelect,
+}: {
+  title: string;
+  detail: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="block w-full rounded-lg px-3 py-2 text-left hover:bg-accent hover:text-accent-foreground focus-visible:bg-accent focus-visible:outline-none"
+    >
+      <span className="block text-sm font-medium">{title}</span>
+      <span className="mt-0.5 block text-xs text-muted-foreground">{detail}</span>
+    </button>
   );
 }
 
@@ -286,9 +406,15 @@ function CopyEmailsToast({
   );
 }
 
-/** Build a timestamped filename and trigger a client-side CSV download. */
-function downloadCsv(content: string): void {
+/**
+ * Build a timestamped filename and trigger a client-side CSV download. The two
+ * exports get **different names** (OFC-403) so a Downloads folder holding both
+ * still says which is which — and so the browser doesn't quietly rename the second
+ * one `(1)`, which says nothing at all.
+ */
+function downloadCsv(content: string, columns: ExportColumns): void {
   const date = new Date().toISOString().slice(0, 10);
   const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  saveBlob(blob, `pbe-directory-${date}.csv`);
+  const stem = columns === "all" ? "pbe-directory" : "pbe-directory-columns";
+  saveBlob(blob, `${stem}-${date}.csv`);
 }

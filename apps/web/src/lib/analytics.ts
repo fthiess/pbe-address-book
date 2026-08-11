@@ -2,6 +2,7 @@ import type { BannerSeverity, Role } from "@pbe/shared";
 import {
   type EventName,
   type EventProperties,
+  type ExportColumns,
   type ExportScope,
   FILTER_DIMENSIONS,
   type FieldGroup,
@@ -295,12 +296,20 @@ export function trackHelpOpened(topic: string): void {
 }
 
 /**
- * A staff CSV export ran (7a-4) — its scope and a bucketed row count. Already
- * audited server-side for security (D92); this is the low-volume, staff-only
- * usage-shape view.
+ * A staff CSV export ran (7a-4) — its scope, which of the two column sets it wrote
+ * (OFC-403), and a bucketed row count. Already audited server-side for security
+ * (D92); this is the low-volume, staff-only usage-shape view.
  */
-export function trackExportPerformed(scope: ExportScope, rowCount: number): void {
-  emit("Export Performed", { Scope: scope, "Row Count": rowCountBucket(rowCount) });
+export function trackExportPerformed(
+  scope: ExportScope,
+  rowCount: number,
+  columns: ExportColumns,
+): void {
+  emit("Export Performed", {
+    Scope: scope,
+    Columns: columns,
+    "Row Count": rowCountBucket(rowCount),
+  });
 }
 
 /**

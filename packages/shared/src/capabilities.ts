@@ -194,6 +194,26 @@ export function canActOnProfile(role: Role, actorId: BrotherId, targetId: Brothe
 }
 
 /**
+ * May `role` download a CSV export of the directory? Staff only (D41/D92): an
+ * export is a directory-maintenance action, and it is the widest PII egress Book
+ * has — every visible field of every accessible record, in one file.
+ *
+ * ⚠ **This is deliberately narrower than Copy Emails**, which OFC-411 opened to
+ * every role under a per-press cap ({@link exceedsCopyEmailsLimit} in
+ * `email-recipients.ts`). The two are not the same question: a clipboard copy
+ * yields addresses the brother can already see, one line of them, capped; an
+ * export yields every field of every record he can see, uncapped. Widening one
+ * said nothing about the other.
+ *
+ * Lives here, in `shared`, so the button that offers the action and the audit
+ * endpoint that records it read the *same* predicate — the client and server
+ * cannot drift into disagreeing about who may export.
+ */
+export function canExportCsv(role: Role): boolean {
+  return role === "manager" || role === "admin";
+}
+
+/**
  * May `role` write `field` on a record it is permitted to touch, where `isOwner`
  * is whether that record is the caller's own? Pair with {@link canActOnProfile}:
  * the object predicate decides *whether*, this decides *which fields*. A `false`
