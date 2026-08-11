@@ -8,8 +8,5 @@
   },
   "dependencies": {
     "@pbe/shared": "*"
-  },
-  "devDependencies": {
-    "@types/node": "^22.10.7"
   }
 }
