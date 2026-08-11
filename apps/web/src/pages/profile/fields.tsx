@@ -17,9 +17,21 @@ import { cn } from "../../lib/utils.js";
  * field label looks identical in both modes and across every field (uppercase,
  * letter-spaced, muted — distinct from the teal, bold section eyebrows). Any
  * ad-hoc field label elsewhere on the page composes this same class.
+ *
+ * ⚠ `leading-6` is load-bearing, not typographic taste (OFC-412). A label shares
+ * its row with the optional `?` toggle-tip, whose trigger is 24px — the WCAG
+ * 2.5.8 target-size minimum, so it cannot shrink — while this 12px label's own
+ * line box is 18px. Without a reserved height the row was 6px taller wherever a
+ * `?` happened to render, which visibly stepped the input below it out of line
+ * with its neighbour in the two-column grids. That made **row alignment depend on
+ * which help entries had been authored with a `toggleTip`** — a content fact
+ * leaking into layout, and it reached UAT as two misaligned rows in Identity.
+ * A 24px line box makes every label row that height whether or not a `?` renders,
+ * so the invariant holds here once for all eleven call sites rather than being
+ * re-derived per row. Guarded by `e2e/profile-field-alignment-412.spec.ts`.
  */
 export const FIELD_LABEL_CLASS =
-  "text-[length:var(--text-label-up)] font-semibold uppercase tracking-wide text-muted-foreground";
+  "text-[length:var(--text-label-up)] font-semibold uppercase leading-6 tracking-wide text-muted-foreground";
 
 /** A section eyebrow + its body, the two-up grid's repeating unit (§5.7.1). */
 export function Section({
