@@ -23,6 +23,10 @@ export default defineConfig({
       // is covered end-to-end by Playwright (e2e/).
       "apps/web/src/**/*.test.ts",
       "tools/fake-data/src/**/*.test.ts",
+      // The proximity table pipeline (OFC-378). The build script itself needs
+      // the network and is never run here; these cover its pure logic — the
+      // source parsers, the population join and the spot-check assertions.
+      "tools/geo-data/src/**/*.test.ts",
       // The repo-maintenance scripts' pure logic (e.g. the USER-MANUAL §10
       // generator's grouping and marker guards, N118).
       "scripts/**/*.test.ts",

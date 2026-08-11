@@ -1,0 +1,15 @@
+{
+  "name": "@pbe/geo-data",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build:tables": "tsx src/build-tables.ts"
+  },
+  "dependencies": {
+    "@pbe/shared": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.7"
+  }
+}

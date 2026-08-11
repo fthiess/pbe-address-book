@@ -1,6 +1,16 @@
 # Dependencies
 node_modules/
 
+# Parallel-session worktrees. CLAUDE.md tells sessions to create them here, so
+# without this the main checkout carries a nested repo as an untracked entry —
+# and `git add -A` would commit it as a gitlink.
+.claude/worktrees/
+
+# Cached gazetteer downloads for the proximity-table generator (OFC-378): ~8 MB
+# of Census and GeoNames source data. The generated tables are committed; their
+# inputs are not, and the provenance header records which ones were used.
+tools/geo-data/.cache/
+
 # Build output
 dist/
 build/
