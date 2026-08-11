@@ -15,7 +15,7 @@
   "dependencies": {
     "@pbe/shared": "*",
     "firebase-admin": "^14.2.0",
-    "jose": "^6.2.3"
+    "jose": "^6.2.8"
   },
   "devDependencies": {
     "@types/node": "^22.10.7",
