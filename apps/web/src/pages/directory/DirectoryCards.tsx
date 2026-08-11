@@ -44,7 +44,8 @@ export interface DirectoryCardsProps {
   myId: number | null;
   /** The viewer's personal stars — the universal Star control (D39). */
   stars: Stars;
-  /** Row selection, present only for managers/admins (D41). */
+  /** Row selection. Present at every role since D175; optional only because a
+   *  caller may render the cards without a selection model at all. */
   selection?: Selection;
   viewKey: string;
   /** Whether the row set is final (search settled) so scroll restoration may apply. */

@@ -1,10 +1,13 @@
 import { type ReactNode, createContext, useCallback, useContext, useMemo, useState } from "react";
 
 /**
- * The manager/admin **row selection** model (§5.6.8, D41 as amended by N79/OFC-196).
+ * The Directory's **row selection** model (§5.6.8, D41 as amended by N79/OFC-196
+ * and D175 — it was manager/admin-only until Copy Emails opened to every role, and
+ * the Select column went with it).
  *
- * Selection is private, transient working state that feeds the CSV Export (D90/D92
- * — the only bulk action left over a selection after D100 dropped bulk-delete). It
+ * Selection is private, transient working state that feeds the CSV Export (D90/D92)
+ * and Copy Emails (D167) — the only bulk actions left over a selection after D100
+ * dropped bulk-delete. It
  * is keyed by stable Constitution ID, and it **persists across search, filter,
  * sort, and navigation** so a user can build a disjoint set — filter to '70, select
  * all, filter to '80, select all, export both. That reverses D41's original

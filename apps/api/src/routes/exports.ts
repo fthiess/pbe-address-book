@@ -70,12 +70,20 @@ export function registerExportRoutes(app: FastifyInstance, config: ExportRoutesC
         typeof body.count === "number" && Number.isInteger(body.count) && body.count >= 0
           ? body.count
           : undefined;
-      // Which of the two CSVs ran (OFC-403). Optional, and meaningless on a
-      // `clipboard` ping — a rejected value is dropped rather than 400-ing, because
-      // the audit entry is worth more than the strictness: a ping that arrives with
-      // a garbled variant should still record that an export happened.
-      const columns =
+      // Which of the two CSVs ran (OFC-403). A rejected value is dropped rather than
+      // 400-ing, because the audit entry is worth more than the strictness: a ping
+      // that arrives with a garbled variant should still record that an export
+      // happened.
+      //
+      // ⚠ **Dropped on a `clipboard` ping too, whatever the client sent.** A
+      // clipboard copy writes no file, so a column set is meaningless there — and
+      // `AuditEntry.columns` documents it as absent. An invariant a reader is told to
+      // rely on has to be enforced where the entry is built, not assumed of the
+      // client: honest callers already omit it, so the only thing this refuses is a
+      // record that would contradict its own documentation.
+      const declaredColumns =
         body.columns === "all" || body.columns === "displayed" ? body.columns : undefined;
+      const columns = scope === "clipboard" ? undefined : declaredColumns;
       if (scope === undefined || count === undefined) {
         return reply.code(400).send({
           error: "bad_request",

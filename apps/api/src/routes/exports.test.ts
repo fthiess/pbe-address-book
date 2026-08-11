@@ -237,14 +237,19 @@ describe("POST /api/exports", () => {
     expect(ctx.audited[0]).not.toHaveProperty("columns");
   });
 
-  it("omits columns from a clipboard ping — no file was written", async () => {
+  it("omits columns from a clipboard ping even when one is sent — no file was written", async () => {
+    // Sends a *valid* `columns` deliberately: without it this test would pass on a
+    // route that simply passed the client's value through, since an honest client
+    // never sends one here. `AuditEntry.columns` documents itself as absent on a
+    // clipboard ping, and this is what makes that true rather than customary.
     const cookie = await ctx.cookieFor(5005, "manager");
     await ctx.app.inject({
       method: "POST",
       url: "/api/exports",
       headers: { cookie },
-      payload: { scope: "clipboard", count: 2 },
+      payload: { scope: "clipboard", count: 2, columns: "all" },
     });
+    expect(ctx.audited).toHaveLength(1);
     expect(ctx.audited[0]).not.toHaveProperty("columns");
   });
 

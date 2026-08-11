@@ -10,23 +10,22 @@ import type { DirectoryProfile } from "../../lib/types.js";
 
 /**
  * The Directory grid's **column model** — the single declarative source the
- * grid, the column-lens menu, the sort logic, and the (future) CSV export all
- * read from (PRD §5.6.1/§5.6.2). Keeping every column's identity, display
- * accessor, sort key, width, and role-visibility in one table means adding or
- * regrouping a column is a one-line change here rather than edits scattered
- * across the render.
+ * grid, the column-lens menu, the sort logic, and the displayed-columns CSV
+ * export all read from (PRD §5.6.1/§5.6.2). Keeping every column's identity,
+ * display accessor, sort key, width, and role-visibility in one table means
+ * adding or regrouping a column is a one-line change here rather than edits
+ * scattered across the render.
  *
- * Phase 3a builds the grid skeleton: the two frozen identity columns
- * (Thumbnail, Canonical Name), the role-identical default data columns, and the
- * manager/administrator restricted columns (off by default). The **Select** and
- * **Star** pinned columns and the structured **filters** (§5.6.4–5.6.8) are not
- * modelled here yet — they arrive with their behaviour in Sessions 3b/3c.
+ * The export was a *future* reader of this table until D176, and is now a real
+ * one: `displayed-csv.ts` builds its file from these `label`s and cell values,
+ * which is why a column's `display` — and, where they differ, its `csvValue` —
+ * are now user-visible in two places rather than one.
  */
 
 /** Every column the grid can show, keyed by a stable id (also its lens key). */
 export type ColumnKey =
   // Frozen pinned block (always present, left, non-reorderable):
-  | "select" // manager/admin row-selection checkbox (capability-gated)
+  | "select" // row-selection checkbox, every role since D175
   | "star" // universal personal-favorite toggle
   | "thumbnail"
   | "name"
