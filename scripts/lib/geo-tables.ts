@@ -135,20 +135,26 @@ export function declaredRows(text: string): number | undefined {
 const KEY_COLUMNS: Readonly<Record<string, number>> = { zips: 1, cities: 2 };
 
 /**
- * Keys appearing on more than one data row (at most `limit` of them, since the
- * message only needs to be actionable).
+ * **Distinct** keys appearing on more than one data row — at most `limit` of
+ * them, since the message only needs to be actionable.
  *
  * ⚠ This exists because the **client** checks its parsed row count against the
- * manifest's, to tell a truncated fetch from a complete one (`useGeoTables.ts`) —
- * and both tables parse into keyed structures, so that comparison is only
- * meaningful while the keys are unique. Nothing else asserts it: the generator
- * merges three sources and a future vintage could introduce a collision without
- * anything noticing. The check belongs at build time, where a data problem is a
- * red build; at runtime the same problem would take the feature dark for everyone.
+ * count the table declares in its own provenance header, to tell a truncated
+ * fetch from a complete one (`useGeoTables.ts`) — and both tables parse into
+ * keyed structures, so that comparison is only meaningful while the keys are
+ * unique. Nothing else asserts it: the generator merges three sources and a
+ * future vintage could introduce a collision without anything noticing. The
+ * check belongs at build time, where a data problem is a red build; at runtime
+ * the same problem would take the feature dark for everyone.
+ *
+ * ⚠ **Distinct** is load-bearing in the first line. Reporting one entry per
+ * duplicate *occurrence* would let a single key repeated fifty times spend the
+ * whole budget on itself and hide a second, unrelated offender from the message
+ * — which is the one thing this function exists to make legible.
  */
 export function findDuplicateKeys(text: string, columns: number, limit = 5): string[] {
   const seen = new Set<string>();
-  const duplicates: string[] = [];
+  const reported = new Set<string>();
   let headerSeen = false;
   for (const line of text.split("\n")) {
     const trimmed = line.trim();
@@ -161,14 +167,14 @@ export function findDuplicateKeys(text: string, columns: number, limit = 5): str
     }
     const key = trimmed.split(",").slice(0, columns).join(",");
     if (seen.has(key)) {
-      if (duplicates.length < limit) {
-        duplicates.push(key);
+      if (reported.size < limit) {
+        reported.add(key);
       }
     } else {
       seen.add(key);
     }
   }
-  return duplicates;
+  return [...reported];
 }
 
 /**
@@ -237,7 +243,7 @@ function checkTableContents(
     const duplicates = findDuplicateKeys(contents, keyColumns);
     if (duplicates.length > 0) {
       problems.push(
-        `${filename} repeats ${duplicates.length === 1 ? "a key" : "keys"}: ${duplicates.join(", ")}. Each row must be uniquely keyed on its first ${keyColumns} column(s) — the client counts parsed entries against the manifest to detect a truncated download, and a duplicate makes that count lie.`,
+        `${filename} repeats ${duplicates.length === 1 ? "a key" : "keys"}: ${duplicates.join(", ")}. Each row must be uniquely keyed on its first ${keyColumns} column(s) — the client counts parsed entries against the table's own "# rows:" declaration to detect a truncated download, and a duplicate makes that count lie.`,
       );
     }
   }

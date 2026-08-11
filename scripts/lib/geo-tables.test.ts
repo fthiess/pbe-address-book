@@ -138,10 +138,26 @@ describe("findDuplicateKeys (OFC-378 session B)", () => {
     const many = [
       "# generated",
       "zip,lat,lon",
-      ...Array.from({ length: 20 }, (_, i) => `0213${i % 2},42.36,-71.1`),
+      ...Array.from({ length: 20 }, (_, i) => `0213${i % 4},42.36,-71.1`),
       "",
     ].join("\n");
     expect(findDuplicateKeys(many, 1, 3)).toHaveLength(3);
+  });
+
+  it("reports DISTINCT keys, so one bad key cannot hide the others", () => {
+    // The budget is spent per offending key, not per repeated row. Found in the
+    // OFC-378 review round: one ZIP repeated fifty times would otherwise fill the
+    // list with fifty copies of itself and never mention the second offender —
+    // in the one message whose whole job is to say what is wrong with the table.
+    const lopsided = [
+      "# generated",
+      "zip,lat,lon",
+      ...Array.from({ length: 50 }, () => "02139,42.36,-71.1"),
+      "94041,37.39,-122.08",
+      "94041,37.39,-122.08",
+      "",
+    ].join("\n");
+    expect(findDuplicateKeys(lopsided, 1, 5)).toEqual(["02139", "94041"]);
   });
 });
 

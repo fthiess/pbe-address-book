@@ -320,6 +320,27 @@ test.describe("OFC-378 — a shared proximity link", () => {
     await expect(row(page, /Pierre Paris/)).toBeVisible();
   });
 
+  test("announces the unapplied filter to a screen reader, not only on screen", async ({
+    page,
+  }) => {
+    // ⚠ The regression this pins. In this state the Directory stays UNNARROWED by
+    // design, so the result count never changes and its own polite region never
+    // fires — and the Near control's copy of this message is not even mounted,
+    // because the Filters fold starts collapsed. If this line is not itself a live
+    // region, a screen-reader user following a shared link to an unresolvable place
+    // is told nothing at all while a sighted one reads the notice. axe cannot catch
+    // that: the markup is valid either way. Found in the OFC-378 review round.
+    await gotoDirectory(page, { url: "/?near=c~Nowhere~ZZ" });
+    const notice = page.locator("p[aria-live='polite']", {
+      hasText: /couldn't find that location/,
+    });
+    await expect(notice).toBeVisible();
+    // Mounted before the text arrives, too — a live region created *with* its
+    // content is not reliably announced.
+    await gotoDirectory(page, { url: "/" });
+    await expect(page.locator("p[aria-live='polite']")).not.toHaveCount(0);
+  });
+
   test("survives the tables failing to load, and says so", async ({ page }) => {
     await gotoDirectory(page, { url: "/?near=c~Boston~MA", geo: { fail: true } });
     await expect(page.getByText(/location data couldn't be loaded/i)).toBeVisible();
@@ -374,6 +395,17 @@ test.describe("OFC-378 — composition and Reset", () => {
     // by greying the button out would be the lie OFC-394 already fixed once.
     await gotoDirectory(page, { url: "/?radius=100" });
     await expect(resetButton(page)).toBeEnabled();
+  });
+
+  test("...including a radius that is not one of the offered ones", async ({ page }) => {
+    // ⚠ The regression this pins: `canReset` must test the RAW parameter, not the
+    // validated one. Validation folds `37` down to the default, so a check on the
+    // validated value greys Reset out on a URL Reset does in fact change. Found in
+    // the OFC-378 review round; `?radius=100` above passes either way.
+    await gotoDirectory(page, { url: "/?radius=37" });
+    await expect(resetButton(page)).toBeEnabled();
+    await resetButton(page).click();
+    await expect(page).not.toHaveURL(/radius=/);
   });
 });
 

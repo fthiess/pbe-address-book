@@ -357,7 +357,15 @@ export function Directory() {
     // touch. A non-default radius with no origin narrows nothing, so this enables
     // Reset for a view that looks pristine; that is the honest reading, because
     // Reset would in fact change the URL.
-    radiusMiles !== DEFAULT_RADIUS_MILES;
+    //
+    // ⚠ Reads `rawRadius`, **not** the validated `radiusMiles`. Validation folds a
+    // hand-typed `?radius=37` down to the default, so testing the validated value
+    // would have left Reset disabled on a URL that Reset does in fact change —
+    // the exact dishonesty OFC-394 removed from this button once already. Found in
+    // the OFC-378 review round. (A non-*numeric* `?radius=abc` still parses to the
+    // default and so still slips through; that is one edge past what the URL can
+    // tell us without giving up `clearOnDefault`, and it is knowingly left.)
+    rawRadius !== DEFAULT_RADIUS_MILES;
 
   const loading = profiles === null && !error;
   const showOverlay = useDelayedFlag(loading, OVERLAY_DELAY_MS);
@@ -477,10 +485,23 @@ export function Directory() {
               link* arrives with the fold closed, which is precisely the case where
               an unexplained full result set reads as the link being broken.
 
-              No aria-live of its own: the count line above is already a polite
-              region and announces when the rows finally narrow, so a second region
-              here would double every proximity transition. */}
-          {near.notice && <p className="text-sm text-muted-foreground">{near.notice}</p>}
+              ⚠ **Its own live region, and always mounted.** The first draft leaned
+              on the count line above, reasoning that it is already polite and
+              announces when the rows narrow. That is exactly backwards for the two
+              states this line actually covers: when the tables fail or the place is
+              unknown the Directory stays UNNARROWED by design (D178), so the count
+              text never changes and its region never fires — and the panel's copy of
+              this message is not mounted either, because `FilterPanel` renders its
+              body only when open. A screen-reader user following a shared link to an
+              unresolvable place would have been told nothing at all while a sighted
+              one read the notice. Mounted unconditionally because a live region
+              created *with* its content is not reliably announced; the default
+              `aria-relevant` is "additions text", so the region emptying when the
+              origin finally resolves announces nothing and cannot double up with the
+              count. Found in the OFC-378 review round. */}
+          <p aria-live="polite" className="text-sm text-muted-foreground empty:hidden">
+            {near.notice ?? ""}
+          </p>
         </div>
 
         <div className="flex flex-wrap items-end gap-3">
