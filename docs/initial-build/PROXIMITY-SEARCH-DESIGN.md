@@ -162,6 +162,14 @@ has been universal in browsers since ~2016, but it is a real if small edge-case
 risk for the oldest devices). Recommend starting simple and measuring; this is a
 build-time measurable, not a design fork.
 
+**Measured on staging after session A deployed (D177) — the simple path wins, and
+the escape hatch should not be built.** Firebase Hosting serves the ZIP table at
+**151,276 bytes** with `Accept-Encoding: br` (238,237 with gzip only), against
+**151,245 bytes** for a local brotli-11 pass of the same file: a 31-byte
+difference. Hosting's brotli is q11 for practical purposes, so shipping a
+precompressed `.br` would buy nothing and would cost the identity fallback. This
+question is closed.
+
 **The algorithm is deliberately dull.** Resolve the origin to a centroid, then
 haversine from it to each roster member's centroid and keep those inside the
 radius. Roughly 1,200 records against one origin is sub-millisecond; there is no
