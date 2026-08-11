@@ -450,10 +450,24 @@ test.describe("OFC-378 — the proximity card (live-test findings)", () => {
     const overlap =
       Math.min((near?.y ?? 0) + (near?.height ?? 0), (within?.y ?? 0) + (within?.height ?? 0)) -
       Math.max(near?.y ?? 0, within?.y ?? 0);
-    // They must share most of their height, and be the same height to within a
-    // hair — the two ways the old sizing showed up.
     expect(overlap).toBeGreaterThan(0.9 * Math.min(near?.height ?? 0, within?.height ?? 0));
-    expect(Math.abs((near?.height ?? 0) - (within?.height ?? 0))).toBeLessThan(2);
+
+    // The second half of the old bug was that the box was *bigger*, not just
+    // offset. ⚠ That is asserted on the **computed metrics**, not on rendered
+    // height: an `<input>` and a native `<select>` legitimately differ by a
+    // pixel or two, and the first draft of this guard — which compared heights
+    // with a 2px tolerance — passed on Windows and failed CI at exactly 2px on
+    // Linux. That is the same "the build machine is not the test machine" trap
+    // (N154/N163) the comment above cites, walked into three lines later. Font
+    // size and vertical padding are what `dense` actually controls, so they are
+    // what this compares: platform-independent, and a direct test of the defect
+    // rather than of one of its symptoms.
+    const metrics = (selector: "near" | "within") =>
+      (selector === "near" ? nearBox(page) : radius(page)).evaluate((el) => {
+        const s = getComputedStyle(el);
+        return { fontSize: s.fontSize, top: s.paddingTop, bottom: s.paddingBottom };
+      });
+    expect(await metrics("near")).toEqual(await metrics("within"));
   });
 
   test("the help text says what happens to a private address", async ({ page }) => {
