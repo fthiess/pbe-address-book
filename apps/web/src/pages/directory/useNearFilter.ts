@@ -8,7 +8,7 @@ import {
   type NearContext,
   type NearOrigin,
   indexCities,
-  nearLabel,
+  nearDescription,
   parseNearToken,
   resolveNearPoint,
 } from "./near.js";
@@ -122,7 +122,9 @@ export function useNearFilter(
     if (origin === undefined || proximity !== undefined) {
       return undefined;
     }
-    const place = nearLabel(origin, context);
+    // `nearDescription`: this line is a sentence, not a chip, and "Not filtering
+    // by 02445" reads like a truncated thought where "ZIP 02445" does not.
+    const place = nearDescription(origin, context);
     if (geo.status === "error") {
       return `Not filtering by ${place} — location data couldn't be loaded.`;
     }

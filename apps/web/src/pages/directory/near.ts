@@ -143,20 +143,44 @@ export function resolveNearPoint(
 }
 
 /**
- * How a chosen origin reads in the chip. Best-effort and deliberately available
- * **without** resolution: two of the three token kinds carry their own label, so
- * a brother who follows a proximity link sees what was shared with him while the
- * tables are still in flight rather than an empty control that fills in later.
+ * How a chosen origin **reads in the chip** — the bare value, nothing else.
+ *
+ * ⚠ A ZIP is rendered as `02445`, not `ZIP 02445` (Forrest's call, live test 3).
+ * A city chip shows the city and a brother chip shows his name, so prefixing the
+ * one kind with its type name made it the odd one out; the pin glyph beside it
+ * already says what the chip is, and five digits are self-evidently a ZIP.
+ *
+ * Best-effort and deliberately available **without** resolution: two of the three
+ * token kinds carry their own label, so a brother who follows a proximity link
+ * sees what was shared with him while the tables are still in flight rather than
+ * an empty control that fills in later.
  */
 export function nearLabel(origin: NearOrigin, context: NearContext): string {
   switch (origin.kind) {
     case "zip":
-      return `ZIP ${origin.zip}`;
+      return origin.zip;
     case "city":
       return `${origin.name}, ${origin.state}`;
     case "brother":
       return context.brothers.get(origin.id)?.name ?? `#${origin.id}`;
   }
+}
+
+/**
+ * How a chosen origin reads **in a sentence, or read aloud** — the same as
+ * {@link nearLabel} except that a ZIP names itself.
+ *
+ * ⚠ Not a redundant second label. The chip can be terse because a pin glyph sits
+ * next to it and a reader can see it is a place; neither is true of the remove
+ * button's accessible name ("Remove 02445" alone is a bare number to a screen
+ * reader) or of the Directory's "Not filtering by …" notice, which is prose. The
+ * repo already draws exactly this line — `CourseChip` displays `6-3` while
+ * announcing "Course 6-3, Computer Science and Engineering" — so terse visible
+ * text and a complete accessible name is the established pattern here rather
+ * than a special case invented for this control.
+ */
+export function nearDescription(origin: NearOrigin, context: NearContext): string {
+  return origin.kind === "zip" ? `ZIP ${origin.zip}` : nearLabel(origin, context);
 }
 
 /**

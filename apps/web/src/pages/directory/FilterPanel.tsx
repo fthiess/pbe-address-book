@@ -21,7 +21,13 @@ import {
   canUseStaffFilters,
   parseNumericGrammar,
 } from "./filters.js";
-import { type NearContext, type NearOrigin, nearLabel, nearOptions } from "./near.js";
+import {
+  type NearContext,
+  type NearOrigin,
+  nearDescription,
+  nearLabel,
+  nearOptions,
+} from "./near.js";
 
 /**
  * The structured filter panel above the grid (§5.6.4, D38). A collapsible region
@@ -771,7 +777,10 @@ function NearFilter({
             <button
               type="button"
               onClick={() => onChange("")}
-              aria-label={`Remove ${nearLabel(origin, context)}`}
+              // `nearDescription`, not `nearLabel`: the chip can show a bare
+              // `02445` because a pin sits beside it, but "Remove 02445" alone is
+              // a number to a screen reader.
+              aria-label={`Remove ${nearDescription(origin, context)}`}
               className="flex size-5 items-center justify-center rounded-full text-current opacity-70 outline-none hover:bg-black/5 hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
             >
               <span aria-hidden="true">×</span>
