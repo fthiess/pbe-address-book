@@ -12,11 +12,11 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
-    "@fastify/rate-limit": "^11.1.0",
+    "@fastify/rate-limit": "^11.2.0",
     "@pbe/shared": "*",
-    "fastify": "^5.2.1",
+    "fastify": "^5.12.0",
     "firebase-admin": "^14.2.0",
-    "jose": "^6.2.3",
+    "jose": "^6.2.8",
     "sharp": "^0.35.3"
   },
   "devDependencies": {
