@@ -8,7 +8,9 @@
     "dev": "tsx watch src/index.dev.ts",
     "start": "node dist/server.js",
     "restore": "tsx src/tools/restore.ts",
-    "prepare:uat-photos": "tsx src/tools/prepare-uat-photos.ts"
+    "prepare:uat-photos": "tsx src/tools/prepare-uat-photos.ts",
+    "genesis:convert": "tsx src/tools/csv-to-snapshot.ts",
+    "genesis:headshots": "tsx src/tools/load-headshots.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

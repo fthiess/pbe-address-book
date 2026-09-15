@@ -26,9 +26,22 @@ BILLING_ACCOUNT=00839F-755E1F-BA1FA4 \
 bash infra/provision-staging.sh
 ```
 
-To build production later: rerun with `PROJECT_ID=pbe-book-prod` (and a
-prod-appropriate bucket/region). The custom domain + managed TLS for
-`book.pbe400.org` is a cutover step, not part of this script (CODING-PROJECT-PLAN §9).
+**Production** (`pbe-book-prod`, built 2026-09-15 — DECISIONS D180) uses the
+same script with the environment file selected by `ENV_FILE`; the three scripts
+default to `environments/staging.env`:
+
+```bash
+ENV_FILE=infra/environments/prod.env BILLING_ACCOUNT=00839F-755E1F-BA1FA4 bash infra/provision-staging.sh
+ENV_FILE=infra/environments/prod.env bash infra/setup-wif.sh
+ENV_FILE=infra/environments/prod.env bash infra/provision-observability.sh
+```
+
+⚠ `ENV_FILE` matters: the scripts `source` the env file with `set -a`, so a
+`PROJECT_ID` exported in the shell is **overridden** by the file's value — the
+file, not the environment, decides which project is touched. The custom domain +
+managed TLS for `book.pbe400.org` is a console step (`CUTOVER-PLAN.md` §3), and
+the production deploy is `.github/workflows/deploy-prod.yml` (a manual dispatch
+on a release tag), never this script's Cloud Run step after first bring-up.
 
 ## What's interactive / not in the script (and why)
 

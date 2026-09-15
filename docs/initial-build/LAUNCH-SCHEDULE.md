@@ -38,6 +38,17 @@ Stage labels live in Linear, one per work session, each label's description carr
 
 ⚠ **A slipped UAT start compresses the window, it does not move it.** The blackout fixes the end at Aug 13 no matter when the start lands. A realistic kickoff after Stage 1.5 is **Jul 31, or Aug 3 in the worst case** — and either way UAT ends Aug 13.
 
+## Revised 2026-09-15: the compressed cutover
+
+The Stage 2.4–3.5 work did not happen during or after UAT; on the afternoon of Tuesday 2026-09-15 none of it existed, with the soft launch due Wednesday evening and the Reunion on Saturday. The schedule above is kept for the record; what actually runs is DECISIONS **D180** and `CUTOVER-PLAN.md`:
+
+| When | What |
+|---|---|
+| Tue Sept 15, evening | `pbe-book-prod` provisioned; `prod.env`, `deploy-prod.yml`, the genesis converter and headshot loader (one PR, deep review); emulator rehearsal clean; Ghost cleanup dry-run and sign-in match report; `book.pbe400.org` custom domain + DNS started (the certificate is the long pole) |
+| Wed Sept 16 | Ghost cleanup applied; release tag → `Deploy production`; genesis restore + headshots + cold start; theme + `/book/` route on pbe400.org; first-hour watch; **soft-launch email to the UAT cohort** (Stage 4.1) |
+| Sat Sept 19 | **Public launch at the Reunion** (Stage 4.3) — unchanged |
+| Stage 5 | Everything deferred by D180 — re-triage after the Reunion |
+
 ## Why the schedule has this shape
 
 Two structural findings drove it, and both are worth understanding before proposing any change to the sequence.
@@ -75,5 +86,5 @@ Both are Forrest's to settle; each records the current lean and the alternative.
 
 - **`CODING-PROJECT-PLAN.md`** — what each phase builds and what its gate requires. Authoritative for scope; carries pointers here for timing.
 - **`UAT-PLAN.md`** — the Phase 7.7 / Stage 2.1 execution detail: platform, tester provisioning, process, exit criteria.
-- **`CUTOVER-PLAN.md`** — the production cutover, written at Stage 2.6.
+- **`CUTOVER-PLAN.md`** — the production cutover, written 2026-09-15 (D180) in place of the Stage 2.6 slot.
 - **`DECISIONS.md`** — **D152** records why this document exists and why the plan was overlaid rather than renumbered.
