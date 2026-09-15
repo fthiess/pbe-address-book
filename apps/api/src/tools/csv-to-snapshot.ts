@@ -24,7 +24,7 @@ import { mkdir } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { buildBackupSnapshot } from "../data/backup.js";
 import { type ConversionIssue, convertGenesisCsv } from "./genesis-convert.js";
-import { headshotVersionOf, primaryHeadshotId } from "./headshot-files.js";
+import { classifyHeadshotFiles, headshotVersionOf } from "./headshot-files.js";
 
 function printHelp(): void {
   console.log(
@@ -107,14 +107,14 @@ if (!dryRun && !outPath) {
 const headshotVersions = new Map<number, string>();
 if (headshotsDir) {
   const dir = resolve(headshotsDir);
-  for (const name of await readdir(dir)) {
-    const id = primaryHeadshotId(name);
-    if (id === null) {
-      continue;
-    }
-    if (headshotVersions.has(id)) {
-      fail(`two primary headshots for #${id} in ${dir}.`);
-    }
+  const files = classifyHeadshotFiles(await readdir(dir));
+  for (const name of files.unrecognised) {
+    console.log(`  warning ${name}: not a primary or alternate headshot name; ignored.`);
+  }
+  if (files.duplicates.length > 0) {
+    fail(`more than one primary headshot for #${files.duplicates.join(", #")} in ${dir}.`);
+  }
+  for (const [id, name] of files.primaries) {
     headshotVersions.set(id, headshotVersionOf(await readFile(join(dir, name))));
   }
   console.log(`==> ${headshotVersions.size} primary headshot(s) found in ${dir}`);

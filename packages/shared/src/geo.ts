@@ -85,6 +85,72 @@ export function countryName(code: string): string {
   }
 }
 
+/**
+ * Country NAME → alpha-2 code, for importers that receive names rather than codes
+ * (the genesis roster, a future MITAA mapping). The table is derived from
+ * `COUNTRY_CODES` + `countryName` at first use — so it can never drift from the
+ * standard — plus a short alias list for the names people actually write that
+ * Intl does not: "UK", "England", "Korea", "Hong Kong" (Intl says "Hong Kong SAR
+ * China"), "USA". Returns `null` for anything unrecognised; callers decide
+ * whether that is a warning or an error. Case- and whitespace-insensitive.
+ */
+const COUNTRY_ALIASES: Readonly<Record<string, string>> = {
+  uk: "GB",
+  "u.k.": "GB",
+  england: "GB",
+  scotland: "GB",
+  wales: "GB",
+  "great britain": "GB",
+  usa: "US",
+  "u.s.": "US",
+  "u.s.a.": "US",
+  "united states": "US",
+  "united states of america": "US",
+  america: "US",
+  korea: "KR",
+  "south korea": "KR",
+  "the netherlands": "NL",
+  holland: "NL",
+  curacao: "CW",
+  "hong kong": "HK",
+  macau: "MO",
+  macao: "MO",
+  russia: "RU",
+  vietnam: "VN",
+  "viet nam": "VN",
+  "czech republic": "CZ",
+  "ivory coast": "CI",
+  "cape verde": "CV",
+  "the bahamas": "BS",
+  "the philippines": "PH",
+  "the gambia": "GM",
+  "republic of ireland": "IE",
+  uae: "AE",
+  "the uae": "AE",
+};
+
+let countryByName: Map<string, string> | null = null;
+
+export function countryCodeFromName(name: string): string | null {
+  const key = name.trim().toLowerCase().replace(/\s+/gu, " ");
+  if (key === "") {
+    return null;
+  }
+  if (countryByName === null) {
+    countryByName = new Map();
+    for (const code of COUNTRY_CODES) {
+      countryByName.set(countryName(code).toLowerCase(), code);
+    }
+    for (const [alias, code] of Object.entries(COUNTRY_ALIASES)) {
+      countryByName.set(alias, code);
+    }
+  }
+  if (COUNTRY_CODES.has(key.toUpperCase())) {
+    return key.toUpperCase();
+  }
+  return countryByName.get(key) ?? null;
+}
+
 /** US states, the District of Columbia, the main territories, and the military codes (§8). */
 export const US_SUBDIVISIONS: Readonly<Record<string, string>> = {
   AL: "Alabama",

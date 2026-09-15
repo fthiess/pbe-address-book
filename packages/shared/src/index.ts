@@ -73,6 +73,7 @@ export {
   countryName,
   hasControlledSubdivisions,
   isCountryCode,
+  countryCodeFromName,
   isSubdivisionCode,
   subdivisionName,
 } from "./geo.js";

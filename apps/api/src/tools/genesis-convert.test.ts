@@ -102,7 +102,7 @@ describe("convertGenesisCsv", () => {
       majors: ["6-3", "15"],
       sports: "Crew",
       activities: "Sailing",
-      phone: "6175551212",
+      phone: "+1 (617) 555-1212",
       employerName: "Example Corp",
       jobTitle: "Engineer",
       address: {
@@ -241,6 +241,108 @@ describe("convertGenesisCsv", () => {
     });
   });
 
+  it("carries a Canadian province and postcode, and free-text state elsewhere", () => {
+    const result = convertGenesisCsv(
+      csv([
+        {
+          ...smyth,
+          "Addr City": "Toronto",
+          "Addr State": "on",
+          "Addr Zip": "M5V 3L9",
+          "Addr Foreign Country": "Canada",
+        },
+        {
+          ...smyth,
+          "Const ID": "5248",
+          Email: "b@example.com",
+          "Alternate Email": "",
+          "Addr City": "",
+          "Addr State": "Bavaria",
+          "Addr Zip": "80331",
+          "Addr Foreign City": "München",
+          "Addr Foreign Country": "Germany",
+        },
+      ]),
+      { now: NOW },
+    );
+    expect(result.issues).toEqual([]);
+    expect(data(result, 5247).address).toMatchObject({
+      city: "Toronto",
+      stateProvince: "ON",
+      postalCode: "M5V 3L9",
+      country: "CA",
+    });
+    expect(data(result, 5248).address).toMatchObject({
+      city: "München",
+      stateProvince: "Bavaria",
+      postalCode: "80331",
+      country: "DE",
+    });
+  });
+
+  it("treats USA / Puerto Rico in the foreign column as domestic, and errors on an unknown country", () => {
+    const result = convertGenesisCsv(
+      csv([
+        { ...smyth, "Addr Foreign Country": "USA" },
+        {
+          ...smyth,
+          "Const ID": "5248",
+          Email: "b@example.com",
+          "Alternate Email": "",
+          "Addr City": "San Juan",
+          "Addr State": "",
+          "Addr Zip": "00901",
+          "Addr Foreign Country": "Puerto Rico",
+        },
+        {
+          ...smyth,
+          "Const ID": "5249",
+          Email: "c@example.com",
+          "Alternate Email": "",
+          "Addr Foreign Country": "Atlantis",
+        },
+      ]),
+      { now: NOW },
+    );
+    expect(data(result, 5247).address).toMatchObject({
+      stateProvince: "MA",
+      postalCode: "02116-1234",
+      country: "US",
+    });
+    expect(data(result, 5248).address).toMatchObject({
+      stateProvince: "PR",
+      postalCode: "00901",
+      country: "US",
+    });
+    expect(data(result, 5249)).not.toHaveProperty("address");
+    expect(result.issues).toEqual([
+      expect.objectContaining({ severity: "error", id: 5249, field: "address.country" }),
+    ]);
+  });
+
+  it("refuses a snapshot the restore would refuse: one email claimed by two profiles", () => {
+    const result = convertGenesisCsv(
+      csv([
+        smyth,
+        {
+          ...smyth,
+          "Const ID": "5248",
+          Email: "other@example.com",
+          "Alternate Email": "james.smyth@example.com",
+        },
+      ]),
+      { now: NOW },
+    );
+    expect(result.issues.map((i) => `${i.severity}:${i.field}`)).toEqual(["error:emailUniqueness"]);
+  });
+
+  it("ignores fully-empty rows a spreadsheet export leaves behind", () => {
+    const text = `${csv([smyth])},,,,,,,,,,,,,,,,,,,,,,,,,,,,\n`;
+    const result = convertGenesisCsv(text, { now: NOW });
+    expect(result.issues).toEqual([]);
+    expect(result.stats.rows).toBe(1);
+  });
+
   it("drops what the schema cannot hold, with a warning naming the row", () => {
     const result = convertGenesisCsv(
       csv([
@@ -295,7 +397,7 @@ describe("convertGenesisCsv", () => {
         {
           ...smyth,
           "Const ID": "5300",
-          "Big Brother ID": "77",
+          "Big Brother ID": "9999",
           "Last Name": "",
           Email: "x@example.com",
           "Alternate Email": "",
@@ -307,7 +409,7 @@ describe("convertGenesisCsv", () => {
       .filter((i) => i.severity === "error")
       .map((i) => `${i.id}:${i.field}`);
     expect(errors).toEqual(
-      expect.arrayContaining(["5247:id", "5300:bigBrotherId", "5300:lastName", "6000:role"]),
+      expect.arrayContaining(["5247:id", "0:referenceIntegrity", "5300:lastName", "6000:role"]),
     );
     expect(result.collections.profiles.map((p) => p.id)).toEqual(["5247", "5300"]);
   });

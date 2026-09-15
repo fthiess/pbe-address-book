@@ -23,10 +23,10 @@
 #   - gcloud installed; `gcloud auth login` as an owner of the billing account.
 #   - Run from the REPO ROOT (the Cloud Run deploy builds `.` via the Dockerfile).
 #
-# Usage:
-#   PROJECT_ID=pbe-book-staging REGION=us-central1 \
-#   BILLING_ACCOUNT=00839F-755E1F-BA1FA4 \
-#   bash infra/provision-staging.sh
+# Usage (the env FILE decides the project — a PROJECT_ID exported in the shell is
+# overridden by the file's value, so select the environment with ENV_FILE):
+#   BILLING_ACCOUNT=00839F-755E1F-BA1FA4 bash infra/provision-staging.sh
+#   ENV_FILE=infra/environments/prod.env BILLING_ACCOUNT=... bash infra/provision-staging.sh
 #
 set -euo pipefail
 
@@ -35,6 +35,10 @@ set -euo pipefail
 # fallbacks below still apply to anything the file omits (or if it is absent).
 ENV_FILE="${ENV_FILE:-$(dirname "$0")/environments/staging.env}"
 # shellcheck disable=SC1090,SC1091
+if [ ! -f "${ENV_FILE}" ]; then
+  echo "!! ENV_FILE=${ENV_FILE} does not exist (cwd: $(pwd)). Refusing to fall back to staging defaults." >&2
+  exit 1
+fi
 if [ -f "${ENV_FILE}" ]; then set -a; . "${ENV_FILE}"; set +a; fi
 
 PROJECT_ID="${PROJECT_ID:-pbe-book-staging}"

@@ -26,7 +26,7 @@ import { initializeApp } from "firebase-admin/app";
 import { getStorage } from "firebase-admin/storage";
 import type { ImageManifestEntry } from "../data/backup.js";
 import { encodeHeadshot } from "../images/encode.js";
-import { headshotVersionOf, primaryHeadshotId } from "./headshot-files.js";
+import { classifyHeadshotFiles, headshotVersionOf } from "./headshot-files.js";
 
 function printHelp(): void {
   console.log(
@@ -96,11 +96,23 @@ if (manifest.length === 0) {
 }
 
 const sourceDir = resolve(values.source as string);
+const files = classifyHeadshotFiles(await readdir(sourceDir));
+for (const name of files.unrecognised) {
+  console.log(`  warning ${name}: not a primary or alternate headshot name; ignored.`);
+}
+if (files.duplicates.length > 0) {
+  fail(`more than one primary headshot for #${files.duplicates.join(", #")} in ${sourceDir}.`);
+}
 const fileById = new Map<number, string>();
-for (const name of await readdir(sourceDir)) {
-  const id = primaryHeadshotId(name);
-  if (id !== null) {
-    fileById.set(id, join(sourceDir, name));
+for (const [id, name] of files.primaries) {
+  fileById.set(id, join(sourceDir, name));
+}
+const manifestIds = new Set(manifest.map((entry) => entry.id));
+for (const id of fileById.keys()) {
+  if (!manifestIds.has(id)) {
+    console.log(
+      `  warning #${id}: primary file present but not in the snapshot manifest — rebuild the snapshot to include it.`,
+    );
   }
 }
 
@@ -131,12 +143,15 @@ for (const entry of manifest) {
   const encoded = await encodeHeadshot(source);
   bytesOut += encoded.headshot.byteLength + encoded.thumbnail.byteLength;
   if (bucket) {
-    await bucket
-      .file(entry.headshotKey)
-      .save(encoded.headshot, { contentType: "image/webp", resumable: false });
-    await bucket
-      .file(entry.thumbnailKey)
-      .save(encoded.thumbnail, { contentType: "image/webp", resumable: false });
+    // Two independent objects: write them together, not one after the other.
+    await Promise.all([
+      bucket
+        .file(entry.headshotKey)
+        .save(encoded.headshot, { contentType: "image/webp", resumable: false }),
+      bucket
+        .file(entry.thumbnailKey)
+        .save(encoded.thumbnail, { contentType: "image/webp", resumable: false }),
+    ]);
   }
   uploaded++;
 }

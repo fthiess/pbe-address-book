@@ -30,8 +30,19 @@
  *   - Dates arrive as either `YYYY` or `YYYY-M-D`; a full date maps to
  *     `dateOfDeath`, a bare year to `deathYear` (mutually exclusive, D122).
  *   - A US address carries `country: "US"` explicitly; a foreign one maps the
- *     source country NAME to its ISO alpha-2 code, and the "Foreign City" field
- *     (which often carries a postcode) lands verbatim in `city`.
+ *     source country NAME to its ISO alpha-2 code via `countryCodeFromName`
+ *     (derived from the standard, plus aliases) — an unmapped name is an ERROR,
+ *     because an address with no country is shown by the editor as a US one.
+ *     "United States"/"USA" in the foreign column is treated as domestic; Puerto
+ *     Rico is `US` + `PR` (it is a US subdivision in this schema). The "Foreign
+ *     City" field (which often carries a postcode) lands verbatim in `city`;
+ *     `Addr State` is carried (validated for CA, free text elsewhere) and
+ *     `Addr Zip` is carried as-is for non-US countries.
+ *   - Phones are stored in the canonical form `normalizePhone` produces — the same
+ *     form the API's write path stores (N35) — never the source string.
+ *   - After the rows are converted the restore's own `validateSnapshot` runs
+ *     (id + cross-profile email uniqueness, Big Brother integrity, cycles), so a
+ *     clean conversion report means the restore will accept the snapshot.
  *   - The 120-char short-text cap (`MAX_SHORT_TEXT_LENGTH`) is enforced by
  *     truncating at a word boundary WITH a warning — the API rejects rather than
  *     truncates, but a loader that refuses a whole roster over one long Sports
@@ -47,13 +58,15 @@ import {
   MAX_SHORT_TEXT_LENGTH,
   type Profile,
   type Role,
-  isCountryCode,
+  countryCodeFromName,
+  hasControlledSubdivisions,
   isSubdivisionCode,
   normalizeEmail,
   normalizePhone,
   validateProfile,
 } from "@pbe/shared";
 import type { BackupData, CollectionSnapshot } from "../data/backup.js";
+import { validateSnapshot } from "../data/restore.js";
 
 /** The columns the genesis CSV must carry, by exact header text. */
 export const REQUIRED_COLUMNS = [
@@ -180,8 +193,9 @@ export function parseCsv(text: string): string[][] {
     row.push(field);
     rows.push(row);
   }
-  // Drop a trailing fully-empty line (a file ending in "\n" yields one).
-  return rows.filter((r) => !(r.length === 1 && r[0] === ""));
+  // Drop fully-empty rows: the trailing line a file ending in "\n" yields, and the
+  // ",,,,,," rows a spreadsheet export leaves behind.
+  return rows.filter((r) => r.some((cell) => cell.trim() !== ""));
 }
 
 function toRows(text: string, issues: ConversionIssue[]): Row[] {
@@ -215,48 +229,6 @@ function toRows(text: string, issues: ConversionIssue[]): Row[] {
 }
 
 // --- Field helpers ------------------------------------------------------------
-
-/** Source country names → ISO 3166-1 alpha-2. Extend as the roster needs. */
-export const COUNTRY_NAMES: Readonly<Record<string, string>> = {
-  "united kingdom": "GB",
-  uk: "GB",
-  england: "GB",
-  scotland: "GB",
-  canada: "CA",
-  "hong kong": "HK",
-  singapore: "SG",
-  switzerland: "CH",
-  italy: "IT",
-  germany: "DE",
-  taiwan: "TW",
-  norway: "NO",
-  colombia: "CO",
-  spain: "ES",
-  netherlands: "NL",
-  "the netherlands": "NL",
-  curacao: "CW",
-  curaçao: "CW",
-  israel: "IL",
-  "saudi arabia": "SA",
-  france: "FR",
-  croatia: "HR",
-  japan: "JP",
-  mexico: "MX",
-  india: "IN",
-  australia: "AU",
-  ireland: "IE",
-  china: "CN",
-  "south korea": "KR",
-  korea: "KR",
-  brazil: "BR",
-  sweden: "SE",
-  denmark: "DK",
-  belgium: "BE",
-  austria: "AT",
-  "new zealand": "NZ",
-  "united arab emirates": "AE",
-  "puerto rico": "PR",
-};
 
 const YEAR_RE = /^(\d{4})$/u;
 const DATE_RE = /^(\d{4})-(\d{1,2})-(\d{1,2})$/u;
@@ -380,7 +352,6 @@ function convertDeceased(row: Row, id: number, issues: ConversionIssue[]): Decea
 }
 
 function convertAddress(row: Row, id: number, issues: ConversionIssue[]): Address | undefined {
-  const foreignCountry = row["Addr Foreign Country"];
   const address: Address = {};
   const street1 = optional(row["Addr Line 1"]);
   const street2 = optional(row["Addr Line 2"]);
@@ -390,59 +361,64 @@ function convertAddress(row: Row, id: number, issues: ConversionIssue[]): Addres
   if (street2) {
     address.street2 = street2;
   }
-  if (foreignCountry === "") {
-    const city = optional(row["Addr City"]);
-    const state = optional(row["Addr State"]);
-    const zip = optional(row["Addr Zip"]);
-    if (city) {
-      address.city = city;
-    }
-    if (state) {
-      if (isSubdivisionCode("US", state)) {
-        address.stateProvince = state.toUpperCase();
-      } else {
-        issues.push({
-          severity: "warning",
-          id,
-          field: "address.stateProvince",
-          message: `Unknown US state "${state}" dropped.`,
-        });
-      }
-    }
-    if (zip) {
-      if (/^\d{5}(-\d{4})?$/u.test(zip)) {
-        address.postalCode = zip;
-      } else {
-        issues.push({
-          severity: "warning",
-          id,
-          field: "address.postalCode",
-          message: `Non-ZIP postal code "${zip}" dropped.`,
-        });
-      }
-    }
-    if (Object.keys(address).length === 0) {
+  // Resolve the country first: blank = US; a name that resolves to US (or to Puerto
+  // Rico, a US subdivision here) takes the domestic branch; an unmapped name is an
+  // error — an address written without a country is shown by the editor as a US one.
+  let country = "US";
+  const foreignName = row["Addr Foreign Country"];
+  if (foreignName !== "") {
+    const code = countryCodeFromName(foreignName);
+    if (code === null) {
+      issues.push({
+        severity: "error",
+        id,
+        field: "address.country",
+        message: `Unrecognised country "${foreignName}" — fix the roster or extend the alias list in geo.ts.`,
+      });
       return undefined;
     }
-    address.country = "US";
-    return address;
+    country = code === "PR" ? "US" : code;
+    if (code === "PR" && row["Addr State"] === "") {
+      address.stateProvince = "PR";
+    }
   }
-  const code = COUNTRY_NAMES[foreignCountry.toLowerCase()];
-  if (code === undefined || !isCountryCode(code)) {
-    issues.push({
-      severity: "warning",
-      id,
-      field: "address.country",
-      message: `Unmapped country "${foreignCountry}" — address written without a country.`,
-    });
-  } else {
-    address.country = code;
+  address.country = country;
+  const city =
+    optional(country === "US" ? row["Addr City"] : row["Addr Foreign City"]) ??
+    optional(row["Addr City"]);
+  if (city) {
+    address.city = city;
   }
-  const foreignCity = optional(row["Addr Foreign City"]) ?? optional(row["Addr City"]);
-  if (foreignCity) {
-    address.city = foreignCity;
+  const state = optional(row["Addr State"]);
+  if (state) {
+    if (!hasControlledSubdivisions(country)) {
+      address.stateProvince = state;
+    } else if (isSubdivisionCode(country, state)) {
+      address.stateProvince = state.toUpperCase();
+    } else {
+      issues.push({
+        severity: "warning",
+        id,
+        field: "address.stateProvince",
+        message: `"${state}" is not a ${country} state/province code; dropped.`,
+      });
+    }
   }
-  return Object.keys(address).length === 0 ? undefined : address;
+  const zip = optional(row["Addr Zip"]);
+  if (zip) {
+    if (country !== "US" || /^\d{5}(-\d{4})?$/u.test(zip)) {
+      address.postalCode = zip;
+    } else {
+      issues.push({
+        severity: "warning",
+        id,
+        field: "address.postalCode",
+        message: `Non-ZIP postal code "${zip}" dropped.`,
+      });
+    }
+  }
+  // A row with only a country (and nothing else) is no address at all.
+  return Object.keys(address).length > 1 ? address : undefined;
 }
 
 function shortText(
@@ -513,7 +489,8 @@ function convertContact(row: Row, profile: GenesisProfile, issues: ConversionIss
   }
   const phone = optional(row.Phone);
   if (phone) {
-    if (normalizePhone(phone) === null) {
+    const canonical = normalizePhone(phone);
+    if (canonical === null) {
       issues.push({
         severity: "warning",
         id: profile.id,
@@ -521,7 +498,7 @@ function convertContact(row: Row, profile: GenesisProfile, issues: ConversionIss
         message: "Phone is not in a recognised format (international needs a leading +); dropped.",
       });
     } else {
-      profile.phone = phone;
+      profile.phone = canonical;
     }
   }
   const address = convertAddress(row, profile.id, issues);
@@ -606,7 +583,7 @@ function convertRow(
       severity: "warning",
       id,
       field: "firstName",
-      message: `No first or last name (Full Name "${row["Full Name"]}"); row SKIPPED — add in-app.`,
+      message: "No first or last name; row SKIPPED — add in-app.",
     });
     return null;
   }
@@ -706,18 +683,17 @@ export function convertGenesisCsv(text: string, options: ConversionOptions): Con
     profiles.push({ id: String(profile.id), data: profile as unknown as Record<string, unknown> });
   }
 
-  // Big Brother references must land on a loaded id; restore refuses otherwise,
-  // but naming the row here is friendlier than a validator rule number.
-  for (const { data } of profiles) {
-    const big = data.bigBrotherId;
-    if (typeof big === "number" && !seen.has(big)) {
-      issues.push({
-        severity: "error",
-        id: data.id as number,
-        field: "bigBrotherId",
-        message: `Big Brother #${big} is not in the roster.`,
-      });
-    }
+  // The restore's own structural rules (id + cross-profile email uniqueness, Big
+  // Brother integrity and cycle freedom) run here too, so a clean conversion
+  // report means the restore will accept the snapshot — the operator should never
+  // first learn of a shared email or a lineage cycle from the restore's refusal.
+  const collections: BackupData = { profiles, users: [], config: [] };
+  const structural = validateSnapshot(collections);
+  for (const issue of structural.errors) {
+    issues.push({ severity: "error", id: 0, field: issue.rule, message: issue.message });
+  }
+  for (const issue of structural.warnings) {
+    issues.push({ severity: "warning", id: 0, field: issue.rule, message: issue.message });
   }
   for (const adminId of options.adminIds ?? []) {
     if (!seen.has(adminId)) {
@@ -741,7 +717,7 @@ export function convertGenesisCsv(text: string, options: ConversionOptions): Con
   }
 
   return {
-    collections: { profiles, users: [], config: [] },
+    collections,
     issues,
     stats: {
       rows: rows.length,

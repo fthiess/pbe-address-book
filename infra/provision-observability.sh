@@ -44,9 +44,10 @@
 #     route and measure. The sink/metric filters match nothing until then — harmless,
 #     but the live-test at the end needs real `auth.signin` entries to fire.
 #
-# Usage:
-#   PROJECT_ID=pbe-book-staging REGION=us-central1 ALERT_EMAIL=fthiess@gmail.com \
-#   bash infra/provision-observability.sh
+# Usage (the env FILE decides the project — a PROJECT_ID exported in the shell is
+# overridden by the file's value, so select the environment with ENV_FILE):
+#   bash infra/provision-observability.sh                                       # staging
+#   ENV_FILE=infra/environments/prod.env bash infra/provision-observability.sh  # production
 #
 set -euo pipefail
 
@@ -55,6 +56,10 @@ set -euo pipefail
 # ${VAR:-default} fallbacks below still apply to anything the file omits.
 ENV_FILE="${ENV_FILE:-$(dirname "$0")/environments/staging.env}"
 # shellcheck disable=SC1090,SC1091
+if [ ! -f "${ENV_FILE}" ]; then
+  echo "!! ENV_FILE=${ENV_FILE} does not exist (cwd: $(pwd)). Refusing to fall back to staging defaults." >&2
+  exit 1
+fi
 if [ -f "${ENV_FILE}" ]; then set -a; . "${ENV_FILE}"; set +a; fi
 
 PROJECT_ID="${PROJECT_ID:-pbe-book-staging}"

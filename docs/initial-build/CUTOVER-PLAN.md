@@ -70,8 +70,19 @@ All three infra scripts now take `ENV_FILE` (default `staging.env`);
 # from the repo root, as an owner of the billing account
 ENV_FILE=infra/environments/prod.env BILLING_ACCOUNT=00839F-755E1F-BA1FA4 bash infra/provision-staging.sh
 ENV_FILE=infra/environments/prod.env bash infra/setup-wif.sh
-# paste the printed book-backup-scheduler uniqueId into prod.env BACKUP_INVOKER_SUBJECT
+# paste the printed book-backup-scheduler uniqueId into prod.env BACKUP_INVOKER_SUBJECT,
+# then COMMIT, MERGE and only then cut the release tag — the workflow reads prod.env
+# from the tagged tree and refuses an empty value.
+ENV_FILE=infra/environments/prod.env bash infra/provision-observability.sh
+# ^ before the genesis load: the audit SINK it creates is what long-retains the
+#   restore's forensic entry (D150); an entry written before the sink exists lives
+#   only in the 30-day default bucket. The alert policies it also creates stay
+#   inert until the first backup arms them — fine.
 ```
+
+⚠ The WIF trust condition (`setup-wif.sh`) admits `refs/heads/main` **and**
+`refs/tags/v*` — the tag clause is what lets `Deploy production` authenticate;
+re-run the script against prod after any change to it.
 
 Done ahead of the script on 2026-09-15: project created and billed, Firebase
 enabled (`firebase projects:addfirebase pbe-book-prod`), and the Ghost Admin key
@@ -178,6 +189,11 @@ is live.
 - Run `provision-observability.sh` against prod (alerts armed by the first
   backup); repoint the integrity job (OFC-333); confirm the first backup lands.
 - Run the Ghost pull-and-seed (OFC-340) to turn the Book→Ghost push on; then the
-  alignment audit cadence.
+  alignment audit cadence. ⚠ **Until OFC-340 runs, do not "resolve in Book's
+  favour" any `newsletterDrift` the Admin → Ghost audit reports.** The genesis
+  load stamps every living brother `allowNewsletterEmail: true` at the load
+  instant (the roster carries no Ghost subscription column), so a brother who
+  unsubscribed in Ghost shows as drift with Book's change *newer*; re-saving him
+  in Book would re-subscribe him. OFC-340 seeds the real state from Ghost.
 - Tighten the Cloud Build SA and `run-sources-*` grant (infra/README.md).
 - Re-triage Stage 5 after the Reunion (LAUNCH-SCHEDULE.md).

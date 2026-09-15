@@ -4,7 +4,7 @@ name: Deploy production
 # chosen commit — never merge-triggered (CODING-PROJECT-PLAN §5; CUTOVER-PLAN;
 # OFC-253). Dispatch it ON the ref to promote (a release tag, normally):
 #
-#   gh workflow run "Deploy production" --ref v2026.09.17
+#   gh workflow run "Deploy production" --ref v2026.09.16
 #
 # Two deliberate differences from deploy-staging.yml:
 #
