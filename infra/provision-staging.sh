@@ -275,10 +275,10 @@ fi
 # means the next CI deploy ships a service that rejects every scheduler token,
 # and the backup stops with no other symptom.
 if [[ "${BACKUP_INVOKER_SUBJECT:-}" != "${BACKUP_SUBJECT_LIVE}" ]]; then
-  echo "!! BACKUP_INVOKER_SUBJECT in environments/staging.env is '${BACKUP_INVOKER_SUBJECT:-<unset>}'"
+  echo "!! BACKUP_INVOKER_SUBJECT in ${ENV_FILE} is '${BACKUP_INVOKER_SUBJECT:-<unset>}'"
   echo "!! but ${BACKUP_SA_EMAIL} has uniqueId '${BACKUP_SUBJECT_LIVE}'."
   echo "!! This run deploys the correct value, but the next CI deploy will NOT."
-  echo "!! Update environments/staging.env: BACKUP_INVOKER_SUBJECT=${BACKUP_SUBJECT_LIVE}"
+  echo "!! Update ${ENV_FILE}: BACKUP_INVOKER_SUBJECT=${BACKUP_SUBJECT_LIVE}"
 fi
 BACKUP_INVOKER_SUBJECT="${BACKUP_SUBJECT_LIVE}"
 
@@ -317,11 +317,15 @@ fi
 #     ${SA_EMAIL}. Book's runtime — the internet-facing part — has no path to the
 #     roster at all.
 echo "==> Granting ${DEPLOYER_SA:-<deployer>} objectViewer on gs://${UAT_FIXTURES_BUCKET}"
-if [ -n "${DEPLOYER_SA:-}" ]; then
+# The deployer SA is created by setup-wif.sh, which may not have run yet on a
+# fresh project: skip (never fail) so first bring-up can continue to the deploy.
+if [ -n "${DEPLOYER_SA:-}" ] && ! gcloud iam service-accounts describe "${DEPLOYER_SA}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "!! ${DEPLOYER_SA} does not exist yet (run infra/setup-wif.sh, then re-run this script) — skipping the CI read grant."
+elif [ -n "${DEPLOYER_SA:-}" ]; then
   gcloud storage buckets add-iam-policy-binding "gs://${UAT_FIXTURES_BUCKET}" \
     --member="serviceAccount:${DEPLOYER_SA}" --role="roles/storage.objectViewer" >/dev/null
 else
-  echo "!! DEPLOYER_SA unset (environments/staging.env) — skipping the CI read grant."
+  echo "!! DEPLOYER_SA unset (${ENV_FILE}) — skipping the CI read grant."
 fi
 
 # 7. Deploy the API to Cloud Run (built remotely by Cloud Build from ./Dockerfile).
