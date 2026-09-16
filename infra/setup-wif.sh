@@ -147,6 +147,23 @@ fi
 # Firestore, so the grant is skipped unless the project id ends in "-staging".
 SEED_ROLE=()
 case "${PROJECT_ID}" in *-staging) SEED_ROLE=(roles/datastore.user);; esac
+# A freshly created service account is not immediately visible to IAM: for
+# several seconds "does not exist" comes back for an account that was just
+# created (eventual consistency — provision-staging.sh carries the same helper;
+# this bit the first production run). Retry rather than abort under `set -e`.
+retry_gcp() {
+  local attempt=1 max=8
+  until "$@"; do
+    if (( attempt >= max )); then
+      echo "!! command still failing after ${max} attempts: $*" >&2
+      return 1
+    fi
+    echo "    (attempt ${attempt}/${max} failed — waiting 8s for propagation…)" >&2
+    sleep 8
+    attempt=$(( attempt + 1 ))
+  done
+}
+
 echo "==> Granting project roles to ${DEPLOYER_SA}"
 for role in \
   roles/run.admin \
@@ -166,16 +183,16 @@ done
 #    - on the runtime SA, so the deployed service may run AS book-api.
 #    - on the build SA, so the deployer may submit the source build that runs as it.
 echo "==> Granting scoped iam.serviceAccountUser (runtime + build SAs)"
-gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
+retry_gcp gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
   --member="serviceAccount:${DEPLOYER_SA}" \
   --role="roles/iam.serviceAccountUser" --project "${PROJECT_ID}" >/dev/null
-gcloud iam service-accounts add-iam-policy-binding "${BUILD_SA}" \
+retry_gcp gcloud iam service-accounts add-iam-policy-binding "${BUILD_SA}" \
   --member="serviceAccount:${DEPLOYER_SA}" \
   --role="roles/iam.serviceAccountUser" --project "${PROJECT_ID}" >/dev/null
 
 # 6. Let the GitHub repo's identities (and only them) impersonate the deployer SA.
 echo "==> Binding workloadIdentityUser for repo ${GITHUB_REPO}"
-gcloud iam service-accounts add-iam-policy-binding "${DEPLOYER_SA}" \
+retry_gcp gcloud iam service-accounts add-iam-policy-binding "${DEPLOYER_SA}" \
   --project "${PROJECT_ID}" \
   --role="roles/iam.workloadIdentityUser" \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/attribute.repository/${GITHUB_REPO}" \
