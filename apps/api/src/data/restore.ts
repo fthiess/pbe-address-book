@@ -15,8 +15,9 @@ import { normalizeHydratedProfile } from "./cache.js";
  * record that could not be *saved* through the API today still restores verbatim
  * (a legacy phone format, a missing optional field, a role the UI would refuse to
  * set). What D101 keeps is the narrower, dataset-level question: is this snapshot
- * a *structurally coherent database*? Restore is the one writer that is not the
- * single live instance (D83/D100), so it is the last place uniqueness and
+ * a *structurally coherent database*? Restore is the whole-database writer that
+ * is not the single live instance (D83/D100; D181's one-field backfill is the
+ * other, narrow exception), so it is the last place uniqueness and
  * referential rules can be enforced before a corrupt or tampered archive becomes
  * the directory.
  *

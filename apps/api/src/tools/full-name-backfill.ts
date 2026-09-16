@@ -21,14 +21,20 @@ export interface FullNameSource {
   fullLegalName?: unknown;
 }
 
-export interface FullNameUpdate {
+export interface FullNameUpdate<Token = unknown> {
   /** The Firestore document id (`String(id)`), carried verbatim. */
   docId: string;
   fullLegalName: string;
+  /**
+   * The document's `updateTime` at the read, carried opaquely so the write can
+   * be made conditional on it (a brother who filled the field in between is
+   * then a skipped precondition failure, never an overwrite).
+   */
+  token: Token;
 }
 
-export interface FullNameBackfillPlan {
-  updates: FullNameUpdate[];
+export interface FullNameBackfillPlan<Token = unknown> {
+  updates: FullNameUpdate<Token>[];
   /** Documents that already carry a non-blank `fullLegalName`; left alone. */
   alreadySet: number;
   /** Documents with no usable first or last name; skipped with their ids. */
@@ -46,10 +52,10 @@ export function joinedName(source: FullNameSource): string {
     .join(" ");
 }
 
-export function planFullNameBackfill(
-  docs: readonly { id: string; data: FullNameSource }[],
-): FullNameBackfillPlan {
-  const plan: FullNameBackfillPlan = { updates: [], alreadySet: 0, unnamed: [] };
+export function planFullNameBackfill<Token>(
+  docs: readonly { id: string; data: FullNameSource; token: Token }[],
+): FullNameBackfillPlan<Token> {
+  const plan: FullNameBackfillPlan<Token> = { updates: [], alreadySet: 0, unnamed: [] };
   for (const doc of docs) {
     if (text(doc.data.fullLegalName) !== "") {
       plan.alreadySet++;
@@ -59,7 +65,7 @@ export function planFullNameBackfill(
       plan.unnamed.push(doc.id);
       continue;
     }
-    plan.updates.push({ docId: doc.id, fullLegalName: joinedName(doc.data) });
+    plan.updates.push({ docId: doc.id, fullLegalName: joinedName(doc.data), token: doc.token });
   }
   return plan;
 }
