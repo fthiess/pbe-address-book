@@ -25,9 +25,10 @@
 #   - The environment already provisioned (infra/provision-staging.sh) — this
 #     grants actAs on the runtime SA (book-api), which must already exist.
 #
-# Usage:
-#   PROJECT_ID=pbe-book-staging GITHUB_REPO=fthiess/pbe-address-book \
-#   bash infra/setup-wif.sh
+# Usage (the env FILE decides the project — a PROJECT_ID exported in the shell is
+# overridden by the file's value, so select the environment with ENV_FILE):
+#   bash infra/setup-wif.sh                                          # staging
+#   ENV_FILE=infra/environments/prod.env bash infra/setup-wif.sh     # production
 #
 # After it prints the provider resource name + deployer SA, those two values go
 # into .github/workflows/deploy-staging.yml (workload_identity_provider /
@@ -37,8 +38,12 @@ set -euo pipefail
 # Load the shared environment values (single source of truth; OFC-84) so this
 # script, provision-staging.sh, and the deploy workflow agree. The ${VAR:-default}
 # fallbacks below still apply to anything the file omits (or if it is absent).
-ENV_FILE="$(dirname "$0")/environments/staging.env"
+ENV_FILE="${ENV_FILE:-$(dirname "$0")/environments/staging.env}"
 # shellcheck disable=SC1090,SC1091
+if [ ! -f "${ENV_FILE}" ]; then
+  echo "!! ENV_FILE=${ENV_FILE} does not exist (cwd: $(pwd)). Refusing to fall back to staging defaults." >&2
+  exit 1
+fi
 if [ -f "${ENV_FILE}" ]; then set -a; . "${ENV_FILE}"; set +a; fi
 
 PROJECT_ID="${PROJECT_ID:-pbe-book-staging}"
@@ -85,7 +90,10 @@ fi
 #    rather than silently no-op'ing past the create guard. If you ever need to
 #    deploy a different ref from CI, widen the condition here and re-run.
 ATTR_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref"
-ATTR_CONDITION="assertion.repository=='${GITHUB_REPO}' && assertion.ref=='refs/heads/main'"
+# `main` deploys staging on merge; a release TAG (`v*`) is what `deploy-prod.yml`
+# is dispatched on (D180), so both refs are admitted — and nothing else: a feature
+# branch or a Dependabot branch can never mint a deploy credential.
+ATTR_CONDITION="assertion.repository=='${GITHUB_REPO}' && (assertion.ref=='refs/heads/main' || assertion.ref.startsWith('refs/tags/v'))"
 if ! gcloud iam workload-identity-pools providers describe "${PROVIDER_ID}" \
       --location=global --workload-identity-pool="${POOL_ID}" \
       --project "${PROJECT_ID}" >/dev/null 2>&1; then
@@ -135,6 +143,27 @@ fi
 #                                 already covers the image bucket). STAGING ONLY —
 #                                 a prod deploy must never re-seed, so omit this for
 #                                 prod or guard the seed step off (STAGING_AUTOSEED).
+# datastore.user is STAGING ONLY (the seeders); a production deployer never writes
+# Firestore, so the grant is skipped unless the project id ends in "-staging".
+SEED_ROLE=()
+case "${PROJECT_ID}" in *-staging) SEED_ROLE=(roles/datastore.user);; esac
+# A freshly created service account is not immediately visible to IAM: for
+# several seconds "does not exist" comes back for an account that was just
+# created (eventual consistency — provision-staging.sh carries the same helper;
+# this bit the first production run). Retry rather than abort under `set -e`.
+retry_gcp() {
+  local attempt=1 max=8
+  until "$@"; do
+    if (( attempt >= max )); then
+      echo "!! command still failing after ${max} attempts: $*" >&2
+      return 1
+    fi
+    echo "    (attempt ${attempt}/${max} failed — waiting 8s for propagation…)" >&2
+    sleep 8
+    attempt=$(( attempt + 1 ))
+  done
+}
+
 echo "==> Granting project roles to ${DEPLOYER_SA}"
 for role in \
   roles/run.admin \
@@ -144,7 +173,7 @@ for role in \
   roles/firebasehosting.admin \
   roles/firebaserules.admin \
   roles/serviceusage.serviceUsageConsumer \
-  roles/datastore.user; do
+  "${SEED_ROLE[@]}"; do
   gcloud projects add-iam-policy-binding "${PROJECT_ID}" \
     --member="serviceAccount:${DEPLOYER_SA}" --role="${role}" \
     --condition=None >/dev/null
@@ -154,16 +183,16 @@ done
 #    - on the runtime SA, so the deployed service may run AS book-api.
 #    - on the build SA, so the deployer may submit the source build that runs as it.
 echo "==> Granting scoped iam.serviceAccountUser (runtime + build SAs)"
-gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
+retry_gcp gcloud iam service-accounts add-iam-policy-binding "${RUNTIME_SA}" \
   --member="serviceAccount:${DEPLOYER_SA}" \
   --role="roles/iam.serviceAccountUser" --project "${PROJECT_ID}" >/dev/null
-gcloud iam service-accounts add-iam-policy-binding "${BUILD_SA}" \
+retry_gcp gcloud iam service-accounts add-iam-policy-binding "${BUILD_SA}" \
   --member="serviceAccount:${DEPLOYER_SA}" \
   --role="roles/iam.serviceAccountUser" --project "${PROJECT_ID}" >/dev/null
 
 # 6. Let the GitHub repo's identities (and only them) impersonate the deployer SA.
 echo "==> Binding workloadIdentityUser for repo ${GITHUB_REPO}"
-gcloud iam service-accounts add-iam-policy-binding "${DEPLOYER_SA}" \
+retry_gcp gcloud iam service-accounts add-iam-policy-binding "${DEPLOYER_SA}" \
   --project "${PROJECT_ID}" \
   --role="roles/iam.workloadIdentityUser" \
   --member="principalSet://iam.googleapis.com/projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL_ID}/attribute.repository/${GITHUB_REPO}" \

@@ -15,6 +15,9 @@ name: CI
 on:
   pull_request:
   workflow_dispatch:
+  # Reusable by deploy-prod.yml: a production promotion re-runs this exact gate
+  # against the commit being promoted and deploys only on green (CUTOVER-PLAN).
+  workflow_call:
 
 # Cancel superseded runs on the same ref to save minutes.
 concurrency:

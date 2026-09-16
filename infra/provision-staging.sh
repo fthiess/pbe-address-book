@@ -23,18 +23,22 @@
 #   - gcloud installed; `gcloud auth login` as an owner of the billing account.
 #   - Run from the REPO ROOT (the Cloud Run deploy builds `.` via the Dockerfile).
 #
-# Usage:
-#   PROJECT_ID=pbe-book-staging REGION=us-central1 \
-#   BILLING_ACCOUNT=00839F-755E1F-BA1FA4 \
-#   bash infra/provision-staging.sh
+# Usage (the env FILE decides the project — a PROJECT_ID exported in the shell is
+# overridden by the file's value, so select the environment with ENV_FILE):
+#   BILLING_ACCOUNT=00839F-755E1F-BA1FA4 bash infra/provision-staging.sh
+#   ENV_FILE=infra/environments/prod.env BILLING_ACCOUNT=... bash infra/provision-staging.sh
 #
 set -euo pipefail
 
 # Load the shared environment values (single source of truth; OFC-84) so this
 # script, setup-wif.sh, and the deploy workflow agree. The ${VAR:-default}
 # fallbacks below still apply to anything the file omits (or if it is absent).
-ENV_FILE="$(dirname "$0")/environments/staging.env"
+ENV_FILE="${ENV_FILE:-$(dirname "$0")/environments/staging.env}"
 # shellcheck disable=SC1090,SC1091
+if [ ! -f "${ENV_FILE}" ]; then
+  echo "!! ENV_FILE=${ENV_FILE} does not exist (cwd: $(pwd)). Refusing to fall back to staging defaults." >&2
+  exit 1
+fi
 if [ -f "${ENV_FILE}" ]; then set -a; . "${ENV_FILE}"; set +a; fi
 
 PROJECT_ID="${PROJECT_ID:-pbe-book-staging}"
@@ -271,10 +275,10 @@ fi
 # means the next CI deploy ships a service that rejects every scheduler token,
 # and the backup stops with no other symptom.
 if [[ "${BACKUP_INVOKER_SUBJECT:-}" != "${BACKUP_SUBJECT_LIVE}" ]]; then
-  echo "!! BACKUP_INVOKER_SUBJECT in environments/staging.env is '${BACKUP_INVOKER_SUBJECT:-<unset>}'"
+  echo "!! BACKUP_INVOKER_SUBJECT in ${ENV_FILE} is '${BACKUP_INVOKER_SUBJECT:-<unset>}'"
   echo "!! but ${BACKUP_SA_EMAIL} has uniqueId '${BACKUP_SUBJECT_LIVE}'."
   echo "!! This run deploys the correct value, but the next CI deploy will NOT."
-  echo "!! Update environments/staging.env: BACKUP_INVOKER_SUBJECT=${BACKUP_SUBJECT_LIVE}"
+  echo "!! Update ${ENV_FILE}: BACKUP_INVOKER_SUBJECT=${BACKUP_SUBJECT_LIVE}"
 fi
 BACKUP_INVOKER_SUBJECT="${BACKUP_SUBJECT_LIVE}"
 
@@ -313,11 +317,15 @@ fi
 #     ${SA_EMAIL}. Book's runtime — the internet-facing part — has no path to the
 #     roster at all.
 echo "==> Granting ${DEPLOYER_SA:-<deployer>} objectViewer on gs://${UAT_FIXTURES_BUCKET}"
-if [ -n "${DEPLOYER_SA:-}" ]; then
+# The deployer SA is created by setup-wif.sh, which may not have run yet on a
+# fresh project: skip (never fail) so first bring-up can continue to the deploy.
+if [ -n "${DEPLOYER_SA:-}" ] && ! gcloud iam service-accounts describe "${DEPLOYER_SA}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  echo "!! ${DEPLOYER_SA} does not exist yet (run infra/setup-wif.sh, then re-run this script) — skipping the CI read grant."
+elif [ -n "${DEPLOYER_SA:-}" ]; then
   gcloud storage buckets add-iam-policy-binding "gs://${UAT_FIXTURES_BUCKET}" \
     --member="serviceAccount:${DEPLOYER_SA}" --role="roles/storage.objectViewer" >/dev/null
 else
-  echo "!! DEPLOYER_SA unset (environments/staging.env) — skipping the CI read grant."
+  echo "!! DEPLOYER_SA unset (${ENV_FILE}) — skipping the CI read grant."
 fi
 
 # 7. Deploy the API to Cloud Run (built remotely by Cloud Build from ./Dockerfile).
@@ -327,6 +335,10 @@ fi
 echo "==> Deploying ${SERVICE} to Cloud Run"
 SECRET_FLAG=()
 if gcloud secrets describe ghost-admin-api-key --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  # The runtime SA must be able to READ the secret or the revision fails to start
+  # ("Permission denied on secret" — the first production bring-up hit this; on
+  # staging the grant had been made by hand). Idempotent.
+  gcloud secrets add-iam-policy-binding ghost-admin-api-key --project "${PROJECT_ID}"     --member="serviceAccount:${SA_EMAIL}" --role="roles/secretmanager.secretAccessor" >/dev/null
   SECRET_FLAG=(--set-secrets "GHOST_ADMIN_API_KEY=ghost-admin-api-key:latest")
 else
   echo "    (note: secret ghost-admin-api-key not found — deploying without the Ghost Admin key)"

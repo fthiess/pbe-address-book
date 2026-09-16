@@ -1,32 +1,199 @@
-# PBE Address Book — Cutover Plan (Phase 8) — STUB
+# PBE Address Book — Cutover Plan (Phase 8)
 
-> **This is a placeholder, not a plan.** Created 2026-07-14 alongside `UAT-PLAN.md` (DECISIONS D132) so that cutover-scope items discovered before Phase 8 have a recorded home. It is filled in at Phase 8 planning, following the dev-workflow skill's `launch-and-cutover.md` methodology: every launch must be **reversible** (a tested way back), **observable** (health legible within minutes), and **incremental** (exposure grows in steps). Until then, `CODING-PROJECT-PLAN.md` §9 remains the authoritative sketch of the migration-and-cutover sequence.
+Written 2026-09-15 (DECISIONS **D180**), under a compressed schedule: the
+production environment, the genesis data load and the Ghost flip all happen
+between the afternoon of Tuesday 2026-09-15 and the evening of Wednesday
+2026-09-16, ahead of a soft launch to the UAT cohort and the public launch at
+the Reunion on Saturday 2026-09-19 (immovable). The stub this replaces, and the
+items it had parked, are in `history/` and folded into the sections below.
 
-## Parked here so far (accumulating before Phase 8 planning)
+The plan follows the dev-workflow skill's `launch-and-cutover.md`: every launch
+must be **reversible** (a tested way back), **observable** (health legible within
+minutes) and **incremental** (exposure grows in steps).
 
-- **Production deploy workflow** — a manually-dispatched, deliberate promotion (never merge-triggered; CODING-PROJECT-PLAN §5): `infra/environments/prod.env`, `pbe-book-prod` provisioning + WIF, the prod-hardening notes from `infra/README.md`, and no seeding steps ever pointed at prod. **The workflow runs the full verification gate against the exact commit being promoted and deploys only on green** — deliberately unlike the staging path, where D143 removed the post-merge re-run. The asymmetry is the point: a staging deploy follows a merge whose tree the pull-request gate has just verified, whereas a production promotion may target a commit whose green is days old, and the deploy behind it is the one irreversible step onto real member data and the live Ghost write path. **Ticket: OFC-253.**
+## 1. Scope and preconditions
 
-- **CI/CD topology at cutover** (recorded 2026-07-23 alongside D143) — today a single branch, `main`, deploys to staging on merge. At cutover the staging trigger must be **re-pointed off `main`**, because `main` becomes the production-blessed branch and whatever branch then carries day-to-day work inherits `main`'s present meaning. That repoint is not one file: `deploy-staging.yml`'s `push:` trigger, the branch-protection rules and required checks, and the "merging to main deploys staging" language in the repo `CLAUDE.md`, CODING-PROJECT-PLAN §5, and the vendored `dev-workflow` skill all move together. **Nothing changes before then** — a second branch created today would mean exactly what `main` already means, with nothing downstream of it.
-  - **Open question, to settle at Phase 8 planning: a second branch, or a release tag?** The original sketch was a long-lived `dev` (→ staging) alongside `main` (→ production), designed when production was assumed to deploy *on merge to `main`*. Now that production is a manual dispatch of a chosen commit, the second branch is no longer a deploy trigger, and a **release tag** would record "what is blessed for production" just as well — with no second long-lived branch to keep from drifting, no back-merge discipline after a hotfix, no change to `main`'s meaning, and no doc sweep. The tag is the simpler topology and the current lean; the branch's surviving argument is that it offers a place to stabilize a release candidate and an at-a-glance answer to "what is in production right now". **Forrest's call at Phase 8.**
-- **Theme cutover** — Phase 7.6 deploys the Book-integrated theme to Ghost-staging only; `pbe400.org` stays on the pre-Book theme until cutover. The staging↔prod theme diff (account-portal links → Book, plus the D55 disable-Ghost-member-editing flip) is therefore a cutover artifact to carry and apply here.
-- **UAT wind-down feed-in** — UAT-PLAN §10: the tester cohort's experience informs the staged-exposure plan; some UAT testers are natural candidates for the early-exposure ring.
-- **The production Mixpanel token** (7a-2, D140) — `BOOK_MIXPANEL_TOKEN` defaults to **empty**, which disables analytics; only `infra/environments/staging.env` sets it today. The Mixpanel-Prod token must be added to `prod.env` as part of the production deploy path (OFC-253), or the production SPA ships with analytics silently off. This is the deliberate trade recorded in D140: dev and CI can never pollute the real dataset, at the price of a prod build that must be told its token.
-- **Book's Mixpanel `api_host`** — ✅ **DONE EARLY, on staging (D162).** This item planned to adopt the `mp.pbe400.org` proxy *at* cutover, once `book.pbe400.org` made Book same-site with `pbe400.org`. **D161 brought that condition forward** by moving Book-staging to `book-staging.pbe400.org`, so `api_host` and `firebase.json`'s `connect-src` both moved then — together, as this item warned they must. **Nothing to do at cutover except confirm it still holds on the prod tier**, since `book.pbe400.org` is same-site by the same argument. ⚠ **Two things this item's completion does *not* settle.** First, **`cross_subdomain_cookie` remains `false`** and is still an open decision: `.pbe400.org` is now genuinely available, but sharing Mixpanel's identity cookie across every subdomain is a privacy call on its own merits — decide it, don't inherit it. Second, routing through the proxy puts **gladstone, a single VM, in Book's telemetry path**; D126 keeps extra infrastructure out of Book's *serving* path and this is the analogous question for telemetry. Reverting `api_host` for prod only — an environment-specific define, on the token's pattern — is the escape hatch if that trade looks wrong at production scale.
+**In scope for cutover:** `pbe-book-prod` provisioned; the production deploy
+workflow; the genesis load of the merged roster (1,480 brothers) and the initial
+headshot corpus (135 photos); the live Ghost site's account cleanup (384
+duplicate accounts deleted, 33 names/emails corrected) so that one Ghost address
+maps to one Book profile; the Book-integrated theme on `pbe400.org`;
+`book.pbe400.org` on Firebase Hosting with a managed certificate; Mixpanel-Prod
+on from the first session.
 
-- **Re-verify the delivered `Cache-Control` on production, on the real domain** (7b-1, D146; OFC-212/OFC-321) — the whole D95/D126 posture is enforced by `firebase.json` header rules that depend on **undocumented** Firebase Hosting precedence (all matching rules merge per header key; the last match wins). The same file ships to prod, so the rules travel — but the behaviour is measured, not guaranteed by Firebase's docs, and prod is a different Hosting site on a custom domain. **Re-run the 7b-1 probe matrix against `book.pbe400.org` after cutover and before announcing:** `/api/profiles`, `/api/me`, `/api/profiles/:id`, `/api/admin/backup` must deliver `no-store`, `/img/**` must deliver `private, …, immutable` (**not** `public`), the SPA shell `no-cache, must-revalidate`, and hashed assets `public, …, immutable`. On prod these carry **real** member PII, so a silent regression is a live privacy incident rather than a staging curiosity.
-- **Pin both Cloud Run scaling levels on prod** (7b-1, OFC-209; DECISIONS N134) — `provision-staging.sh` now PATCHes the v2 `scaling.maxInstanceCount` to 1 because `--max-instances` is revision-scoped and a fresh service carries a platform-default service-level umbrella of **20**. A newly provisioned `pbe-book-prod` will have the same divergence until that step runs. Confirm the console reports "Max: 1" after provisioning; do **not** substitute `--scaling=1` (MANUAL mode, which pins one instance permanently and destroys D83's scale-to-zero cost floor).
+**Deliberately deferred to Stage 5 (post-launch), each with a ticket:**
 
-- **Provision the production backup bucket, schedule, and its pinned identity** (7b-2, D147; OFC-327) — `provision-staging.sh` creates all of it when pointed at a prod project, but three things do **not** carry across automatically and each fails silently rather than loudly. **(1)** `prod.env` needs its own `BACKUP_BUCKET`, `BACKUP_AUDIENCE`, and `BACKUP_INVOKER_SUBJECT`; the last is the **numeric unique ID** of the *prod* `book-backup-scheduler` service account, which does not exist until the script has run once, so provisioning prints the value and it must be pasted back before the first CI deploy — a stale or empty value ships a service that rejects every scheduler token and backups never start. **(2)** The alert policy in `provision-observability.sh` must be created against the prod project with a prod `ALERT_EMAIL`; a staging-only alert watching a production backup is the failure mode this whole design exists to prevent. Note the *display names* default to a literal `(staging)` suffix — `ALERT_CHANNEL_NAME`, `DENIAL_POLICY_NAME`, and `BACKUP_POLICY_NAME` — so `prod.env` must override all three or the production console shows staging-labelled policies. Cosmetic, but it is the label an operator reads at 2 a.m. to decide whether an alert matters. **(3)** Prod's first run is a genuine bootstrap — no prior snapshot — so it takes the informational path, not the alert; confirm a snapshot object actually lands rather than trusting the absence of an alarm, and confirm `gs://<prod bucket>` really is public-access-prevented, since unlike staging it holds **real member PII**. The "backup never ran" backstop D148 deferred is **built** (D149 — twice-daily cadence, 20-hour metric-absence policy), but it is provisioned by `provision-observability.sh`, which is Forrest-run rather than deploy-run: on a fresh prod project it does not exist until that script is run against prod, and an absence policy is additionally **inert until the first successful backup arms it**, so confirm it is both created and armed rather than trusting a quiet console.
+- The Ghost pull-and-seed of `ghostMemberId` (OFC-340). ⚠ Consequence: the
+  Book→Ghost push (`routes/ghost-push.ts`) **no-ops for every brother** until it
+  runs, so an email or newsletter-preference edit in Book does not propagate to
+  Ghost. Sign-in is unaffected (it resolves by email, not by `ghostMemberId`).
+- The observability provisioning (`provision-observability.sh` against prod) and
+  the backup-integrity job repoint (OFC-333); the a11y fixes (OFC-261 →
+  Stage 3.2); the CI/CD topology repoint — **production deploys from a release
+  tag** (Forrest's call, D180), so `main` keeps its meaning and nothing moves.
+- OFC-369 (sticky uuid miss), OFC-371 (one tester's upstream block), the two
+  UAT cosmetics (OFC-420, OFC-418) and the error-popup bug (OFC-422).
 
-- **Repoint the backup-integrity job at production** (Phase 7.8, D102/D151; OFC-333) — the verification job is built and exercised against *staging*, where the data is fake and the pipeline is already proven; the environment it most needs to watch is the one that does not exist until this cutover. Four things must follow the new project: `prod.env` gains the verify-job block; the `pbe-book-verify` service account needs **cross-project** `storage.objectViewer` on the prod backup bucket and the prod image bucket; the Cloud Scheduler trigger must be pointed at prod's backup bucket rather than staging's; and the **first prod run must be confirmed by eye** — a job that silently verifies the wrong (staging) bucket would report green forever while production's backups went unchecked, which is precisely the class of failure this job exists to catch. Note the cadence changes here too: **weekly until public launch, then monthly** (D151). ⚠ Detection is presence-based only — at any cadence past Monitoring's 23.5-hour absence ceiling a job that stops being scheduled is invisible, so the first prod run is also the only confirmation that the schedule fires at all.
+**Preconditions checked before the load:** the genesis snapshot converts with
+zero errors; the restore dry-run passes structural validation; the emulator
+rehearsal shows the sole usable admin and the all-`true` privacy block on loaded
+data (D163's obligation — verified on the emulator 2026-09-15, re-verified on
+prod after the load).
 
-## Sections to be written (skeleton)
+## 2. Rollback plan (written first)
 
-1. **Scope and preconditions** — what must be true before cutover is scheduled (UAT exit criteria met, migration rehearsed clean on staging per §9, all fix-before-cutover tickets closed).
-2. **Rollback plan** *(written first, per the methodology)* — numeric trigger conditions, the mechanism and time target for each lever (redeploy previous, DNS back, restore data), and the data-considerations answer for anything written during a bad window.
-3. **Production environment bring-up** — `pbe-book-prod`, the prod deploy workflow (OFC-253), Secret Manager population, Ghost Admin key for production.
-4. **Data migration and the initial Ghost↔Book sync** — the §9 / `PRE-LAUNCH-TOOLS.md` sequence: dedup → pull-and-seed → bulk load → one-time sync; dry-run record.
-5. **Ghost theme and portal flip** — the Book-integrated theme to `pbe400.org`; disable Ghost member editing; redirect account UI to Book (D55).
-6. **DNS and TLS** — `book.pbe400.org` → Firebase Hosting; Google-managed cert provisioning.
-7. **Staged exposure and the first-hour watch** — Forrest → brothers-in-the-know → full-list announcement; the first-hour checklist; who is watching.
-8. **Post-launch steady state** — the Book→Ghost push live, the alignment audit cadence, backups verified against production.
+Book production has **no users to protect** until the theme flip makes it
+reachable, which keeps the rollback simple.
+
+| Trigger | Lever | Time |
+|---|---|---|
+| Sign-in fails for Forrest or for more than one tester in the first hour | Ghost Admin → Design → activate the previous theme (`pbe-news-ghost-theme-prev-20260626.zip`) and remove the `/book/` route from `routes.yaml`. Book becomes unreachable from the newsletter; nobody else notices. | < 5 min |
+| A privacy regression (a `no-store` route caching, an `/img/` object served `public`) | Same theme rollback, then fix and redeploy | < 5 min |
+| Bad data (a mapping error visible across many records) | `restore.ts --file <corrected snapshot>` after `maintenance-on.sh`; the tool takes a safety snapshot first | < 15 min |
+| A broken deploy | Dispatch `Deploy production` on the previous tag | ~15 min (gate re-runs) |
+
+Numeric thresholds from the methodology apply to the soft-launch cohort: a new
+class of client error in more than a trickle of sessions, or sign-in denials
+above a handful, means hold exposure (no announcement) and investigate.
+
+**Data written during a bad window:** brothers may edit their own profiles from
+the first sign-in. A theme rollback loses nothing (Book keeps its data); a data
+restore replaces edits made since the snapshot — the safety snapshot the tool
+writes first is the record of them.
+
+## 3. Production environment bring-up
+
+All three infra scripts now take `ENV_FILE` (default `staging.env`);
+`infra/environments/prod.env` is the single source of production values.
+
+```bash
+# from the repo root, as an owner of the billing account
+ENV_FILE=infra/environments/prod.env BILLING_ACCOUNT=00839F-755E1F-BA1FA4 bash infra/provision-staging.sh
+ENV_FILE=infra/environments/prod.env bash infra/setup-wif.sh
+# paste the printed book-backup-scheduler uniqueId into prod.env BACKUP_INVOKER_SUBJECT,
+# then COMMIT, MERGE and only then cut the release tag — the workflow reads prod.env
+# from the tagged tree and refuses an empty value.
+ENV_FILE=infra/environments/prod.env bash infra/provision-observability.sh
+# ^ before the genesis load: the audit SINK it creates is what long-retains the
+#   restore's forensic entry (D150); an entry written before the sink exists lives
+#   only in the 30-day default bucket. The alert policies it also creates stay
+#   inert until the first backup arms them — fine.
+```
+
+⚠ The WIF trust condition (`setup-wif.sh`) admits `refs/heads/main` **and**
+`refs/tags/v*` — the tag clause is what lets `Deploy production` authenticate;
+re-run the script against prod after any change to it.
+
+Done ahead of the script on 2026-09-15: project created and billed, Firebase
+enabled (`firebase projects:addfirebase pbe-book-prod`), and the Ghost Admin key
+stored as Secret Manager `ghost-admin-api-key` in the prod project.
+
+**Console-only steps (no CLI):** Firebase Hosting → Add custom domain
+`book.pbe400.org` → put the TXT verification and A records into Namecheap DNS →
+wait for the managed certificate. ⚠ Start this first; the certificate is the
+one step nobody controls. ⚠ The custom domain resolves to the same shared
+Hosting IP as staging (`199.36.158.100`), so it fixes hostname reputation but
+not an IP-level block (OFC-371).
+
+Then confirm the two things the stub warned fail silently: Cloud Run reports
+**Max: 1** at the service level (N134; never `--scaling=1`), and the backup
+bucket is public-access-prevented and receives its first snapshot after the
+first scheduled run.
+
+## 4. The production deploy
+
+`.github/workflows/deploy-prod.yml` is a manual dispatch on a **release tag**. It
+re-runs the full verification gate (`ci.yml` via `workflow_call`) against the
+promoted commit and deploys only on green — the asymmetry with staging is the
+point (D143). It has no seeding, mirroring or tester steps and refuses a
+`-staging` project id.
+
+```bash
+git tag -a v2026.09.16 -m "Book production launch" <sha> && git push origin v2026.09.16
+gh workflow run "Deploy production" --ref v2026.09.16
+gh run watch
+```
+
+The workflow's last step curls `/api/health` on the Cloud Run URL.
+
+## 5. Genesis data load
+
+The bulk loader is **convert, then restore** (D180): `csv-to-snapshot.ts` turns
+the merged roster CSV into a version-2 restore snapshot, and the existing
+offline restore (D101) validates and writes it. Real PII stays under the
+gitignored `apps/api/restore-artifacts/`.
+
+```bash
+# 1. Convert (pure; writes nothing to any cloud). --admin makes Forrest the sole admin (OFC-238).
+npm run genesis:convert --workspace apps/api -- \
+  --csv "<roster>.csv" --headshots "<headshots dir>" --admin 849 \
+  --out restore-artifacts/genesis.json
+# 2. Dry-run the restore against prod, then run it. --force: no maintenance page on an empty site.
+npm run restore --workspace apps/api -- --file restore-artifacts/genesis.json \
+  --project pbe-book-prod --force --no-safety-snapshot --skip-ghost-audit --dry-run
+npm run restore --workspace apps/api -- --file restore-artifacts/genesis.json \
+  --project pbe-book-prod --force --no-safety-snapshot --skip-ghost-audit --confirm pbe-book-prod
+# 3. Headshots: the SAME encode path as a member upload, under the snapshot's keys.
+npm run genesis:headshots --workspace apps/api -- --source "<headshots dir>" \
+  --snapshot restore-artifacts/genesis.json --project pbe-book-prod \
+  --bucket pbe-book-prod-images --confirm pbe-book-prod
+# 4. Cold start so the cache hydrates (there is no Firestore listener):
+gcloud run services update pbe-book-api --region us-central1 --project pbe-book-prod --update-env-vars GENESIS=1
+```
+
+Then verify **on loaded data, not by reading a constant** (D163): sign in as
+#849, `GET /api/me` shows all five privacy flags `true`; the Directory count is
+1,480 minus the two de-brothered records; a deceased brother renders the
+In Memoriam line; a headshot renders for a brother in the corpus.
+
+Conversion facts recorded for the record: one 1930 row whose name is literally
+"scratched out" is **skipped** (add in-app); one phone without its `+` country
+prefix and one alternate email equal to its primary are **dropped**; one Sports
+line is **truncated** to the 120-character cap — all four reported by the tool.
+
+## 6. Ghost: account cleanup, theme and portal flip
+
+**Cleanup (replaces Stage 2.2's manual dedup, OFC-339):** the actions CSV Forrest
+prepared is applied by `pbe-data-merge/apply_ghost_cleanup.py` (workspace, not
+this repo) — 384 deletes, 32 name corrections, 1 email change, every row
+verified against the live member's uuid first. Its `--report` measures the
+launch's key metric: **815 Ghost members remain, 800 match a Book email, 15 do
+not** (those 15 cannot sign in until their Book email or Ghost address is
+corrected; the list is a private workspace file).
+
+**Theme:** package with `git archive --format=zip HEAD` (never an exclusion glob;
+never `Compress-Archive` — landmines in memory) and upload via Ghost Admin →
+Design. Merge `ghost-bridge/routes-snippet.yaml`'s `/book/` entry into the live
+`routes.yaml` (download, edit, upload — never replace). `book_url` defaults to
+production (D139), so no setting change is needed on pbe400.org. Verify
+`https://pbe400.org/book/` returns 200 and the D55 flip (account links → Book)
+is live.
+
+## 7. Staged exposure and the first-hour watch
+
+1. **Forrest** signs in from pbe400.org → Book, edits his own profile, views a
+   deceased brother and a brother with a headshot, exports nothing.
+2. **The first-hour checklist:** `/api/health` ok; Cloud Run logs flowing with
+   **no new error types**; the Cache-Control probe matrix on `book.pbe400.org`
+   (`/api/profiles`, `/api/me`, `/api/profiles/:id`, `/api/admin/backup` →
+   `no-store`; `/img/**` → `private, …, immutable`, never `public`; shell
+   `no-cache, must-revalidate`; hashed assets `public, …, immutable` — D146);
+   Mixpanel-Prod shows Book events under `app = book`; the rollback lever
+   (previous theme zip) is at hand.
+3. **Soft launch:** email to the UAT cohort plus a few brothers in the know,
+   Wednesday evening. Watch sign-in denials in the logs for 24 hours.
+4. **Public launch:** the Reunion, Saturday 2026-09-19 (OFC-347).
+
+## 8. Post-launch steady state and what is still owed
+
+- Run `provision-observability.sh` against prod (alerts armed by the first
+  backup); repoint the integrity job (OFC-333); confirm the first backup lands.
+- Run the Ghost pull-and-seed (OFC-340) to turn the Book→Ghost push on; then the
+  alignment audit cadence. ⚠ **Until OFC-340 runs, do not "resolve in Book's
+  favour" any `newsletterDrift` the Admin → Ghost audit reports.** The genesis
+  load stamps every living brother `allowNewsletterEmail: true` at the load
+  instant (the roster carries no Ghost subscription column), so a brother who
+  unsubscribed in Ghost shows as drift with Book's change *newer*; re-saving him
+  in Book would re-subscribe him. OFC-340 seeds the real state from Ghost.
+- Tighten the Cloud Build SA and `run-sources-*` grant (infra/README.md).
+- Re-triage Stage 5 after the Reunion (LAUNCH-SCHEDULE.md).

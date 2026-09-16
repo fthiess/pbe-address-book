@@ -1,0 +1,147 @@
+name: Deploy production
+
+# The PRODUCTION deploy: a deliberate, manually dispatched promotion of one
+# chosen commit — never merge-triggered (CODING-PROJECT-PLAN §5; CUTOVER-PLAN;
+# OFC-253). Dispatch it ON the ref to promote (a release tag, normally):
+#
+#   gh workflow run "Deploy production" --ref v2026.09.16
+#
+# Two deliberate differences from deploy-staging.yml:
+#
+#   1. It RE-RUNS THE FULL VERIFICATION GATE (ci.yml via workflow_call) against
+#      the exact commit being promoted and deploys only on green. Staging
+#      trusts the pull-request gate because a merge deploys the tree that gate
+#      just verified (D143); a promotion may target a commit whose green is days
+#      old, and the deploy behind it is the one irreversible step onto real
+#      member data and the live Ghost write path.
+#   2. There are NO seeding, mirroring or tester-provisioning steps, and none
+#      may ever be added. Production data is written by operators only — the
+#      genesis load (csv-to-snapshot → restore) and the offline restore — and
+#      the fake-data seeders refuse a project id that does not end in
+#      "-staging" (D72) as the last line of defence.
+#
+# Auth is keyless (Workload Identity Federation, infra/setup-wif.sh run against
+# infra/environments/prod.env). No JSON key exists anywhere — the repo is PUBLIC.
+on:
+  workflow_dispatch:
+
+# Never run two production deploys at once, and never cancel one in flight.
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify gate (promoted commit)
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  deploy:
+    name: Deploy to production
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Resolve build version
+        run: echo "BOOK_VERSION=$(git rev-parse --short HEAD)" >> "$GITHUB_ENV"
+
+      # The prod environment file is the single source of truth (OFC-84); every
+      # KEY=value line becomes a step-visible variable. See the staging workflow
+      # for why the Cloud Run env-var list below must stay complete.
+      - name: Load production environment
+        run: grep -E '^[A-Za-z_][A-Za-z0-9_]*=' infra/environments/prod.env | tr -d '\r' >> "$GITHUB_ENV"
+
+      - name: Refuse an incomplete environment
+        run: |
+          for v in PROJECT_ID REGION SERVICE RUNTIME_SA IMAGE_BUCKET DEPLOYER_SA WIF_PROVIDER \
+                   BACKUP_BUCKET BACKUP_AUDIENCE BACKUP_INVOKER_SUBJECT GHOST_JWKS_URL \
+                   GHOST_JWT_ISSUER GHOST_JWT_AUDIENCE GHOST_BRIDGE_URL GHOST_BRIDGE_TARGET \
+                   GHOST_ADMIN_API_URL GHOST_NEWSLETTER_ID BOOK_PBE_NEWS_URL BOOK_MIXPANEL_TOKEN; do
+            if [ -z "${!v}" ]; then echo "::error::prod.env leaves $v empty"; exit 1; fi
+          done
+          case "$PROJECT_ID" in *-staging) echo "::error::refusing to deploy a staging project from the production workflow"; exit 1;; esac
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared libs + SPA
+        env:
+          BOOK_APP_VERSION: ${{ env.BOOK_VERSION }}
+        run: |
+          npm run build:libs
+          npm run build:web
+
+      # Authenticate LAST-minute (the OIDC credential is baked statically).
+      - name: Authenticate to Google Cloud (keyless, WIF)
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ env.PROJECT_ID }}
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.DEPLOYER_SA }}
+
+      # Node 20 for the Firebase CLI — the load-bearing pin (see deploy-staging.yml).
+      - name: Use Node 20 for the Firebase CLI
+        uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+
+      - name: Deploy Firebase Hosting + Firestore rules
+        run: npx firebase deploy --only hosting,firestore:rules --project "$PROJECT_ID" --non-interactive
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Reconcile image bucket (IAM + versioning + lifecycle, D94/N42)
+        run: |
+          gcloud storage buckets add-iam-policy-binding "gs://$IMAGE_BUCKET" \
+            --member="serviceAccount:$RUNTIME_SA" --role="roles/storage.objectAdmin" --quiet
+          gcloud storage buckets update "gs://$IMAGE_BUCKET" --versioning
+          printf '%s' '{ "rule": [ { "action": { "type": "Delete" }, "condition": { "daysSinceNoncurrentTime": 90 } } ] }' > /tmp/img-lifecycle.json
+          gcloud storage buckets update "gs://$IMAGE_BUCKET" --lifecycle-file=/tmp/img-lifecycle.json
+
+      - name: Reconcile backup bucket (IAM + lifecycle, D147/D101)
+        run: |
+          if ! gcloud storage buckets describe "gs://$BACKUP_BUCKET" >/dev/null 2>&1; then
+            echo "::error::gs://$BACKUP_BUCKET does not exist — run infra/provision-staging.sh with ENV_FILE=infra/environments/prod.env"
+            exit 1
+          fi
+          gcloud storage buckets add-iam-policy-binding "gs://$BACKUP_BUCKET" \
+            --member="serviceAccount:$RUNTIME_SA" --role="roles/storage.objectCreator" --quiet
+          gcloud storage buckets add-iam-policy-binding "gs://$BACKUP_BUCKET" \
+            --member="serviceAccount:$RUNTIME_SA" --role="roles/storage.objectViewer" --quiet
+          printf '%s' '{ "rule": [ { "action": { "type": "Delete" }, "condition": { "age": 90 } } ] }' > /tmp/backup-lifecycle.json
+          gcloud storage buckets update "gs://$BACKUP_BUCKET" --lifecycle-file=/tmp/backup-lifecycle.json
+
+      # ⚠ Every runtime setting the API reads must be on this one line (see the
+      # staging workflow's note): an omission silently un-configures a feature.
+      - name: Deploy API to Cloud Run
+        run: |
+          gcloud run deploy "$SERVICE" \
+            --source . \
+            --region "$REGION" \
+            --service-account "$RUNTIME_SA" \
+            --max-instances 1 --min-instances 0 \
+            --memory 1Gi \
+            --set-env-vars "IMAGE_BUCKET=$IMAGE_BUCKET,GHOST_JWKS_URL=$GHOST_JWKS_URL,GHOST_JWT_ISSUER=$GHOST_JWT_ISSUER,GHOST_JWT_AUDIENCE=$GHOST_JWT_AUDIENCE,GHOST_BRIDGE_URL=$GHOST_BRIDGE_URL,GHOST_BRIDGE_TARGET=$GHOST_BRIDGE_TARGET,GHOST_ADMIN_API_URL=$GHOST_ADMIN_API_URL,GHOST_NEWSLETTER_ID=$GHOST_NEWSLETTER_ID,BACKUP_BUCKET=$BACKUP_BUCKET,BACKUP_AUDIENCE=$BACKUP_AUDIENCE,BACKUP_INVOKER_SUBJECT=$BACKUP_INVOKER_SUBJECT,BOOK_API_VERSION=$BOOK_VERSION" \
+            --set-secrets "GHOST_ADMIN_API_KEY=ghost-admin-api-key:latest" \
+            --allow-unauthenticated \
+            --quiet
+
+      - name: Proof of life
+        run: |
+          url="$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')"
+          echo "Cloud Run: $url"
+          curl -fsS "$url/api/health" | head -c 400; echo
+          echo "Hosting: https://$PROJECT_ID.web.app (custom domain per CUTOVER-PLAN)"

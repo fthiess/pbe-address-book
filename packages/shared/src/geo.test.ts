@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  countryCodeFromName,
   countryName,
   hasControlledSubdivisions,
   isCountryCode,
@@ -73,5 +74,22 @@ describe("subdivisions", () => {
     expect(subdivisionName("US", "MA")).toBe("Massachusetts");
     expect(subdivisionName("CA", "BC")).toBe("British Columbia");
     expect(subdivisionName("GB", "Kent")).toBe("Kent");
+  });
+});
+
+describe("countryCodeFromName", () => {
+  it("resolves standard names, aliases and bare codes, case-insensitively", () => {
+    expect(countryCodeFromName("United Kingdom")).toBe("GB");
+    expect(countryCodeFromName("uk")).toBe("GB");
+    expect(countryCodeFromName("Hong Kong")).toBe("HK");
+    expect(countryCodeFromName("Curacao")).toBe("CW");
+    expect(countryCodeFromName("  united  states ")).toBe("US");
+    expect(countryCodeFromName("Puerto Rico")).toBe("PR");
+    expect(countryCodeFromName("de")).toBe("DE");
+    expect(countryCodeFromName("Portugal")).toBe("PT");
+  });
+  it("returns null for the unrecognised", () => {
+    expect(countryCodeFromName("Atlantis")).toBeNull();
+    expect(countryCodeFromName("")).toBeNull();
   });
 });
