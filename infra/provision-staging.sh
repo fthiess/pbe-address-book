@@ -335,6 +335,10 @@ fi
 echo "==> Deploying ${SERVICE} to Cloud Run"
 SECRET_FLAG=()
 if gcloud secrets describe ghost-admin-api-key --project "${PROJECT_ID}" >/dev/null 2>&1; then
+  # The runtime SA must be able to READ the secret or the revision fails to start
+  # ("Permission denied on secret" — the first production bring-up hit this; on
+  # staging the grant had been made by hand). Idempotent.
+  gcloud secrets add-iam-policy-binding ghost-admin-api-key --project "${PROJECT_ID}"     --member="serviceAccount:${SA_EMAIL}" --role="roles/secretmanager.secretAccessor" >/dev/null
   SECRET_FLAG=(--set-secrets "GHOST_ADMIN_API_KEY=ghost-admin-api-key:latest")
 else
   echo "    (note: secret ghost-admin-api-key not found — deploying without the Ghost Admin key)"
