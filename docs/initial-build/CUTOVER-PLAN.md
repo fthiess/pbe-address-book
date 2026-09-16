@@ -184,6 +184,10 @@ is live.
    Wednesday evening. Watch sign-in denials in the logs for 24 hours.
 4. **Public launch:** the Reunion, Saturday 2026-09-19 (OFC-347).
 
+## As run (2026-09-15/16) — see DECISIONS N179
+
+Everything in §3–§7 executed on the night of Sept 15 (US time). One production-only defect: **Ghost Pro drops the query string on its `/book` → `/book/` redirect**, so `GHOST_BRIDGE_URL` needs its trailing slash (fixed live, recorded in `prod.env`). Ghost cleanup: 420 changes, 812 members remain, 811 match Book. Load: 1,480 profiles, 135 headshots. First hour: zero errors. Forrest signed in, edited his profile, verified admin, photos and In Memoriam. Soft-launch email is the next step.
+
 ## 8. Post-launch steady state and what is still owed
 
 - Run `provision-observability.sh` against prod (alerts armed by the first
