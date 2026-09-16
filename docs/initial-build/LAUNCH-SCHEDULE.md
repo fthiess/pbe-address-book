@@ -32,7 +32,7 @@ Stage labels live in Linear, one per work session, each label's description carr
 | — | **Aug 14–27** | **BLACKOUT. No changes at all.** |
 | **3.1–3.5** | Aug 28 – ~Sept 4 | UAT wind-down (OFC-343); fix-before-cutover (OFC-295 / OFC-242, the a11y fixes, and any UAT blockers); the production environment and deploy path (OFC-253 / OFC-229); **dry runs until clean** (OFC-344); **cutover** (OFC-345) |
 | **4.1–4.3** | ~Sept 4 – Sept 19 | Soft-launch watch (OFC-346); the backup-integrity job (OFC-333); **public launch at the Reunion, Sept 19 — immovable** (OFC-347) |
-| **5** | Sept 20 onward | Post-launch. Deliberately **not** sub-divided — re-triage after launch. |
+| **5** | Sept 20 onward | Post-launch. Re-triaged 2026-09-16 into the **PL-1 … PL-17** session sequence in [`../POST-LAUNCH-CAMPAIGN.md`](../POST-LAUNCH-CAMPAIGN.md); the `Stage` labels are retired in its favour. |
 
 **Target the early end of the cutover window — Sept 1–4, not Sept 11.** A cutover on Sept 2 buys 17 days of real-user observation before the Reunion demo; Sept 10 buys 9.
 
@@ -47,7 +47,7 @@ The Stage 2.4–3.5 work did not happen during or after UAT; on the afternoon of
 | Tue Sept 15, evening | `pbe-book-prod` provisioned; `prod.env`, `deploy-prod.yml`, the genesis converter and headshot loader (one PR, deep review); emulator rehearsal clean; Ghost cleanup dry-run and sign-in match report; `book.pbe400.org` custom domain + DNS started (the certificate is the long pole) |
 | Wed Sept 16 | Ghost cleanup applied; release tag → `Deploy production`; genesis restore + headshots + cold start; theme + `/book/` route on pbe400.org; first-hour watch; **soft-launch email to the UAT cohort** (Stage 4.1) |
 | Sat Sept 19 | **Public launch at the Reunion** (Stage 4.3) — unchanged |
-| Stage 5 | Everything deferred by D180 — re-triage after the Reunion |
+| Stage 5 | Everything deferred by D180 — re-triaged 2026-09-16 into `docs/POST-LAUNCH-CAMPAIGN.md` (PL-1 … PL-17) |
 
 ## Why the schedule has this shape
 
