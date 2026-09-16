@@ -34,7 +34,8 @@ import {
 
 /**
  * **The offline restore** (D101; 7b-3) — Book's most destructive operation, and
- * the only bulk write into it that exists (D100).
+ * the only whole-database write into it that exists (D100; the one other
+ * out-of-band writer is D181's single-field `backfill-full-name.ts`).
  *
  * THE MODEL. Book goes hard-down (`infra/maintenance-on.sh`, D118), this tool
  * replaces the three durable collections from a snapshot, and Book restarts and

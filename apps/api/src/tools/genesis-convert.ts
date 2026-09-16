@@ -23,8 +23,12 @@
  *   - `role` is written ONLY for the ids passed as admins; everyone else is a
  *     brother by omission (OFC-238; DATABASE-SCHEMA §3.3).
  *   - A deceased brother gets `allowNewsletterEmail: false` (the schema forces it).
- *   - `fullLegalName` is set only when the source "Full Name" differs from the
- *     first/middle/last join — it is where suffixes and go-by first names live.
+ *   - `fullLegalName` carries the source "Full Name" verbatim whenever it is
+ *     non-blank (D181). The first cut kept it only when it differed from the
+ *     first/middle/last join, which left ~1,150 brothers with a blank Full name in
+ *     the Directory, the edit form and the CSV export — read as missing data, not
+ *     as "nothing to add" (OFC-429). The join is the fallback the backfill tool
+ *     (`backfill-full-name.ts`) writes for a stored record that has none.
  *   - `Course` may list several codes ("6-3, 15"); each must be a known code
  *     (`MAJOR_CODES`); unknown ones are dropped WITH a warning, primary stays first.
  *   - Dates arrive as either `YYYY` or `YYYY-M-D`; a full date maps to
@@ -447,11 +451,9 @@ function convertNames(row: Row, profile: GenesisProfile): void {
   if (middle) {
     profile.middleName = middle;
   }
-  const joined = [row["First Name"], row["Middle Name"], row["Last Name"]]
-    .filter((part) => part !== "")
-    .join(" ");
-  if (row["Full Name"] !== "" && row["Full Name"] !== joined) {
-    profile.fullLegalName = row["Full Name"];
+  const full = optional(row["Full Name"]);
+  if (full) {
+    profile.fullLegalName = full;
   }
   const mug = optional(row.Mugname);
   if (mug) {

@@ -127,8 +127,8 @@ describe("convertGenesisCsv", () => {
     // The D163 obligation: the shared default, all five true — never a copy.
     expect(p.privacy).toEqual(DEFAULT_PRIVACY);
     expect(DEFAULT_PRIVACY.shareEmergency).toBe(true);
-    // Full Name equals the join, so no fullLegalName.
-    expect(p).not.toHaveProperty("fullLegalName");
+    // Full Name is carried verbatim even when it equals the join (D181, OFC-429).
+    expect(p.fullLegalName).toBe("James Alan Smyth");
     expect(result.stats).toMatchObject({ rows: 1, admins: 1, withEmail: 1, withAddress: 1 });
   });
 
@@ -143,6 +143,11 @@ describe("convertGenesisCsv", () => {
       now: NOW,
     });
     expect(data(result, 5247).fullLegalName).toBe("James Alan Smyth Jr.");
+  });
+
+  it("leaves fullLegalName off only when the source Full Name is blank", () => {
+    const result = convertGenesisCsv(csv([{ ...smyth, "Full Name": "  " }]), { now: NOW });
+    expect(data(result, 5247)).not.toHaveProperty("fullLegalName");
   });
 
   it("maps a deceased brother: dates, obituary, newsletter off, birth year", () => {
