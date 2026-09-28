@@ -92,7 +92,7 @@ describe.skipIf(!hasEmulator)("bulk headshots (emulator)", () => {
     const decisions = planUploads(rows, targets, current);
     // A brother edits #5003 AFTER the read: the conditional write must refuse it.
     await db.collection("profiles").doc("5003").update({ nickname: "Edited mid-run" });
-    const saved: ArtifactItem[][] = [];
+    const saved: (ArtifactItem & { done: boolean })[][] = [];
     const outcome = await executeUploads(
       decisions,
       {
@@ -100,8 +100,8 @@ describe.skipIf(!hasEmulator)("bulk headshots (emulator)", () => {
         images,
         encode,
         bytesOf: (id) => Buffer.from(`png${id}`),
-        saveArtifact: async (items) => {
-          saved.push(items.map((i) => ({ ...i })));
+        saveArtifact: async (items, done) => {
+          saved.push(items.map((i) => ({ ...i, done })));
         },
       },
       current,
@@ -113,7 +113,12 @@ describe.skipIf(!hasEmulator)("bulk headshots (emulator)", () => {
     const { decisions, outcome, saved } = await upload();
     expect(decisions.map((d) => d.kind)).toEqual(["upload", "upload", "upload", "changed"]);
     // The undo list went down, all `intended`, before any write.
-    expect(saved[0]?.map((i) => i.outcome)).toEqual(["intended", "intended", "intended"]);
+    expect(saved[0]?.map((i) => [i.outcome, i.done])).toEqual([
+      ["intended", false],
+      ["intended", false],
+      ["intended", false],
+    ]);
+    expect(saved[1]?.every((i) => i.done)).toBe(true);
     expect(outcome.errors).toEqual([]);
     expect(outcome.items.map((i) => [i.id, i.prior, i.outcome])).toEqual([
       [5001, null, "written"],
@@ -133,6 +138,9 @@ describe.skipIf(!hasEmulator)("bulk headshots (emulator)", () => {
 
     expect(images.has(headshotObjectKey(5001, "gnew5001"))).toBe(true);
     expect(images.has(thumbnailObjectKey(5001, "gnew5001"))).toBe(true);
+    // #5003's pointer never moved, so its just-written objects were removed again.
+    expect(images.has(headshotObjectKey(5003, "gnew5003"))).toBe(false);
+    expect(images.has(thumbnailObjectKey(5003, "gnew5003"))).toBe(false);
     // The replaced photo is KEPT (undo is instant; purge is a separate step).
     expect(images.has(headshotObjectKey(5002, "gold2"))).toBe(true);
   });

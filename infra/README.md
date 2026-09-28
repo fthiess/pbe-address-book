@@ -481,20 +481,23 @@ to keep: maintenance on, then
 
 ```bash
 npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
-  --undo apps/api/restore-artifacts/bulk-headshots-<timestamp>.json --confirm $PROJECT
+  --undo restore-artifacts/bulk-headshots-<timestamp>.json --confirm $PROJECT
 ```
 
+(npm runs the tool with its working directory at `apps/api/`, so the relative
+artifact path above is the one the load printed; an absolute path also works),
 then cold start and maintenance off as in steps 4–5. Undo points each profile that
 still shows the run's photo back at its prior one — instantly, because the replaced
 photos were never deleted — and removes the run's own objects. A profile a brother
-changed since is left alone and reported.
+changed since is left alone and reported. Undo and purge each write their own
+record (`bulk-headshots-undo-…json` / `-purge-…json`) beside the run artifact.
 
 **Purge** — once the result is accepted, delete the replaced photos (undo is then
 impossible). It deletes only objects no profile points at, so Book can stay up:
 
 ```bash
 npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
-  --purge apps/api/restore-artifacts/bulk-headshots-<timestamp>.json --dry-run   # then --confirm $PROJECT
+  --purge restore-artifacts/bulk-headshots-<timestamp>.json --dry-run   # then --confirm $PROJECT
 ```
 
 **Rehearsing on staging.** Staging's profiles are fake and wiped on every deploy

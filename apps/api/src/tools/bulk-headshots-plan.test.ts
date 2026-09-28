@@ -122,7 +122,7 @@ function item(id: number, prior: string | null, next: string, outcome: ArtifactI
 }
 
 describe("planUndo", () => {
-  it("reverts written (and intended) items still showing our photo, nothing else", () => {
+  it("reverts written, intended and failed items still showing our photo, nothing else", () => {
     const decisions = planUndo(
       [
         item(5001, null, "gnew1", "written"),
@@ -130,11 +130,15 @@ describe("planUndo", () => {
         item(5003, null, "gnew3", "written"),
         item(5004, null, "gnew4", "changed"),
         item(5005, null, "gnew5", "written"),
+        item(5006, null, "gnew6", "failed"), // error arrived after the commit landed
+        item(5007, null, "gnew7", "failed"), // write truly failed
       ],
       new Map([
         [5001, pointer("gnew1", "t1")],
         [5002, pointer("gnew2", "t2")],
         [5003, pointer("gown")],
+        [5006, pointer("gnew6", "t6")],
+        [5007, pointer(null)],
       ]),
     );
     expect(decisions.map((d) => [d.item.id, d.kind])).toEqual([
@@ -142,6 +146,8 @@ describe("planUndo", () => {
       [5002, "revert"],
       [5003, "changed"],
       [5005, "missing"],
+      [5006, "revert"],
+      [5007, "changed"],
     ]);
   });
 });

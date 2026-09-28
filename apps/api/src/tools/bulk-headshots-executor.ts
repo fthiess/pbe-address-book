@@ -10,12 +10,21 @@
  * `headshotVersion`; clearing a pointer mirrors `DELETE /api/profiles/:id/headshot`
  * (`hasHeadshot: false`, `headshotVersion` removed).
  *
- * The Firestore seam is a small interface so the emulator suite drives the real
+ * The conditional write is `FirestoreProfileStore.update` itself — the same
+ * precondition and error mapping a brother's edit goes through — with the
+ * document's `updateTime` carried as the app's concurrency token (`encodeToken`).
+ * The seam is a small interface so the emulator suite drives the real
  * `FirestorePointerStore` while the image side uses the in-memory `ImageStore`.
  */
 import { headshotObjectKey, thumbnailObjectKey } from "@pbe/shared";
-import { FieldValue, type Firestore, type Timestamp } from "firebase-admin/firestore";
+import type { Firestore } from "firebase-admin/firestore";
 import type { ImageStore } from "../data/images.js";
+import {
+  FirestoreProfileStore,
+  MissingProfileError,
+  StaleWriteError,
+  encodeToken,
+} from "../data/profiles.js";
 import type { EncodedHeadshot } from "../images/encode.js";
 import type {
   ArtifactItem,
@@ -25,9 +34,6 @@ import type {
   UploadDecision,
 } from "./bulk-headshots-plan.js";
 
-/** gRPC codes the conditional update can fail with. */
-const GRPC_NOT_FOUND = 5;
-const GRPC_FAILED_PRECONDITION = 9;
 /** Firestore `getAll` handles large batches, but keep requests modest. */
 const READ_CHUNK = 300;
 const WEBP = "image/webp";
@@ -41,11 +47,15 @@ export interface PointerStore<Token> {
   write(id: number, version: string | null, token: Token): Promise<PointerWriteResult>;
 }
 
-export class FirestorePointerStore implements PointerStore<Timestamp> {
-  constructor(private readonly db: Firestore) {}
+export class FirestorePointerStore implements PointerStore<string> {
+  private readonly profiles: FirestoreProfileStore;
 
-  async read(ids: readonly number[]): Promise<Map<number, CurrentPointer<Timestamp>>> {
-    const out = new Map<number, CurrentPointer<Timestamp>>();
+  constructor(private readonly db: Firestore) {
+    this.profiles = new FirestoreProfileStore(db);
+  }
+
+  async read(ids: readonly number[]): Promise<Map<number, CurrentPointer<string>>> {
+    const out = new Map<number, CurrentPointer<string>>();
     for (let i = 0; i < ids.length; i += READ_CHUNK) {
       const refs = ids
         .slice(i, i + READ_CHUNK)
@@ -62,27 +72,31 @@ export class FirestorePointerStore implements PointerStore<Timestamp> {
         out.set(Number(snap.id), {
           hasHeadshot: data.hasHeadshot === true,
           headshotVersion: typeof data.headshotVersion === "string" ? data.headshotVersion : null,
-          token: snap.updateTime,
+          token: encodeToken(snap.updateTime),
         });
       }
     }
     return out;
   }
 
-  async write(id: number, version: string | null, token: Timestamp): Promise<PointerWriteResult> {
-    const data =
-      version === null
-        ? { hasHeadshot: false, headshotVersion: FieldValue.delete() }
-        : { hasHeadshot: true, headshotVersion: version };
+  async write(id: number, version: string | null, token: string): Promise<PointerWriteResult> {
     try {
-      await this.db.collection("profiles").doc(String(id)).update(data, { lastUpdateTime: token });
+      await this.profiles.update(
+        id,
+        version === null
+          ? { set: { hasHeadshot: false }, remove: ["headshotVersion"], precondition: token }
+          : {
+              set: { hasHeadshot: true, headshotVersion: version },
+              remove: [],
+              precondition: token,
+            },
+      );
       return "ok";
     } catch (error) {
-      const code = (error as { code?: number }).code;
-      if (code === GRPC_FAILED_PRECONDITION) {
+      if (error instanceof StaleWriteError) {
         return "changed";
       }
-      if (code === GRPC_NOT_FOUND) {
+      if (error instanceof MissingProfileError) {
         return "missing";
       }
       throw error;
@@ -96,8 +110,11 @@ export interface UploadDeps<Token> {
   readonly encode: (bytes: Buffer) => Promise<EncodedHeadshot>;
   /** The PNG bytes for a brother (already read and hashed by the caller). */
   readonly bytesOf: (id: number) => Buffer;
-  /** Persist the artifact; called with every item `intended` BEFORE the first write, and again at the end. */
-  readonly saveArtifact: (items: readonly ArtifactItem[]) => Promise<void>;
+  /**
+   * Persist the artifact: once with every item `intended` BEFORE the first write
+   * (`done` false), and once with the outcomes at the end (`done` true).
+   */
+  readonly saveArtifact: (items: readonly ArtifactItem[], done: boolean) => Promise<void>;
   readonly log?: (line: string) => void;
 }
 
@@ -126,7 +143,7 @@ export async function executeUploads<Token>(
       outcome: "intended",
     };
   });
-  await deps.saveArtifact(items);
+  await deps.saveArtifact(items, false);
   const errors: string[] = [];
   for (const [index, decision] of uploads.entries()) {
     const item = items[index] as ArtifactItem;
@@ -139,6 +156,15 @@ export async function executeUploads<Token>(
       ]);
       const result = await deps.pointers.write(id, decision.version, decision.token);
       item.outcome = result === "ok" ? "written" : result;
+      if (result !== "ok") {
+        // The pointer definitely did not move, so the objects just written are
+        // referenced by nothing: remove them. (A THROWN write is ambiguous — it
+        // may have committed — so its objects are kept; undo checks the pointer.)
+        await Promise.all([
+          deps.images.delete(headshotObjectKey(id, decision.version)),
+          deps.images.delete(thumbnailObjectKey(id, decision.version)),
+        ]);
+      }
     } catch (error) {
       item.outcome = "failed";
       errors.push(`#${id}: ${(error as Error).message}`);
@@ -147,7 +173,7 @@ export async function executeUploads<Token>(
       deps.log?.(`  ${index + 1}/${uploads.length}`);
     }
   }
-  await deps.saveArtifact(items);
+  await deps.saveArtifact(items, true);
   return { items, errors };
 }
 

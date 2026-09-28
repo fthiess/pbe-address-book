@@ -161,15 +161,20 @@ export type RevertDecision<Token = unknown> =
   | { readonly kind: "missing"; readonly item: ArtifactItem };
 
 /**
- * Undo: every item the run may have written (`written`, or `intended` from a run
- * that died mid-way) whose profile still shows our version goes back to `prior`.
+ * Undo: every item the run may have written — `written`, `intended` (a run that
+ * died mid-way), or `failed` (a pointer write whose error may have arrived after
+ * Firestore committed it) — whose profile still shows our version goes back to
+ * `prior`. Showing our version is the proof the write landed.
  */
 export function planUndo<Token>(
   items: readonly ArtifactItem[],
   current: ReadonlyMap<number, CurrentPointer<Token>>,
 ): RevertDecision<Token>[] {
   return items
-    .filter((item) => item.outcome === "written" || item.outcome === "intended")
+    .filter(
+      (item) =>
+        item.outcome === "written" || item.outcome === "intended" || item.outcome === "failed",
+    )
     .map((item) => {
       const pointer = current.get(item.id);
       if (!pointer) {

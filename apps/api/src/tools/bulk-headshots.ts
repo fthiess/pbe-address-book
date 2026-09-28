@@ -188,8 +188,14 @@ interface Artifact {
 }
 
 async function readArtifact(path: string): Promise<Artifact> {
-  const artifact = JSON.parse(await readFile(resolve(path), "utf8")) as Artifact;
-  if (artifact.tool !== TOOL || !Array.isArray(artifact.items)) {
+  let artifact: Artifact;
+  try {
+    artifact = JSON.parse(await readFile(resolve(path), "utf8")) as Artifact;
+  } catch (error) {
+    // npm runs this with cwd apps/api/, so a relative path resolves from there.
+    fail(`cannot read the artifact ${resolve(path)}: ${(error as Error).message}`);
+  }
+  if (artifact?.tool !== TOOL || !Array.isArray(artifact.items)) {
     fail(`${path} is not a ${TOOL} run artifact.`);
   }
   if (artifact.projectId !== projectId || artifact.bucket !== bucketName) {
@@ -198,6 +204,30 @@ async function readArtifact(path: string): Promise<Artifact> {
     );
   }
   return artifact;
+}
+
+/** Undo and purge record what they did next to the run artifact they acted on. */
+async function writeRecord(
+  artifactPath: string,
+  kind: "undo" | "purge",
+  result: object,
+): Promise<string> {
+  const stamp = new Date().toISOString();
+  const path = resolve(
+    dirname(resolve(artifactPath)),
+    `${TOOL}-${kind}-${stamp.replace(/[:.]/gu, "-")}.json`,
+  );
+  const record = {
+    tool: TOOL,
+    kind,
+    projectId,
+    bucket: bucketName,
+    of: resolve(artifactPath),
+    at: stamp,
+    ...result,
+  };
+  await writeFile(path, `${JSON.stringify(record, null, 2)}\n`);
+  return path;
 }
 
 function coldStartReminder(): void {
@@ -287,14 +317,13 @@ async function dryRunEncode(
 /** Writes the run artifact: the intended set before any write, the outcomes after. */
 function artifactWriter(): {
   path: string;
-  save: (items: readonly ArtifactItem[]) => Promise<void>;
+  save: (items: readonly ArtifactItem[], done: boolean) => Promise<void>;
 } {
   const startedAt = new Date().toISOString();
   const path = resolve(outDir, `${TOOL}-${startedAt.replace(/[:.]/gu, "-")}.json`);
-  let saves = 0;
-  const save = async (items: readonly ArtifactItem[]) => {
-    // First save: every item `intended`, before any write (a superset is a safe undo).
-    const done = saves++ > 0;
+  // The executor saves once with every item `intended` before any write (a superset
+  // is a safe undo), then once with the outcomes.
+  const save = async (items: readonly ArtifactItem[], done: boolean) => {
     const artifact: Artifact = {
       tool: TOOL,
       projectId,
@@ -367,6 +396,7 @@ async function runUndo(path: string): Promise<number> {
   }
   await requireMaintenance();
   const result = await executeUndo(decisions, pointers, images);
+  console.log(`==> Undo recorded in ${await writeRecord(path, "undo", result)}`);
   for (const line of result.skipped) {
     console.log(`  skipped ${line}`);
   }
@@ -397,6 +427,7 @@ async function runPurge(path: string): Promise<number> {
     return 0;
   }
   const result = await executePurge(decisions, images);
+  console.log(`==> Purge recorded in ${await writeRecord(path, "purge", result)}`);
   for (const error of result.errors) {
     console.error(`  ERROR ${error}`);
   }
