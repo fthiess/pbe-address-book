@@ -442,8 +442,15 @@ silently never retained.
 does what `PUT /api/profiles/:id/headshot` does (same `encodeHeadshot`; objects
 first, pointer last), writes only `hasHeadshot` / `headshotVersion`, and skips any
 profile that no longer shows the photo the operator chose against. Read D182 for
-the rules; this is the runbook. It is a bulk write, so it runs **in maintenance**
-(D100), and like the restore it is **invisible until a cold start**.
+the rules; this is the runbook. Like the restore it is **invisible until a cold
+start**. It supports two modes: **in maintenance** (D100; the default — uploads and
+undos refuse to write unless the maintenance page is up) or **with Book up**
+(`--book-up`, D181's model). ⚠ **On production use `--book-up`** until OFC-449 lands:
+the maintenance scripts republish Hosting from your *local* `apps/web/dist`, which
+on production replaces the released SPA with an unreleased build. With Book up, the
+new photos are invisible and edits to the touched records get a 412 (recovered in
+place, D109) until the cold start, so run it when Book is quiet and cold-start at
+once.
 
 **The plan** is a CSV, `const_id,file,expected_version`, built outside this repo (it
 names real brothers' files — never commit one). `file` is a PNG or JPEG path,
@@ -454,30 +461,28 @@ profile showed when the photo was chosen, blank if it had none.
 PROJECT=pbe-book-prod        # or pbe-book-staging for the rehearsal
 BUCKET=pbe-book-prod-images  # IMAGE_BUCKET in infra/environments/<env>.env
 
-# 1. Dry run with Book UP: reads the live pointers, encodes every photo, writes nothing.
-npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
-  --plan /path/to/upload-plan.csv --dry-run
+# 1. Dry run: reads the live pointers, encodes every photo, writes nothing.
+npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET   --plan /path/to/upload-plan.csv --dry-run
 
-# 2. Take Book down.
-PROJECT_ID=$PROJECT ./infra/maintenance-on.sh
+# 2. The load, with Book serving. Prints the artifact path
+#    (restore-artifacts/bulk-headshots-<timestamp>.json) — KEEP IT: it is the undo
+#    list and the purge list.
+npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET   --plan /path/to/upload-plan.csv --book-up --confirm $PROJECT
 
-# 3. The load. Refuses unless /api/health serves the maintenance page. Prints the
-#    artifact path (restore-artifacts/bulk-headshots-<timestamp>.json) — KEEP IT:
-#    it is the undo list and the purge list.
-npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
-  --plan /path/to/upload-plan.csv --confirm $PROJECT
-
-# 4. Force a cold start (same image, new revision) and confirm "N profiles cached".
-IMAGE=$(gcloud run services describe pbe-book-api --region us-central1 \
-  --project $PROJECT --format='value(spec.template.spec.containers[0].image)')
+# 3. IMMEDIATELY force a cold start (same image, new revision) and confirm
+#    "N profiles cached" in the new revision's startup log.
+IMAGE=$(gcloud run services describe pbe-book-api --region us-central1   --project $PROJECT --format='value(spec.template.spec.containers[0].image)')
 gcloud run deploy pbe-book-api --image "$IMAGE" --region us-central1 --project $PROJECT
 
-# 5. Bring Book back up, then spot-check brothers across the batch in the app.
-PROJECT_ID=$PROJECT ./infra/maintenance-off.sh
+# 4. Spot-check brothers across the batch in the app.
 ```
 
+(In maintenance instead — staging, or production once OFC-449 lands: run
+`PROJECT_ID=$PROJECT ./infra/maintenance-on.sh` before step 2 and drop `--book-up`;
+run `maintenance-off.sh` after step 3.)
+
 **Undo** — if a wrong photo turns up, or the run reported failures you do not want
-to keep: maintenance on, then
+to keep (add `--book-up` on production, as for the load):
 
 ```bash
 npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
@@ -486,7 +491,7 @@ npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCK
 
 (npm runs the tool with its working directory at `apps/api/`, so the relative
 artifact path above is the one the load printed; an absolute path also works),
-then cold start and maintenance off as in steps 4–5. Undo points each profile that
+then cold start as in step 3. Undo points each profile that
 still shows the run's photo back at its prior one — instantly, because the replaced
 photos were never deleted — and removes the run's own objects. A profile a brother
 changed since is left alone and reported. Undo and purge each write their own
@@ -506,8 +511,8 @@ photo (use its current `headshotVersion` as `expected_version`) and some without
 pointed at a few of the AI-generated originals in
 `gs://pbe-book-staging-uat/uat-photos/originals` — **never real brothers' faces on
 staging**. Change one of those profiles' photos in the app after writing the plan to
-see the `changed` skip. Run steps 1–5, then an undo, then (after re-running the load)
-a purge.
+see the `changed` skip. Run steps 1–4 exactly as for production (`--book-up`), then an
+undo, then (after re-running the load) a purge.
 
 ## Architecture invariants the playbook encodes
 

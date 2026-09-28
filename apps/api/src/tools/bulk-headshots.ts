@@ -20,11 +20,14 @@
  * before it. Versions are content hashes (`headshotVersionOf`), so a re-run after
  * a partial failure finds the finished rows `already-done`.
  *
- * ⚠ RUN WITH BOOK IN MAINTENANCE (D100/D118), THEN FORCE A COLD START. Book
- * serves from an in-memory cache hydrated only at cold start (D83): until the
- * instance is replaced the new photos are invisible, and the cached pointers are
- * stale. Uploads and undos refuse to write unless the maintenance page is up
- * (`--force` only for an environment with no Hosting).
+ * ⚠ THEN FORCE A COLD START. Book serves from an in-memory cache hydrated only
+ * at cold start (D83): until the instance is replaced the new photos are
+ * invisible, and an edit to a touched record gets a 412 (the cache holds the
+ * pre-write token; the SPA recovers, D109). By default uploads and undos refuse to
+ * write unless the maintenance page is up (D100/D118). `--book-up` runs with Book
+ * serving instead — D181's model, and how the first load ran (D182), because the
+ * maintenance scripts republish Hosting from a local build (OFC-449). `--force`
+ * skips the pre-flight only for an environment with no Hosting.
  *
  * UNDO AND PURGE. Before the first write the run records
  * `<out>/bulk-headshots-<timestamp>.json`: each target's prior photo version and
@@ -87,11 +90,13 @@ function printHelp(): void {
       "  --confirm <id>      Must equal --project. Required to write anything.",
       "  --dry-run           Read the live pointers and plan (uploads also encode every photo); write nothing.",
       "  --hosting-url <url> Origin probed for the maintenance page (default https://<project>.web.app).",
+      "  --book-up           Write with Book serving (D181 model; see OFC-449): skip the maintenance",
+      "                      pre-flight, then force a cold start at once.",
       "  --force             Skip the maintenance pre-flight (environments with no Hosting only).",
       "  --out <dir>         Where the run artifact goes (default restore-artifacts/).",
       "  --help, -h          Show this help and exit.",
       "",
-      "⚠ Uploads and undos need Book in maintenance (infra/maintenance-on.sh), then a forced cold start.",
+      "⚠ Uploads and undos need Book in maintenance (infra/maintenance-on.sh) or --book-up, then a forced cold start.",
     ].join("\n"),
   );
 }
@@ -122,7 +127,7 @@ const VALUED = [
 ];
 for (let i = 0; i < args.length; i++) {
   const arg = args[i] as string;
-  if (arg === "--dry-run" || arg === "--force") {
+  if (arg === "--dry-run" || arg === "--force" || arg === "--book-up") {
     flags.add(arg);
     continue;
   }
@@ -162,6 +167,12 @@ const images = new GcsImageStore(bucketName);
 /** Refuse to write pointers unless Book is serving the maintenance page (as the restore does). */
 async function requireMaintenance(): Promise<void> {
   const hostingUrl = values["hosting-url"] ?? `https://${projectId}.web.app`;
+  if (flags.has("--book-up")) {
+    console.log(
+      "==> --book-up: writing with Book SERVING. Force a cold start the moment this finishes — until then the new photos are invisible and edits to these records get 412.",
+    );
+    return;
+  }
   if (flags.has("--force")) {
     console.log("==> Maintenance pre-flight SKIPPED (--force).");
     return;
@@ -232,7 +243,7 @@ async function writeRecord(
 
 function coldStartReminder(): void {
   console.log(
-    `==> NOW force a cold start of pbe-book-api in ${projectId} (infra/README.md), confirm "N profiles cached", then run infra/maintenance-off.sh.`,
+    `==> NOW force a cold start of pbe-book-api in ${projectId} (infra/README.md) and confirm "N profiles cached"${flags.has("--book-up") ? "." : ", then end maintenance."}`,
   );
 }
 
