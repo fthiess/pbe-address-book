@@ -11,7 +11,8 @@
     "prepare:uat-photos": "tsx src/tools/prepare-uat-photos.ts",
     "genesis:convert": "tsx src/tools/csv-to-snapshot.ts",
     "genesis:headshots": "tsx src/tools/load-headshots.ts",
-    "backfill:full-name": "tsx src/tools/backfill-full-name.ts"
+    "backfill:full-name": "tsx src/tools/backfill-full-name.ts",
+    "headshots:bulk": "tsx src/tools/bulk-headshots.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",

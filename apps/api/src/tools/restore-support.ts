@@ -318,3 +318,37 @@ export function renderRosterSummary(roster: PrivilegedRoster, delta: RosterDelta
   );
   return lines;
 }
+
+/**
+ * Is the origin serving the maintenance page? `null` means the probe itself failed
+ * — a refused connection or a DNS failure, which is *consistent* with a down
+ * environment but does not prove the edge swap happened.
+ *
+ * Both `false` and `null` refuse the restore. Treating "I could not tell" as a pass
+ * is what makes a fat-fingered `--hosting-url`, a project whose Hosting site name
+ * differs from `<project>.web.app`, or a momentary network failure silently
+ * equivalent to "Book is down" — and the consequence of getting that wrong is the
+ * whole reason the pre-flight exists: the single instance keeps serving its
+ * pre-restore cache as authoritative (there is no Firestore listener) and any edit
+ * it accepts writes into the collections being replaced. `--force` is the documented
+ * way to say "this environment has no Hosting", and it is one word.
+ */
+export async function probeMaintenance(origin: string): Promise<boolean | null> {
+  try {
+    // Probe `/api/health`, NOT the origin root. `firebase.maintenance.json`
+    // publishes `apps/web/dist`, which still contains `index.html` and every built
+    // asset, and Firebase Hosting serves a matching **static file** in preference
+    // to a rewrite — so during maintenance the bare origin still returns the real
+    // SPA, and only paths with no file behind them reach `/maintenance.html`
+    // (measured on staging, 7b-3 live test; the D118 gap is filed as OFC-334).
+    // A path under `/api/` can never be a static file, so it is governed by the
+    // rewrite in maintenance and answered by Cloud Run when Book is up — which
+    // makes it the only honest probe of the state this pre-flight cares about.
+    const response = await fetch(`${origin.replace(/\/+$/, "")}${MAINTENANCE_PROBE_PATH}`, {
+      redirect: "follow",
+    });
+    return isMaintenancePage(await response.text());
+  } catch {
+    return null;
+  }
+}

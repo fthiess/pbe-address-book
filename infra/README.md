@@ -435,6 +435,77 @@ and `users` (N18/N90), so a restore test there must not be followed by a merge t
 `provision-observability.sh` must agree, or the forensic entry is written and
 silently never retained.
 
+## Loading a batch of headshots (D182) — the procedure
+
+`npm run headshots:bulk --workspace apps/api` puts many prepared headshots onto a
+**live** directory — the composite-portrait load was the first use. Per brother it
+does what `PUT /api/profiles/:id/headshot` does (same `encodeHeadshot`; objects
+first, pointer last), writes only `hasHeadshot` / `headshotVersion`, and skips any
+profile that no longer shows the photo the operator chose against. Read D182 for
+the rules; this is the runbook. It is a bulk write, so it runs **in maintenance**
+(D100), and like the restore it is **invisible until a cold start**.
+
+**The plan** is a CSV, `const_id,file,expected_version`, built outside this repo (it
+names real brothers' files — never commit one). `file` is a PNG or JPEG path,
+relative to the plan's folder; `expected_version` is the `headshotVersion` the
+profile showed when the photo was chosen, blank if it had none.
+
+```bash
+PROJECT=pbe-book-prod        # or pbe-book-staging for the rehearsal
+BUCKET=pbe-book-prod-images  # IMAGE_BUCKET in infra/environments/<env>.env
+
+# 1. Dry run with Book UP: reads the live pointers, encodes every photo, writes nothing.
+npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
+  --plan /path/to/upload-plan.csv --dry-run
+
+# 2. Take Book down.
+PROJECT_ID=$PROJECT ./infra/maintenance-on.sh
+
+# 3. The load. Refuses unless /api/health serves the maintenance page. Prints the
+#    artifact path (restore-artifacts/bulk-headshots-<timestamp>.json) — KEEP IT:
+#    it is the undo list and the purge list.
+npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
+  --plan /path/to/upload-plan.csv --confirm $PROJECT
+
+# 4. Force a cold start (same image, new revision) and confirm "N profiles cached".
+IMAGE=$(gcloud run services describe pbe-book-api --region us-central1 \
+  --project $PROJECT --format='value(spec.template.spec.containers[0].image)')
+gcloud run deploy pbe-book-api --image "$IMAGE" --region us-central1 --project $PROJECT
+
+# 5. Bring Book back up, then spot-check brothers across the batch in the app.
+PROJECT_ID=$PROJECT ./infra/maintenance-off.sh
+```
+
+**Undo** — if a wrong photo turns up, or the run reported failures you do not want
+to keep: maintenance on, then
+
+```bash
+npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
+  --undo apps/api/restore-artifacts/bulk-headshots-<timestamp>.json --confirm $PROJECT
+```
+
+then cold start and maintenance off as in steps 4–5. Undo points each profile that
+still shows the run's photo back at its prior one — instantly, because the replaced
+photos were never deleted — and removes the run's own objects. A profile a brother
+changed since is left alone and reported.
+
+**Purge** — once the result is accepted, delete the replaced photos (undo is then
+impossible). It deletes only objects no profile points at, so Book can stay up:
+
+```bash
+npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
+  --purge apps/api/restore-artifacts/bulk-headshots-<timestamp>.json --dry-run   # then --confirm $PROJECT
+```
+
+**Rehearsing on staging.** Staging's profiles are fake and wiped on every deploy
+(N18), so rehearse with a hand-made plan: a few fake IDs (> #5000), some with a seeded
+photo (use its current `headshotVersion` as `expected_version`) and some without,
+pointed at a few of the AI-generated originals in
+`gs://pbe-book-staging-uat/uat-photos/originals` — **never real brothers' faces on
+staging**. Change one of those profiles' photos in the app after writing the plan to
+see the `changed` skip. Run steps 1–5, then an undo, then (after re-running the load)
+a purge.
+
 ## Architecture invariants the playbook encodes
 
 - Cloud Run: `--max-instances=1 --min-instances=0` — single authoritative
