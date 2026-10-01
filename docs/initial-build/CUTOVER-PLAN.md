@@ -24,9 +24,14 @@ on from the first session.
 **Deliberately deferred to Stage 5 (post-launch), each with a ticket:**
 
 - The Ghost pull-and-seed of `ghostMemberId` (OFC-340). ⚠ Consequence: the
-  Book→Ghost push (`routes/ghost-push.ts`) **no-ops for every brother** until it
-  runs, so an email or newsletter-preference edit in Book does not propagate to
-  Ghost. Sign-in is unaffected (it resolves by email, not by `ghostMemberId`).
+  Book→Ghost **update** push (`routes/ghost-push.ts`) no-ops for every brother
+  until it runs, so a name or newsletter-preference edit in Book does not
+  propagate to Ghost. ⚠ **Corrected 2026-10-01 (N180): this line used to say the
+  whole push no-ops and that sign-in is unaffected. Neither held.** The *create*
+  branch fires on exactly the missing `ghostMemberId`, so a primary-email edit
+  before the seed mints a second Ghost member at the new address, and the
+  brother — still signed in to Ghost as the old one — is then refused by Book
+  (OFC-451). The seed is `npm run ghost:seed` (D183).
 - The observability provisioning (`provision-observability.sh` against prod) and
   the backup-integrity job repoint (OFC-333); the a11y fixes (OFC-261 →
   Stage 3.2); the CI/CD topology repoint — **production deploys from a release
@@ -192,7 +197,8 @@ Everything in §3–§7 executed on the night of Sept 15 (US time). One producti
 
 - Run `provision-observability.sh` against prod (alerts armed by the first
   backup); repoint the integrity job (OFC-333); confirm the first backup lands.
-- Run the Ghost pull-and-seed (OFC-340) to turn the Book→Ghost push on; then the
+- Run the Ghost pull-and-seed (OFC-340; built as `npm run ghost:seed`, D183) to
+  turn the Book→Ghost push on; then the
   alignment audit cadence. ⚠ **Until OFC-340 runs, do not "resolve in Book's
   favour" any `newsletterDrift` the Admin → Ghost audit reports.** The genesis
   load stamps every living brother `allowNewsletterEmail: true` at the load

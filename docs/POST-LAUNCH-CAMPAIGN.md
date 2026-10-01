@@ -17,7 +17,7 @@ The work plan for the period after the public launch at the 2026-09-19 Reunion: 
 
 | Label | Model | Tickets | Scope and why it is here |
 |---|---|---|---|
-| **PL-1** | Fable | OFC-340 | **Ghost pull-and-seed**: `ghostMemberId`, `adminNote`, and the real newsletter-consent state from Ghost. Until it runs, Book→Ghost push no-ops for every brother and every Ghost opt-out shows as unresolvable drift. Now an in-place backfill in the D181 pattern. Fork: intermediate file (recommended) vs direct write. |
+| **PL-1** | Fable | OFC-340 | **Ghost pull-and-seed**: `ghostMemberId`, `adminNote`, and the real newsletter-consent state from Ghost. Until it runs, the Book→Ghost *update* push no-ops for every brother and every Ghost opt-out shows as unresolvable drift — and, found 2026-10-01, a primary-email edit mints a duplicate Ghost member and locks the brother out (OFC-451, N180). An in-place backfill in the D181 pattern, built as `npm run ghost:seed` (D183): a reviewed plan file, then an apply that carries out exactly that file. |
 | **PL-2** | Opus | OFC-425, 329, 310 (item 4), 334, 312 | **Production hardening and availability**: Cloud Build SA and `run-sources` grant, stray UAT bucket, the two Mixpanel decisions, Firestore delete-protection + PITR into the provisioner, the uptime check (scale-to-zero interaction is the design question), the JWKS-failure alert, maintenance-mode root coverage, the gsutil audit. Forrest runs the gcloud. |
 | **PL-3** | Opus | OFC-427, 422, 428 | **Directory behavioral bugs**: tablet horizontal-scroll capture from the pinned columns, the toast that swallows clicks, the iPhone class-year keyboard. Repro test first on each. |
 | **PL-4** | Opus | OFC-420, 418, 426, 237, 360 | **The cosmetic batch.** OFC-360 (hide the empty Professional section) is Forrest's call. |
@@ -70,7 +70,7 @@ Each of these carries a comment (2026-09-16) naming its trigger.
 - 1,480 profiles loaded; every Full name populated (D181); 135 headshots; Forrest the sole admin.
 - Backups landing twice daily on `pbe-book-prod-backups`; three alert policies enabled to Forrest's email; public-access prevention enforced on both buckets; scaling pin max 1, scale-to-zero.
 - Firestore delete protection and PITR were **disabled** at launch; Forrest was handed the one-line `gcloud firestore databases update` commands on 2026-09-16. PL-2 confirms and bakes them into the provisioner.
-- Book→Ghost push is a no-op for every brother until PL-1. **Do not resolve newsletter drift in Book's favour before then.**
+- Book→Ghost push is a no-op for every brother until PL-1. **Do not resolve newsletter drift in Book's favour before then.** *(Corrected 2026-10-01: only the update branch no-ops. The create branch does not — see N180 and the PL-1 row.)*
 - Fifteen Ghost addresses do not match a Book email (`pbe-data-merge/ghost_unmatched_after_cleanup.csv`); those brothers cannot sign in until an alternate email is added by an admin.
 - The Linear connector still posts as Forrest, not Claude's member (N178).
 

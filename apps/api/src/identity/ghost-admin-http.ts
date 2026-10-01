@@ -138,12 +138,14 @@ export class GhostAdminHttp {
    * `body[itemKey]` (e.g. `members`, `events`, `posts`). Follows
    * `meta.pagination.next` until exhausted; `params` are extra query fields
    * (e.g. `include`, `filter`). A bounded page cap guards against a malformed
-   * `next` cursor looping forever.
+   * `next` cursor looping forever. `options.timeoutMs` bounds **each page**
+   * request (opt-in, as on {@link request}); the report surfaces pass none.
    */
   async getAll(
     path: string,
     itemKey: string,
     params: Record<string, string> = {},
+    options: { timeoutMs?: number } = {},
   ): Promise<unknown[]> {
     const items: unknown[] = [];
     // ~1000 pages × 100 = 100k rows — far above Book's ~2k members. If a fetch ever
@@ -161,7 +163,12 @@ export class GhostAdminHttp {
         page: String(page),
         ...params,
       });
-      const body = (await this.request("GET", `${path}?${query.toString()}`)) as GhostPage;
+      const body = (await this.request(
+        "GET",
+        `${path}?${query.toString()}`,
+        undefined,
+        options,
+      )) as GhostPage;
       const batch = body?.[itemKey];
       if (Array.isArray(batch)) {
         items.push(...batch);

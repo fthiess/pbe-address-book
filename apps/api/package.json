@@ -12,7 +12,8 @@
     "genesis:convert": "tsx src/tools/csv-to-snapshot.ts",
     "genesis:headshots": "tsx src/tools/load-headshots.ts",
     "backfill:full-name": "tsx src/tools/backfill-full-name.ts",
-    "headshots:bulk": "tsx src/tools/bulk-headshots.ts"
+    "headshots:bulk": "tsx src/tools/bulk-headshots.ts",
+    "ghost:seed": "tsx src/tools/ghost-seed.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
