@@ -355,6 +355,11 @@ Then the real thing, in order:
    ```
    Confirm the `N profiles cached` line in the startup log.
 
+   ⚠ **If the backup predates the Ghost seed (D183), re-run it now** —
+   "Linking profiles to Ghost members" below. A pre-seed snapshot has no
+   `ghostMemberId`s, and until they are back a primary-email edit mints a
+   duplicate Ghost member and locks the brother out (N180).
+
 4. **Bring Book back up:**
    ```bash
    PROJECT_ID=pbe-book-staging ./infra/maintenance-off.sh
@@ -542,8 +547,10 @@ export GHOST_ADMIN_API_KEY=$(gcloud secrets versions access latest \
 npm run ghost:seed --workspace apps/api -- --project $PROJECT --ghost-url $GHOST_URL --plan
 
 # 2. REVIEW the printed summary and the plan file: the email moves, the consent
-#    overwrites, the conflicts (nothing is written for those), and the leftover /
-#    unmatched Ghost members (yours to delete in Ghost Admin, or not).
+#    overwrites, the conflicts (reported, never resolved: those profiles are not
+#    linked — except book-consent-changed-since-launch, which is linked with its
+#    consent left as Book has it), and the leftover / unmatched Ghost members
+#    (yours to delete in Ghost Admin, or not).
 
 # 3. Apply exactly that file. Records edited since the plan are skipped and
 #    reported — re-run from step 1 to pick them up.

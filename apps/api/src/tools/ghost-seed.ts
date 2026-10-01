@@ -55,7 +55,12 @@ import { initializeApp } from "firebase-admin/app";
 import { type Timestamp, getFirestore } from "firebase-admin/firestore";
 import { encodeToken } from "../data/profiles.js";
 import { GhostAdminHttp, GhostHttpError } from "../identity/ghost-admin-http.js";
-import { type SeedGhostClient, executeGhostSeed } from "./ghost-seed-executor.js";
+import {
+  type SeedGhostClient,
+  emptySeedOutcome,
+  executeGhostSeed,
+  seedPlanProblems,
+} from "./ghost-seed-executor.js";
 import {
   type GhostSeedPlan,
   type SeedAction,
@@ -207,11 +212,19 @@ async function latestNewsletterEventAt(memberId: string): Promise<string | undef
     bounded,
   );
   let latest: string | undefined;
+  let latestMs = Number.NEGATIVE_INFINITY;
   for (const row of rows) {
-    const data = (row as Record<string, unknown>).data as Record<string, unknown> | undefined;
-    const at = str(data?.created_at);
-    if (at !== "" && (latest === undefined || Date.parse(at) > Date.parse(latest))) {
+    const event = row as Record<string, unknown>;
+    const data = event.data as Record<string, unknown> | undefined;
+    // `data.created_at`, then the event-level `created_at` — the same defensive
+    // order as ghost-reader.ts, so a shape shift does not silently drop the event
+    // and leave the fallback (`updated_at`, which an unsubscribe does not move).
+    const at = str(data?.created_at) || str(event.created_at);
+    const ms = Date.parse(at);
+    // An unparseable timestamp never wins (mirrors ghost-audit.ts).
+    if (!Number.isNaN(ms) && ms > latestMs) {
       latest = at;
+      latestMs = ms;
     }
   }
   return latest;
@@ -233,7 +246,7 @@ function summarize(plan: GhostSeedPlan<string>): void {
       `  deceased / de-brothered:     ${plan.exempt}`,
       `  leftover Ghost members:      ${plan.leftovers.length}`,
       `  unmatched Ghost members:     ${plan.unmatched.length}`,
-      `  conflicts (nothing written): ${plan.conflicts.length}`,
+      `  conflicts (reported, not resolved): ${plan.conflicts.length}`,
       `  genesis consent stamp:       ${plan.genesisConsentStamp.value} on ${plan.genesisConsentStamp.count} profile(s)`,
     ].join("\n"),
   );
@@ -254,7 +267,12 @@ function summarize(plan: GhostSeedPlan<string>): void {
     console.log(`  unmatched: ${m.email} (${m.id}, created ${m.createdAt.slice(0, 10)})`);
   }
   for (const c of plan.conflicts) {
-    console.log(`  conflict #${c.docId}: ${c.kind}${c.memberId ? ` (${c.memberId})` : ""}`);
+    // The one conflict kind that still links the profile: only its consent is held back.
+    const note =
+      c.kind === "book-consent-changed-since-launch"
+        ? " — linked; consent left as Book has it"
+        : " — not linked";
+    console.log(`  conflict #${c.docId}: ${c.kind}${c.memberId ? ` (${c.memberId})` : ""}${note}`);
   }
   for (const id of plan.ghostlessWithEmail) {
     console.log(`  no member #${id}: has an email, no Ghost member at any of his addresses`);
@@ -307,8 +325,17 @@ if (planMode) {
 
 // --apply: carry out the reviewed file exactly.
 const planPath = resolve(values.apply as string);
-const planFile = JSON.parse(await readFile(planPath, "utf8")) as PlanFile;
-if (planFile.kind !== PLAN_KIND || !Array.isArray(planFile.seeds)) {
+let planFile: PlanFile;
+try {
+  planFile = JSON.parse(await readFile(planPath, "utf8")) as PlanFile;
+} catch (error) {
+  // npm runs the tool with its working directory at apps/api/, so a relative
+  // path is resolved from there — the path --plan printed is the one to pass.
+  fail(
+    `cannot read the plan file ${planPath} (${error instanceof Error ? error.message : String(error)}). Relative paths resolve from apps/api/.`,
+  );
+}
+if (planFile?.kind !== PLAN_KIND || !Array.isArray(planFile.seeds)) {
   fail(`${planPath} is not a ghost-seed plan file.`);
 }
 if (planFile.projectId !== projectId || planFile.ghostUrl !== ghostUrl) {
@@ -323,6 +350,11 @@ console.log(
 if (seeds.length === 0) {
   console.log("==> Nothing to do.");
   process.exit(0);
+}
+// Validate the whole file before the first side effect (the executor re-checks).
+const problems = seedPlanProblems(seeds);
+if (problems.length > 0) {
+  fail(`the plan file is malformed; nothing was written:\n  ${problems.join("\n  ")}`);
 }
 
 // The undo record goes down BEFORE the first write, as the intended set with the
@@ -362,7 +394,30 @@ const ghost: SeedGhostClient = {
     );
   },
 };
-const outcome = await executeGhostSeed(db, ghost, seeds);
+// Filled in as the run proceeds, so a crash part-way still records what happened.
+const outcome = emptySeedOutcome();
+try {
+  await executeGhostSeed(db, ghost, seeds, outcome);
+} catch (error) {
+  const message = error instanceof Error ? error.message : String(error);
+  await writeFile(
+    artifact,
+    `${JSON.stringify(
+      {
+        projectId,
+        ghostUrl,
+        plan: planPath,
+        status: "crashed",
+        error: message,
+        intended: seeds,
+        ...outcome,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  fail(`the run died part-way: ${message}. What was done so far is recorded in ${artifact}`);
+}
 
 await writeFile(
   artifact,

@@ -183,6 +183,29 @@ describe("planGhostSeed — a profile that already has a ghostMemberId", () => {
   });
 });
 
+describe("planGhostSeed — two unlinked profiles claiming one member", () => {
+  it("links neither, whichever comes first, and plans no Ghost move", () => {
+    // 5247 holds the address as its alternate, 5248 as its primary: Book's
+    // uniqueness namespace is broken, so the tool refuses to pick a winner.
+    const plan = planGhostSeed(
+      [
+        profile(5247, { email: "other@example.test", alternateEmail: "x@example.test" }),
+        profile(5248, { email: "x@example.test" }),
+        profile(5249, { email: "third@example.test", alternateEmail: "x@example.test" }),
+        ...filler,
+      ],
+      [member("mX", "x@example.test")],
+    );
+    expect(plan.seeds).toEqual([]);
+    expect(plan.conflicts.map((c) => [c.docId, c.kind, c.memberId])).toEqual([
+      ["5247", "member-linked-to-another-profile", "mX"],
+      ["5248", "member-linked-to-another-profile", "mX"],
+      ["5249", "member-linked-to-another-profile", "mX"],
+    ]);
+    expect(plan.unmatched).toEqual([]);
+  });
+});
+
 describe("planGhostSeed — what a link writes", () => {
   it("carries the Ghost note only when Book's note is blank", () => {
     const plan = planGhostSeed(

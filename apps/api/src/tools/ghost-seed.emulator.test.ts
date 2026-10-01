@@ -151,4 +151,39 @@ describe.skipIf(!hasEmulator)("ghost seed (emulator)", () => {
     expect((await data(5002)).ghostMemberId).toBeUndefined();
     expect((await data(5003)).ghostMemberId).toBeUndefined();
   });
+
+  it("does not move the Ghost member of a profile edited since the plan", async () => {
+    // The OFC-451 race: the brother changes his primary email after the plan. Moving
+    // his old member to the plan-time primary would park it at an address Book no
+    // longer holds — so the Ghost step must be gated on the same plan-time token.
+    ghost.emails.set("m5001", "old1@example.test");
+    const planned = await action(5001, {
+      matchedOn: "alternateEmail",
+      ghostEmailPush: { from: "old1@example.test", to: "b5001@example.test" },
+    });
+    await db.collection("profiles").doc("5001").update({ email: "brand-new@example.test" });
+
+    const outcome = await executeGhostSeed(db, ghost, [planned]);
+
+    expect(outcome.skipped).toEqual(["5001"]);
+    expect(outcome.ghostPushed).toEqual([]);
+    expect(outcome.ghostFailed).toEqual([]);
+    expect(outcome.written).toEqual([]);
+    expect(ghost.emails.get("m5001")).toBe("old1@example.test");
+  });
+
+  it("refuses a malformed plan whole, before touching Ghost or Book", async () => {
+    ghost.emails.set("m5001", "old1@example.test");
+    const good = await action(5001, {
+      matchedOn: "alternateEmail",
+      ghostEmailPush: { from: "old1@example.test", to: "b5001@example.test" },
+    });
+    const bad = { ...(await action(5002, {})), token: "not-a-token" };
+
+    await expect(executeGhostSeed(db, ghost, [good, bad])).rejects.toThrow(
+      /seed 1 \(#5002\): malformed token/u,
+    );
+    expect(ghost.emails.get("m5001")).toBe("old1@example.test");
+    expect((await data(5001)).ghostMemberId).toBeUndefined();
+  });
 });

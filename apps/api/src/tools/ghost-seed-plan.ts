@@ -111,7 +111,7 @@ export type ConflictKind =
   | "linked-consent-mismatch"
   /** Consent disagrees, but Book's was changed since the genesis load — left alone. */
   | "book-consent-changed-since-launch"
-  /** The matched member is already another profile's `ghostMemberId`. */
+  /** The matched member is another profile's `ghostMemberId`, or two unlinked profiles claim it. */
   | "member-linked-to-another-profile";
 
 export interface SeedConflict {
@@ -190,6 +190,8 @@ interface PlanContext<Token> {
   /** Every member the plan has accounted for (linked, seeded, or a leftover). */
   accounted: Set<string>;
   consentEventAt: ReadonlyMap<string, string>;
+  /** Members two unlinked profiles both claimed; nobody is linked to them. */
+  contested: Set<string>;
 }
 
 type SeedDoc<Token> = { id: string; data: SeedProfileSource; token: Token };
@@ -285,6 +287,33 @@ function planConsent<Token>(
   action.prior = { allowNewsletterEmail: bookConsent, newsletterConsentChangedAt: bookStamp };
 }
 
+/**
+ * Whether `memberId` is already spoken for — another profile stores it, or another
+ * unlinked profile matched it too — recording the conflict if so. Book keeps
+ * `email` and `alternateEmail` in one uniqueness namespace, so two profiles
+ * claiming one member means the data is not what this tool assumes, and then
+ * NEITHER is linked: the earlier claimant's planned link is withdrawn.
+ */
+function claimIsContested<Token>(
+  ctx: PlanContext<Token>,
+  docId: string,
+  memberId: string,
+): boolean {
+  const { plan } = ctx;
+  const kind = "member-linked-to-another-profile";
+  const rival = plan.seeds.findIndex((s) => s.ghostMemberId === memberId);
+  if (!ctx.linkedMemberIds.has(memberId) && rival === -1 && !ctx.contested.has(memberId)) {
+    return false;
+  }
+  for (const withdrawn of rival === -1 ? [] : plan.seeds.splice(rival, 1)) {
+    plan.conflicts.push({ docId: withdrawn.docId, kind, memberId });
+  }
+  ctx.contested.add(memberId);
+  ctx.accounted.add(memberId);
+  plan.conflicts.push({ docId, kind, memberId });
+  return true;
+}
+
 /** A living, unlinked profile: link it to its member, or count it Ghost-less. */
 function planUnlinked<Token>(
   ctx: PlanContext<Token>,
@@ -303,14 +332,7 @@ function planUnlinked<Token>(
     }
     return;
   }
-  // Book keeps `email` and `alternateEmail` in one uniqueness namespace, so two
-  // profiles claiming one member means the data is not what this tool assumes.
-  if (ctx.linkedMemberIds.has(match.id) || plan.seeds.some((s) => s.ghostMemberId === match.id)) {
-    plan.conflicts.push({
-      docId: doc.id,
-      kind: "member-linked-to-another-profile",
-      memberId: match.id,
-    });
+  if (claimIsContested(ctx, doc.id, match.id)) {
     return;
   }
   ctx.accounted.add(match.id);
@@ -334,7 +356,7 @@ function planUnlinked<Token>(
   // `alternateEmail` is only valid alongside an `email`, so the primary exists;
   // the guard keeps a malformed record from pushing an empty address.)
   if (!atPrimary && primaryKey !== "") {
-    action.ghostEmailPush = { from: match.email, to: primaryKey };
+    action.ghostEmailPush = { from: match.email, to: text(doc.data.email) };
   }
   plan.seeds.push(action);
 }
@@ -362,6 +384,7 @@ export function planGhostSeed<Token>(
     linkedMemberIds: new Set(docs.map((d) => text(d.data.ghostMemberId)).filter((id) => id !== "")),
     accounted: new Set(),
     consentEventAt,
+    contested: new Set(),
   };
 
   for (const doc of docs) {
