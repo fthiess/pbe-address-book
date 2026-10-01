@@ -514,6 +514,59 @@ staging**. Change one of those profiles' photos in the app after writing the pla
 see the `changed` skip. Run steps 1–4 exactly as for production (`--book-up`), then an
 undo, then (after re-running the load) a purge.
 
+## Linking profiles to Ghost members (D183) — the procedure
+
+`npm run ghost:seed --workspace apps/api` writes each profile's `ghostMemberId`
+(plus a Ghost note into a blank `adminNote`, and the real newsletter state over
+the genesis placeholder). Until a profile is linked, its edits do not reach Ghost
+and a primary-email edit mints a duplicate Ghost member (N180). Read D183 for the
+rules; this is the runbook. It is idempotent: re-plan and re-apply whenever
+profiles were skipped, or after a restore from a backup that predates the links.
+
+⚠ **It writes to Ghost as well as Book** — a brother whose only Ghost member is at
+his alternate address has that member moved to his primary. It never deletes a
+Ghost member. ⚠ The plan file and the run record hold **real member emails**; they
+land in `apps/api/restore-artifacts/` (gitignored — this repo is public). ⚠ Like
+every out-of-band write it is **invisible until a cold start**, and edits to the
+touched records get a 412 until then (D181), so apply when Book is quiet.
+
+```bash
+PROJECT=pbe-book-prod
+GHOST_URL=https://pbe-news.ghost.io/ghost/api/admin   # GHOST_ADMIN_API_URL in infra/environments/<env>.env
+# The Admin key rides in the environment, never on the command line:
+export GHOST_ADMIN_API_KEY=$(gcloud secrets versions access latest \
+  --secret ghost-admin-api-key --project $PROJECT)
+
+# 1. Plan: reads live profiles and live Ghost, writes
+#    restore-artifacts/ghost-seed-plan-<timestamp>.json, changes nothing.
+npm run ghost:seed --workspace apps/api -- --project $PROJECT --ghost-url $GHOST_URL --plan
+
+# 2. REVIEW the printed summary and the plan file: the email moves, the consent
+#    overwrites, the conflicts (nothing is written for those), and the leftover /
+#    unmatched Ghost members (yours to delete in Ghost Admin, or not).
+
+# 3. Apply exactly that file. Records edited since the plan are skipped and
+#    reported — re-run from step 1 to pick them up.
+npm run ghost:seed --workspace apps/api -- --project $PROJECT --ghost-url $GHOST_URL \
+  --apply restore-artifacts/ghost-seed-plan-<timestamp>.json --confirm $PROJECT
+
+# 4. IMMEDIATELY force a cold start (same image, new revision) and confirm
+#    "N profiles cached" in the new revision's startup log.
+IMAGE=$(gcloud run services describe pbe-book-api --region us-central1 \
+  --project $PROJECT --format='value(spec.template.spec.containers[0].image)')
+gcloud run deploy pbe-book-api --image "$IMAGE" --region us-central1 --project $PROJECT
+
+# 5. Admin → Ghost audit in the app: missing-member and newsletter-drift counts
+#    should have collapsed to the handful the plan listed.
+```
+
+**Undo.** The apply writes `restore-artifacts/ghost-seed-run-<timestamp>.json`
+before its first write — every intended action with the values it replaces — and
+rewrites it with the outcome. There is no undo command (a link is harmless to
+leave); to revert one by hand, delete the profile's `ghostMemberId` (and an
+`adminNote` the run set), restore the recorded prior consent, move a pushed Ghost
+email back, then cold start.
+
 ## Architecture invariants the playbook encodes
 
 - Cloud Run: `--max-instances=1 --min-instances=0` — single authoritative

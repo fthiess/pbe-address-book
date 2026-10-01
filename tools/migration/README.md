@@ -15,4 +15,6 @@ tested half) and `apps/api/src/tools/load-headshots.ts`, because they reuse the
 API package's restore internals and image encoder — the precedent `restore.ts`
 and `prepare-uat-photos.ts` set. The Ghost-account cleanup script lives in the
 workspace (`pbe-data-merge/apply_ghost_cleanup.py`), outside this public repo.
-The pull-and-seed utility is deferred (OFC-340).
+The pull-and-seed utility was built after launch as
+`apps/api/src/tools/ghost-seed.ts` (OFC-340, DECISIONS D183), for the same reason:
+it reuses the API package's Ghost Admin transport and profile-store tokens.
