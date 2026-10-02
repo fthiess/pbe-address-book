@@ -6,7 +6,7 @@ name: Deploy production
 #
 #   gh workflow run "Deploy production" --ref v2026.09.16
 #
-# Two deliberate differences from deploy-staging.yml:
+# Three deliberate differences from deploy-staging.yml:
 #
 #   1. It RE-RUNS THE FULL VERIFICATION GATE (ci.yml via workflow_call) against
 #      the exact commit being promoted and deploys only on green. Staging
@@ -20,6 +20,13 @@ name: Deploy production
 #      the fake-data seeders refuse a project id that does not end in
 #      "-staging" (D72) as the last line of defence.
 #
+#   3. It deploys only a release tag, and only on Forrest's approval (D184). A first job refuses
+#      any ref that is not a `v*` tag — before the gate spends minutes on it —
+#      and the deploy job runs in the `production` GitHub Environment, which
+#      requires Forrest's approval and admits only `v*` tags. That environment
+#      lives in the repo SETTINGS, not the tree (like branch protection): if it
+#      is ever deleted, a dispatch silently re-creates it unprotected.
+#
 # Auth is keyless (Workload Identity Federation, infra/setup-wif.sh run against
 # infra/environments/prod.env). No JSON key exists anywhere — the repo is PUBLIC.
 on:
@@ -31,8 +38,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-ref:
+    name: Refuse a non-release ref
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require a v* release tag
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/v*) echo "Promoting $GITHUB_REF" ;;
+            *) echo "::error::production deploys only a release tag (refs/tags/v*), not $GITHUB_REF — see infra/README.md, Releasing to production"; exit 1 ;;
+          esac
+
   verify:
     name: Verify gate (promoted commit)
+    needs: release-ref
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
@@ -41,6 +61,9 @@ jobs:
     name: Deploy to production
     needs: verify
     runs-on: ubuntu-latest
+    # Forrest's approval gate and the tags-only policy (D184). The approval
+    # prompt appears only after the gate above is green.
+    environment: production
     permissions:
       contents: read
       id-token: write

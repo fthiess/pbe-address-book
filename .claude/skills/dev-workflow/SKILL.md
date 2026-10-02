@@ -64,7 +64,7 @@ Human review is highest-leverage at intent (Gate 1) and outcome (Gate 5); betwee
 
 ## Gate 5 — Live testing closes the loop
 
-Forrest live-tests on staging after every deploy. Treat his findings as the top priority: diagnose, fix via the same branch→PR→merge loop (usually shallow follow-ups), and iterate until he confirms everything works. A phase or ticket is not "done" at merge — it's done when Forrest has live-confirmed it.
+Forrest live-tests on staging after every deploy. (Once a project is live, staging is where work is confirmed; reaching production is a separate **release** step, taken only on Forrest's per-release word — see `launch-and-cutover.md`, "Routine releases".) Treat his findings as the top priority: diagnose, fix via the same branch→PR→merge loop (usually shallow follow-ups), and iterate until he confirms everything works. A phase or ticket is not "done" at merge — it's done when Forrest has live-confirmed it.
 
 Live cloud-infrastructure changes on his GCP projects (IAM grants, deletions of shared data) are **his to run**: diagnose, hand him the exact command, and where possible fix the provisioning/deploy scripts so the manual step never recurs.
 
@@ -152,4 +152,4 @@ Read `design-methodology.md` (in this skill) for the ideation → design → adv
 
 ## Heading to production?
 
-When a project approaches production cutover — or any migration touches live data — read `launch-and-cutover.md` (in this skill) **at the planning stage, before proposing the plan**: rollback plans written before deploys, numeric hold/roll-back thresholds, the first-hour watch, and expand/contract for data-shape changes.
+When a project approaches production cutover — or any migration touches live data — read `launch-and-cutover.md` (in this skill) **at the planning stage, before proposing the plan**: rollback plans written before deploys, numeric hold/roll-back thresholds, the first-hour watch, and expand/contract for data-shape changes. Once live, the same file's **"Routine releases"** section governs every staging→production promotion: Forrest's per-release word behind a mechanical approval gate he alone clicks, always from `main`, a pre-release review, and the first-hour watch each time.

@@ -41,7 +41,8 @@ ENV_FILE=infra/environments/prod.env bash infra/provision-observability.sh
 file, not the environment, decides which project is touched. The custom domain +
 managed TLS for `book.pbe400.org` is a console step (`CUTOVER-PLAN.md` §3), and
 the production deploy is `.github/workflows/deploy-prod.yml` (a manual dispatch
-on a release tag), never this script's Cloud Run step after first bring-up.
+on a release tag — see "Releasing to production" below), never this script's
+Cloud Run step after first bring-up.
 
 ## What's interactive / not in the script (and why)
 
@@ -573,6 +574,106 @@ rewrites it with the outcome. There is no undo command (a link is harmless to
 leave); to revert one by hand, delete the profile's `ghostMemberId` (and an
 `adminNote` the run set), restore the recorded prior consent, move a pushed Ghost
 email back, then cold start.
+
+## Releasing to production (D184) — the procedure
+
+Merging to `main` deploys **staging only**. Production moves only when Forrest
+says so, for a specific release, and only through `Deploy production`
+(`.github/workflows/deploy-prod.yml`) on a `v*` tag. The roles: on Forrest's
+go-ahead, Claude reviews what is shipping, writes the notes, pushes the tag and
+dispatches the workflow; **Forrest approves the pending deployment in GitHub** —
+that click is the release decision. Claude never approves a production
+deployment, by UI or API, even though the shared `gh` credentials could.
+
+**Always release from `main`** — there are no release or hotfix branches
+(D184). The consequence is a standing rule: **keep `main` releasable**. Merge
+nothing a brother should not see; if something on `main` turns out unfit when a
+release is being assembled, fix it forward or revert it on `main` first.
+Tickets close when Forrest confirms the fix on staging (Gate 5), not when it
+reaches production; the release notes are where "this is now live for brothers"
+is recorded.
+
+**The mechanical gate** lives in the repo settings, not the tree: the
+`production` GitHub Environment requires Forrest's approval and admits only `v*`
+tags, and the workflow's first job refuses any other ref before the gate spends
+time on it. ⚠ If the environment is ever deleted, a dispatch silently
+re-creates it **unprotected**. Check it with:
+
+```bash
+gh api repos/fthiess/pbe-address-book/environments/production --jq '[.protection_rules[] | {type, reviewers: [.reviewers[]?.reviewer.login]}]'
+```
+
+### 1. Assemble the release
+
+```bash
+git fetch --tags origin
+LAST=$(git describe --tags --abbrev=0 --match 'v*' origin/main)
+git log --oneline "$LAST"..origin/main
+git diff --stat "$LAST"..origin/main -- infra/environments/prod.env firestore.rules firestore.indexes.json firebase.json ghost-bridge/
+```
+
+For every commit since the last tag, answer four questions before proposing
+the release to Forrest:
+
+- **Confirmed on staging?** Each user-facing change was live-tested there.
+  Name any path staging **cannot** exercise and say how it will be checked on
+  production instead — today, the Book→Ghost push (the staging Ghost mirror is
+  off, so fake profiles have no `ghostMemberId`).
+- **Configuration?** A `prod.env` change ships with the deploy; a new variable
+  needs the `--set-env-vars` list in *both* deploy workflows.
+- **Operator steps?** A tool that must run against production after the deploy
+  (a backfill, a seed) is listed, in order, with its `--confirm pbe-book-prod`
+  invocation and the forced cold start that follows any out-of-band Firestore
+  write (D181). Each still needs Forrest's word at the time it is run.
+- **Data shape?** A shape change and the code that depends on it never ship in
+  the same release (expand/contract — the dev-workflow skill's
+  `launch-and-cutover.md`). Say what happens to data written by this version if
+  it is rolled back.
+
+A change under `ghost-bridge/` means a theme upload to Ghost Pro as well —
+Forrest's manual step, from the `pbe-news-ghost-theme` repo (packaged with
+`git archive`, never `Compress-Archive`).
+
+### 2. Tag, notes, dispatch (on Forrest's go-ahead)
+
+Tags are dated: `vYYYY.MM.DD`, with `.2`, `.3` … for a second release the same
+day (semver is OFC-430's decision, PL-14). Tag the exact `origin/main` commit
+that was reviewed, then publish the notes as a GitHub Release on that tag — the
+changes and the OFC tickets they close, **never a brother's name** (the repo is
+public):
+
+```bash
+git tag -a v2026.10.05 -m "Book release v2026.10.05" <reviewed-sha>
+git push origin v2026.10.05
+gh release create v2026.10.05 --title "v2026.10.05" --notes-file <notes.md>
+gh workflow run "Deploy production" --ref v2026.10.05
+```
+
+The gate re-runs on the tagged commit first. When it is green, the run
+pauses at **Deploy to production — waiting for review**; Forrest opens the run
+in GitHub Actions → **Review deployments** → `production` → **Approve and
+deploy**.
+
+### 3. Watch the first hour
+
+The `CUTOVER-PLAN.md` §7 checklist, every release: the workflow's proof of life
+green; Forrest signs in from pbe400.org and exercises the changed surfaces;
+Cloud Run logs with **no new error types**; Mixpanel-Prod still receiving
+`app = book` events. Then run any operator steps from step 1, each followed by
+its cold start.
+
+### 4. Roll back
+
+Redeploy the previous tag — the same dispatch, the same approval:
+
+```bash
+gh workflow run "Deploy production" --ref "$LAST"
+```
+
+That restores the SPA, the API and the Firestore rules together — about ten
+minutes end to end plus the approval (the v2026.09.16 run took eight). It does **not** undo data: anything the bad version wrote
+stays, which is why step 1 asks the data question in advance. A theme problem
+rolls back separately, by re-uploading the previous theme zip to Ghost Pro.
 
 ## Architecture invariants the playbook encodes
 
