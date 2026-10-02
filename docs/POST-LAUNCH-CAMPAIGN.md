@@ -7,7 +7,7 @@ The work plan for the period after the public launch at the 2026-09-19 Reunion: 
 ## Ground rules for the campaign
 
 - **No new features until the campaign is complete.** OFC-354 (name-search results order, a PRD-level design change) is explicitly out of scope and is the **first item after** the campaign closes, as a design session under the design methodology.
-- **Book is live with real members.** Every merge deploys staging only; production ships by release tag (`deploy-prod.yml`), and Forrest decides when. Batch several sessions into one production release where sensible; a single cosmetic fix does not need its own tag.
+- **Book is live with real members.** Every merge deploys staging only; production ships by release tag (`deploy-prod.yml`), and Forrest decides when — he approves each production deployment himself (D184). Batch several sessions into one production release where sensible; a single cosmetic fix does not need its own tag. Tickets close on Forrest's staging confirmation; the release notes record what reached brothers. Procedure: `infra/README.md`, "Releasing to production".
 - **Any out-of-band Firestore write is followed immediately by a forced cold start** (D181). The cache and the edit tokens both hydrate only at cold start; until then the change is invisible and edits to the touched records fail with 412.
 - **Sessions run serially in the order below** unless Forrest reorders. Priority set the order; execution may deviate, but the dependencies noted below hold.
 - **Model:** Opus at standard effort unless the row says Fable. Fable is used where the surface is auth, live member data, or a dependency on the auth bridge, and the merge pauses for Forrest on those (Gate 4).
@@ -72,7 +72,7 @@ Each of these carries a comment (2026-09-16) naming its trigger.
 - Firestore delete protection and PITR were **disabled** at launch; Forrest was handed the one-line `gcloud firestore databases update` commands on 2026-09-16. PL-2 confirms and bakes them into the provisioner.
 - Book→Ghost push is a no-op for every brother until PL-1. **Do not resolve newsletter drift in Book's favour before then.** *(Corrected 2026-10-01: only the update branch no-ops. The create branch does not — see N180 and the PL-1 row.)*
 - Fifteen Ghost addresses do not match a Book email (`pbe-data-merge/ghost_unmatched_after_cleanup.csv`); those brothers cannot sign in until an alternate email is added by an admin.
-- The Linear connector still posts as Forrest, not Claude's member (N178).
+- ~~The Linear connector still posts as Forrest, not Claude's member (N178).~~ *(Corrected 2026-10-02: re-bound to Claude's own Linear member on 2026-10-01 — N181. Verify with `get_user "me"` at session start; a reconnect can silently bind it back to whoever the browser is signed into.)*
 
 ## Related documents
 

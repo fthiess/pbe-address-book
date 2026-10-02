@@ -1,6 +1,6 @@
 # Launch & Cutover Methodology (production deploys and live-data migrations)
 
-When to read this: a project is approaching its first production cutover, a deploy is about to reach real users, or a migration changes the shape or content of live data. SKILL.md's loop ends at "live-test on staging"; this document covers the step after that — the one that can't be retried cheaply. Read it at the *planning* stage of such work, so its requirements land in the plan rather than being retrofitted.
+When to read this: a project is approaching its first production cutover, a deploy is about to reach real users, a live project is assembling a routine release, or a migration changes the shape or content of live data. SKILL.md's loop ends at "live-test on staging"; this document covers the step after that — the one that can't be retried cheaply. Read it at the *planning* stage of such work, so its requirements land in the plan rather than being retrofitted.
 
 Three properties every launch must have: **reversible** (a tested way back), **observable** (you can tell within minutes whether it's healthy), and **incremental** (exposure grows in steps, not all at once). A launch plan missing one of the three is a design finding to fix before scheduling the launch, not a risk to accept silently.
 
@@ -44,3 +44,15 @@ Every step leaves the system consistent even if the next step never happens, and
 ## Feature-flag lifecycle
 
 Flags that gate incomplete or launching work have an owner and an expiration date, set when the flag is created (file the cleanup ticket then, too). Both flag states stay tested in CI while the flag lives; cleanup lands within ~2 weeks of full rollout; and flags never nest — combinations multiply faster than they can be tested.
+
+## Routine releases (after launch)
+
+Once a project is live, the loop's merge deploys **staging only**, and production becomes a separate, deliberate step: a **release**. The cutover's discipline does not lapse after launch day; it scales down to every release.
+
+- **Promotion is Forrest's decision, per release — and the gate is mechanical.** Production deploys only on his explicit word for *that* release; approval of an earlier one, of the session plan, or of a merge does not carry over. Back the rule with a control the platform enforces, not a convention: e.g. a GitHub Environment with Forrest as required reviewer that admits only release tags, so the deploy waits on a click only he gives. Claude prepares the release (review, notes, tag, dispatch) and **never approves a production deployment** — not through the UI, not through an API with shared credentials, even though it technically could. A gate that only guards against accidents still needs this rule to guard against convenience.
+- **Release from `main`; keep `main` releasable.** No release or hotfix branches by default — a hotfix ships with whatever else is on `main`. The price is a standing rule that nothing merges which users shouldn't see; if something unfit is found at release time, fix forward or revert on `main` first. Cut a hotfix branch from the last release tag only if that rule has actually failed.
+- **Batch.** Several sessions' work per release, not one release per merge; a cosmetic fix doesn't need its own.
+- **Review before proposing.** For everything since the last release tag: (1) confirmed live on staging — and **name the paths staging cannot exercise** (fake data, disabled integrations) and how each will be checked in production instead; (2) configuration changes that ride along; (3) production-only operator steps (backfills, seeds), in order, each still needing Forrest's word when run; (4) data-shape changes — expand/contract below, never a shape change and the code that depends on it in the same release — and what happens to data written by this version if it is rolled back.
+- **Release notes on the tag** list the changes and the ticket ids they ship. They are public in a public repo — no PII (SKILL.md, Gate 2). Tickets close on staging confirmation (Gate 5); the release notes are where "now live for users" is recorded.
+- **Watch the first hour, every release** (the checklist above), then run any operator steps.
+- **Rollback is redeploying the previous tag**, through the same gate. It restores code, not data — which is why the data question is asked before the release, not during the incident.
