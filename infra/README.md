@@ -607,12 +607,15 @@ gh api repos/fthiess/pbe-address-book/environments/production --jq '[.protection
 
 ```bash
 git fetch --tags origin
-LAST=$(git describe --tags --abbrev=0 --match 'v*' origin/main)
-git log --oneline "$LAST"..origin/main
-git diff --stat "$LAST"..origin/main -- infra/environments/prod.env firestore.rules firestore.indexes.json firebase.json ghost-bridge/
+# The baseline is what production RUNS — the tag of the last successful
+# production deploy — not the newest tag on main: after a rollback the two differ,
+# and diffing from the newer one would wave the rolled-back changes through unreviewed.
+LIVE=$(gh run list --workflow deploy-prod.yml --status success -L1 --json headBranch --jq '.[0].headBranch')
+git log --oneline "$LIVE"..origin/main
+git diff --stat "$LIVE"..origin/main -- infra/environments/prod.env firestore.rules firestore.indexes.json firebase.json ghost-bridge/
 ```
 
-For every commit since the last tag, answer four questions before proposing
+For every commit since the live tag, answer four questions before proposing
 the release to Forrest:
 
 - **Confirmed on staging?** Each user-facing change was live-tested there.
@@ -664,11 +667,20 @@ its cold start.
 
 ### 4. Roll back
 
-Redeploy the previous tag — the same dispatch, the same approval:
+Redeploy the tag production ran before the bad release — the same dispatch,
+the same approval. Derive it fresh (shell variables from step 1 are long gone,
+and the newest tag is the bad one):
 
 ```bash
-gh workflow run "Deploy production" --ref "$LAST"
+PREV=$(gh run list --workflow deploy-prod.yml --status success -L2 --json headBranch --jq '.[1].headBranch')
+gh workflow run "Deploy production" --ref "$PREV"
 ```
+
+⚠ A dispatch runs the workflow file **as it is at that tag**. Tags cut before
+D184 (`v2026.09.16`) carry the old workflow, with no `release-ref` job and no
+`production` environment, so redeploying one skips the approval gate entirely.
+That is acceptable only as a deliberate rollback on Forrest's word, never by
+accident.
 
 That restores the SPA, the API and the Firestore rules together — about ten
 minutes end to end plus the approval (the v2026.09.16 run took eight). It does **not** undo data: anything the bad version wrote
