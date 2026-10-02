@@ -73,7 +73,11 @@ with **no service-account key anywhere**. A key would be a long-lived secret in 
 *public* repo's secret store;
 instead GitHub mints a short-lived OIDC token that Google trusts **only for this
 one repository** (`fthiess/pbe-address-book`), enforced by an attribute condition
-on the OIDC provider. That condition is the load-bearing security control.
+on the OIDC provider. That condition is the load-bearing security control. On
+production it also requires the OIDC `environment` claim to be `production`
+(`WIF_REQUIRED_ENVIRONMENT` in `prod.env`, D184): only a job running in the
+approval-gated GitHub Environment can get a production credential. Re-run the
+script with `ENV_FILE=infra/environments/prod.env` after changing it.
 
 ```bash
 # once per environment, authenticated as a project owner
@@ -593,14 +597,25 @@ Tickets close when Forrest confirms the fix on staging (Gate 5), not when it
 reaches production; the release notes are where "this is now live for brothers"
 is recorded.
 
-**The mechanical gate** lives in the repo settings, not the tree: the
-`production` GitHub Environment requires Forrest's approval and admits only `v*`
-tags, and the workflow's first job refuses any other ref before the gate spends
-time on it. ⚠ If the environment is ever deleted, a dispatch silently
-re-creates it **unprotected**. Check it with:
+**The mechanical gate** has three layers. The `production` GitHub Environment
+(repo settings, not the tree) requires Forrest's approval and admits only `v*`
+tags. The workflow's first job refuses any other ref before the gate spends time
+on it. And the production WIF trust condition requires the OIDC token's
+`environment` claim to be `production` (`WIF_REQUIRED_ENVIRONMENT` in `prod.env`,
+applied by `setup-wif.sh`), so a workflow that doesn't run in the environment
+(an old tag, a branch, an edit that drops the line) cannot get a production
+credential at all. ⚠ If the environment is ever deleted, a dispatch silently
+re-creates it **unprotected**, and the claim would still read `production`. Check
+the environment with:
 
 ```bash
 gh api repos/fthiess/pbe-address-book/environments/production --jq '[.protection_rules[] | {type, reviewers: [.reviewers[]?.reviewer.login]}]'
+```
+
+and the trust condition (expect the `assertion.environment=='production'` clause) with:
+
+```bash
+gcloud iam workload-identity-pools providers describe github-provider --location=global --workload-identity-pool=github-pool --project pbe-book-prod --format='value(attributeCondition)'
 ```
 
 ### 1. Assemble the release
@@ -676,11 +691,13 @@ PREV=$(gh run list --workflow deploy-prod.yml --status success -L2 --json headBr
 gh workflow run "Deploy production" --ref "$PREV"
 ```
 
-⚠ A dispatch runs the workflow file **as it is at that tag**. Tags cut before
-D184 (`v2026.09.16`) carry the old workflow, with no `release-ref` job and no
-`production` environment, so redeploying one skips the approval gate entirely.
-That is acceptable only as a deliberate rollback on Forrest's word, never by
-accident.
+⚠ A dispatch runs the workflow file **as it is at that tag**, so only tags cut
+after D184 can be redeployed. `v2026.09.16` carries the old, ungated workflow, and
+the production trust condition (below) refuses it a credential: its deploy fails
+at authentication, by design. **Rolling back the first post-D184 release
+therefore means fixing forward:** `git revert` the offending merge(s) on `main`
+through the usual PR, tag the result, and release it. From the second release
+on, the previous tag carries the gate and redeploys normally.
 
 That restores the SPA, the API and the Firestore rules together — about ten
 minutes end to end plus the approval (the v2026.09.16 run took eight). It does **not** undo data: anything the bad version wrote

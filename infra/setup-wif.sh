@@ -94,6 +94,16 @@ ATTR_MAPPING="google.subject=assertion.sub,attribute.repository=assertion.reposi
 # is dispatched on (D180), so both refs are admitted — and nothing else: a feature
 # branch or a Dependabot branch can never mint a deploy credential.
 ATTR_CONDITION="assertion.repository=='${GITHUB_REPO}' && (assertion.ref=='refs/heads/main' || assertion.ref.startsWith('refs/tags/v'))"
+# Production only (D184): also require the GitHub Environment that carries
+# Forrest's approval. A job gets an `environment` claim in its OIDC token only when
+# it runs in that environment, and Google rejects any credential whose condition is
+# not `true` — so a workflow without the gate (a pre-D184 tag, a branch, an edit
+# that drops the `environment:` line) cannot mint a production credential at all.
+# Set in prod.env; staging deploys on merge with no environment and leaves it unset.
+if [ -n "${WIF_REQUIRED_ENVIRONMENT:-}" ]; then
+  ATTR_CONDITION="${ATTR_CONDITION} && assertion.environment=='${WIF_REQUIRED_ENVIRONMENT}'"
+fi
+echo "==> Trust condition: ${ATTR_CONDITION}"
 if ! gcloud iam workload-identity-pools providers describe "${PROVIDER_ID}" \
       --location=global --workload-identity-pool="${POOL_ID}" \
       --project "${PROJECT_ID}" >/dev/null 2>&1; then
