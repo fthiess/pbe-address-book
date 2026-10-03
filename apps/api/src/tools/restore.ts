@@ -36,7 +36,7 @@ import {
  * the only whole-database write into it that exists (D100; the one other
  * out-of-band writer is D181's single-field `backfill-full-name.ts`).
  *
- * THE MODEL. Book goes hard-down (`infra/maintenance-on.sh`, D118), this tool
+ * THE MODEL. Book goes hard-down (`infra/maintenance-begin.sh`, D118/D187), this tool
  * replaces the three durable collections from a snapshot, and Book restarts and
  * cold-hydrates its cache and email index from the restored data (D85/D97). Because
  * the system is down during the replace there is no live second writer, which is
@@ -87,7 +87,7 @@ function printHelp(): void {
     [
       "restore — replace Book's three durable collections from a backup snapshot (D101).",
       "",
-      "  THIS REPLACES THE DIRECTORY. Take Book down first (infra/maintenance-on.sh),",
+      "  THIS REPLACES THE DIRECTORY. Take Book down first (infra/maintenance-begin.sh),",
       "  and force a Cloud Run cold start afterwards or the cache will keep serving the",
       "  old data (there is no Firestore listener).",
       "",
@@ -360,7 +360,7 @@ if (options.force) {
   const inMaintenance = await probeMaintenance(hostingUrl);
   if (inMaintenance === false) {
     fail(
-      `${hostingUrl} is not serving the maintenance page. Run infra/maintenance-on.sh first (or --force if this environment has no Hosting).`,
+      `${hostingUrl} is not serving the maintenance page. Run infra/maintenance-begin.sh first (or --force if this environment has no Hosting).`,
     );
   }
   if (inMaintenance === null) {
@@ -467,7 +467,7 @@ console.log(
     "  1. Force a Cloud Run cold start so the cache and email index rehydrate:",
     `       gcloud run deploy pbe-book-api --image <current-image-sha> --project ${projectId}`,
     '     (same image, new revision; confirm the "N profiles cached" line in the startup log.)',
-    `  2. Bring Book back up:  PROJECT_ID=${projectId} ./infra/maintenance-off.sh`,
+    `  2. Bring Book back up:  ENV_FILE=<${projectId}'s env file> bash infra/maintenance-end.sh`,
     "  3. Work the Ghost discrepancy report: re-save each drifted brother in Book.",
     "",
     `Artifacts (REAL MEMBER PII — do not commit or share): ${outDir}`,

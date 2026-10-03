@@ -1,7 +1,7 @@
 {
   "hosting": {
-    "public": "apps/web/dist",
-    "ignore": ["firebase.json", "firebase.maintenance.json", "**/.*", "**/node_modules/**"],
+    "public": "infra/maintenance-site",
+    "ignore": ["**/.*", "**/node_modules/**"],
     "rewrites": [{ "source": "**", "destination": "/maintenance.html" }],
     "headers": [
       {
