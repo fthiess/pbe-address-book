@@ -3704,4 +3704,8 @@ The logic is `scripts/maintenance.ts`, with its decisions pure and unit-tested i
 
 About two minutes of downtime in all, with no build and no local SPA anywhere in the path (OFC-449).
 
+**Re-run after the review fixes** (D187's "Hardened at review", committed first): `begin` found the default site through the API (`pbe-book-staging`, not the second site `pbe-netcheck`), and all twelve paths served the page again. `end` re-checked the history before its POST, re-released `b68900eb46f1c43b` again, and passed the stricter check (a 2xx carrying the SPA shell). Afterwards the path table read 8 SPA, 2 API JSON and 2 icon responses, exactly the "before" state.
+
+**The JWKS alert, same session (D186).** Three synthetic `auth.jwks` entries were written at 22:11:19–22Z. Within about a minute `book_auth_jwks_failure` counted 1 then 2 (3 in all), and the staging policy opened an incident at **22:16:14Z**, about five minutes of ingestion plus evaluation lag. Forrest is asked to confirm the email.
+
 **Not exercised live:** the deploy-in-between refusal, which would have needed a merge to `main` during the window. It is covered by `planEnd`'s unit test, and its trigger (a non-maintenance newest release) is the same check step 4's second dry run exercised.
