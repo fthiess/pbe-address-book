@@ -3709,3 +3709,17 @@ About two minutes of downtime in all, with no build and no local SPA anywhere in
 **The JWKS alert, same session (D186).** Three synthetic `auth.jwks` entries were written at 22:11:19–22Z. Within about a minute `book_auth_jwks_failure` counted 1 then 2 (3 in all), and the staging policy opened an incident at **22:16:14Z**, about five minutes of ingestion plus evaluation lag. **Forrest confirmed the email arrived** ("… is above threshold of 1 with a value of 3"), proving metric → policy → channel end to end.
 
 **Not exercised live:** the deploy-in-between refusal, which would have needed a merge to `main` during the window. It is covered by `planEnd`'s unit test, and its trigger (a non-maintenance newest release) is the same check step 4's second dry run exercised.
+
+### N185 — PL-2's live operations, as run; and a duplicate production backup alert found and removed *(2026-10-03, PL-2 — each step on Forrest's word)*
+
+**Production alerting.** `ENV_FILE=infra/environments/prod.env bash infra/provision-observability.sh` converged the bucket, sink, metrics and reader SA, and created `book-ghost-jwks-failure-prod` (D186). Staging's copy of the policy had already fired end to end (N184).
+
+**⚠ The run also exposed a launch-day duplicate.** At cutover `prod.env` named the stale/failed backup policy `book-backup-absence-prod`, a misnomer, since the absence check is a different policy. PR #250 corrected the file to `book-backup-problem-prod` but never renamed the live policy. So today's run, matching by display name, found nothing and **created** a correctly named twin, leaving two identical policies on prod (two emails per backup failure). The orphan `book-backup-absence-prod` (`1646882515628264391`) was deleted. Production now has exactly the four policies the script manages: `book-signin-denial-burst-prod`, `book-backup-problem-prod`, `book-backup-absent-prod` (the 20-hour absence check, D149) and `book-ghost-jwks-failure-prod`.
+
+**Lesson, general to this script:** policies converge **by display name**. Renaming one in an env file orphans the live policy and creates a new one on the next run. After renaming, delete the old policy in the same sitting, or re-run and expect a duplicate. (`absence` vs `absent` is the trap that hid this one for 17 days.)
+
+**Staging WIF (OFC-455).** `bash infra/setup-wif.sh` (staging default) converged the provider's condition from `assertion.repository=='fthiess/pbe-address-book'` to `… && (assertion.ref=='refs/heads/main' || assertion.ref.startsWith('refs/tags/v'))`, matching production apart from D184's environment clause. The next push-to-`main` deploy (`210cbc0`, PR #275) authenticated keylessly and succeeded.
+
+**Stray UAT bucket.** `gs://pbe-book-prod-uat` was already gone when its deletion came up (a listing returned 404). Production's buckets are now `pbe-book-prod-backups`, `pbe-book-prod-images` and the Cloud Build `run-sources` bucket.
+
+**No production release is needed for PL-2.** Nothing shipped changes what brothers see. The maintenance scripts act on Hosting directly, and the one build-output change (`maintenance.html` no longer ships inside the SPA) rides the next release.
