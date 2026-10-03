@@ -3684,6 +3684,13 @@ The logic is `scripts/maintenance.ts`, with its decisions pure and unit-tested i
 
 **Unchanged on purpose.** The restore and bulk-headshot pre-flights still probe `/api/health`, not `/` (`MAINTENANCE_PROBE_PATH`, as the OFC-334 triage insisted). A path under `/api/` can never be a static file, so its answer depends only on which config is live. `--book-up` stays as a mode (D181/D182); it is no longer the only safe one on production. The D181 order holds: cold start **before** `end`.
 
+**Hardened at review** (a high-effort `/code-review` of the PR):
+- The Hosting site is **looked up** as the project's `DEFAULT_SITE`, never assumed equal to the project id. Staging also holds `pbe-netcheck`, and reading one site while deploying to another would strand Book in maintenance.
+- `end`'s success check requires a 2xx carrying the SPA shell (`<div id="root">`), not merely "not the maintenance page", which an error page would also satisfy.
+- `end` re-reads the history immediately before its POST. A window of about one round trip remains, because the Hosting API has no conditional release.
+- `begin`'s failure messages no longer assert a state they can't know.
+- An already-open tab's not-yet-loaded static files also get the page during maintenance (the old config served them). The README says so.
+
 **Verification:** a staging rehearsal of `begin` → path table → `end` → path table, recorded in N184.
 
 ### N184 — D187 rehearsed on staging: the whole site goes down, and comes back on the exact release *(2026-10-03, PL-2 — run by Claude with Forrest's approval, checked by Forrest in his browser)*

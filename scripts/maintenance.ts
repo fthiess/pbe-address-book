@@ -28,10 +28,10 @@ import {
 const USAGE = `Usage: tsx scripts/maintenance.ts <begin|end> --project <id> [--origin <url>] [--dry-run]
 
 Normally run via infra/maintenance-begin.sh / infra/maintenance-end.sh (ENV_FILE selects
-the environment). The Hosting site is the project's default site (= the project id).
+the environment). The Hosting site is the project's default site, looked up through the API.
 
   --project <id>  GCP/Firebase project (required)
-  --origin <url>  Origin probed afterwards (default https://<project>.web.app)
+  --origin <url>  Origin probed afterwards (default https://<default site>.web.app)
   --dry-run       Read the release history and say what WOULD happen; change nothing.
   --help          Show this help.`;
 
@@ -70,13 +70,17 @@ const usageError = (message: string): never => {
 const command = positionals[0];
 if (command !== "begin" && command !== "end") usageError(`expected "begin" or "end".`);
 const project = values.project ?? usageError("--project is required.");
-const site = project;
-const origin = (values.origin ?? `https://${site}.web.app`).replace(/\/+$/, "");
 const dryRun = values["dry-run"];
+// Both resolved in run(): the site from the API, the origin from the site.
+let site = "";
+let origin = "";
 
+let cachedToken: string | undefined;
 const accessToken = (): string => {
+  if (cachedToken) return cachedToken;
   try {
-    return execSync("gcloud auth print-access-token", { encoding: "utf8" }).trim();
+    cachedToken = execSync("gcloud auth print-access-token", { encoding: "utf8" }).trim();
+    return cachedToken;
   } catch {
     return fail("could not get a gcloud access token — run `gcloud auth login` first.");
   }
@@ -99,6 +103,24 @@ async function hostingApi(path: string, init: RequestInit = {}): Promise<unknown
   return JSON.parse(body) as unknown;
 }
 
+/**
+ * The project's DEFAULT Hosting site — the one `firebase deploy --only hosting`
+ * targets when the config names no site. Looked up rather than assumed equal to the
+ * project id: staging also holds a second site (`pbe-netcheck`), and reading one site
+ * while deploying to another would strand Book in maintenance.
+ */
+const defaultSite = async (): Promise<string> => {
+  const body = (await hostingApi(`projects/${project}/sites`)) as {
+    sites?: { name: string; type?: string }[];
+  };
+  const found = body.sites?.find((s) => s.type === "DEFAULT_SITE");
+  if (!found) return fail(`project ${project} has no default Hosting site.`);
+  return found.name.slice(found.name.lastIndexOf("/") + 1);
+};
+
+// ⚠ Assumes the API lists releases newest first (observed; not documented). The
+// sort in planBegin/planEnd guards ordering within this page only — which is all the
+// decisions read (the newest two).
 const liveReleases = async (): Promise<HostingRelease[]> => {
   const body = (await hostingApi(`sites/${site}/channels/live/releases?pageSize=20`)) as {
     releases?: HostingRelease[];
@@ -106,12 +128,25 @@ const liveReleases = async (): Promise<HostingRelease[]> => {
   return body.releases ?? [];
 };
 
-/** Poll `path` until the maintenance page is (or is not) served — Hosting's edge takes a moment. */
-async function waitFor(path: string, wantMaintenance: boolean): Promise<boolean> {
+/** The SPA shell's mount point (`apps/web/index.html`) — proof the real app is served. */
+const SPA_MARKER = '<div id="root">';
+
+/**
+ * Poll `path` until it serves the maintenance page (`want: "maintenance"`) or the
+ * real app (`want: "app"`, a 2xx carrying the SPA shell — not merely "anything but
+ * the maintenance page", which an error page would also be). Hosting's edge takes a
+ * moment to switch.
+ */
+async function waitFor(path: string, want: "maintenance" | "app"): Promise<boolean> {
   for (let attempt = 1; attempt <= PROBE_ATTEMPTS; attempt++) {
     try {
       const response = await fetch(`${origin}${path}`, { redirect: "follow", cache: "no-store" });
-      if (isMaintenancePage(await response.text()) === wantMaintenance) return true;
+      const body = await response.text();
+      const served =
+        want === "maintenance"
+          ? isMaintenancePage(body)
+          : response.ok && !isMaintenancePage(body) && body.includes(SPA_MARKER);
+      if (served) return true;
     } catch {
       // A transient network failure is retried like a not-yet-propagated edge.
     }
@@ -139,16 +174,21 @@ async function begin(): Promise<void> {
 
   console.log(`==> Deploying the maintenance page to ${site}`);
   const result = spawnSync(deploy, { stdio: "inherit", shell: true });
-  if (result.status !== 0) fail("the maintenance deploy failed — Book is still serving normally.");
+  if (result.status !== 0) {
+    fail(
+      "the maintenance deploy reported failure. Check the live release history (Firebase console → Hosting) " +
+        "before assuming either state: a failure after the release step leaves Book IN maintenance.",
+    );
+  }
 
   const [newest] = newestFirst(await liveReleases());
   if (newest?.message !== MAINTENANCE_RELEASE_MESSAGE) {
     fail(
-      `the deploy succeeded but the newest live release is not tagged "${MAINTENANCE_RELEASE_MESSAGE}" — maintenance-end.sh will refuse to run. Restore from the Firebase console's release history.`,
+      `the newest live release is not the maintenance one (it is ${newest?.type ?? "?"} at ${newest?.releaseTime ?? "?"}, "${newest?.message ?? ""}"). Something deployed on top — most likely a staging merge, which has already put Book back up. Check the site before acting.`,
     );
   }
   for (const path of ["/", "/api/health"]) {
-    const ok = await waitFor(path, true);
+    const ok = await waitFor(path, "maintenance");
     console.log(
       `    ${origin}${path}: ${ok ? "maintenance page ✓" : "NOT the maintenance page ✗"}`,
     );
@@ -181,6 +221,17 @@ async function end(): Promise<void> {
     return;
   }
 
+  // Re-check immediately before writing: a deploy that landed since planEnd read the
+  // history has already ended maintenance, and the POST below would roll it back.
+  // (A residual window of about one round trip remains; the Hosting API offers no
+  // conditional release to close it.)
+  const recheck = planEnd(await liveReleases());
+  if (!recheck.ok || recheck.restoreVersion !== decision.restoreVersion) {
+    return fail(
+      `the release history changed while ending maintenance — nothing was changed. ${recheck.ok ? "" : recheck.reason}`,
+    );
+  }
+
   console.log(`==> Re-releasing version ${restore}`);
   await hostingApi(
     `sites/${site}/channels/live/releases?versionName=${encodeURIComponent(decision.restoreVersion)}`,
@@ -189,16 +240,18 @@ async function end(): Promise<void> {
       body: JSON.stringify({ message: `book-maintenance-end: restored ${restore}` }),
     },
   );
-  const ok = await waitFor("/", false);
-  console.log(`    ${origin}/: ${ok ? "Book ✓" : "STILL the maintenance page ✗"}`);
+  const ok = await waitFor("/", "app");
+  console.log(`    ${origin}/: ${ok ? "Book ✓" : "NOT serving Book ✗"}`);
   if (!ok)
     fail(
-      `${origin}/ still serves the maintenance page — check the Firebase console's release history.`,
+      `${origin}/ is not serving Book (still the maintenance page, or an error) — check the Firebase console's release history.`,
     );
   console.log("==> Book is back online, on the version it was running before maintenance.");
 }
 
 try {
+  site = await defaultSite();
+  origin = (values.origin ?? `https://${site}.web.app`).replace(/\/+$/, "");
   await (command === "begin" ? begin() : end());
 } catch (error) {
   if (!(error instanceof OperatorError)) throw error;

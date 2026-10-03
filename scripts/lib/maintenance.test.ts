@@ -65,7 +65,7 @@ describe("planEnd", () => {
     });
   });
 
-  it("does not trust the API's list order — it sorts by release time", () => {
+  it("sorts the releases it is given by time rather than trusting their order", () => {
     const decision = planEnd([OLDER, RELEASED, MAINT]);
     expect(decision.ok && decision.restoreVersion).toBe("sites/s/versions/released");
   });
@@ -141,6 +141,8 @@ describe("firebase.maintenance.json cannot serve the SPA shell (OFC-334)", () =>
 
   it("agrees with the marker the restore and bulk-headshot pre-flights use", () => {
     const support = readFileSync(repoPath("apps/api/src/tools/restore-support.ts"), "utf8");
-    expect(support).toContain(`export const MAINTENANCE_MARKER = "${MAINTENANCE_PAGE_MARKER}";`);
+    // Extract the value rather than match the source line, so a reformat doesn't fail it.
+    const marker = /MAINTENANCE_MARKER\b[^=]*=\s*["'`]([^"'`]+)["'`]/.exec(support)?.[1];
+    expect(marker).toBe(MAINTENANCE_PAGE_MARKER);
   });
 });

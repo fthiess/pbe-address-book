@@ -348,7 +348,10 @@ bash infra/maintenance-end.sh                 # same ENV_FILE
 maintenance" page from Hosting's edge: the bare origin, a bookmarked profile, the
 "Book" link from pbe400.org. Nothing reaches Cloud Run, and Cloud Run itself is
 left running. A brother who already has Book open keeps what is on screen; his
-next request to the server gets the page instead of data. After `end`, Hosting is
+next request to the server gets the page instead of data. Static files the open
+app hasn't loaded yet (an uncached headshot, a geo table, the search worker)
+also come back as the page, so those features fail inside the tab rather than
+showing the outage screen. After `end`, Hosting is
 back on exactly the release it was serving before. There's no rebuild and no
 version change, and nobody is signed out. A brother sitting on the static page
 sees Book again when he reloads.
