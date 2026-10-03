@@ -3685,3 +3685,16 @@ The logic is `scripts/maintenance.ts`, with its decisions pure and unit-tested i
 **Unchanged on purpose.** The restore and bulk-headshot pre-flights still probe `/api/health`, not `/` (`MAINTENANCE_PROBE_PATH`, as the OFC-334 triage insisted). A path under `/api/` can never be a static file, so its answer depends only on which config is live. `--book-up` stays as a mode (D181/D182); it is no longer the only safe one on production. The D181 order holds: cold start **before** `end`.
 
 **Verification:** a staging rehearsal of `begin` → path table → `end` → path table, recorded in N184.
+
+### N184 — D187 rehearsed on staging: the whole site goes down, and comes back on the exact release *(2026-10-03, PL-2 — run by Claude with Forrest's approval, checked by Forrest in his browser)*
+
+**The run.** Staging had just deployed `4d2fe1a` (PR #274) as Hosting version `b68900eb46f1c43b`.
+
+1. **Before:** the OFC-334 path table on both `pbe-book-staging.web.app` and `book-staging.pbe400.org`. `/`, `/index.html`, `/brother/5247` and a nonsense path served the SPA, `/favicon.ico` the icon, and `/api/health` the API's JSON.
+2. **`bash infra/maintenance-begin.sh`** recorded `b68900eb46f1c43b` as the version to come back to. It deployed one file from `infra/maintenance-site/` as release `book-maintenance-begin` (version `e6b63501d385b101`), and its own checks of `/` and `/api/health` passed. **All twelve paths then served the maintenance page, including `/`, `/index.html` and `/favicon.ico`**, the three the 7b-3 live test had found still serving the app (OFC-334 closed). Headers were `Cache-Control: no-store` and the page-only CSP. Forrest confirmed the page in his own browser.
+3. While down, a second `begin --dry-run` refused ("already in maintenance"), and `end --dry-run` named `b68900eb46f1c43b`.
+4. **`bash infra/maintenance-end.sh`** re-released `b68900eb46f1c43b`; Hosting records it as a `ROLLBACK` release with message `book-maintenance-end: restored b68900eb46f1c43b`. Its own check of `/` passed, and the twelve-path table matched step 1 exactly. A second `end --dry-run` then refused ("not in maintenance").
+
+About two minutes of downtime in all, with no build and no local SPA anywhere in the path (OFC-449).
+
+**Not exercised live:** the deploy-in-between refusal, which would have needed a merge to `main` during the window. It is covered by `planEnd`'s unit test, and its trigger (a non-maintenance newest release) is the same check step 4's second dry run exercised.
