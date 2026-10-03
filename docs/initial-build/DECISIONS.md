@@ -3723,3 +3723,14 @@ About two minutes of downtime in all, with no build and no local SPA anywhere in
 **Stray UAT bucket.** `gs://pbe-book-prod-uat` was already gone when its deletion came up (a listing returned 404). Production's buckets are now `pbe-book-prod-backups`, `pbe-book-prod-images` and the Cloud Build `run-sources` bucket.
 
 **No production release is needed for PL-2.** Nothing shipped changes what brothers see. The maintenance scripts act on Hosting directly, and the one build-output change (`maintenance.html` no longer ships inside the SPA) rides the next release.
+
+### N186 — D187 maintenance run on production for the first time *(2026-10-03 — Forrest asked, with Mixpanel showing nobody on prod for several hours)*
+
+A deliberate test with no operation inside the window, so no data was written and no cold start was needed.
+
+1. **`--dry-run`** resolved prod's default Hosting site through the API as `pbe-book-prod` (the one part staging could not prove) and named the live version `f28e3a4f3138dba8`, released 2026-10-02 23:51Z: `v2026.10.02`.
+2. **Before:** the OFC-334 path table on `pbe-book-prod.web.app` and `book.pbe400.org` showed 8 SPA, 2 API JSON and 2 icon responses.
+3. **`ENV_FILE=infra/environments/prod.env bash infra/maintenance-begin.sh`** at 22:44:43Z released maintenance version `7218860b678e3d74` (22:45:10Z). **All twelve paths served the maintenance page**, with `Cache-Control: no-store` and the page-only CSP. Forrest saw it in his browser.
+4. **`maintenance-end.sh`** re-released `f28e3a4f3138dba8` as a `ROLLBACK` release at 22:45:55Z, and the path table matched step 2 exactly.
+
+About 75 seconds of downtime, and production came back on the byte-identical released build: OFC-449's hazard is gone in practice, not just in design. The first-use caution in memory and on OFC-449 is retired.
