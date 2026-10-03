@@ -39,7 +39,7 @@ const BACKUP_OBJECT_SUFFIX = ".json";
  * `backups/2026-07-25T19-35-05-480Z.json`.
  *
  * The ISO-8601 instant with `:` and `.` replaced by `-`. Colons are legal in GCS
- * object names but are a nuisance in shells, URLs, and `gsutil` arguments, and a
+ * object names but are a nuisance in shells, URLs, and `gcloud storage` arguments, and a
  * restore is an operator typing these names by hand under pressure (D101). The
  * substitution is safe for ordering: every component stays fixed-width, so the
  * names still sort **lexicographically by time** — which is what makes
@@ -107,7 +107,7 @@ export interface BackupStore {
   /**
    * The body of one snapshot object, for the offline restore (D101; 7b-3) and the
    * integrity job that follows it (D102). Added here rather than left to the
-   * operator's `gsutil cat` so "the latest backup" resolves through the same
+   * operator's `gcloud storage cat` so "the latest backup" resolves through the same
    * {@link latest} ordering the staleness check uses — an operator eyeballing
    * timestamps under duress is exactly where the wrong object gets picked.
    *

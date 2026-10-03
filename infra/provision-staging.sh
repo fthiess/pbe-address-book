@@ -48,7 +48,13 @@ IMAGE_BUCKET="${IMAGE_BUCKET:-${PROJECT_ID}-images}"
 # Private UAT fixtures (photo corpus + tester roster CSV; OFC-248/OFC-249). Kept
 # apart from IMAGE_BUCKET because the roster is real member PII and the Book runtime
 # SA must have no access to it — see section 6f.
-UAT_FIXTURES_BUCKET="${UAT_FIXTURES_BUCKET:-${PROJECT_ID}-uat}"
+#
+# ⚠ NO default, deliberately (D185, OFC-425). It used to default to
+# "${PROJECT_ID}-uat", which is how production acquired an empty, pointless
+# `pbe-book-prod-uat` bucket at cutover. UAT is a staging-only concern: staging.env
+# sets the name explicitly, prod.env does not, and sections 6f/6g are skipped when
+# it is unset.
+UAT_FIXTURES_BUCKET="${UAT_FIXTURES_BUCKET:-}"
 SERVICE="${SERVICE:-pbe-book-api}"
 SA_NAME="${SA_NAME:-book-api}"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -155,6 +161,22 @@ if ! gcloud firestore databases describe --project "${PROJECT_ID}" >/dev/null 2>
   echo "==> Creating Firestore (native, ${REGION})"
   gcloud firestore databases create --location="${REGION}" --type=firestore-native --project "${PROJECT_ID}"
 fi
+
+# 4a. Delete protection + point-in-time recovery (D185, OFC-425). Both were OFF on
+#     production at launch and were switched on by hand on 2026-09-16; this makes
+#     them the default for every environment, and CONVERGES on re-run, so a console
+#     change that turns either off is reverted the next time the script runs.
+#       - Delete protection refuses `gcloud firestore databases delete` until it is
+#         explicitly disabled: one deliberate extra step between a typo and the
+#         loss of the system of record.
+#       - PITR keeps 7 days of minute-granularity versions, readable in place or
+#         exportable. It complements the twice-daily snapshots (D147), which remain
+#         the restore path (D101/D150) — PITR covers the hours between them.
+#     Cost at Book's size (a few MB) is negligible: PITR bills retained version
+#     storage, and delete protection is free.
+echo "==> Ensuring Firestore delete protection + point-in-time recovery"
+gcloud firestore databases update --database="(default)" \
+  --delete-protection --enable-pitr --project "${PROJECT_ID}" --quiet >/dev/null
 
 # 4b. TTL policies so lapsed sessions and spent login nonces are reaped
 #     server-side (D125). The app also checks expiry on read, so the policy is a
@@ -296,7 +318,12 @@ BACKUP_INVOKER_SUBJECT="${BACKUP_SUBJECT_LIVE}"
 #
 #     No lifecycle rule and no versioning: the contents are hand-curated fixtures
 #     with no natural expiry, replaced by re-upload rather than by accumulation.
-if ! gcloud storage buckets describe "gs://${UAT_FIXTURES_BUCKET}" >/dev/null 2>&1; then
+#
+#     6f and 6g run only when UAT_FIXTURES_BUCKET is set (staging); production has
+#     no UAT and skips both (D185).
+if [ -z "${UAT_FIXTURES_BUCKET}" ]; then
+  echo "==> UAT_FIXTURES_BUCKET unset (${ENV_FILE}) — no UAT fixtures bucket in this environment; skipping 6f/6g"
+elif ! gcloud storage buckets describe "gs://${UAT_FIXTURES_BUCKET}" >/dev/null 2>&1; then
   echo "==> Creating private UAT fixtures bucket gs://${UAT_FIXTURES_BUCKET}"
   gcloud storage buckets create "gs://${UAT_FIXTURES_BUCKET}" \
     --location="${REGION}" --uniform-bucket-level-access --public-access-prevention \
@@ -306,22 +333,25 @@ fi
 # 6g. Read access for the CI deployer, which runs the seeders (OFC-249's image seed
 #     reads the photo corpus; OFC-248's roster tool reads the CSV).
 #
-#     ⚠ Honest note: this grant is REDUNDANT today. setup-wif.sh gives the deployer
+#     ⚠ Honest note: this grant is REDUNDANT. setup-wif.sh gives the deployer
 #     project-level roles/storage.admin, which already covers every bucket in the
 #     project, so this adds no access it does not have. It is here to state intent at
-#     the bucket and to keep the deploy working if that project-wide grant is ever
-#     narrowed — a reasonable future hardening. Do not read it as evidence that the
-#     deployer's access to this bucket is read-only; it is not.
+#     the bucket. Narrowing that project-wide grant was considered and declined
+#     (D185): the deploy needs bucket admin on the image and backup buckets anyway,
+#     and run.admin already gives the deployer the runtime's reach. Do not read this
+#     as evidence that the deployer's access to this bucket is read-only; it is not.
 #
 #     The security property that DOES hold is the absence below it: no binding for
 #     ${SA_EMAIL}. Book's runtime — the internet-facing part — has no path to the
 #     roster at all.
-echo "==> Granting ${DEPLOYER_SA:-<deployer>} objectViewer on gs://${UAT_FIXTURES_BUCKET}"
 # The deployer SA is created by setup-wif.sh, which may not have run yet on a
 # fresh project: skip (never fail) so first bring-up can continue to the deploy.
-if [ -n "${DEPLOYER_SA:-}" ] && ! gcloud iam service-accounts describe "${DEPLOYER_SA}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
+if [ -z "${UAT_FIXTURES_BUCKET}" ]; then
+  : # no UAT fixtures bucket in this environment (6f)
+elif [ -n "${DEPLOYER_SA:-}" ] && ! gcloud iam service-accounts describe "${DEPLOYER_SA}" --project "${PROJECT_ID}" >/dev/null 2>&1; then
   echo "!! ${DEPLOYER_SA} does not exist yet (run infra/setup-wif.sh, then re-run this script) — skipping the CI read grant."
 elif [ -n "${DEPLOYER_SA:-}" ]; then
+  echo "==> Granting ${DEPLOYER_SA} objectViewer on gs://${UAT_FIXTURES_BUCKET}"
   gcloud storage buckets add-iam-policy-binding "gs://${UAT_FIXTURES_BUCKET}" \
     --member="serviceAccount:${DEPLOYER_SA}" --role="roles/storage.objectViewer" >/dev/null
 else
