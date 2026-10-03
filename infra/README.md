@@ -13,7 +13,8 @@ GCS bucket, whose name is globally unique (so it carries the environment).
 ## What's automated
 
 [`provision-staging.sh`](provision-staging.sh) builds an environment from
-scratch: project → billing → APIs → Firestore (native, regional) → private image
+scratch: project → billing → APIs → Firestore (native, regional, with delete
+protection and point-in-time recovery enforced on every run — D185) → private image
 bucket → private backup bucket → least-privilege runtime service account →
 backup-scheduler service account → Cloud Run deploy → the backup schedule. It
 is parameterized and idempotent where cheap to be, so it can recreate or converge
@@ -112,9 +113,17 @@ with a misleading "have you run firebase login?". `gcloud` is unaffected (its ST
 client is not Node). Keep the Node-20 override until firebase-tools ships a fixed
 auth library — this will apply to prod too.
 
-For production later, tighten `storage.admin` to `objectAdmin` on the
-`run-sources-*` bucket and give Cloud Build a dedicated minimal SA rather than
-reusing the Compute Engine default.
+**Considered and declined (D185): narrowing the deployer's storage grant and
+giving Cloud Build its own service account.** This README used to suggest both
+"for production later". Neither would change what a compromised deployer could
+do. The deploy workflows set IAM, versioning and lifecycle on the image and
+backup buckets, so the deployer needs bucket *admin* there, not `objectAdmin`.
+And `run.admin` plus `serviceAccountUser` on the runtime SA already lets it run
+code with everything Book can reach. Cloud Build still runs as the Compute Engine
+default SA, which holds `roles/editor` on production (checked 2026-10-03), but
+only the deployer can start a build, and only from this repo's Dockerfile.
+Book's deploy trust boundary is the WIF condition plus Forrest's approval in the
+`production` environment (D184), and that is where the hardening went.
 
 ## Observability — audit retention, metrics, alerting, log-reader SA (7a-3c)
 
@@ -142,9 +151,12 @@ It spans **two** project-native GCP products — no new Book dependency:
   counter metrics** (`book_auth_signin_denied`, `book_auth_jwks_failure` — kept
   distinct so a Ghost JWKS outage can't inflate the denial metric and a forged-token
   burst can't hide in the JWKS one, N126); and the keyless **log-reader SA**.
-- **Cloud Monitoring** — an **email notification channel** and a **sign-in-denial
-  burst alert policy**. Cloud Monitoring's own infrastructure sends the email; Book
-  has no mail wiring and is not involved.
+- **Cloud Monitoring** — an **email notification channel** and four alert
+  policies: the **sign-in-denial burst**, the two **backup** policies (7b-2, below),
+  and the **Ghost-JWKS failure** alert (D186: more than `JWKS_FAILURE_THRESHOLD`,
+  default 1, `auth.jwks` events in 10 minutes, meaning brothers are being refused
+  sign-in because Ghost's key endpoint is unreachable). Cloud Monitoring's own
+  infrastructure sends the email; Book has no mail wiring and is not involved.
 
 Two design points worth keeping in view:
 
@@ -165,7 +177,8 @@ Two design points worth keeping in view:
   script's declared values — including the alert policy (edited `DENIAL_BURST_THRESHOLD`
   or a changed `ALERT_EMAIL` is applied to the existing policy, not skipped). The
   file/`staging.env` is the source of truth, so a threshold tuned only in the console
-  is overwritten on the next run — tune it in `DENIAL_BURST_THRESHOLD`, not the console.
+  is overwritten on the next run — tune it in `DENIAL_BURST_THRESHOLD` (or
+  `JWKS_FAILURE_THRESHOLD`), not the console.
 - **D91 stops at the SA.** The script provisions the reader identity and **does
   not** connect it to any cloud LLM. The planned log-reader agent is first-party /
   on-premise / **local-model** only — no audit content egresses to an external LLM.
@@ -173,8 +186,9 @@ Two design points worth keeping in view:
   decision (this is the crux any future alerting-to-Slack/Claude flow, OFC-214, must
   reconcile).
 
-For production later, rerun with the prod project/region and a prod `ALERT_EMAIL`;
-the retention horizon and least-privilege posture carry over unchanged.
+Production runs the same script with `ENV_FILE=infra/environments/prod.env`
+(see "What's automated"); the retention horizon and least-privilege posture carry
+over unchanged, and `prod.env` gives the policies honest production names.
 
 ### Verifying observability (7a-3c) — the synthetic-denial live test
 
@@ -208,9 +222,38 @@ API is deployed and has served at least one request (so the audit stream exists)
      --view=_AllLogs --limit=5
    ```
 
-The **JWKS** metric (`book_auth_jwks_failure`) has no synthesizable staging signal
-(it needs Ghost's JWKS endpoint to actually fault), so it is provisioned as a metric
-without an alert for now — see the deferred watchdogs (OFC tickets) filed with 7a-3c.
+### Verifying the Ghost-JWKS alert (D186) — a synthetic audit entry
+
+Ghost-staging can't be made to fail its JWKS endpoint on demand, so this test
+starts one step later. It writes the exact audit line Book emits on a JWKS fault,
+attached to the Cloud Run service, through the Logging API. That proves the
+metric, the policy and the email end to end. It does **not** prove Book emits the
+line; the auth route's unit tests cover that.
+
+Run it on **staging only**. The entries land in the audit bucket with the 90-day
+retention, so they go to their own log name (`book-synthetic-test`) and carry a
+`trace` that marks them as synthetic. The metric and the audit sink filter on the
+payload and the Cloud Run service, not the log name.
+
+```bash
+PROJECT=pbe-book-staging
+REV="$(gcloud run services describe pbe-book-api --region us-central1 --project "$PROJECT" --format='value(status.latestReadyRevisionName)')"
+for i in 1 2 3; do
+  curl -s -X POST https://logging.googleapis.com/v2/entries:write \
+    -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+    -H 'content-type: application/json' \
+    -d "{\"logName\":\"projects/$PROJECT/logs/book-synthetic-test\",
+         \"resource\":{\"type\":\"cloud_run_revision\",\"labels\":{\"project_id\":\"$PROJECT\",
+           \"service_name\":\"pbe-book-api\",\"revision_name\":\"$REV\",
+           \"location\":\"us-central1\",\"configuration_name\":\"pbe-book-api\"}},
+         \"entries\":[{\"severity\":\"ERROR\",\"jsonPayload\":{\"logType\":\"audit\",
+           \"action\":\"auth.jwks\",\"outcome\":\"error\",\"trace\":\"synthetic-jwks-test-$i\"}}]}"
+done
+```
+
+Within a few minutes the `book_auth_jwks_failure` metric shows 3 and the policy
+fires an email to `ALERT_EMAIL`. It closes itself 30 minutes after the count
+drops back.
 
 ## The automated backup (7b-2)
 
@@ -774,6 +817,9 @@ rolls back separately, by re-uploading the previous theme zip to Ghost Pro.
   already-provisioned environment (DECISIONS N48) — the gap that once left staging's
   runtime SA read-only and 500'd the first upload. Keep the same step in any prod
   deploy workflow.
+- **`gcloud storage`, never `gsutil`.** Google drops `gsutil` from the default
+  gcloud bundle from **March 2027**. An audit on 2026-10-03 (OFC-312) found no
+  script, workflow or tool using it, so nothing breaks; don't introduce it.
 - `--allow-unauthenticated` is intentional: the endpoint is reachable, but
   authentication is enforced by the app's session layer (D126); staging is fake
   data only (D72).
@@ -784,7 +830,10 @@ rolls back separately, by re-uploading the previous theme zip to Ghost Pro.
 holds the two fixture sets that must never enter this **public** repo: the prepared
 UAT photo corpus, and the tester roster CSV, which carries real brothers' names and
 email addresses. `provision-staging.sh` §6f creates it with the same private posture
-as the other buckets — uniform access, public access prevented.
+as the other buckets — uniform access, public access prevented. It exists on
+**staging only**: production has no UAT, `prod.env` leaves the name unset, and
+§6f/§6g skip (D185). The name used to default from `PROJECT_ID`, which is how an
+empty `pbe-book-prod-uat` appeared at cutover; it was deleted under OFC-425.
 
 ⚠ **It is a separate bucket from the image bucket on purpose, and must stay that
 way.** The Book runtime service account holds `objectAdmin` on
@@ -795,7 +844,8 @@ image bucket.
 
 ⚠ **Read the redundancy note in §6g before drawing conclusions about access.** The
 CI deployer's bucket-scoped `objectViewer` grant is documentation of intent, not a
-restriction: `setup-wif.sh` already gives it project-level `roles/storage.admin`.
+restriction: `setup-wif.sh` gives it project-level `roles/storage.admin`, and D185
+declined to narrow that.
 The property that actually holds is the *absence* of a runtime-SA binding.
 
 ### Preparing and uploading the photo corpus

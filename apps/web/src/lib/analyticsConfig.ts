@@ -70,10 +70,11 @@ export const APP_SUPER_PROPERTIES = { app: "book" } as const;
  * as third-party however benign the destination, which is why the same-site
  * requirement was the load-bearing part: iOS traffic was the observed gap.
  *
- * ⚠ The proxy is Caddy on gladstone — a single VM. Book's analytics now depend
- * on it. Acceptable for staging; decide deliberately before production, since
- * D126 keeps Book's *serving* path free of extra infrastructure and this puts
- * some in its *telemetry* path.
+ * ⚠ The proxy is Caddy on gladstone — a single VM — so Book's analytics depend
+ * on it. Decided for production in D185: keep it. D126 keeps Book's *serving*
+ * path free of extra infrastructure, and this puts some only in the *telemetry*
+ * path, where gladstone being down costs events, never a page. Going direct to
+ * Mixpanel would bring back the Safari and blocker losses D162 fixed.
  */
 export const MIXPANEL_API_HOST = "https://mp.pbe400.org";
 
@@ -120,6 +121,10 @@ export const MIXPANEL_INIT_CONFIG = {
   // is a **real, open choice today** — not one deferred to cutover. It stays
   // `false` deliberately: sharing Mixpanel's identity cookie with every other
   // `pbe400.org` subdomain is a privacy decision on its own merits, and D162
-  // declined to make it as a side effect of moving an ingestion host.
+  // declined to make it as a side effect of moving an ingestion host. D185 made it
+  // explicitly: stays `false`. Note its narrow reach: with `persistence:
+  // "localStorage"` above, mixpanel-browser (2.81) consults it only on its cookie
+  // FALLBACK, when localStorage is unavailable — and there, `false` keeps that
+  // cookie host-only.
   cross_subdomain_cookie: false,
 };

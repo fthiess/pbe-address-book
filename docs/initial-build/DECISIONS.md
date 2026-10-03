@@ -3620,3 +3620,41 @@ The run exposed four gaps, all now in `infra/README.md` ("Releasing to productio
 2. **Forrest's call: a release go-ahead covers the read-only production checks.** The auto-mode classifier blocked the pre-flight `describe` as a production read, even though Forrest had already approved the release. He ruled that approving a release also authorizes the reads the procedure needs (the live configuration, deploy and Cloud Run logs, the first-hour watch). Production writes, the approval click and operator steps are unchanged: each still needs his word.
 3. **Hand Forrest the approval link.** The runbook said *what* to click but not *where*. Claude now gives the direct run URL and the click path when the run reaches "waiting".
 4. **State the deploy's data footprint up front.** The proposal now says what the workflow touches (Hosting, the unchanged rules file, the identical bucket settings, the API), and that it writes no record or object and never calls Ghost. Forrest shouldn't have to ask whether a release changes data.
+
+### D185 — OFC-425 settled: two items done, the IAM narrowing and all three Mixpanel questions declined *(2026-10-03, PL-2 — Forrest's calls)*
+
+OFC-425 collected what the compressed cutover (D180) left for after the Reunion. The PL-2 plan gate decided each item.
+
+**Done.**
+
+- **No UAT fixtures bucket in production.** `provision-staging.sh` defaulted `UAT_FIXTURES_BUCKET` to `${PROJECT_ID}-uat`, which is how an empty `pbe-book-prod-uat` appeared at cutover (confirmed empty 2026-10-03; Forrest deletes it). The default is gone. `staging.env` names the bucket explicitly, `prod.env` does not, and §6f/§6g skip when the value is unset.
+- **Firestore delete protection and PITR are now enforced by the provisioner.** Both were off at launch and were switched on by hand on 2026-09-16; on 2026-10-03 production read back `DELETE_PROTECTION_ENABLED` and `POINT_IN_TIME_RECOVERY_ENABLED`. New step 4a runs `gcloud firestore databases update --delete-protection --enable-pitr` on every run, so a future environment gets both by default and a console change that disables either is reverted the next time the script runs. PITR's 7-day window covers the hours between the twice-daily snapshots (D147); the snapshots remain the restore path (D101/D150).
+
+**Declined: narrowing the deployer's `storage.admin` and giving Cloud Build its own service account.** Forrest's call, on Claude's recommendation. The README note proposing it predates the deploy workflows' bucket steps, and it does not survive them:
+
+- The deploy sets IAM, versioning and lifecycle on the image and backup buckets, so the deployer needs bucket **admin** there, not `objectAdmin`. The realistic narrowing is bucket-scoped `storage.admin` on three buckets instead of project-wide.
+- That narrowing does not change what a compromised deployer can do. `run.admin` plus `serviceAccountUser` on the runtime SA already lets it deploy code with everything Book can reach. The one thing the deployer can do that the runtime cannot, deleting backups, survives the narrowing too, because the bucket-admin grant includes it.
+- Cloud Build runs as the Compute Engine default SA, which holds `roles/editor` on production (checked 2026-10-03). But only the deployer can start a build, and the build runs this repo's Dockerfile, under the same trust as the deploy itself.
+- Book's deploy trust boundary is the WIF condition plus Forrest's approval in the `production` environment (D184). That is where the hardening went, and it is the boundary to keep tight. The rehearsal and pipeline risk of rewiring both deploy workflows buys no real reduction in blast radius.
+
+**Declined: any change to Mixpanel.** Three questions, all settled as "keep what is live" (Forrest: it is working well):
+
+- **`cross_subdomain_cookie` stays `false`.** Its reach is narrower than the cutover stub assumed: with `persistence: "localStorage"`, mixpanel-browser 2.81 consults it only on its cookie fallback, when localStorage is unavailable, and there `false` keeps that cookie host-only. Sharing an identity cookie across every `pbe400.org` subdomain would be a privacy step taken for no measurement gain, since Book and the newsletter are already joined by `$user_id` (D137).
+- **Book's telemetry keeps routing through `mp.pbe400.org` on gladstone (D162).** It puts a single VM in Book's *telemetry* path, not its serving path (D126). When gladstone is down, events are lost and no page breaks. A production-only direct `api_host` would bring back the Safari and blocker losses D162 fixed.
+- **No names or emails on Mixpanel person records.** D88 holds. Book sends only the Ghost uuid, Constitution ID and role (N152/N153). The newsletter already supplies `$email` for brothers who browse it signed in, which is all the attribution the Users grid needs.
+
+**Why record the declines.** Each was flagged at cutover as "decide, don't inherit", and the README note and a code comment in `analyticsConfig.ts` both said "decide before production". Both now cite this entry, so a later session does not re-raise them as open.
+
+### D186 — The Ghost-JWKS failure alert ships, verified by a synthetic audit entry; the other watchdogs and the uptime check are deferred *(2026-10-03, PL-2 — Forrest's calls)*
+
+**Decision.** `provision-observability.sh` step 9 adds an alert policy on `book_auth_jwks_failure` (the metric 7a-3c provisioned, N126). It fires when **more than one** `auth.jwks` event lands in a rolling **10 minutes**, emails the existing channel, and closes itself 30 minutes after the count drops back. The threshold is `JWKS_FAILURE_THRESHOLD` (default 1) and converges on re-run like the other policies. `prod.env` names the policy `book-ghost-jwks-failure-prod`.
+
+**Why this threshold.** `auth.jwks` is sparse, and every event is a brother refused sign-in because Ghost's key endpoint was unreachable (OFC-223's classification: a `JwtKeyResolutionError`, never a bad or unknown-`kid` token, which stays a denial). One event can be a transient blip that the next attempt survives. Two in ten minutes is either one brother failing twice or two brothers, and either is worth an email. The policy carries a short runbook note: already-signed-in brothers are unaffected, and Book recovers by itself once Ghost does.
+
+**How it is verified.** OFC-310's objection was that Ghost-staging cannot be made to fail its JWKS on demand. The test starts one step downstream: it writes Book's exact audit line (`logType: audit`, `action: auth.jwks`, `outcome: error`) through the Logging API, attached to the staging Cloud Run service, under its own log name `book-synthetic-test` with a synthetic `trace`. That proves metric → policy → email. It does not prove Book emits the line; the auth route's unit tests cover that. Recipe: `infra/README.md`, "Verifying the Ghost-JWKS alert".
+
+**Deferred, not built.** OFC-329 (the uptime check) went to Backlog: production has been calm since launch, and Forrest deferred both the ticket and its D83 warm-instance question. The plan-gate research is recorded on the ticket: the uptime-check API allows only 1/5/10/15-minute periods with at least 3 checkers, and Cloud Run keeps an idle instance at most 15 minutes, so any API probe keeps Book warm, at roughly $0 under request-based billing. OFC-310's items 1–3 (listener age, rate-limit rejections, newsletter-correction volume) still have no signal, and the reasoning for re-scoping them depended on the uptime check, so they go back to Backlog with it. Whether D99's health-check job is ever built is decided there, not here.
+
+### N183 — `gsutil` audit: nothing to migrate *(2026-10-03, PL-2, OFC-312)*
+
+Google drops `gsutil` from the default gcloud bundle from March 2027. A repo-wide grep on 2026-10-03 (`infra/`, `.github/workflows/`, `tools/`, `scripts/`, `apps/`) found **no invocation anywhere**: every script and workflow already uses `gcloud storage`, and application code uses the client libraries. The only hits were two comments in `apps/api/src/data/backup-store.ts`, now reworded to `gcloud storage`. CI installs a fresh gcloud on every run (`google-github-actions/setup-gcloud`), so it will lose `gsutil` the moment the bundle drops it — harmless, because no workflow calls it. `infra/README.md`'s invariants now say "`gcloud storage`, never `gsutil`".

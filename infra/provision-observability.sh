@@ -133,6 +133,14 @@ BACKUP_POLICY_NAME="${BACKUP_POLICY_NAME:-Book — nightly backup problem (stagi
 # less sensitive — 24h between healthy points exceeds any window Monitoring allows.
 BACKUP_ABSENT_POLICY_NAME="${BACKUP_ABSENT_POLICY_NAME:-Book — no successful backup (staging)}"
 BACKUP_ABSENT_SECONDS="${BACKUP_ABSENT_SECONDS:-72000}"   # 20h; hard ceiling 84600 (23.5h)
+# The Ghost-JWKS failure alert (D186, OFC-310 item 4). Each `auth.jwks` event is a
+# brother refused sign-in because Ghost's key endpoint could not be reached, so the
+# signal is sparse and every point is a real person turned away. MORE THAN
+# JWKS_FAILURE_THRESHOLD events in a rolling 10 minutes trips it: the default of 1
+# (i.e. two or more) rides out a single transient blip — one fetch, one retry that
+# then succeeds — but catches the first brother who tries twice, or two brothers.
+JWKS_POLICY_NAME="${JWKS_POLICY_NAME:-Book — Ghost JWKS failures (staging)}"
+JWKS_FAILURE_THRESHOLD="${JWKS_FAILURE_THRESHOLD:-1}"
 
 # A freshly-created service account is not immediately visible to the IAM policy
 # system, so a binding that references it can fail with "does not exist" for several
@@ -531,6 +539,63 @@ else
 fi
 rm -f "${ABSENT_POLICY_FILE}"
 
+# 9. The Ghost-JWKS failure alert (D186, OFC-310 item 4) on the metric step 3 has
+#    provisioned since 7a-3c. JWKS failure means *nobody can sign in*: Ghost's key
+#    endpoint is unreachable, timing out or 5xx-ing, so Book cannot verify any
+#    bridge token. It is kept apart from the denial-burst policy for the reason the
+#    two metrics are apart (N126): an outage and an attack call for different
+#    responses, and one email that could mean either is one nobody can act on.
+#
+#    Same create/converge shape as step 6 — tune JWKS_FAILURE_THRESHOLD here, not in
+#    the console. Verification: Ghost-staging cannot be made to fault on demand, so
+#    the live test writes a SYNTHETIC `auth.jwks` audit entry through the Logging
+#    API, shaped exactly like the one Book emits (infra/README.md, "Verifying
+#    observability"). That proves metric → policy → email end to end; it does not
+#    prove Book emits the line, which the auth route's unit tests cover.
+JWKS_MATCHES="$(gcloud monitoring policies list \
+  --project "${PROJECT_ID}" \
+  --filter="displayName=\"${JWKS_POLICY_NAME}\"" \
+  --format="value(name)")"
+EXISTING_JWKS_POLICY="$(printf '%s\n' "${JWKS_MATCHES}" | head -n1)"
+JWKS_POLICY_FILE="$(mktemp)"
+cat >"${JWKS_POLICY_FILE}" <<YAML
+displayName: "${JWKS_POLICY_NAME}"
+combiner: OR
+documentation:
+  mimeType: text/markdown
+  content: |
+    Book could not fetch Ghost's sign-in keys (JWKS) more than ${JWKS_FAILURE_THRESHOLD} time(s) in 10 minutes, so brothers are being refused sign-in. Already-signed-in brothers are unaffected. Check Ghost's status and that ${GHOST_JWKS_URL:-the GHOST_JWKS_URL in the environment file} answers. Book recovers by itself once Ghost does.
+conditions:
+  - displayName: "auth.jwks failures exceed ${JWKS_FAILURE_THRESHOLD} in 10 min"
+    conditionThreshold:
+      filter: 'metric.type="logging.googleapis.com/user/${METRIC_JWKS}" AND resource.type="cloud_run_revision"'
+      aggregations:
+        - alignmentPeriod: 600s
+          perSeriesAligner: ALIGN_DELTA
+          crossSeriesReducer: REDUCE_SUM
+      comparison: COMPARISON_GT
+      thresholdValue: ${JWKS_FAILURE_THRESHOLD}
+      duration: 0s
+      trigger:
+        count: 1
+alertStrategy:
+  autoClose: 1800s
+YAML
+if [[ -z "${EXISTING_JWKS_POLICY}" ]]; then
+  echo "==> Creating alert policy: ${JWKS_POLICY_NAME} (>${JWKS_FAILURE_THRESHOLD}/10min → ${ALERT_EMAIL})"
+  gcloud monitoring policies create \
+    --project "${PROJECT_ID}" \
+    --policy-from-file="${JWKS_POLICY_FILE}" \
+    --notification-channels="${CHANNEL_NAME}"
+else
+  echo "==> Converging alert policy ${EXISTING_JWKS_POLICY} (>${JWKS_FAILURE_THRESHOLD}/10min → ${ALERT_EMAIL})"
+  gcloud monitoring policies update "${EXISTING_JWKS_POLICY}" \
+    --project "${PROJECT_ID}" \
+    --policy-from-file="${JWKS_POLICY_FILE}" \
+    --set-notification-channels="${CHANNEL_NAME}"
+fi
+rm -f "${JWKS_POLICY_FILE}"
+
 echo
 echo "==> Done. Provisioned:"
 echo "    audit bucket : ${AUDIT_BUCKET} (${LOG_LOCATION}, ${AUDIT_RETENTION_DAYS}d retention)"
@@ -542,9 +607,10 @@ echo "    reader assumer: ${LOG_READER_PRINCIPAL:-<none — set LOG_READER_PRINC
 echo "    alerts       : \"${DENIAL_POLICY_NAME}\" → ${ALERT_EMAIL}"
 echo "                   \"${BACKUP_POLICY_NAME}\" → ${ALERT_EMAIL}"
 echo "                   \"${BACKUP_ABSENT_POLICY_NAME}\" (>${BACKUP_ABSENT_SECONDS}s) → ${ALERT_EMAIL}"
+echo "                   \"${JWKS_POLICY_NAME}\" (>${JWKS_FAILURE_THRESHOLD}/10min) → ${ALERT_EMAIL}"
 echo
-echo "    LIVE TEST (fire synthetic denials, watch the alert trip) — see infra/README.md,"
-echo "    section \"Verifying observability (7a-3c)\"."
+echo "    LIVE TEST (fire synthetic denials / a synthetic auth.jwks entry, watch the"
+echo "    alerts trip) — see infra/README.md, section \"Verifying observability (7a-3c)\"."
 echo
 echo "    NOTE: the absence policy is INERT until the first successful backup arms it"
 echo "    (Monitoring needs one data point before it can call the series absent)."
@@ -553,12 +619,17 @@ echo "    (Monitoring needs one data point before it can call the series absent)
 # DEFERRED — signals this script deliberately does NOT alert on yet, and why.
 # (Referenced from the header and from the metric definitions above.)
 #
-# 1. auth.jwks failures (7a-3c). The metric exists; no alert. Ghost-staging does
-#    not produce a synthesizable JWKS outage, so a threshold would be guesswork.
-#    Tracked in OFC-310 item 4, which is independently doable.
+# 1. RESOLVED (D186): auth.jwks failures now alert, in step 9. The objection was
+#    that Ghost-staging cannot fault on demand; the answer is a synthetic audit
+#    entry written through the Logging API, which exercises everything downstream
+#    of Book's own log line.
 #
-# 2. The D99 daily health-check watchdogs (OFC-310 items 1–3). Blocked on the D99
-#    health-check job itself, which is unbuilt — there is no signal to alert on.
+# 2. The D99 daily health-check watchdogs (OFC-310 items 1–3), re-deferred (D186)
+#    together with the uptime check (item 4 below, OFC-329), both in Backlog. Each
+#    still lacks a signal: snapshot-listener age (no log line carries it — and D83
+#    demoted the listener to a safety net), rate-limit rejections (no
+#    distinguishable diagnostic line yet), and newsletter-correction volume (the
+#    D103 reconcile job is unbuilt).
 #
 # 3. RESOLVED, recorded here because the constraint outlives the fix (D148 → D149,
 #    OFC-328). "The nightly backup never ran at all" IS now alerted on, by the
@@ -577,7 +648,8 @@ echo "    (Monitoring needs one data point before it can call the series absent)
 #    Hosting / the SPA, and it can fire without an outage (a stale
 #    BACKUP_INVOKER_SUBJECT 401s the endpoint while Book is perfectly healthy).
 #    The right instrument is a Cloud Monitoring UPTIME CHECK against /api/health,
-#    which polls every 1–5 minutes from multiple regions. Filed separately — it
-#    deserves its own pass on what to probe and where to alert, and it may absorb
-#    part of D99's unbuilt health-check job (OFC-310 items 1–3).
+#    which polls every 1–5 minutes from multiple regions. Filed separately as
+#    OFC-329 and deferred to Backlog on 2026-10-03 (Forrest's call: production has
+#    been calm). Its comment thread holds the verified pricing and the D83
+#    warm-instance analysis for whoever picks it up.
 # ---------------------------------------------------------------------------
