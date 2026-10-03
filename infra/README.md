@@ -630,6 +630,23 @@ git log --oneline "$LIVE"..origin/main
 git diff --stat "$LIVE"..origin/main -- infra/environments/prod.env firestore.rules firestore.indexes.json firebase.json ghost-bridge/
 ```
 
+Then compare what production **runs** with what the deploy will set. The
+deploy's `--set-env-vars` **replaces the service's whole variable set**, so a
+variable set by hand on the live service (a fix applied during an incident, or a
+cold-start marker) silently disappears with the next release:
+
+```bash
+gcloud run services describe pbe-book-api --region us-central1 --project pbe-book-prod --format="yaml(status.latestReadyRevisionName,spec.template.spec.containers[0].env)"
+```
+
+Every live variable should either appear in `deploy-prod.yml`'s `--set-env-vars`
+list (with `prod.env`'s value) or be the `GHOST_ADMIN_API_KEY` secret reference.
+Stale cold-start markers (`GENESIS_LOADED`, `SEEDED_AT`) are read by nothing,
+and dropping them is harmless. **Stop if a live value that matters is missing from
+`prod.env` or differs from it**: the release would undo it. This is a production
+read, which the auto-mode classifier blocks by default. Forrest's go-ahead for the
+release covers it and the other read-only checks below, so cite that when asking.
+
 For every commit since the live tag, answer four questions before proposing
 the release to Forrest:
 
@@ -647,6 +664,14 @@ the release to Forrest:
   the same release (expand/contract — the dev-workflow skill's
   `launch-and-cutover.md`). Say what happens to data written by this version if
   it is rolled back.
+
+The proposal also states **what the deploy itself touches**, so Forrest doesn't
+have to ask whether it changes data. The workflow publishes Hosting and the
+Firestore rules file, re-applies the image and backup buckets' IAM, versioning and
+lifecycle settings (identical every release), and deploys the API, which
+cold-starts and re-reads the cache. It writes no Firestore record, image or
+backup object, and never calls Ghost. A release changes data only through an
+operator step listed above.
 
 A change under `ghost-bridge/` means a theme upload to Ghost Pro as well —
 Forrest's manual step, from the `pbe-news-ghost-theme` repo (packaged with
@@ -667,10 +692,14 @@ gh release create v2026.10.05 --title "v2026.10.05" --notes-file <notes.md>
 gh workflow run "Deploy production" --ref v2026.10.05
 ```
 
-The gate re-runs on the tagged commit first. When it is green, the run
-pauses at **Deploy to production — waiting for review**; Forrest opens the run
-in GitHub Actions → **Review deployments** → `production` → **Approve and
-deploy**.
+The gate re-runs on the tagged commit first (about four minutes for
+`v2026.10.02`, and the deploy took four more after approval). When it is
+green, the run pauses at **Deploy to production — waiting for review**. **Claude
+then hands Forrest the run's direct link**
+(`https://github.com/fthiess/pbe-address-book/actions/runs/<id>`, from
+`gh run list --workflow deploy-prod.yml -L1`) and the click path: the yellow
+banner's **Review deployments** → tick `production` → **Approve and deploy**. The
+approval happens in GitHub, not in Firebase or the Google Cloud console.
 
 ### 3. Watch the first hour
 
@@ -679,6 +708,17 @@ green; Forrest signs in from pbe400.org and exercises the changed surfaces;
 Cloud Run logs with **no new error types**; Mixpanel-Prod still receiving
 `app = book` events. Then run any operator steps from step 1, each followed by
 its cold start.
+
+Concretely, as run for `v2026.10.02` (N182):
+
+- the same `describe` as step 1 shows a new revision taking 100% of traffic,
+  with `BOOK_API_VERSION` equal to the released commit;
+- the new revision's startup line (`… N profiles cached; … bridge=…/book/`) reports
+  the **same profile count** as the previous revision's last start;
+- `gcloud logging read` on the service, `severity>=WARNING` since the rollout,
+  turns up nothing new (`401`s on `/api/me` are ordinary signed-out visits);
+- after signing in, Forrest sees the new version in Book's footer, and Mixpanel-Prod's
+  live view shows his events (allow Mixpanel in any browser blocker first).
 
 ### 4. Roll back
 
