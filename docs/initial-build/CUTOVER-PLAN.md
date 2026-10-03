@@ -54,7 +54,7 @@ reachable, which keeps the rollback simple.
 |---|---|---|
 | Sign-in fails for Forrest or for more than one tester in the first hour | Ghost Admin → Design → activate the previous theme (`pbe-news-ghost-theme-prev-20260626.zip`) and remove the `/book/` route from `routes.yaml`. Book becomes unreachable from the newsletter; nobody else notices. | < 5 min |
 | A privacy regression (a `no-store` route caching, an `/img/` object served `public`) | Same theme rollback, then fix and redeploy | < 5 min |
-| Bad data (a mapping error visible across many records) | `restore.ts --file <corrected snapshot>` after `maintenance-on.sh`; the tool takes a safety snapshot first | < 15 min |
+| Bad data (a mapping error visible across many records) | `restore.ts --file <corrected snapshot>` after `maintenance-begin.sh` (renamed from `maintenance-on.sh` by D187); the tool takes a safety snapshot first | < 15 min |
 | A broken deploy | Dispatch `Deploy production` on the previous tag | ~15 min (gate re-runs) |
 
 Numeric thresholds from the methodology apply to the soft-launch cohort: a new

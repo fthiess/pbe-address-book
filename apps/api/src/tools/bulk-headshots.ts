@@ -25,8 +25,9 @@
  * invisible, and an edit to a touched record gets a 412 (the cache holds the
  * pre-write token; the SPA recovers, D109). By default uploads and undos refuse to
  * write unless the maintenance page is up (D100/D118). `--book-up` runs with Book
- * serving instead — D181's model, and how the first load ran (D182), because the
- * maintenance scripts republish Hosting from a local build (OFC-449). `--force`
+ * serving instead — D181's model, and how the first load ran (D182), when the
+ * maintenance scripts still republished Hosting from a local build (OFC-449, fixed
+ * by D187: maintenance is now safe on production too). `--force`
  * skips the pre-flight only for an environment with no Hosting.
  *
  * UNDO AND PURGE. Before the first write the run records
@@ -90,13 +91,13 @@ function printHelp(): void {
       "  --confirm <id>      Must equal --project. Required to write anything.",
       "  --dry-run           Read the live pointers and plan (uploads also encode every photo); write nothing.",
       "  --hosting-url <url> Origin probed for the maintenance page (default https://<project>.web.app).",
-      "  --book-up           Write with Book serving (D181 model; see OFC-449): skip the maintenance",
+      "  --book-up           Write with Book serving (D181 model): skip the maintenance",
       "                      pre-flight, then force a cold start at once.",
       "  --force             Skip the maintenance pre-flight (environments with no Hosting only).",
       "  --out <dir>         Where the run artifact goes (default restore-artifacts/).",
       "  --help, -h          Show this help and exit.",
       "",
-      "⚠ Uploads and undos need Book in maintenance (infra/maintenance-on.sh) or --book-up, then a forced cold start.",
+      "⚠ Uploads and undos need Book in maintenance (infra/maintenance-begin.sh) or --book-up, then a forced cold start.",
     ].join("\n"),
   );
 }
@@ -181,7 +182,7 @@ async function requireMaintenance(): Promise<void> {
   if (inMaintenance !== true) {
     fail(
       inMaintenance === false
-        ? `${hostingUrl} is not serving the maintenance page. Run infra/maintenance-on.sh first.`
+        ? `${hostingUrl} is not serving the maintenance page. Run infra/maintenance-begin.sh first.`
         : `${hostingUrl} did not answer, so this cannot confirm Book is down. Check --hosting-url.`,
     );
   }

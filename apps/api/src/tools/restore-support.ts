@@ -214,7 +214,8 @@ export function parseArgs(argv: readonly string[]): {
 }
 
 /**
- * The marker the maintenance page carries (`apps/web/public/maintenance.html`).
+ * The marker the maintenance page carries (`infra/maintenance-site/maintenance.html`;
+ * `scripts/lib/maintenance.test.ts` asserts the two agree).
  * Matching on the visible heading rather than a build-generated hash keeps the
  * probe honest across rebuilds; the page is deliberately static and hand-written.
  */
@@ -223,13 +224,16 @@ export const MAINTENANCE_MARKER = "Down for maintenance";
 /**
  * The path the pre-flight probes — deliberately **not** the origin root.
  *
- * `firebase.maintenance.json` publishes `apps/web/dist`, which still contains
- * `index.html` and every built asset, and Firebase Hosting prefers a matching
- * static file over a rewrite. So while Book is "down", the bare origin still serves
- * the real SPA and only paths with no file behind them land on `/maintenance.html`
- * (measured on staging during the 7b-3 live test — the D118 gap itself is OFC-334).
- * Nothing under `/api/` can be a static file, so this path is governed by the
- * rewrite while maintenance is on and answered by Cloud Run when it is off.
+ * Until D187, `firebase.maintenance.json` published `apps/web/dist`, which still
+ * contains `index.html` and every built asset, and Firebase Hosting prefers a
+ * matching static file over a rewrite. So while Book was "down", the bare origin
+ * still served the real SPA (measured on staging during the 7b-3 live test; OFC-334).
+ * D187 gave the maintenance config a public directory holding only the page, so
+ * `/` now serves it too. The probe stays on `/api/health` anyway, deliberately:
+ * nothing under `/api/` can ever be a static file, so it is the one path whose
+ * answer depends only on which Hosting config is live — the rewrite in maintenance,
+ * Cloud Run otherwise — whatever the public directory holds. Do not "simplify" it
+ * to `/`.
  */
 export const MAINTENANCE_PROBE_PATH = "/api/health";
 
@@ -335,15 +339,11 @@ export function renderRosterSummary(roster: PrivilegedRoster, delta: RosterDelta
  */
 export async function probeMaintenance(origin: string): Promise<boolean | null> {
   try {
-    // Probe `/api/health`, NOT the origin root. `firebase.maintenance.json`
-    // publishes `apps/web/dist`, which still contains `index.html` and every built
-    // asset, and Firebase Hosting serves a matching **static file** in preference
-    // to a rewrite — so during maintenance the bare origin still returns the real
-    // SPA, and only paths with no file behind them reach `/maintenance.html`
-    // (measured on staging, 7b-3 live test; the D118 gap is filed as OFC-334).
-    // A path under `/api/` can never be a static file, so it is governed by the
-    // rewrite in maintenance and answered by Cloud Run when Book is up — which
-    // makes it the only honest probe of the state this pre-flight cares about.
+    // Probe `/api/health`, NOT the origin root — see MAINTENANCE_PROBE_PATH. A
+    // path under `/api/` can never be a static file, so it is governed by the
+    // rewrite in maintenance and answered by Cloud Run when Book is up, whatever
+    // the maintenance config's public directory holds — which makes it the only
+    // honest probe of the state this pre-flight cares about.
     const response = await fetch(`${origin.replace(/\/+$/, "")}${MAINTENANCE_PROBE_PATH}`, {
       redirect: "follow",
     });

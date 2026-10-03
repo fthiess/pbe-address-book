@@ -331,6 +331,59 @@ This is a backup-integrity backstop, **not** an availability monitor — it is u
 down" is a separate instrument: a Cloud Monitoring uptime check against
 `/api/health` (OFC-329).
 
+## Maintenance mode (D118 → D187) — taking Book down and bringing it back
+
+Maintenance exists for operations that must not run while brothers can edit: a
+restore, an offline bulk load, a data migration (D100). **A release does not need
+it.** `deploy-prod.yml` swaps Hosting and Cloud Run with no downtime.
+
+```bash
+bash infra/maintenance-begin.sh --dry-run     # says what it would do; changes nothing
+bash infra/maintenance-begin.sh               # production: ENV_FILE=infra/environments/prod.env
+# … the operation, then its forced cold start (D181) …
+bash infra/maintenance-end.sh                 # same ENV_FILE
+```
+
+**What brothers see.** After `begin`, every path serves the static "Down for
+maintenance" page from Hosting's edge: the bare origin, a bookmarked profile, the
+"Book" link from pbe400.org. Nothing reaches Cloud Run, and Cloud Run itself is
+left running. A brother who already has Book open keeps what is on screen; his
+next request to the server gets the page instead of data. Static files the open
+app hasn't loaded yet (an uncached headshot, a geo table, the search worker)
+also come back as the page, so those features fail inside the tab rather than
+showing the outage screen. After `end`, Hosting is
+back on exactly the release it was serving before. There's no rebuild and no
+version change, and nobody is signed out. A brother sitting on the static page
+sees Book again when he reloads.
+
+**How it works.** `begin` deploys `firebase.maintenance.json`, whose public
+directory (`infra/maintenance-site/`) holds *only* `maintenance.html`, with every
+path rewritten to it. The deploy carries the release message
+`book-maintenance-begin`. `end` reads the live channel's release history through
+the Hosting API and re-releases the version immediately before that release, the
+same thing as the console's "rollback". Nothing is built or published from your
+machine except the one static page, which is why this is safe on production
+(OFC-449). The decisions live in `scripts/lib/maintenance.ts`, with unit tests.
+
+**⚠ A deploy ends maintenance.** Any ordinary Hosting deploy replaces the
+maintenance page: a production release, or **on staging, any merge to `main`**.
+`end` therefore refuses, and changes nothing, unless the newest live release is
+still the maintenance one. Otherwise it would roll that deploy back. Hold staging
+merges while staging is in maintenance. If an operation ever needs downtime *and*
+a new release (a data-shape change that can't be done expand/contract), the order
+is `begin` → the operation → the release. The release ends maintenance, and `end`
+correctly declines to run.
+
+**⚠ Cold start before `end`, not after.** After an out-of-band Firestore write
+the cache is stale until the instance is replaced (D181). Ending maintenance
+first lets the first visitors see the old data, and edits to touched records get
+412s.
+
+Each script checks the edge afterwards and fails loudly if it disagrees: `begin`
+that `/` and `/api/health` serve the page, `end` that `/` serves Book again. The restore and bulk-headshot pre-flights probe `/api/health`,
+deliberately not `/`; see `MAINTENANCE_PROBE_PATH` in
+`apps/api/src/tools/restore-support.ts`.
+
 ## Restoring from a backup (7b-3) — the procedure
 
 The most destructive operation in Book: it **replaces** `profiles`, `users` and
@@ -357,9 +410,9 @@ then `--object backups/<name>.json`).
 
 Then the real thing, in order:
 
-1. **Take Book down** (D118 — the edge swap):
+1. **Take Book down** (D118/D187 — see "Maintenance mode" below):
    ```bash
-   PROJECT_ID=pbe-book-staging ./infra/maintenance-on.sh
+   bash infra/maintenance-begin.sh            # production: ENV_FILE=infra/environments/prod.env
    ```
    The restore refuses to run until this is in place. `--force` skips the check,
    for an environment that has no Hosting at all.
@@ -369,16 +422,8 @@ Then the real thing, in order:
    `gcloud auth application-default login` has already set up:
    ```bash
    GOOGLE_APPLICATION_CREDENTIALS="$APPDATA/gcloud/application_default_credentials.json" \
-     PROJECT_ID=pbe-book-staging ./infra/maintenance-on.sh
+     bash infra/maintenance-begin.sh
    ```
-
-   ⚠ **Maintenance does not cover the site root** (OFC-334). Hosting serves a
-   matching static file in preference to the rewrite, and the maintenance config
-   publishes `apps/web/dist`, so `/` still returns the real SPA while every path
-   with no file behind it returns the maintenance page. Verify with a path that
-   cannot be a file — `curl -s https://<host>/api/health` should return the
-   maintenance HTML, not JSON. (The restore's pre-flight probes exactly that, for
-   exactly this reason.)
 
 2. **Restore.** `--confirm` must repeat the project id — it is the typed
    acknowledgment, and there is no other way to write:
@@ -408,9 +453,9 @@ Then the real thing, in order:
    `ghostMemberId`s, and until they are back a primary-email edit mints a
    duplicate Ghost member and locks the brother out (N180).
 
-4. **Bring Book back up:**
+4. **Bring Book back up**, only after step 3's cold start:
    ```bash
-   PROJECT_ID=pbe-book-staging ./infra/maintenance-off.sh
+   bash infra/maintenance-end.sh              # production: ENV_FILE=infra/environments/prod.env
    ```
 
 5. **Work the Ghost discrepancy report.** The tool ran the reconciliation (D99)
@@ -498,12 +543,11 @@ profile that no longer shows the photo the operator chose against. Read D182 for
 the rules; this is the runbook. Like the restore it is **invisible until a cold
 start**. It supports two modes: **in maintenance** (D100; the default — uploads and
 undos refuse to write unless the maintenance page is up) or **with Book up**
-(`--book-up`, D181's model). ⚠ **On production use `--book-up`** until OFC-449 lands:
-the maintenance scripts republish Hosting from your *local* `apps/web/dist`, which
-on production replaces the released SPA with an unreleased build. With Book up, the
-new photos are invisible and edits to the touched records get a 412 (recovered in
-place, D109) until the cold start, so run it when Book is quiet and cold-start at
-once.
+(`--book-up`, D181's model). Both are safe on production since D187. Before it,
+the maintenance scripts republished Hosting from a local build (OFC-449), which is
+why the first loads ran with `--book-up`. With Book up, the new photos are
+invisible and edits to the touched records get a 412 (recovered in place, D109)
+until the cold start, so run it when Book is quiet and cold-start at once.
 
 **The plan** is a CSV, `const_id,file,expected_version`, built outside this repo (it
 names real brothers' files — never commit one). `file` is a PNG or JPEG path,
@@ -530,12 +574,12 @@ gcloud run deploy pbe-book-api --image "$IMAGE" --region us-central1 --project $
 # 4. Spot-check brothers across the batch in the app.
 ```
 
-(In maintenance instead — staging, or production once OFC-449 lands: run
-`PROJECT_ID=$PROJECT ./infra/maintenance-on.sh` before step 2 and drop `--book-up`;
-run `maintenance-off.sh` after step 3.)
+(In maintenance instead: run `bash infra/maintenance-begin.sh` before step 2, with
+`ENV_FILE=infra/environments/prod.env` on production, and drop `--book-up`. Run
+`maintenance-end.sh` the same way after step 3's cold start.)
 
 **Undo** — if a wrong photo turns up, or the run reported failures you do not want
-to keep (add `--book-up` on production, as for the load):
+to keep (add `--book-up` if the load ran that way, or put Book in maintenance first):
 
 ```bash
 npm run headshots:bulk --workspace apps/api -- --project $PROJECT --bucket $BUCKET \
