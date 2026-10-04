@@ -322,14 +322,18 @@ test.describe("Copy Emails (D167 / OFC-391)", () => {
     // card itself — the exact spot the reporter clicked. Asserting one exists keeps
     // the test from passing vacuously if the layout ever moves the notice clear of
     // the rows.
-    const boxes = await page
-      .getByRole("checkbox", { name: /^Select / })
-      .evaluateAll((els) =>
-        els.map((el) => {
-          const r = el.getBoundingClientRect();
-          return { name: el.getAttribute("aria-label") ?? "", x: r.x, y: r.y, w: r.width, h: r.height };
-        }),
-      );
+    const boxes = await page.getByRole("checkbox", { name: /^Select / }).evaluateAll((els) =>
+      els.map((el) => {
+        const r = el.getBoundingClientRect();
+        return {
+          name: el.getAttribute("aria-label") ?? "",
+          x: r.x,
+          y: r.y,
+          w: r.width,
+          h: r.height,
+        };
+      }),
+    );
     // A body row's box, not the header's select-all (which the band also covers).
     const target = boxes.find(
       (b) =>

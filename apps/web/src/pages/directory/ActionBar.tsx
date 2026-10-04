@@ -363,26 +363,32 @@ function CopyEmailsToast({
   }, [error, paused, onDismiss, message]);
 
   return (
-    <output
-      className="absolute inset-x-0 top-full z-40 mt-2 flex justify-center px-4"
-      // Pointer *and* keyboard: React's onFocus/onBlur map to focusin/focusout, so
-      // they fire for the dismiss button inside. Without the focus half, tabbing to
-      // the button could have it vanish under the user's hands.
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
-    >
+    // ⚠ `pointer-events-none` on the wrapper is load-bearing (OFC-422). It spans the
+    // action bar's full width so it can centre the card, and while it took pointer
+    // events that whole invisible band swallowed clicks on the grid row beneath it —
+    // a row could be neither selected nor opened until the notice went away. The card
+    // takes pointer events back, so only what is visibly there catches a click.
+    <output className="pointer-events-none absolute inset-x-0 top-full z-40 mt-2 flex justify-center px-4">
       {/* `items-center` centres the text against the dismiss control, and the button's
           `-my-2` lets its 44px hit area overhang the padding box instead of setting the
           notice's height. Without both, a one-line message rendered the same height as
           a two-line one with the text pinned to the top — which reads as a blank second
-          line (OFC-391 live test). The 44px target itself is untouched. */}
+          line (OFC-391 live test). The 44px target itself is untouched.
+
+          The pause handlers live on the card, not the wrapper, so hovering the empty
+          band beside it no longer counts as reading it. Pointer *and* keyboard: React's
+          onFocus/onBlur map to focusin/focusout, so they fire for the dismiss button
+          inside. Without the focus half, tabbing to the button could have it vanish
+          under the user's hands. */}
       <div
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onFocus={() => setPaused(true)}
+        onBlur={() => setPaused(false)}
         className={
           error
-            ? "flex max-w-md items-center gap-3 rounded-[var(--radius-lg)] border border-destructive bg-card px-4 py-3 text-destructive shadow-[var(--shadow-popover-strong)]"
-            : "flex max-w-md items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--gold-border-2)] bg-[var(--gold-bg-2)] px-4 py-3 text-[var(--gold-text-strong)] shadow-[var(--shadow-popover-strong)]"
+            ? "pointer-events-auto flex max-w-md items-center gap-3 rounded-[var(--radius-lg)] border border-destructive bg-card px-4 py-3 text-destructive shadow-[var(--shadow-popover-strong)]"
+            : "pointer-events-auto flex max-w-md items-center gap-3 rounded-[var(--radius-lg)] border border-[var(--gold-border-2)] bg-[var(--gold-bg-2)] px-4 py-3 text-[var(--gold-text-strong)] shadow-[var(--shadow-popover-strong)]"
         }
       >
         <div className="text-sm">
