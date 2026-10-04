@@ -141,6 +141,10 @@ export function Directory() {
   // clicks must each reset (the Directory doesn't remount when already on "/"),
   // while the redundant re-renders from clearing must not re-fire for one intent.
   const resetHandledKey = useRef<string | null>(null);
+  // Bumped on each reset so the grid/cards scroll back to the top (OFC-237): when
+  // the click lands on an already-open Directory nothing remounts, and scroll
+  // restoration rightly leaves a fresh entry's offset alone.
+  const [scrollToTopSignal, setScrollToTopSignal] = useState(0);
   useEffect(() => {
     const wantsReset = (location.state as { reset?: boolean } | null)?.reset === true;
     if (!wantsReset || resetHandledKey.current === location.key) {
@@ -149,6 +153,7 @@ export function Directory() {
     resetHandledKey.current = location.key;
     setStarredOnly(false);
     clearSelection();
+    setScrollToTopSignal((n) => n + 1);
     // Consume the one-shot intent (replace the entry's state with null) so a later
     // Back never re-resets a view the user has since rebuilt.
     void navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
@@ -615,6 +620,7 @@ export function Directory() {
           selection={selection}
           viewKey={location.key}
           restoreReady={searchSettled}
+          scrollToTopSignal={scrollToTopSignal}
         />
       ) : (
         <DirectoryCards
@@ -627,6 +633,7 @@ export function Directory() {
           selection={selection}
           viewKey={location.key}
           restoreReady={searchSettled}
+          scrollToTopSignal={scrollToTopSignal}
         />
       )}
     </section>

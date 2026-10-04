@@ -17,7 +17,7 @@ import { type GridColumn, HIGHLIGHTED_COLUMN_KEYS } from "./grid-model.js";
 import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
-import { useScrollRestoration } from "./useScrollRestoration.js";
+import { useScrollRestoration, useScrollToTopOn } from "./useScrollRestoration.js";
 import type { Stars } from "./useStars.js";
 
 /**
@@ -50,6 +50,8 @@ export interface DirectoryCardsProps {
   viewKey: string;
   /** Whether the row set is final (search settled) so scroll restoration may apply. */
   restoreReady: boolean;
+  /** Bumped by the masthead's clean-slate reset; each change scrolls back to the top (OFC-237). */
+  scrollToTopSignal: number;
 }
 
 export function DirectoryCards({
@@ -62,6 +64,7 @@ export function DirectoryCards({
   selection,
   viewKey,
   restoreReady,
+  scrollToTopSignal,
 }: DirectoryCardsProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -89,11 +92,13 @@ export function DirectoryCards({
   });
 
   useScrollRestoration(scrollRef, viewKey, rows.length > 0 && restoreReady);
+  useScrollToTopOn(scrollRef, scrollToTopSignal);
   useIdlePrefetch(rows);
 
   return (
     <div
       ref={scrollRef}
+      data-testid="directory-cards-scroll"
       className="overflow-auto rounded-xl"
       style={{ maxHeight: "calc(100dvh - 13rem)" }}
     >

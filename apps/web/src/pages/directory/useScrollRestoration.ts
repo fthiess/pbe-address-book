@@ -147,3 +147,26 @@ export function useScrollRestoration(
     };
   }, [viewKey, scrollRef]);
 }
+
+/**
+ * Scroll a container back to the top each time `signal` changes after mount — the
+ * masthead's clean-slate reset when the reader is already on the Directory
+ * (OFC-237). That click mints a fresh history entry with no saved offset, which
+ * `useScrollRestoration` deliberately leaves alone: filter, sort and `?cols=`
+ * changes mint fresh entries too, and they must not jump the list to the top.
+ * So "go home, fresh" is an explicit one-shot from the Directory's reset effect
+ * rather than a rule inside restoration, and D31's restore-on-Back is untouched.
+ *
+ * The value at mount is the baseline, not a request: a Directory freshly mounted by
+ * the masthead from another page already starts at the top.
+ */
+export function useScrollToTopOn(scrollRef: RefObject<HTMLElement | null>, signal: number): void {
+  const seen = useRef(signal);
+  useEffect(() => {
+    if (signal === seen.current) {
+      return;
+    }
+    seen.current = signal;
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [signal, scrollRef]);
+}

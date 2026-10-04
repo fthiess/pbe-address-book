@@ -47,7 +47,7 @@ import { HighlightedName } from "./search/HighlightedName.js";
 import { Thumbnail } from "./thumbnail.js";
 import type { DirectorySort } from "./useDirectorySort.js";
 import { useIdlePrefetch } from "./useIdlePrefetch.js";
-import { useScrollRestoration } from "./useScrollRestoration.js";
+import { useScrollRestoration, useScrollToTopOn } from "./useScrollRestoration.js";
 import type { Stars } from "./useStars.js";
 
 /**
@@ -96,6 +96,8 @@ export interface DirectoryGridProps {
   viewKey: string;
   /** Whether the row set is final (search settled) so scroll restoration may apply. */
   restoreReady: boolean;
+  /** Bumped by the masthead's clean-slate reset; each change scrolls back to the top (OFC-237). */
+  scrollToTopSignal: number;
 }
 
 export function DirectoryGrid({
@@ -113,6 +115,7 @@ export function DirectoryGrid({
   selection,
   viewKey,
   restoreReady,
+  scrollToTopSignal,
 }: DirectoryGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -224,6 +227,7 @@ export function DirectoryGrid({
   });
 
   useScrollRestoration(scrollRef, viewKey, rows.length > 0 && restoreReady);
+  useScrollToTopOn(scrollRef, scrollToTopSignal);
   useIdlePrefetch(rows);
 
   const dataKeys = useMemo(() => columns.filter((c) => !c.pinned).map((c) => c.key), [columns]);
