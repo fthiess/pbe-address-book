@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { ModalDialog } from "../../components/ModalDialog.js";
 import { cn } from "../../lib/utils.js";
 
@@ -27,8 +27,11 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
-  const titleId = "confirm-dialog-title";
-  const bodyId = "confirm-dialog-body";
+  // Per-instance ids. Two of these can be in the DOM at once — browser Back with a
+  // confirmation open raises the unsaved-changes prompt over it — and with fixed
+  // ids both dialogs took their accessible name from whichever rendered first.
+  const titleId = useId();
+  const bodyId = useId();
 
   return (
     <ModalDialog

@@ -264,6 +264,27 @@ test.describe("OFC-242 — the stranded-role note on the three transitions", () 
     );
   });
 
+  test("follows a role change made on the same visit, in both directions", async ({ page }) => {
+    // The role control's reply must reach the record the dialogs read: without that
+    // the note would describe the role the brother held when the page loaded.
+    await mockAdmin(page, { selfId: 5001 });
+    await gotoProfile(page);
+    const group = page.getByRole("group", { name: "Role" });
+    const debrother = page.getByRole("dialog", { name: "De-brother this member?" });
+
+    await group.getByRole("button", { name: "Brother" }).click();
+    await expect(page.getByText("Role set to Brother.")).toBeVisible();
+    await page.getByRole("button", { name: "De-brother…" }).click();
+    await expect(debrother).toContainText("This can be reversed.");
+    await expect(debrother).not.toContainText(strandedRoleNote);
+    await debrother.getByRole("button", { name: "Cancel" }).click();
+
+    await group.getByRole("button", { name: "Administrator" }).click();
+    await expect(page.getByText("Role set to Administrator.")).toBeVisible();
+    await page.getByRole("button", { name: "De-brother…" }).click();
+    await expect(debrother).toContainText(strandedRoleNote);
+  });
+
   // Administrators only, by Forrest's call (D191): a manager's role is stranded the
   // same way, but that is deliberately not warned about.
   for (const role of ["brother", "manager"] as const) {

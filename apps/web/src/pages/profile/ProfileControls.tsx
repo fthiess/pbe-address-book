@@ -338,7 +338,8 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
  * Administrator) with the brother's *current* role highlighted — the visual-design
  * spec for this control (`Profile.dc.html` "Administrator controls"). Selecting a
  * segment applies immediately (the design carries no separate Apply step; a role
- * change is reversible). The current role is read straight off the profile record
+ * change is reversible) — with one exception: an administrator lowering their
+ * **own** role confirms first (OFC-419, D191). The current role is read straight off the profile record
  * the page already holds (`record.role` — public since OFC-139, so no separate
  * fetch), defaulting to `brother` when absent. A `409 last_admin` keeps the current
  * role and explains. Modeled on the masthead {@link FontSizeToggle} pattern

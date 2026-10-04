@@ -332,7 +332,21 @@ export function ProfileContainer() {
     [id],
   );
 
-  const changeRoleAction = useCallback((role: Role) => changeRole(id, role), [id]);
+  const changeRoleAction = useCallback(
+    async (role: Role) => {
+      const outcome = await changeRole(id, role);
+      if (outcome.status === "ok") {
+        // Fold the new role into the held record. The reply is `{ id, role }`, not a
+        // projection, so this is a merge of that one field. Without it `record.role`
+        // stays at its load-time value, and the D191 warnings that read it — the
+        // stranded-role note, the own-email confirmation — would describe the role
+        // the brother had before this click.
+        setRecord((held) => (held ? { ...held, role: outcome.role } : held));
+      }
+      return outcome;
+    },
+    [id],
+  );
 
   // Return to the Directory ENTRY we arrived from as a POP — walking back
   // `directoryDelta` entries (each entry carries its own, N45) so the Directory's
