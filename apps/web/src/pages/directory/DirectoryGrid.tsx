@@ -381,12 +381,25 @@ export function DirectoryGrid({
   );
 }
 
-/** Sticky-left styling for a frozen identity cell at a given offset (header z above body). */
+/**
+ * Sticky-left styling for a frozen identity cell at a given offset (header z above body).
+ *
+ * ⚠ `touchAction` is load-bearing (OFC-427). A frozen cell sits inside the same
+ * scroll container as the data columns, so without it a touch swipe that *starts*
+ * on a frozen cell also pans the data columns sideways — on a tablet, every vertical
+ * swipe that drifted slightly did. A gesture's allowed movements are the
+ * intersection of the touch-action of the element it starts on and its ancestors up
+ * to the scroller, so `pan-y` here confines a swipe from a frozen cell to vertical
+ * scrolling while swipes on the data columns keep both axes. `pinch-zoom` is
+ * spelled out because `pan-y` alone would also forbid pinch-zooming from these
+ * cells — a WCAG 1.4.4 regression on exactly the devices this is for. Taps, links,
+ * and the keyboard are unaffected.
+ */
 function frozenStyle(left: number | undefined, header: boolean): CSSProperties {
   if (left === undefined) {
     return {};
   }
-  return { position: "sticky", left, zIndex: header ? 21 : 10 };
+  return { position: "sticky", left, zIndex: header ? 21 : 10, touchAction: "pan-y pinch-zoom" };
 }
 
 function HeaderCell({
