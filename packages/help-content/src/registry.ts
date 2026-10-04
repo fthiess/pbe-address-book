@@ -107,7 +107,7 @@ export const helpContent: HelpContent = {
     key: "directory.filter.near",
     label: "Located near",
     toggleTip:
-      "Finds brothers within the distance you choose of a place — start typing a town, a ZIP code, or another brother's name, and pick from the list. Smaller towns may not be listed by name; a ZIP code always works, and finds the brothers around it just as well. Proximity search covers the United States only — use the Country filter for brothers living elsewhere. Brothers who keep their address private will not be found by this filter.",
+      "Finds brothers within the distance you choose of a place — start typing a town, a ZIP code, or another brother's name, and pick from the list. Smaller towns may not be listed by name; a ZIP code always works, and finds the brothers around it just as well. The proximity filter covers the United States only — use the Country filter for brothers living elsewhere. Brothers who keep their address private will not be found by this filter.",
   },
   "directory.filter.willingToMentor": {
     key: "directory.filter.willingToMentor",
@@ -357,7 +357,7 @@ export const helpContent: HelpContent = {
     key: "admin.backup",
     label: "Download backup",
     helperText:
-      "Save a complete snapshot of the PBE Address Book as a JSON file you keep off-site. Automatic nightly backups arrive in a later update.",
+      "Save a complete snapshot of the PBE Address Book as a JSON file you keep off-site. The Book already backs itself up automatically twice a day; a downloaded copy is extra insurance.",
   },
   "admin.banner.message": {
     key: "admin.banner.message",
