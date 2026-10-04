@@ -274,3 +274,29 @@ test.describe("OFC-399 — Unlisted and De-brothered (staff only)", () => {
     await expect(page.getByText("3 active")).toBeVisible();
   });
 });
+
+test.describe("OFC-428 — the range filters offer a keyboard that can type their grammar", () => {
+  // iPhone's `inputmode="numeric"` pad has digits only — no comma, no dash — so a
+  // brother on a phone could not type the "1980, 1985-1989" the placeholder shows.
+  // The keyboard itself is invisible to Playwright; what it can prove is that the
+  // attribute that summons the digit pad is gone, and that the grammar works.
+  for (const label of ["Class Year", "Constitution ID"]) {
+    test(`${label} does not ask for the digits-only keypad`, async ({ page }) => {
+      await gotoDirectory(page);
+      await filtersFold(page).click();
+      // By role with `exact`: both labels are also column names (N174).
+      const input = page.getByRole("textbox", { name: label, exact: true });
+      await expect(input).toBeVisible();
+      await expect(input).not.toHaveAttribute("inputmode", /.*/);
+    });
+  }
+
+  test("a comma-and-range Class Year filters as the placeholder promises", async ({ page }) => {
+    await gotoDirectory(page);
+    await filtersFold(page).click();
+    await page.getByRole("textbox", { name: "Class Year", exact: true }).fill("1984, 1989-1990");
+    await expect(row(page, /Aaron Adams/)).toBeVisible();
+    await expect(row(page, /Dev Admin/)).toBeVisible();
+    await expect(row(page, /Ulric Unlisted/)).toHaveCount(0);
+  });
+});
