@@ -147,6 +147,20 @@ describe("generateProfiles", () => {
       expect(result.ok).toBe(true);
     }
   });
+
+  it("seeds one usable and one nominal (deceased) admin, and pins which is which", () => {
+    // The pair is deliberate (D129/D191): the nominal admin is the live fixture for
+    // the usable-admin invariant and the stranded-role warning. WHICH id is which is
+    // not — it falls out of the PRNG stream, and has already swapped once unnoticed,
+    // leaving tickets and runbooks naming the wrong record. If this fails, the
+    // stream moved: update the ids here and wherever staging fixtures are described.
+    const admins = generateProfiles().filter((profile) => profile.role === "admin");
+    expect(admins.map((profile) => profile.id)).toEqual([5003, 5004]);
+    const [usable, nominal] = admins;
+    expect(usable?.deceased.isDeceased).toBe(false);
+    expect(usable?.email).toBeTruthy();
+    expect(nominal?.deceased.isDeceased).toBe(true);
+  });
 });
 
 /**

@@ -16,6 +16,7 @@ import type { DirectoryProfile, ProfileRecord } from "../../lib/types.js";
 import { AddressEditor } from "./AddressEditor.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
 import { ConsentSwitch } from "./ConsentSwitch.js";
+import { DanglingAdminNote } from "./DanglingAdminNote.js";
 import { type HeadshotChange, HeadshotEditor } from "./HeadshotEditor.js";
 import { MajorsEditor } from "./MajorsEditor.js";
 import { RelationshipsEditor } from "./RelationshipsEditor.js";
@@ -33,7 +34,7 @@ import {
   TextAreaField,
   TextField,
 } from "./fields.js";
-import { wouldClearUsableEmail } from "./patch.js";
+import { wouldChangeOwnAdminEmail, wouldClearUsableEmail } from "./patch.js";
 import { useProfileDraft } from "./useProfileDraft.js";
 import { useUnsavedGuard } from "./useUnsavedGuard.js";
 import { type Viewer, managerSeesPrivate } from "./viewer.js";
@@ -129,6 +130,9 @@ export function ProfileEdit({
   // "you're locking this brother out" confirmation (OFC-272). Set when the guard in
   // `onSave` trips; the dialog's confirm re-enters `onSave` with the clear approved.
   const [confirmClearEmail, setConfirmClearEmail] = useState(false);
+  // The same gate for an administrator changing their OWN sign-in address (OFC-295):
+  // holds the new address while the dialog is open, `null` otherwise.
+  const [confirmOwnEmail, setConfirmOwnEmail] = useState<string | null>(null);
   // A staged (not-yet-saved) headshot change; counts as a dirty edit so the guard
   // fires and Save uploads it after the text PATCH (D50/N42).
   const [stagedHeadshot, setStagedHeadshot] = useState<HeadshotChange | null>(null);
@@ -164,7 +168,7 @@ export function ProfileEdit({
     });
   }
 
-  async function onSave(confirmedEmailClear = false) {
+  async function onSave(confirmedEmail = false) {
     setBanner(null);
     const firstInvalid = form.revealAll();
     if (firstInvalid) {
@@ -186,8 +190,16 @@ export function ProfileEdit({
     // path (self, manager, admin) and never on the private-email path where the field
     // isn't shown; the sole-usable-admin case is *also* hard-blocked server-side
     // (409 → last_admin below), so this warning sits in front of that backstop.
-    if (!confirmedEmailClear && wouldClearUsableEmail(record, patch)) {
+    if (!confirmedEmail && wouldClearUsableEmail(record, patch)) {
       setConfirmClearEmail(true);
+      return;
+    }
+    // An administrator moving their own sign-in address: the next magic link goes to
+    // the new one, so a typo is a self-lockout — unrecoverable in-app for a sole
+    // admin (OFC-295). A warning only, by Forrest's call (D191); the server accepts
+    // the change as before.
+    if (!confirmedEmail && wouldChangeOwnAdminEmail(record, patch, viewer.isOwner)) {
+      setConfirmOwnEmail(String(patch.email).trim());
       return;
     }
 
@@ -816,6 +828,25 @@ export function ProfileEdit({
           An email address is how a brother signs in. Removing this one will lock{" "}
           <strong>{name}</strong> out of both the Address Book and PBE News until a new email
           address is added.
+          {record.role === "admin" && <DanglingAdminNote name={name} />}
+        </ConfirmDialog>
+      )}
+
+      {confirmOwnEmail !== null && (
+        <ConfirmDialog
+          title="Change your own email address?"
+          confirmLabel="Save"
+          cancelLabel="Keep editing"
+          tone="destructive"
+          onConfirm={() => {
+            setConfirmOwnEmail(null);
+            void onSave(true);
+          }}
+          onCancel={() => setConfirmOwnEmail(null)}
+        >
+          Sign-in links will be sent to <strong className="break-all">{confirmOwnEmail}</strong>. If
+          you can’t receive mail there, you will be locked out of the Address Book and PBE News, and
+          only another administrator can fix it. Check the address carefully.
         </ConfirmDialog>
       )}
     </article>

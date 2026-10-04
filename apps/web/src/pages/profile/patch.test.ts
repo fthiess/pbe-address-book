@@ -1,7 +1,14 @@
 import type { Profile } from "@pbe/shared";
 import { describe, expect, it } from "vitest";
 import type { ProfileRecord } from "../../lib/types.js";
-import { buildPatch, isDirty, valuesEqual, wouldClearUsableEmail } from "./patch.js";
+import {
+  buildPatch,
+  isDirty,
+  isSelfDemotion,
+  valuesEqual,
+  wouldChangeOwnAdminEmail,
+  wouldClearUsableEmail,
+} from "./patch.js";
 
 /** A minimal owner record to diff against (only the fields the tests touch). */
 function record(overrides: Partial<ProfileRecord> = {}): ProfileRecord {
@@ -172,6 +179,70 @@ describe("wouldClearUsableEmail (OFC-272 guard predicate)", () => {
 
   it("does NOT fire for an empty patch (a photo-only or no-op Save)", () => {
     expect(wouldClearUsableEmail(record(), {})).toBe(false);
+  });
+});
+
+describe("wouldChangeOwnAdminEmail (OFC-295 guard predicate)", () => {
+  const admin = (overrides: Partial<ProfileRecord> = {}) => record({ role: "admin", ...overrides });
+
+  it("fires when an administrator replaces their own email with a different one", () => {
+    const original = admin();
+    const patch = buildPatch(original, admin({ email: "jim@example.test" }), "admin", true);
+    expect(wouldChangeOwnAdminEmail(original, patch, true)).toBe(true);
+  });
+
+  it("fires under a lowered effective role — it reads the stored role, not the session's", () => {
+    // "View as brother": the patch is built at the effective role, the record still
+    // says admin. The hazard is the same, so the warning must be too.
+    const original = admin();
+    const patch = buildPatch(original, admin({ email: "jim@example.test" }), "brother", true);
+    expect(wouldChangeOwnAdminEmail(original, patch, true)).toBe(true);
+  });
+
+  it("does NOT fire for a case- or whitespace-only change (same sign-in address, D97)", () => {
+    const original = admin();
+    expect(wouldChangeOwnAdminEmail(original, { email: " James@Example.TEST " }, true)).toBe(false);
+  });
+
+  it("does NOT fire on another administrator's record", () => {
+    const original = admin();
+    expect(wouldChangeOwnAdminEmail(original, { email: "jim@example.test" }, false)).toBe(false);
+  });
+
+  it("does NOT fire for a manager or brother changing their own email", () => {
+    for (const role of ["manager", "brother", undefined] as const) {
+      const original = record({ role });
+      expect(wouldChangeOwnAdminEmail(original, { email: "jim@example.test" }, true)).toBe(false);
+    }
+  });
+
+  it("does NOT fire on a clear — that is wouldClearUsableEmail's dialog, never both", () => {
+    const original = admin();
+    const patch = buildPatch(original, admin({ email: undefined }), "admin", true);
+    expect(wouldClearUsableEmail(original, patch)).toBe(true);
+    expect(wouldChangeOwnAdminEmail(original, patch, true)).toBe(false);
+  });
+
+  it("does NOT fire when email is untouched or the patch is empty", () => {
+    const original = admin();
+    expect(wouldChangeOwnAdminEmail(original, { phone: "617-555-0142" }, true)).toBe(false);
+    expect(wouldChangeOwnAdminEmail(original, {}, true)).toBe(false);
+  });
+});
+
+describe("isSelfDemotion (OFC-419 guard predicate)", () => {
+  it("fires when an administrator lowers their own role", () => {
+    expect(isSelfDemotion("admin", "manager", true)).toBe(true);
+    expect(isSelfDemotion("admin", "brother", true)).toBe(true);
+  });
+
+  it("does NOT fire when demoting someone else", () => {
+    expect(isSelfDemotion("admin", "manager", false)).toBe(false);
+  });
+
+  it("does NOT fire when the current role is not admin, or the role stays admin", () => {
+    expect(isSelfDemotion("manager", "brother", true)).toBe(false);
+    expect(isSelfDemotion("admin", "admin", true)).toBe(false);
   });
 });
 
