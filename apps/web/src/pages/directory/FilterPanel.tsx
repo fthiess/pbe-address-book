@@ -476,10 +476,13 @@ function NumericFilter({
   const hasErrors = errors.length > 0;
   return (
     <Field label={label} htmlFor={id} helpKey={helpKey}>
+      {/* ⚠ No `inputMode="numeric"` (OFC-428): on an iPhone it summons a digits-only
+          pad with no comma or dash, so the grammar this field advertises could not be
+          typed. The standard keyboard costs one tap to its number row for a single year;
+          no iOS keypad offers digits, comma and dash together. */}
       <ClearableInput
         id={id}
         type="text"
-        inputMode="numeric"
         label={label}
         value={value}
         placeholder={placeholder}
@@ -535,7 +538,6 @@ function ClearableInput({
   label,
   value,
   placeholder,
-  inputMode,
   onChange,
   ...aria
 }: {
@@ -544,7 +546,6 @@ function ClearableInput({
   label: string;
   value: string;
   placeholder?: string;
-  inputMode?: "numeric";
   onChange: (value: string) => void;
   "aria-invalid"?: boolean;
   "aria-describedby"?: string;
@@ -554,7 +555,6 @@ function ClearableInput({
       <input
         id={id}
         type={type}
-        inputMode={inputMode}
         value={value}
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
