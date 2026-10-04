@@ -344,7 +344,7 @@ Everything below this paragraph is **assembled automatically from the same sourc
 
 #### Download backup
 
-- **Helper text:** Save a complete snapshot of the PBE Address Book as a JSON file you keep off-site. The Book already backs itself up automatically twice a day; a downloaded copy is extra insurance.
+- **Helper text:** Save a complete snapshot of the PBE Address Book as a JSON file you keep off-site. The Book already backs itself up automatically on a regular schedule; a downloaded copy is extra insurance.
 
 #### Message
 

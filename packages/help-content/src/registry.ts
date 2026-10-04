@@ -357,7 +357,7 @@ export const helpContent: HelpContent = {
     key: "admin.backup",
     label: "Download backup",
     helperText:
-      "Save a complete snapshot of the PBE Address Book as a JSON file you keep off-site. The Book already backs itself up automatically twice a day; a downloaded copy is extra insurance.",
+      "Save a complete snapshot of the PBE Address Book as a JSON file you keep off-site. The Book already backs itself up automatically on a regular schedule; a downloaded copy is extra insurance.",
   },
   "admin.banner.message": {
     key: "admin.banner.message",
