@@ -304,6 +304,53 @@ test.describe("Copy Emails (D167 / OFC-391)", () => {
     expect(await readClipboard(page)).toBe(SENTINEL);
   });
 
+  test("the notice does not swallow clicks on the rows beside it (OFC-422)", async ({ page }) => {
+    // The notice's positioned wrapper spans the action bar's full width while the
+    // visible card is a centred `max-w-md` box; the wrapper used to catch every click
+    // across that band, so the row under it could be neither selected nor opened
+    // until the notice went away.
+    await gotoDirectory(page);
+    await page.getByRole("button", { name: /^Copy Emails/ }).click();
+    const notice = page.getByRole("status").filter({ hasText: "No brothers were selected." });
+    await expect(notice).toHaveCount(1);
+    const card = await notice.locator("> div").boundingBox();
+    if (!card) {
+      throw new Error("the notice card has no box");
+    }
+
+    // Find a row checkbox that shares the card's vertical band but lies outside the
+    // card itself — the exact spot the reporter clicked. Asserting one exists keeps
+    // the test from passing vacuously if the layout ever moves the notice clear of
+    // the rows.
+    const boxes = await page
+      .getByRole("checkbox", { name: /^Select / })
+      .evaluateAll((els) =>
+        els.map((el) => {
+          const r = el.getBoundingClientRect();
+          return { name: el.getAttribute("aria-label") ?? "", x: r.x, y: r.y, w: r.width, h: r.height };
+        }),
+      );
+    // A body row's box, not the header's select-all (which the band also covers).
+    const target = boxes.find(
+      (b) =>
+        !b.name.startsWith("Select all") &&
+        b.y < card.y + card.height &&
+        b.y + b.h > card.y &&
+        b.x + b.w < card.x,
+    );
+    expect(target, "a row checkbox beside the notice, in its band").toBeDefined();
+    if (!target) {
+      return;
+    }
+
+    // A raw mouse click at the checkbox's centre, as a user's would land — not
+    // `.check()`, whose actionability wait would mask the very interception at issue.
+    await page.mouse.click(target.x + target.w / 2, target.y + target.h / 2);
+    await expect(page.getByRole("checkbox", { name: target.name, exact: true })).toBeChecked();
+    // And the notice is still up: the click went through it, not after it.
+    await expect(notice).toHaveCount(1);
+  });
+
   test("the result notice is a polite live region and is dismissible", async ({ page }) => {
     await gotoDirectory(page);
     await page.getByRole("checkbox", { name: /^Select Aaron Adams/ }).check();
