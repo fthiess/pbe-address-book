@@ -268,7 +268,7 @@ export function FilterPanel({
           {/* Proximity sits at the foot of the all-roles filters, in a card of its
             own (Forrest's call, OFC-378 live test). Every other control here is a
             filter you can set by itself; these two are one filter and its
-            parameter, and "Located within" means nothing without "Located near".
+            parameter, and "Filter radius" means nothing without "Located near".
             Boxing them says that before anyone reads a word — the same device the
             profile page's privacy `Subgroup` uses to bind a switch to its
             consequence, and deliberately the same border/tint/heading so the two
@@ -284,7 +284,7 @@ export function FilterPanel({
           <div className="mt-4 grid grid-cols-1 gap-x-6 sm:grid-cols-2 lg:grid-cols-3">
             <div className="rounded-[var(--radius-lg)] border border-border bg-muted/40 p-3 sm:col-span-2">
               <p className="mb-2 text-[length:var(--text-label-up)] font-bold uppercase tracking-wide text-muted-foreground">
-                Proximity search
+                Proximity filter
               </p>
               <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
                 <NearFilter
@@ -820,7 +820,7 @@ function RadiusSelect({
 }) {
   const id = useId();
   return (
-    <Field label="Located within" htmlFor={id}>
+    <Field label="Filter radius" htmlFor={id}>
       <select
         id={id}
         value={String(value)}

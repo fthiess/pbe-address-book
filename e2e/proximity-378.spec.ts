@@ -173,7 +173,7 @@ const nearBox = (page: Page) => page.getByRole("combobox", { name: /^Located nea
  */
 const nearOption = (page: Page, name?: RegExp) =>
   page.getByRole("listbox", { name: /^Located near —/ }).getByRole("option", name ? { name } : {});
-const radius = (page: Page) => page.getByLabel("Located within", { exact: true });
+const radius = (page: Page) => page.getByLabel("Filter radius", { exact: true });
 const row = (page: Page, name: RegExp) => page.getByRole("rowheader", { name });
 const resetButton = (page: Page) => page.getByRole("button", { name: /Reset search & filters/ });
 
@@ -436,10 +436,10 @@ test.describe("OFC-378 — the proximity card (live-test findings)", () => {
 
     const card = page
       .locator("div")
-      .filter({ hasText: /^Proximity search/ })
+      .filter({ hasText: /^Proximity filter/ })
       .last();
     await expect(card.getByRole("combobox", { name: /^Located near —/ })).toBeVisible();
-    await expect(card.getByLabel("Located within", { exact: true })).toBeVisible();
+    await expect(card.getByLabel("Filter radius", { exact: true })).toBeVisible();
 
     // At the foot of the all-roles filters: below every other filter control.
     // ⚠ `getByRole("combobox", …)`, not `getByLabel("Staff")` — that matches the
@@ -462,7 +462,7 @@ test.describe("OFC-378 — the proximity card (live-test findings)", () => {
 
     const card = page
       .locator("div")
-      .filter({ hasText: /^Proximity search/ })
+      .filter({ hasText: /^Proximity filter/ })
       .last();
     // The Employer field is in the first column of the grid above; Sports is in
     // the third at this width, which is the column the card must NOT reach into.

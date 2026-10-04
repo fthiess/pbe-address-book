@@ -160,3 +160,39 @@ test.describe("OFC-397 — the pinned control cells are the hit target", () => {
     }
   });
 });
+
+/**
+ * The Select header's select-all checkbox lines up with the row checkboxes below it
+ * (OFC-420). The body cells centre their control across a padding-free cell; the
+ * header cell used to keep the shared `px-3` header padding and left-align its
+ * content, which put the header box's centre ~2.5px right of the rows' (24px vs
+ * ~21.5px in the 44px column).
+ *
+ * ⚠ N154/N163 warn against equal-coordinate assertions *across* controls, because the
+ * build machine is not the test machine. This one is deliberately the exception the
+ * warning allows: the two boxes share one table column in one render, so no font or
+ * platform metric can separate them — only the cells' own padding and alignment
+ * can. The computed padding is asserted too, so the test does not rest on geometry
+ * alone.
+ */
+test.describe("OFC-420 — the select-all checkbox aligns with the row checkboxes", () => {
+  test("header and row checkboxes share a horizontal centre", async ({ page }) => {
+    await gotoDirectory(page);
+    const header = page.getByRole("checkbox", { name: "Select all brothers in the current view" });
+    const row = page.getByRole("checkbox", { name: /^Select Aaron Adams/ });
+    const [h, r] = [await header.boundingBox(), await row.boundingBox()];
+    if (!h || !r) {
+      throw new Error("a select checkbox has no layout box");
+    }
+    expect(Math.abs(h.x + h.width / 2 - (r.x + r.width / 2))).toBeLessThanOrEqual(1);
+  });
+
+  test("the Select header cell carries no horizontal padding, like its body cells", async ({
+    page,
+  }) => {
+    await gotoDirectory(page);
+    const th = page.locator("th:has(input[aria-label='Select all brothers in the current view'])");
+    await expect(th).toHaveCSS("padding-left", "0px");
+    await expect(th).toHaveCSS("padding-right", "0px");
+  });
+});
