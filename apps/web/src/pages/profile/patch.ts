@@ -4,6 +4,7 @@ import {
   type Role,
   canWriteFieldOnRecord,
   hasUsableEmail,
+  normalizeEmail,
 } from "@pbe/shared";
 import type { ProfileRecord } from "../../lib/types.js";
 
@@ -114,6 +115,46 @@ export function buildPatch(
  */
 export function wouldClearUsableEmail(original: ProfileRecord, patch: Partial<Profile>): boolean {
   return "email" in patch && hasUsableEmail(original.email) && !hasUsableEmail(patch.email);
+}
+
+/**
+ * Whether a save would move an **administrator's own** sign-in address: the record
+ * is the actor's own, it holds the admin role, and this patch replaces one usable
+ * email with a *different* usable one. Drives the OFC-295 "you will need to receive
+ * a sign-in link at this address" confirmation (D191) — a typo here locks the admin
+ * out, and a sole admin has nobody to fix it in-app.
+ *
+ * It keys on the **record's** role, not the session's: `record.role` is the stored
+ * role, so "View as brother" cannot hide the warning (the session's effective role
+ * would). Addresses compare through {@link normalizeEmail} — the form sign-in
+ * resolves against (D97) — so a case-only edit, which moves nothing, never trips
+ * it. A *clear* is {@link wouldClearUsableEmail}'s; the two never both fire.
+ */
+export function wouldChangeOwnAdminEmail(
+  original: ProfileRecord,
+  patch: Partial<Profile>,
+  isOwner: boolean,
+): boolean {
+  if (!isOwner || original.role !== "admin" || !("email" in patch)) {
+    return false;
+  }
+  const before = original.email;
+  const after = patch.email;
+  if (!hasUsableEmail(before) || !hasUsableEmail(after)) {
+    return false;
+  }
+  return normalizeEmail(before as string) !== normalizeEmail(after as string);
+}
+
+/**
+ * Whether a role change is an administrator stepping **themselves** down: the
+ * record is the actor's own, it currently holds the admin role, and the new role is
+ * below it. Drives the OFC-419 confirmation (D191). The server's last-admin guard
+ * still refuses the *sole usable* admin (D130); this warns in the case it permits,
+ * where "another usable admin" may be one nobody can actually sign in as.
+ */
+export function isSelfDemotion(current: Role, next: Role, isOwner: boolean): boolean {
+  return isOwner && current === "admin" && next !== "admin";
 }
 
 /** Whether the draft differs from the original in any writable field (the dirty bit). */

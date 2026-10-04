@@ -666,6 +666,57 @@ leave); to revert one by hand, delete the profile's `ghostMemberId` (and an
 `adminNote` the run set), restore the recorded prior consent, move a pushed Ghost
 email back, then cold start.
 
+## Recovering a locked-out administrator (D191)
+
+Two edits can leave an administrator unable to sign in, and Book warns before each
+but does not prevent either (D191): **changing their own email** to an address
+they cannot receive mail at (a typo), and **demoting themselves** when no other
+administrator can actually sign in. The last-admin guard does not help with the
+second — it counts admins who are usable by predicate (living, not de-brothered,
+with an email), and a stale mailbox passes.
+
+**If another administrator can sign in, they fix it in the app** — correct the
+email, or restore the role, from the locked-out brother's profile. Audited, no
+restart, nothing below is needed.
+
+**On staging, reseed.** While `STAGING_AUTOSEED=true`, a deploy wipes and reseeds
+`profiles` and re-applies the tester roster, which restores the roster's admin:
+
+```bash
+gh workflow run "Deploy staging" --ref main
+```
+
+(The older escape hatch — Ghost Admin's **Impersonate** on a fake admin's member —
+works only while `STAGING_GHOST_MIRROR=true`, because only the mirror gives the
+fake brothers Ghost members. It is `false` today. Of the two seeded admins, one is
+living with an email and one is deceased; see `roleForIndex` in
+`tools/fake-data/src/generate.ts` for which.)
+
+**Otherwise — the production case while there is one administrator — repair it
+out of band.** This is an out-of-band Firestore write, so D181 governs it: it is
+invisible until a cold start, and an edit to the touched record gets a 412 until
+then. Do it when Book is quiet, and it needs Forrest's word at the time.
+
+1. **Firestore console → `profiles/<id>`.** For a demotion, set `role` to `admin`.
+   For an email lockout, set `email` back to the working address.
+2. **Email lockout only — repair Ghost too.** ⚠ Book already pushed the mistyped
+   address to Ghost, and the sign-in link is sent to the address on the *Ghost
+   member*. In Ghost Admin, open the member and set the same working address.
+   The two must agree (case aside, D97): Book resolves the signed-in Ghost email
+   against its own records and refuses a mismatch (`403 unlinked_member`).
+3. **Force a cold start** (same image, new revision) and confirm
+   `N profiles cached` in the new revision's startup log:
+
+   ```bash
+   IMAGE=$(gcloud run services describe pbe-book-api --region us-central1 \
+     --project $PROJECT --format='value(spec.template.spec.containers[0].image)')
+   gcloud run deploy pbe-book-api --image "$IMAGE" --region us-central1 --project $PROJECT
+   ```
+
+4. Sign in, and check the role or address in the app.
+
+The durable fix is a second administrator who can really sign in.
+
 ## Releasing to production (D184) — the procedure
 
 Merging to `main` deploys **staging only**. Production moves only when Forrest

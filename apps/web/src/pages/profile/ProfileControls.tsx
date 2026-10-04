@@ -5,7 +5,9 @@ import type { DeceasedFacts, StatusWriteOutcome } from "../../lib/api.js";
 import type { ProfileRecord } from "../../lib/types.js";
 import { cn } from "../../lib/utils.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
+import { DanglingAdminNote } from "./DanglingAdminNote.js";
 import { canonicalName } from "./display.js";
+import { isSelfDemotion } from "./patch.js";
 import type { Viewer } from "./viewer.js";
 
 /**
@@ -139,8 +141,13 @@ export function StaffControls({
         <DeceasedControls record={record} name={name} deceased={deceased} actions={actions} />
         {isAdmin && (
           <>
-            <DebrotherControl name={name} debrothered={debrothered} actions={actions} />
-            <RoleControl record={record} actions={actions} />
+            <DebrotherControl
+              name={name}
+              debrothered={debrothered}
+              holdsAdminRole={record.role === "admin"}
+              actions={actions}
+            />
+            <RoleControl record={record} isOwner={viewer.isOwner} actions={actions} />
             <DeleteControl name={name} actions={actions} />
           </>
         )}
@@ -242,10 +249,13 @@ function DeceasedControls({
 function DebrotherControl({
   name,
   debrothered,
+  holdsAdminRole,
   actions,
 }: {
   name: string;
   debrothered: boolean;
+  /** The record holds the Administrator role — de-brothering strands it (OFC-242). */
+  holdsAdminRole: boolean;
   actions: ProfileActions;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -307,6 +317,7 @@ function DebrotherControl({
             <>
               <strong>{name}</strong> will be hidden from other brothers, denied sign-in, and
               removed from the newsletter. This can be reversed.
+              {holdsAdminRole && <DanglingAdminNote name={name} />}
             </>
           )}
         </ConfirmDialog>
@@ -333,17 +344,40 @@ const ROLE_OPTIONS: { value: Role; label: string }[] = [
  * role and explains. Modeled on the masthead {@link FontSizeToggle} pattern
  * (fieldset + `aria-pressed`).
  */
-function RoleControl({ record, actions }: { record: ProfileRecord; actions: ProfileActions }) {
+function RoleControl({
+  record,
+  isOwner,
+  actions,
+}: {
+  record: ProfileRecord;
+  isOwner: boolean;
+  actions: ProfileActions;
+}) {
   const [role, setRole] = useState<Role>(record.role ?? "brother");
   const [pending, setPending] = useState<Role | null>(null);
+  // An administrator stepping THEMSELVES down confirms first (OFC-419): holds the
+  // role awaiting confirmation, `null` otherwise.
+  const [confirmingSelf, setConfirmingSelf] = useState<Role | null>(null);
   // Refusals (last-admin, promote-guard) render red like the other staff-control
   // errors; a success confirmation stays muted.
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
 
-  const select = async (next: Role) => {
+  const select = (next: Role) => {
     if (next === role || pending) {
       return;
     }
+    // The server permits this whenever another *usable* admin exists (D130) — but
+    // usable-by-predicate is not reachable-in-fact, and only the person clicking
+    // knows which the others are. A warning, not a block (D191).
+    if (isSelfDemotion(role, next, isOwner)) {
+      setMessage(null);
+      setConfirmingSelf(next);
+      return;
+    }
+    void apply(next);
+  };
+
+  const apply = async (next: Role) => {
     setPending(next);
     setMessage(null);
     const outcome = await actions.changeRole(next);
@@ -408,6 +442,23 @@ function RoleControl({ record, actions }: { record: ProfileRecord; actions: Prof
         >
           {message.text}
         </output>
+      )}
+      {confirmingSelf && (
+        <ConfirmDialog
+          title="Remove your own administrator access?"
+          confirmLabel="Remove my access"
+          cancelLabel="Cancel"
+          tone="destructive"
+          onCancel={() => setConfirmingSelf(null)}
+          onConfirm={() => {
+            const next = confirmingSelf;
+            setConfirmingSelf(null);
+            void apply(next);
+          }}
+        >
+          You will no longer be able to change roles — including your own — and only another
+          administrator will be able to restore it.
+        </ConfirmDialog>
       )}
     </ControlRow>
   );
@@ -566,6 +617,7 @@ function MarkDeceasedDialog({
               This opens the In Memoriam treatment for {name} and turns off their newsletter and
               comment email. Their previous settings are saved and restored if you remove the mark.
             </p>
+            {record.role === "admin" && <DanglingAdminNote name={name} />}
           </div>
           <div className="mt-6 flex justify-end gap-3">
             <DialogButton onClick={onClose}>Cancel</DialogButton>

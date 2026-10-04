@@ -302,6 +302,19 @@ function makeDeceased(rng: Random, classYear: number | null): DeceasedInfo {
  * byte-stable (every downstream random draw is unchanged). The planted collision
  * pair (`i < COLLISION_COUNT`) stays plain brothers; a dataset of ≥ 10 records then
  * carries ~2 admins and ~6 managers, mirroring the real org's handful of staff.
+ *
+ * ⚠ The two admins are a deliberate pair, not two spares: one comes out living
+ * with an email (a *usable* admin by predicate, though its `@example.test` address
+ * receives no mail) and the other **deceased** — a *nominal* admin, holding the
+ * role with no way to sign in. The nominal one is the live fixture for the
+ * usable-admin invariant (D129) and the stranded-role warning (D191); it is hidden
+ * from the default Directory, which once read as a bug to a live tester. Kept on
+ * purpose (Forrest's call, D191).
+ *
+ * ⚠ **Which id is which is an accident of the PRNG stream, not of this function**:
+ * deceased-ness and email are random draws. Today #5003 is the usable one and #5004
+ * the deceased one; older tickets and notes say the reverse, from before the stream
+ * moved. `generate.test.ts` pins the current pairing so the next move is noticed.
  */
 function roleForIndex(i: number): Role {
   if (i === COLLISION_COUNT || i === COLLISION_COUNT + 1) {
