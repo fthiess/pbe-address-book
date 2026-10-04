@@ -979,9 +979,16 @@ profile with a blank one. Roster changes during the window are run by hand.
 workflow). Assignment is deterministic — profiles in ascending id order, photos in
 ascending index order — so a reseed puts the same face on the same brother; random
 assignment would make "my photo changed" a bug report nobody could reproduce. The
-corpus now covers the `hasHeadshot` population exactly (438 against 438, since
-OFC-355 added the last thirty), so no profile falls back to a placeholder — a
-successful deploy logs `438 from the UAT corpus, 0 from the committed placeholders`.
+corpus holds 438 photos (OFC-355 added the last thirty, to match the population of
+the time), and it covers the current `hasHeadshot` population of 419 with 19 to
+spare, so no profile falls back to a placeholder. A successful deploy logs
+`419 from the UAT corpus, 0 from the committed placeholders` and then `19 prepared
+photo(s) unused` (reseed of 2026-10-04). ⚠ The population is a property of the
+generator, not the corpus. `generateProfiles()` draws from one sequential PRNG
+stream, so any change to `generate.ts` can move it. The 438 → 419 drop most likely
+came from D179's fake-ZIP change (#219), the only `generate.ts` change since the
+last reseed. Read the count from the latest deploy log rather than trusting this
+paragraph; the number to check is `0 from the committed placeholders`.
 Should the corpus ever again be smaller than the population, the lowest ids take
 the real faces and the rest fall back to the eight committed placeholders. Faces
 are never repeated to close such a gap: a duplicated face reads as a data
