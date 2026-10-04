@@ -143,6 +143,53 @@ test.describe("profile — view mode", () => {
     await expect(page.getByRole("heading", { name: /Professional/ })).toBeVisible();
   });
 
+  test("an empty Professional & personal section is omitted, band and all (OFC-360)", async ({
+    page,
+  }) => {
+    // Forrest's call: a section with nothing to show renders nothing, as
+    // Relationships already does — no heading promising information that isn't there.
+    const { employerName, jobTitle, spousePartnerName, majors, ...sparse } = ownerRecord();
+    await mockProfile(page, { meDoc: me("brother", 5247), record: sparse as never });
+    await page.goto("/brother/5247");
+    await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Contact", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Professional/ })).toHaveCount(0);
+    // No chrome left behind either (the OFC-318 rule), while other sections keep theirs.
+    const bands = await page.evaluate(() => {
+      const all = Array.from(document.querySelectorAll("div.border-t.border-border-hairline"));
+      return { total: all.length, empty: all.filter((el) => !el.textContent?.trim()).length };
+    });
+    expect(bands.empty).toBe(0);
+    expect(bands.total).toBeGreaterThan(0);
+  });
+
+  test("a brother whose only entry is a sport keeps the section (OFC-360)", async ({ page }) => {
+    // Sports and Activities sit at the foot of the section's body, apart from the
+    // other fields, so they are the ones an emptiness test most easily forgets.
+    const { employerName, jobTitle, spousePartnerName, majors, ...sparse } = ownerRecord();
+    await mockProfile(page, {
+      meDoc: me("brother", 5247),
+      record: { ...sparse, sports: "Varsity rowing" } as never,
+    });
+    await page.goto("/brother/5247");
+    await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Professional/ })).toBeVisible();
+    await expect(page.getByRole("article").getByText("Varsity rowing")).toBeVisible();
+  });
+
+  test("a manager's private spouse marker alone keeps the section (OFC-360)", async ({ page }) => {
+    // The marker is content: it tells a manager the brother has a spouse/partner
+    // on file but keeps it private. A fix that only counted raw fields would hide it.
+    const { employerName, jobTitle, spousePartnerName, majors, ...sparse } = ownerRecord();
+    await mockProfile(page, { meDoc: me("manager", 5002), record: sparse as never });
+    await page.goto("/brother/5247");
+    await expect(page.getByRole("heading", { level: 1, name: /James Smyth/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Professional/ })).toBeVisible();
+    await expect(
+      page.getByRole("article").getByText("Spouse / partner", { exact: true }),
+    ).toBeVisible();
+  });
+
   test("the profile photo opens full size, by pointer and by keyboard (OFC-353)", async ({
     page,
   }) => {

@@ -366,6 +366,28 @@ function emergencyKey(contact: EmergencyContact, index: number): string {
 function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer: Viewer }) {
   const employer = [record.employerName, record.jobTitle].filter(Boolean).join(" — ");
   const showSpouse = managerSeesPrivate(record, viewer, "shareSpousePartner");
+  const links = record.links ?? [];
+  const courses = record.majors ?? [];
+  // An empty section renders nothing — no heading over an empty body (OFC-360,
+  // Forrest's call), the same rule Relationships follows; returning null also
+  // takes the Band with it (N144). ⚠ The manager's private-spouse marker counts
+  // as content: it tells a manager something is on file, so it keeps the section.
+  // ⚠ Every field rendered below must appear in this test — a field added to the
+  // body but not here would vanish along with the section for a brother whose only
+  // entry it is.
+  if (
+    !employer &&
+    !record.postPbeEducation &&
+    links.length === 0 &&
+    !record.spousePartnerName &&
+    !showSpouse &&
+    courses.length === 0 &&
+    !isWillingToMentor(record) &&
+    !record.sports &&
+    !record.activities
+  ) {
+    return null;
+  }
   return (
     <Band>
       <Section title="Professional &amp; personal">
@@ -375,10 +397,10 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
             {record.postPbeEducation && (
               <ReadField label="Post-PBE education">{record.postPbeEducation}</ReadField>
             )}
-            {record.links && record.links.length > 0 && (
+            {links.length > 0 && (
               <ReadField label="Links">
                 <ul className="space-y-1">
-                  {record.links.map((link) => (
+                  {links.map((link) => (
                     <li key={`${link.label}-${link.url}`}>
                       <a
                         href={link.url}
@@ -400,10 +422,10 @@ function ProfessionalSection({ record, viewer }: { record: ProfileRecord; viewer
             ) : (
               showSpouse && <PrivateMarker label="Spouse / partner" />
             )}
-            {record.majors && record.majors.length > 0 && (
+            {courses.length > 0 && (
               <ReadField label="Courses">
                 <ul className="flex flex-wrap gap-1.5">
-                  {record.majors.map((code) => (
+                  {courses.map((code) => (
                     <li key={code}>
                       <CourseChip code={code} />
                     </li>
