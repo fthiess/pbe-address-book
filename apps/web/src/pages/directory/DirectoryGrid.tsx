@@ -463,8 +463,13 @@ function HeaderCell({
       aria-colindex={colIndex}
       aria-sort={ariaSort}
       className={cn(
-        "h-11 border-b border-border bg-secondary px-3 text-xs font-semibold text-secondary-foreground",
+        "h-11 border-b border-border bg-secondary text-xs font-semibold text-secondary-foreground",
         column.align === "end" ? "text-right" : "text-left",
+        // The Select header is laid out like its body cells — no padding, control
+        // centred across the cell — so the select-all box sits directly above the
+        // row boxes (OFC-420). With the shared `px-3` and a left-aligned row it sat
+        // 2.5px to their right.
+        column.key === "select" ? "px-0" : "px-3",
         // A subtle vertical rule after the staff Select column separates it from the
         // universal Star so the two small adjacent controls read as distinct, not one
         // cluster to misclick (OFC-64). The centered controls leave whitespace on
@@ -473,7 +478,13 @@ function HeaderCell({
       )}
       style={style}
     >
-      <span className={cn("flex items-center gap-1", column.align === "end" && "justify-end")}>
+      <span
+        className={cn(
+          "flex items-center gap-1",
+          column.align === "end" && "justify-end",
+          selectAll && "justify-center",
+        )}
+      >
         {!column.pinned && (
           <button
             type="button"
