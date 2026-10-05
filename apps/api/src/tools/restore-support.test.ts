@@ -4,6 +4,7 @@ import {
   DEFAULT_OUT_DIR,
   MAINTENANCE_PROBE_PATH,
   buildRestoreAuditEntry,
+  describeTarget,
   isMaintenancePage,
   parseArgs,
   renderRosterSummary,
@@ -104,6 +105,62 @@ describe("parseArgs", () => {
   it("turns the safety snapshot off only when asked explicitly", () => {
     expect(parseArgs(["--file", "a.json", "--no-safety-snapshot"]).options.safetySnapshot).toBe(
       false,
+    );
+  });
+
+  it("targets the default database unless a named one is given", () => {
+    expect(parseArgs(["--file", "a.json"]).options.database).toBeNull();
+    const { options, errors } = parseArgs(["--file", "a.json", "--database", "verify-run-1"]);
+    expect(errors).toEqual([]);
+    expect(options.database).toBe("verify-run-1");
+  });
+
+  it("accepts the default database spelled out", () => {
+    expect(parseArgs(["--file", "a.json", "--database=(default)"]).errors).toEqual([]);
+  });
+
+  it("refuses a database id Firestore would reject, before anything connects", () => {
+    for (const bad of ["Verify", "v", "1run", "run-", "run_1"]) {
+      expect(parseArgs(["--file", "a.json", "--database", bad]).errors).toHaveLength(1);
+    }
+  });
+
+  it("delivers the forensic entry unless told not to", () => {
+    expect(parseArgs(["--file", "a.json"]).options.forensicEntry).toBe(true);
+    const { options, errors } = parseArgs([
+      "--file",
+      "a.json",
+      "--database",
+      "verify-run-1",
+      "--no-forensic-entry",
+    ]);
+    expect(errors).toEqual([]);
+    expect(options.forensicEntry).toBe(false);
+  });
+
+  it("never withholds the forensic entry from a restore into a default database (D192)", () => {
+    // Both spellings of the default must refuse: the guarantee is that no restore
+    // into a live environment goes unrecorded, not that one spelling of it does.
+    for (const argv of [
+      ["--file", "a.json", "--no-forensic-entry"],
+      ["--file", "a.json", "--database", "(default)", "--no-forensic-entry"],
+    ]) {
+      const { errors } = parseArgs(argv);
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("--no-forensic-entry");
+    }
+  });
+});
+
+describe("describeTarget", () => {
+  it("keeps the bare project id for the default database", () => {
+    expect(describeTarget("pbe-book-staging", null)).toBe("pbe-book-staging");
+    expect(describeTarget("pbe-book-staging", "(default)")).toBe("pbe-book-staging");
+  });
+
+  it("always names a named database alongside its project", () => {
+    expect(describeTarget("pbe-book-verify", "verify-run-1")).toBe(
+      'pbe-book-verify, database "verify-run-1"',
     );
   });
 });

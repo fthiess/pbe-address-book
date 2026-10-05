@@ -502,6 +502,26 @@ bucket: a script-only change that never reached the live resource. Verify with s
 the 7b-3 live test — the filter was indeed still the one-clause version, so this was
 not a hypothetical.)*
 
+### Restoring into a named database — the backup-integrity job only (D151, D192)
+
+`--database <id>` restores into a named Firestore database instead of the project's
+`(default)` one. It exists for the integrity job (OFC-333), which restores the newest
+backup into a throwaway database in the separate `pbe-book-verify` project, checks it
+with `npm run backup:verify --workspace apps/api`, and deletes it. **No Book instance
+reads a named database**, so none of the cold-start or maintenance steps above apply,
+and a live recovery never uses this flag. `--confirm` still takes the **project** id;
+the tool prints the project and the database together wherever it names its target.
+The maintenance pre-flight still runs, though, and the verify project has no Hosting
+site, so the job also passes `--force`, along with `--skip-ghost-audit`,
+`--no-safety-snapshot` and an explicit `--bucket` naming the *source* environment's
+backup bucket. The full flag list is in N190.
+
+That job also passes `--no-forensic-entry`. The entry is still built and archived
+with the artifacts, but it is not delivered to Cloud Logging, so the job's scheduled
+runs never look like real restores (D192). **The tool refuses the flag unless
+`--database` names a non-default database**, so a restore into a live environment is
+always recorded. The integrity job's wrapper, provisioning and DR runbook are PL-6b.
+
 ### The procedure, as actually exercised (7b-3, 2026-07-25)
 
 The whole loop above was run against staging for real, by manufacturing a disaster

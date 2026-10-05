@@ -1,12 +1,10 @@
 #!/usr/bin/env tsx
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import process from "node:process";
 import { applicationDefault, initializeApp } from "firebase-admin/app";
-import { getFirestore } from "firebase-admin/firestore";
 import { AuditLog } from "../audit/audit-log.js";
 import { planGhostAudit } from "../audit/ghost-audit.js";
-import { GcsBackupStore } from "../data/backup-store.js";
 import { FirestoreBackupSource, buildBackupSnapshot } from "../data/backup.js";
 import {
   FirestoreRestoreTarget,
@@ -22,9 +20,13 @@ import {
   validateSnapshot,
 } from "../data/restore.js";
 import { GhostAdminReader } from "../identity/ghost-reader.js";
+import { loadSnapshotText, openFirestore } from "./backup-io.js";
 import {
+  DEFAULT_DATABASE,
   LATEST_OBJECT,
   buildRestoreAuditEntry,
+  describeTarget,
+  isDefaultDatabase,
   parseArgs,
   probeMaintenance,
   renderRosterSummary,
@@ -101,7 +103,9 @@ function printHelp(): void {
       "",
       "Options:",
       "  --project <id>       Target project (default: GOOGLE_CLOUD_PROJECT).",
-      "  --confirm <id>       Must equal the target project id. Required to write anything.",
+      `  --database <id>      Firestore database in that project (default: ${DEFAULT_DATABASE}).`,
+      "                       A named database is for the backup-integrity job (D151) only.",
+      "  --confirm <id>       Must equal the target PROJECT id. Required to write anything.",
       "  --bucket <name>      Backup bucket (default: <project>-backups).",
       "  --out-dir <path>     Where artifacts are written (default: ./restore-artifacts).",
       "  --hosting-url <url>  Origin whose /api/health is probed for the maintenance page",
@@ -116,6 +120,8 @@ function printHelp(): void {
       "                       not for a snapshot you have reason to distrust.",
       "  --skip-ghost-audit   Do not run the post-restore Ghost reconciliation.",
       "  --no-safety-snapshot Do not archive the current data first (also loses the roster delta).",
+      "  --no-forensic-entry  Archive the forensic entry but do not deliver it to Cloud Logging.",
+      "                       Refused unless --database names a non-default database (D192).",
       "  --help,-h            Show this help and exit.",
       "",
       "Artifacts (they contain REAL MEMBER PII — the out-dir is gitignored, keep it off",
@@ -128,30 +134,6 @@ function printHelp(): void {
 function fail(message: string): never {
   console.error(`restore: ${message}`);
   process.exit(1);
-}
-
-/** Read the snapshot text from disk or from the backup bucket. */
-async function loadSnapshotText(
-  file: string | null,
-  object: string | null,
-  bucket: string,
-): Promise<{ text: string; source: string }> {
-  if (file !== null) {
-    return { text: await readFile(file, "utf-8"), source: resolve(file) };
-  }
-  const store = new GcsBackupStore(bucket);
-  if (object !== LATEST_OBJECT) {
-    const name = object ?? "";
-    return { text: await store.read(name), source: `gs://${bucket}/${name}` };
-  }
-  const latest = await store.latest();
-  if (latest === null) {
-    fail(`the bucket gs://${bucket} holds no snapshots.`);
-  }
-  console.log(
-    `Resolved "${LATEST_OBJECT}" to ${latest.name} (taken ${latest.takenAt.toISOString()}).`,
-  );
-  return { text: await store.read(latest.name), source: `gs://${bucket}/${latest.name}` };
 }
 
 /**
@@ -274,9 +256,10 @@ if (process.env.FIRESTORE_EMULATOR_HOST && !options.allowEmulator) {
     "FIRESTORE_EMULATOR_HOST is set, which points this at the emulator. Pass --allow-emulator if that is what you want.",
   );
 }
+const target = describeTarget(projectId, options.database);
 if (!options.dryRun && options.confirm !== projectId) {
   fail(
-    `refusing to write: pass --confirm ${projectId} to confirm you are replacing every profile, user and config document in that project. (Or --dry-run to preview.)`,
+    `refusing to write: pass --confirm ${projectId} to confirm you are replacing every profile, user and config document in ${target}. (Or --dry-run to preview.)`,
   );
 }
 
@@ -284,7 +267,7 @@ const bucket = options.bucket ?? `${projectId}-backups`;
 const outDir = resolve(options.outDir);
 const startedAt = new Date();
 
-console.log(`==> Target project: ${projectId}`);
+console.log(`==> Target: ${target}`);
 
 // Initialize the SDK BEFORE the snapshot is loaded, because `--object` reads the
 // backup bucket through `getStorage()`, which throws `app/no-app` without it — the
@@ -295,7 +278,20 @@ console.log(`==> Target project: ${projectId}`);
 // or the bucket in any way that could change something.
 initializeApp({ projectId });
 
-const { text: snapshotText, source } = await loadSnapshotText(options.file, options.object, bucket);
+let snapshotText: string;
+let source: string;
+try {
+  const loaded = await loadSnapshotText(options.file, options.object, bucket);
+  if (loaded.resolvedLatest !== null) {
+    console.log(
+      `Resolved "${LATEST_OBJECT}" to ${loaded.resolvedLatest.name} (taken ${loaded.resolvedLatest.takenAt.toISOString()}).`,
+    );
+  }
+  snapshotText = loaded.text;
+  source = loaded.source;
+} catch (error) {
+  fail(error instanceof Error ? error.message : String(error));
+}
 console.log(`==> Snapshot source: ${source}`);
 
 let parsedJson: unknown;
@@ -327,12 +323,12 @@ if (validation.errors.length > 0) {
   process.exit(1);
 }
 
-const db = getFirestore();
-const target = new FirestoreRestoreTarget(db);
+const db = openFirestore(options.database);
+const restoreTarget = new FirestoreRestoreTarget(db);
 
 if (options.dryRun) {
-  const plan = planRestore(await readCurrentDocIds(target), snapshot.collections);
-  console.log(`[dry-run] Target project: ${projectId}`);
+  const plan = planRestore(await readCurrentDocIds(restoreTarget), snapshot.collections);
+  console.log(`[dry-run] Target: ${target}`);
   for (const collectionPlan of plan.collections) {
     console.log(
       `[dry-run] ${collectionPlan.collection}: would delete ${collectionPlan.deleteIds.length} stale doc(s) and write ${collectionPlan.writeCount}.`,
@@ -392,7 +388,9 @@ if (options.safetySnapshot) {
 }
 
 console.log("==> Replacing profiles, users and config …");
-const plan = await executeRestore(target, snapshot.collections, (message) => console.log(message));
+const plan = await executeRestore(restoreTarget, snapshot.collections, (message) =>
+  console.log(message),
+);
 console.log(
   `==> Restored: ${plan.totalWrites} document(s) written, ${plan.totalDeletes} stale removed.`,
 );
@@ -418,7 +416,13 @@ console.log(`==> Forensic entry: ${auditRecord}`);
 // fails afterwards — those come later, and a forensic record that depends on two
 // subsequent steps succeeding is not archived, it is hopeful.
 console.log(`==> Forensic entry written to ${await artifact("audit-entry.json", auditRecord)}`);
-console.log(`==> ${await deliverAuditEntry(auditRecord, projectId)}`);
+// D192: withheld only for a throwaway database — parseArgs refuses the flag on the
+// default database, so this branch can never silence a live restore's record.
+console.log(
+  options.forensicEntry
+    ? `==> ${await deliverAuditEntry(auditRecord, projectId)}`
+    : "==> NOT delivered to Cloud Logging (--no-forensic-entry: a restore into a throwaway database, D192).",
+);
 
 const restoredProfiles = hydrateProfiles(snapshot.collections.profiles);
 const userIds = snapshot.collections.users
@@ -442,6 +446,7 @@ console.log(`==> ${ghost.summary}`);
 const reportPath = await artifact("restore-report.json", {
   restoredAt: startedAt.toISOString(),
   projectId,
+  databaseId: options.database ?? DEFAULT_DATABASE,
   source,
   snapshot: { version: snapshot.version, generatedAt: snapshot.generatedAt },
   // Every guard the operator chose to stand down, recorded where the restore is
@@ -451,6 +456,7 @@ const reportPath = await artifact("restore-report.json", {
     duplicateEmails: options.allowDuplicateEmails,
     maintenancePreflight: options.force,
     safetySnapshot: !options.safetySnapshot,
+    forensicEntry: !options.forensicEntry,
   },
   validation,
   plan,
@@ -460,6 +466,20 @@ const reportPath = await artifact("restore-report.json", {
   ghost: ghost.summary,
 });
 console.log(`==> Restore report written to ${reportPath}`);
+if (!isDefaultDatabase(options.database)) {
+  // No Book instance reads a named database, so there is no cache to rehydrate and
+  // no maintenance window to end — the integrity job verifies it and deletes it.
+  console.log(
+    [
+      "",
+      `NEXT — ${target} is not served by any Book instance: verify it with`,
+      "  npm run backup:verify --workspace apps/api, then delete the database.",
+      "",
+      `Artifacts (REAL MEMBER PII — do not commit or share): ${outDir}`,
+    ].join("\n"),
+  );
+  process.exit(0);
+}
 console.log(
   [
     "",
