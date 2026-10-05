@@ -44,8 +44,10 @@ repo's `book-bridge/README.md`.
 
 ## Notes from the live bring-up
 
-- Ghost signs member JWTs **RS512 over a 1024-bit key**; the backend verifies
-  with Node `crypto`, not jose (decision N1).
+- Ghost signs member JWTs **RS512** — over a 2048-bit key since Ghost 6.67, a
+  1024-bit one before (self-hosted sites on older Ghost still use it). The backend
+  verifies with Node `crypto`, not jose, because jose rejects the 1024-bit key
+  (decisions N1, N191).
 - Book's session cookie must be named **`__session`** to survive Firebase
   Hosting (decision N5).
 

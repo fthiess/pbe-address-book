@@ -17,15 +17,19 @@ export interface KeyResolver {
  * We use jose's `createRemoteJWKSet` for the *fetch* path only — it caches the
  * key set in memory, refreshes on a cooldown, and refetches on an unknown `kid`
  * (single-flighted, so an unknown-kid flood cannot stampede Ghost), which is the
- * key-rotation robustness D87 asks for. We do **not** use jose to *verify*: Ghost
- * signs member JWTs with RS512 against a **1024-bit** RSA key, and jose enforces a
- * 2048-bit minimum modulus on the verify path (throwing "RS512 requires key
- * modulusLength to be 2048 bits or larger"), which would reject every real Ghost
- * token. This is core Ghost behavior (Ghost Pro's member key is 1024-bit too —
- * see TryGhost/Ghost#24831), so the verifier must accept it. The signature check
- * is therefore done with Node's `crypto.verify` (no modulus floor) in
- * `ghost-provider.ts`; jose's length check is only in *its* verify, not in the
- * key *resolution* this resolver uses.
+ * key-rotation robustness D87 asks for. We do **not** use jose to *verify*: jose
+ * enforces a 2048-bit minimum modulus on the verify path (throwing "RS512 requires
+ * key modulusLength to be 2048 bits or larger"), and Ghost before 6.67 signs member
+ * JWTs with RS512 against a **1024-bit** RSA key (TryGhost/Ghost#24831). Ghost 6.67
+ * rotates any key under 2048 bits to a 2048-bit one — live pbe400.org (Ghost Pro)
+ * has already done so — but self-hosted Ghost on older versions, ghost-staging
+ * among them, still signs with the 1024-bit key, so the verifier must keep
+ * accepting it (N191). The signature check is therefore done with Node's
+ * `crypto.verify` (no modulus floor, either key size) in `ghost-provider.ts`;
+ * jose's length check is only in *its* verify, not in the key *resolution* this
+ * resolver uses. That resolution is also what carries a rotation: Ghost publishes
+ * the new key (with a new `kid`) 48 hours before signing with it, and an unknown
+ * `kid` triggers a refetch.
  */
 export function createGhostKeyResolver(jwksUrl: string): KeyResolver {
   const jwks = createRemoteJWKSet(new URL(jwksUrl), {

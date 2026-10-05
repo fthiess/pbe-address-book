@@ -10,7 +10,7 @@ import { type KeyObject, verify as cryptoVerify } from "node:crypto";
  * extracts the member email from `sub`; the roster pins `sub` to a service account).
  *
  * The signature is checked with Node `crypto.verify` rather than jose, because jose
- * rejects Ghost's 1024-bit RSA key (see `ghost-jwks.ts`). The security property is
+ * rejects the 1024-bit RSA key legacy Ghost signs with (see `ghost-jwks.ts`). The security property is
  * what is **excluded**: only RSASSA-PKCS1-v1_5 (`RS*`) algorithms map to a digest, so
  * `alg:none` and every symmetric algorithm are rejected before any key is touched —
  * there is no code path that could feed a key into a symmetric verification (D104).
