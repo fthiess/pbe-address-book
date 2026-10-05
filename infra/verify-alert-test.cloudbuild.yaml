@@ -1,0 +1,17 @@
+# The backup-integrity job's induced-failure test (D151's gate: "an induced failure
+# alerts to ALERT_EMAIL"). A one-step build, run as the job's own service account,
+# that prints the FAIL marker the alert's log-based metric counts — and nothing
+# else. The marker is assembled at run time, so the literal never appears in the
+# build's own text. Run it from the repo root (infra/DR-RUNBOOK.md):
+#
+#   gcloud builds submit --no-source --project=pbe-book-verify --region=us-central1 \
+#     --service-account=projects/pbe-book-verify/serviceAccounts/book-verify@pbe-book-verify.iam.gserviceaccount.com \
+#     --config=infra/verify-alert-test.cloudbuild.yaml
+steps:
+  - name: gcr.io/google.com/cloudsdktool/google-cloud-cli:stable
+    script: |
+      #!/usr/bin/env bash
+      r=FAIL
+      echo "BOOK-VERIFY-RESULT=${r} (induced alert test — not a real run)"
+options:
+  logging: CLOUD_LOGGING_ONLY

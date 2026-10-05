@@ -45,6 +45,12 @@ the production deploy is `.github/workflows/deploy-prod.yml` (a manual dispatch
 on a release tag — see "Releasing to production" below), never this script's
 Cloud Run step after first bring-up.
 
+**The backup-integrity project** (`pbe-book-verify`, D151/D193) is built by its own
+script, [`provision-verify-project.sh`](provision-verify-project.sh), against the
+environment it verifies. ⚠ It grants that project read on production's backup and
+image buckets, so it is Forrest's to run. Its procedure, first run and alert test
+are in [`DR-RUNBOOK.md`](DR-RUNBOOK.md), "The integrity job itself".
+
 ## What's interactive / not in the script (and why)
 
 These need a human in a browser or are environment-policy choices, so they're
@@ -384,174 +390,12 @@ that `/` and `/api/health` serve the page, `end` that `/` serves Book again. The
 deliberately not `/`; see `MAINTENANCE_PROBE_PATH` in
 `apps/api/src/tools/restore-support.ts`.
 
-## Restoring from a backup (7b-3) — the procedure
+## Restoring from a backup, and disaster recovery
 
-The most destructive operation in Book: it **replaces** `profiles`, `users` and
-`config` with the snapshot's contents, deleting anything the snapshot does not
-name (D63's "be exactly this snapshot", D101's offline model). Read D150/N137
-before running it in anger. The stand-up-from-nothing DR runbook — restoring into
-a *new* environment — is **Phase 7.8** (OFC-333; D151, deferred there from session
-7b-4 on 2026-07-26); this is the procedure it will call.
-
-**Preview first. Always.** A dry run validates the snapshot, computes the exact
-plan the real run would execute, and reports how the admin roster would change,
-without writing anything anywhere:
-
-```bash
-# from the repo root, after `gcloud auth application-default login`
-npm run restore --workspace apps/api -- \
-  --object latest --project pbe-book-staging --dry-run
-```
-
-If structural validation fails, **stop** — the snapshot is corrupt or tampered
-with, and every issue is printed at once so one pass tells you everything wrong
-with it. Try an older snapshot (`gcloud storage ls gs://<project>-backups/backups/`,
-then `--object backups/<name>.json`).
-
-Then the real thing, in order:
-
-1. **Take Book down** (D118/D187 — see "Maintenance mode" below):
-   ```bash
-   bash infra/maintenance-begin.sh            # production: ENV_FILE=infra/environments/prod.env
-   ```
-   The restore refuses to run until this is in place. `--force` skips the check,
-   for an environment that has no Hosting at all.
-
-   ⚠ **If `firebase login` has never been run on this machine**, the script fails
-   with "No authorized accounts". The Firebase CLI also accepts **ADC**, which
-   `gcloud auth application-default login` has already set up:
-   ```bash
-   GOOGLE_APPLICATION_CREDENTIALS="$APPDATA/gcloud/application_default_credentials.json" \
-     bash infra/maintenance-begin.sh
-   ```
-
-2. **Restore.** `--confirm` must repeat the project id — it is the typed
-   acknowledgment, and there is no other way to write:
-   ```bash
-   npm run restore --workspace apps/api -- \
-     --object latest --project pbe-book-staging --confirm pbe-book-staging
-   ```
-   Before its first delete the tool writes a **safety snapshot** of the current
-   data into `./restore-artifacts/`. That file is the undo, and it is the only
-   place the pre-restore admin roster survives — `--no-safety-snapshot` forfeits
-   both.
-
-3. **Force a cold start.** ⚠ **The restore is invisible until you do this.** The
-   cache hydrates only on cold start (there is no Firestore listener), so until
-   the instance is replaced Book serves — and would write against — the data that
-   is no longer there. Same image, new revision:
-   ```bash
-   gcloud run services describe pbe-book-api --region us-central1 \
-     --project pbe-book-staging --format='value(spec.template.spec.containers[0].image)'
-   gcloud run deploy pbe-book-api --image <that-image> \
-     --region us-central1 --project pbe-book-staging
-   ```
-   Confirm the `N profiles cached` line in the startup log.
-
-   ⚠ **If the backup predates the Ghost seed (D183), re-run it now** —
-   "Linking profiles to Ghost members" below. A pre-seed snapshot has no
-   `ghostMemberId`s, and until they are back a primary-email edit mints a
-   duplicate Ghost member and locks the brother out (N180).
-
-4. **Bring Book back up**, only after step 3's cold start:
-   ```bash
-   bash infra/maintenance-end.sh              # production: ENV_FILE=infra/environments/prod.env
-   ```
-
-5. **Work the Ghost discrepancy report.** The tool ran the reconciliation (D99)
-   immediately and wrote `*-ghost-audit.json` into the artifacts directory — a
-   rollback can leave Ghost *ahead* of Book. Repair each row by **re-saving that
-   brother in Book**, which pushes the fix to Ghost synchronously (D96) and is
-   audited like any other edit. There is deliberately no bulk re-push (D150;
-   OFC-332).
-
-6. **Check the forensic entry landed — in the retained bucket, not just anywhere.**
-   The restore's privileged-roster entry (D101) is written by the tool to its own
-   Cloud Logging log. Two separate things can go wrong, so check both, exactly as
-   the 7a-3c verification above splits them:
-   ```bash
-   # (a) the entry exists at all
-   gcloud logging read 'logName="projects/pbe-book-staging/logs/book-restore"' \
-     --project pbe-book-staging --freshness=1h --limit=5
-
-   # (b) the SINK ROUTED IT to the 3-month audit bucket — this is the one that
-   #     catches a stale AUDIT_FILTER, and (a) passes whether or not it did
-   gcloud logging read 'jsonPayload.action="restore"' --project pbe-book-staging \
-     --bucket=audit-logs --location=us-central1 --view=_AllLogs --limit=5
-   ```
-   If (a) is empty, delivery failed — the run said so, and the entry is in the
-   artifacts; the restore still succeeded, so deliver it by hand. If (a) has it and
-   (b) does not, the sink filter is stale: see the prerequisite below.
-
-⚠ **One-time prerequisite, per environment: re-run `provision-observability.sh`.**
-The audit sink's filter gained a second clause in 7b-3 so it routes the restore
-tool's log alongside the service's own audit lines. That script is Forrest-run, not
-deploy-run (D144) — so **an environment provisioned before 7b-3 keeps the
-one-clause filter until it is re-run**, and every forensic restore entry is written
-and then silently dropped from the retained stream. The script converges on re-run,
-so this is safe to do at any time and costs nothing if already applied:
-
-```bash
-# from the repo root, authenticated as a project owner
-PROJECT_ID=pbe-book-staging ./infra/provision-observability.sh
-```
-
-This is the same drift class PR #16 hit on the image bucket and #146 on the backup
-bucket: a script-only change that never reached the live resource. Verify with step
-6(b) above rather than assuming. *(Applied to staging on 2026-07-25 and verified by
-the 7b-3 live test — the filter was indeed still the one-clause version, so this was
-not a hypothetical.)*
-
-### Restoring into a named database — the backup-integrity job only (D151, D192)
-
-`--database <id>` restores into a named Firestore database instead of the project's
-`(default)` one. It exists for the integrity job (OFC-333), which restores the newest
-backup into a throwaway database in the separate `pbe-book-verify` project, checks it
-with `npm run backup:verify --workspace apps/api`, and deletes it. **No Book instance
-reads a named database**, so none of the cold-start or maintenance steps above apply,
-and a live recovery never uses this flag. `--confirm` still takes the **project** id;
-the tool prints the project and the database together wherever it names its target.
-The maintenance pre-flight still runs, though, and the verify project has no Hosting
-site, so the job also passes `--force`, along with `--skip-ghost-audit`,
-`--no-safety-snapshot` and an explicit `--bucket` naming the *source* environment's
-backup bucket. The full flag list is in N190.
-
-That job also passes `--no-forensic-entry`. The entry is still built and archived
-with the artifacts, but it is not delivered to Cloud Logging, so the job's scheduled
-runs never look like real restores (D192). **The tool refuses the flag unless
-`--database` names a non-default database**, so a restore into a live environment is
-always recorded. The integrity job's wrapper, provisioning and DR runbook are PL-6b.
-
-### The procedure, as actually exercised (7b-3, 2026-07-25)
-
-The whole loop above was run against staging for real, by manufacturing a disaster
-and undoing it — 50 profiles deleted, one record corrupted, a usable admin demoted,
-and a document added that the snapshot does not contain. The restore brought all
-1,200 profiles back, un-corrupted the record, re-promoted the admin, deleted the
-interloper as the run's single "stale" removal, reported `adminIdsAdded: [5004]` in
-the forensic entry, and logged `1200 profiles cached` on the forced cold start.
-Re-running it twice more changed nothing (0 deletes, empty delta), which is the
-idempotence a partially-failed restore depends on.
-
-Worth knowing before you do it under pressure: **the first real run found four
-defects that every offline test had passed over** — see DECISIONS **N138**. If you
-are reading this because something is on fire, the procedure works; if you are
-reading it to plan **Phase 7.8**, N138 is the argument for why that job needs to
-run the real thing on a schedule rather than a simulation of it.
-
-⚠ **The artifacts are the whole member directory in plaintext** — safety
-snapshot, restore report, Ghost report. `restore-artifacts/` is gitignored (this
-repo is public), but keep the files off shared storage and delete them once the
-restore is confirmed good.
-
-⚠ **On staging, a deploy undoes a restore.** Every deploy wipe-reseeds `profiles`
-and `users` (N18/N90), so a restore test there must not be followed by a merge to
-`main` until you have finished looking at it.
-
-⚠ **The log name is load-bearing.** `RESTORE_LOG_NAME` in
-`apps/api/src/tools/restore.ts` and the second clause of `AUDIT_FILTER` in
-`provision-observability.sh` must agree, or the forensic entry is written and
-silently never retained.
+These moved to **[`DR-RUNBOOK.md`](DR-RUNBOOK.md)** (PL-6b, OFC-333/OFC-356): restoring
+a live environment in place from a backup (D101/D150), standing Book up from
+nothing (D102), and the backup-integrity job (D151) — what it proves, how it is
+provisioned (`provision-verify-project.sh`), and what to do when it alerts.
 
 ## Loading a batch of headshots (D182) — the procedure
 
