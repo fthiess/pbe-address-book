@@ -65,7 +65,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Name search
 
-- D35 (fuzzy + phonetic over tokenized names) → D66 (A/B criterion) → **N19** (Beider-Morse via bmpm) → **D110** (Web Worker; memo dropped) → **D123** (curated nickname expansion) → **N83** (fold atomic Latin letters NFKD can't — ø/æ/ß/…; worker result ⊇ substring match, so a query never drops a hit it once showed); package + highlighting **N20**.
+- D35 (fuzzy + phonetic over tokenized names) → D66 (A/B criterion) → **N19** (Beider-Morse via bmpm) → **D110** (Web Worker; memo dropped) → **D123** (curated nickname expansion) → **N83** (fold atomic Latin letters NFKD can't — ø/æ/ß/…; worker result ⊇ substring match, so a query never drops a hit it once showed); package + highlighting **N20**. → **N192** (an *empty* interim set is not "no match": the Directory shows "Searching…" until `settled`, and ⚠ a worker that fails to load or throws now counts as settled on the substring answer — without that, "Searching…" would never clear on browsers without module workers).
 
 ## Proximity search
 
