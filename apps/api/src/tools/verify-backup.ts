@@ -7,6 +7,7 @@ import { describeTarget } from "./restore-support.js";
 import { listImageKeys, readRestoredState } from "./verify-backup-state.js";
 import {
   DEFAULT_MAX_AGE_HOURS,
+  couldNotRunVerdict,
   parseVerifyArgs,
   renderVerdict,
   runChecks,
@@ -25,8 +26,10 @@ import {
  * the database it reads or the one it protects.
  *
  * Output: human-readable lines, then a final `VERDICT {json}` line of counts and
- * booleans only (never PII). Exit 0 = verified, 1 = a check failed or the check
- * could not run, 2 = usage error.
+ * booleans only (never PII) — on every run that gets past argument parsing,
+ * including one whose checks could not run, which says `ok: false` with no checks.
+ * Exit 0 = verified, 1 = a check failed or the check could not run, 2 = usage
+ * error (no verdict line).
  */
 
 function printHelp(): void {
@@ -50,16 +53,25 @@ function printHelp(): void {
       "  --database <id>        The named database the restore wrote (required; never the default).",
       "  --image-bucket <name>  The SOURCE environment's image bucket (required).",
       `  --max-age-hours <n>    Oldest acceptable snapshot (default: ${DEFAULT_MAX_AGE_HOURS}, matching D149).`,
+      "  --allow-duplicate-emails",
+      "                         Pass exactly when the restore was given it (same waiver, same verdict).",
       "  --allow-emulator       Permit running against FIRESTORE_EMULATOR_HOST.",
       "  --help,-h              Show this help and exit.",
       "",
       "Exit status: 0 verified, 1 a check failed (or the check could not run), 2 usage error.",
+      "The last stdout line is `VERDICT {json}` on every exit except 2.",
     ].join("\n"),
   );
 }
 
-function fail(message: string): never {
+/**
+ * End a run whose checks could not complete. The reason goes to stderr; stdout
+ * still ends in a `VERDICT` line, saying `ok: false`, so a caller that reads the
+ * last line never mistakes "could not tell" for a pass or finds nothing there.
+ */
+function couldNotRun(message: string): never {
   console.error(`backup:verify: ${message}`);
+  console.log(`VERDICT ${JSON.stringify(couldNotRunVerdict(new Date()))}`);
   process.exit(1);
 }
 
@@ -99,13 +111,15 @@ try {
   console.log(`==> Snapshot source: ${loaded.source}`);
   const parsed = parseSnapshot(JSON.parse(loaded.text));
   if (!parsed.ok) {
-    fail(`the snapshot envelope is unreadable (${parsed.errors.length} envelope error(s)).`);
+    couldNotRun(`the snapshot envelope is unreadable (${parsed.errors.length} envelope error(s)).`);
   }
   const snapshot = parsed.snapshot;
-  // Envelope faults aside, validation is not re-litigated here — the restore already
-  // refused an invalid snapshot. It is re-run so the verdict records the same
-  // warnings count the restore saw, from the snapshot alone.
-  const validation = validateSnapshot(snapshot.collections);
+  // Re-run under the restore's own waiver, so the verdict records exactly the
+  // errors and warnings the restore saw. Without the matching flag, a snapshot the
+  // restore accepted with a tolerated duplicate email (D97) would fail here.
+  const validation = validateSnapshot(snapshot.collections, {
+    allowDuplicateEmails: options.allowDuplicateEmails,
+  });
 
   const [restored, imageKeys] = await Promise.all([
     readRestoredState(openFirestore(options.database)),
@@ -128,5 +142,5 @@ try {
 } catch (error) {
   // A check that cannot run is a failed check, never a pass: the scheduled job
   // alerts on a non-zero exit, and "could not tell" must reach a human.
-  fail(error instanceof Error ? error.message : String(error));
+  couldNotRun(error instanceof Error ? error.message : String(error));
 }

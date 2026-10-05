@@ -1,4 +1,4 @@
-import type { BackupData } from "../data/backup.js";
+import { type BackupData, deriveImageManifest } from "../data/backup.js";
 import {
   type ParsedSnapshot,
   RESTORE_COLLECTIONS,
@@ -47,6 +47,13 @@ export interface VerifyOptions {
   imageBucket: string | null;
   /** The oldest the snapshot may be before the staleness check fails. */
   maxAgeHours: number;
+  /**
+   * Judge the snapshot under the same waiver the restore was given. Must match the
+   * restore's `--allow-duplicate-emails`: a cross-profile duplicate is a state live
+   * data can legitimately be in (D97), and a restore that accepted one as a warning
+   * must not be failed here as an error on the same snapshot.
+   */
+  allowDuplicateEmails: boolean;
   allowEmulator: boolean;
   help: boolean;
 }
@@ -68,7 +75,7 @@ const VALUE_FLAGS = new Set([
   "--max-age-hours",
 ]);
 
-const BOOLEAN_FLAGS = new Set(["--allow-emulator", "--help", "-h"]);
+const BOOLEAN_FLAGS = new Set(["--allow-duplicate-emails", "--allow-emulator", "--help", "-h"]);
 
 /**
  * Parse the argument vector through the restore's own {@link scanFlags}, so the two
@@ -90,6 +97,7 @@ export function parseVerifyArgs(argv: readonly string[]): {
     database: null,
     imageBucket: null,
     maxAgeHours: DEFAULT_MAX_AGE_HOURS,
+    allowDuplicateEmails: false,
     allowEmulator: false,
     help: false,
   };
@@ -97,6 +105,8 @@ export function parseVerifyArgs(argv: readonly string[]): {
   for (const { flag, value } of flags) {
     if (value !== null) {
       assignValue(options, flag, value, errors);
+    } else if (flag === "--allow-duplicate-emails") {
+      options.allowDuplicateEmails = true;
     } else if (flag === "--allow-emulator") {
       options.allowEmulator = true;
     } else {
@@ -204,8 +214,29 @@ export interface VerifyCheck {
 export interface VerifyVerdict {
   ok: boolean;
   checkedAt: string;
-  snapshot: { version: number; generatedAt: string };
+  /** Null only when the check could not run far enough to read the snapshot. */
+  snapshot: { version: number; generatedAt: string } | null;
   checks: VerifyCheck[];
+  /** A fixed explanatory string, never interpolated from data or from an error. */
+  note?: string;
+}
+
+/**
+ * The verdict for a run that could not complete its checks — an unreadable
+ * snapshot, a Firestore or GCS read that threw. It exists so the job's output
+ * always ends in a `VERDICT` line, and that line always says `ok: false` when
+ * nothing was verified. The error itself goes to stderr, never in here: an error
+ * message can name a bucket, an account or a path, and the verdict is
+ * counts-and-booleans only.
+ */
+export function couldNotRunVerdict(now: Date): VerifyVerdict {
+  return {
+    ok: false,
+    checkedAt: now.toISOString(),
+    snapshot: null,
+    checks: [],
+    note: "the check could not run; the reason is on stderr",
+  };
 }
 
 /**
@@ -230,6 +261,9 @@ export function canonicalJson(value: unknown): string {
 
 const HOUR_MS = 3_600_000;
 
+/** How far in the future a snapshot's `generatedAt` may be before it fails freshness. */
+const CLOCK_SKEW_HOURS = 1;
+
 function freshnessCheck(inputs: VerifyInputs): VerifyCheck {
   const takenAt = Date.parse(inputs.snapshot.generatedAt);
   if (Number.isNaN(takenAt)) {
@@ -243,7 +277,9 @@ function freshnessCheck(inputs: VerifyInputs): VerifyCheck {
   const ageHours = Math.round(((inputs.now.getTime() - takenAt) / HOUR_MS) * 10) / 10;
   return {
     name: "snapshotFresh",
-    ok: ageHours <= inputs.maxAgeHours,
+    // A snapshot from the future is as wrong as a stale one (a broken clock or a
+    // forged timestamp); the lower bound allows only ordinary clock skew.
+    ok: ageHours >= -CLOCK_SKEW_HOURS && ageHours <= inputs.maxAgeHours,
     counts: { ageHours, maxAgeHours: inputs.maxAgeHours },
   };
 }
@@ -323,24 +359,26 @@ function hydrationCheck(inputs: VerifyInputs): VerifyCheck {
 }
 
 /**
- * Every object the manifest pins still exists (D151 (4): verified, not resurrected
- * — a missing one is reported for a human to recover from GCS's noncurrent
- * versions, D8/D94). A version-1 envelope predates the manifest; the automated
- * backup never writes one, so meeting one here fails rather than passing vacuously
- * over images nobody checked.
+ * Every image the snapshot's profiles point at still exists (D151 (4): verified,
+ * not resurrected — a missing one is reported for a human to recover from GCS's
+ * noncurrent versions, D8/D94).
+ *
+ * The keys checked are **re-derived from the profiles**, not read from the
+ * envelope's `images` list. The list is itself derived from the profiles at backup
+ * time (D147), so on a healthy backup the two agree — but trusting it would let a
+ * backup-writer regression that dropped or truncated the list pass this check
+ * having looked at nothing, since `parseSnapshot` reads a missing list as empty.
+ * So the envelope's list is compared too, and a disagreement fails
+ * (`envelopeAgrees`). A version-1 envelope predates the list, so only the derived
+ * keys are checked for it.
  */
 function manifestCheck(inputs: VerifyInputs): VerifyCheck {
-  if (inputs.snapshot.version < 2) {
-    return {
-      name: "imagesPresent",
-      ok: false,
-      counts: { envelopeVersion: inputs.snapshot.version },
-      note: "a version-1 envelope carries no image manifest, so no image was checked",
-    };
-  }
+  const derived = deriveImageManifest(inputs.snapshot.collections.profiles);
+  const envelopeAgrees =
+    inputs.snapshot.version < 2 || canonicalJson(inputs.snapshot.images) === canonicalJson(derived);
   let missingHeadshots = 0;
   let missingThumbnails = 0;
-  for (const entry of inputs.snapshot.images) {
+  for (const entry of derived) {
     if (!inputs.imageKeys.has(entry.headshotKey)) {
       missingHeadshots++;
     }
@@ -350,8 +388,14 @@ function manifestCheck(inputs: VerifyInputs): VerifyCheck {
   }
   return {
     name: "imagesPresent",
-    ok: missingHeadshots === 0 && missingThumbnails === 0,
-    counts: { entries: inputs.snapshot.images.length, missingHeadshots, missingThumbnails },
+    ok: envelopeAgrees && missingHeadshots === 0 && missingThumbnails === 0,
+    counts: {
+      entries: derived.length,
+      envelopeEntries: inputs.snapshot.images.length,
+      envelopeAgrees: envelopeAgrees ? 1 : 0,
+      missingHeadshots,
+      missingThumbnails,
+    },
   };
 }
 

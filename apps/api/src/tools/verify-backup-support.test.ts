@@ -7,6 +7,7 @@ import {
   type RestoredState,
   type VerifyInputs,
   canonicalJson,
+  couldNotRunVerdict,
   parseVerifyArgs,
   renderVerdict,
   runChecks,
@@ -109,6 +110,13 @@ describe("runChecks", () => {
     expect(runChecks(stale).checks[0]?.counts.ageHours).toBe(24.5);
   });
 
+  it("fails a snapshot dated in the future, beyond ordinary clock skew", () => {
+    const future = perfect({ snapshot: snapshotOf(data(), new Date("2026-10-05T10:00:00Z")) });
+    expect(failing(future)).toEqual(["snapshotFresh"]);
+    const skewed = perfect({ snapshot: snapshotOf(data(), new Date("2026-10-05T09:00:00Z")) });
+    expect(failing(skewed)).toEqual([]);
+  });
+
   it("fails a restore that lost a document", () => {
     const inputs = perfect();
     inputs.restored.collections.profiles.pop();
@@ -149,10 +157,24 @@ describe("runChecks", () => {
     });
   });
 
-  it("refuses to pass the image check vacuously on a version-1 envelope", () => {
+  it("fails a v2 envelope whose image list was dropped, instead of checking nothing", () => {
+    // `parseSnapshot` reads a missing `images` as []. Trusting it would pass with
+    // entries=0 while a profile still points at a headshot.
+    const inputs = perfect();
+    inputs.snapshot = { ...inputs.snapshot, images: [] };
+    expect(failing(inputs)).toEqual(["imagesPresent"]);
+    expect(runChecks(inputs).checks[6]?.counts).toMatchObject({
+      entries: 1,
+      envelopeEntries: 0,
+      envelopeAgrees: 0,
+    });
+  });
+
+  it("checks a version-1 envelope's images from its profiles, since it has no list", () => {
     const inputs = perfect();
     inputs.snapshot = { ...inputs.snapshot, version: 1, images: [] };
-    expect(failing(inputs)).toEqual(["imagesPresent"]);
+    expect(failing(inputs)).toEqual([]);
+    expect(failing({ ...inputs, imageKeys: new Set() })).toEqual(["imagesPresent"]);
   });
 
   it("emits counts and booleans only — no id, name, email or value reaches the verdict", () => {
@@ -160,6 +182,19 @@ describe("runChecks", () => {
     inputs.restored.collections.profiles.pop();
     const json = JSON.stringify(runChecks(inputs));
     expect(json).not.toMatch(/5247|5001|example\.test|Smyth|James/);
+  });
+});
+
+describe("couldNotRunVerdict", () => {
+  it("never reads as a pass, and carries nothing but a fixed note", () => {
+    const verdict = couldNotRunVerdict(NOW);
+    expect(verdict).toEqual({
+      ok: false,
+      checkedAt: NOW.toISOString(),
+      snapshot: null,
+      checks: [],
+      note: "the check could not run; the reason is on stderr",
+    });
   });
 });
 
@@ -241,6 +276,13 @@ describe("parseVerifyArgs", () => {
       "--max-age-hours needs a value.",
     ]);
     expect(parseVerifyArgs([...complete, "--max-age-hours=0"]).errors).toHaveLength(1);
+  });
+
+  it("takes the restore's duplicate-email waiver only when asked", () => {
+    expect(parseVerifyArgs(complete).options.allowDuplicateEmails).toBe(false);
+    expect(
+      parseVerifyArgs([...complete, "--allow-duplicate-emails"]).options.allowDuplicateEmails,
+    ).toBe(true);
   });
 
   it("asks for nothing else when asked for help", () => {

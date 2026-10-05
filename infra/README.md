@@ -511,6 +511,10 @@ with `npm run backup:verify --workspace apps/api`, and deletes it. **No Book ins
 reads a named database**, so none of the cold-start or maintenance steps above apply,
 and a live recovery never uses this flag. `--confirm` still takes the **project** id;
 the tool prints the project and the database together wherever it names its target.
+The maintenance pre-flight still runs, though, and the verify project has no Hosting
+site, so the job also passes `--force`, along with `--skip-ghost-audit`,
+`--no-safety-snapshot` and an explicit `--bucket` naming the *source* environment's
+backup bucket. The full flag list is in N190.
 
 That job also passes `--no-forensic-entry`. The entry is still built and archived
 with the artifacts, but it is not delivered to Cloud Logging, so the job's scheduled
