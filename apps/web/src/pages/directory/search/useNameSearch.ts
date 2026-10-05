@@ -32,10 +32,12 @@ export interface NameSearchResult {
   ready: boolean;
   /**
    * Whether `matchedIds` reflects the **final** answer for the query on screen —
-   * true for an empty query, or once the worker has answered *this* query. While
-   * false, `matchedIds` is the interim substring set that will still grow into the
+   * true for an empty query, once the worker has answered *this* query, or when
+   * the worker has failed (substring is then the whole answer). While false,
+   * `matchedIds` is the interim substring set that will still grow into the
    * richer worker match, so anything that depends on the row set being stable
-   * (scroll restoration) must wait for this rather than for `ready` alone.
+   * (scroll restoration) must wait for this rather than for `ready` alone — and
+   * an empty interim set is not yet "no match" (OFC-459).
    */
   settled: boolean;
 }
@@ -67,6 +69,11 @@ export function useNameSearch(
   config: SearchConfig = DEFAULT_SEARCH_CONFIG,
 ): NameSearchResult {
   const [ready, setReady] = useState(false);
+  // The worker could not be created or died (no module-worker support, a failed
+  // script load, an exception while indexing). Substring matching is then the
+  // whole answer (D110's progressive enhancement), so the search counts as
+  // settled on it rather than waiting for a reply that will never come (OFC-459).
+  const [failed, setFailed] = useState(false);
   const [workerResult, setWorkerResult] = useState<{
     query: string;
     ids: Set<number> | null;
@@ -83,8 +90,19 @@ export function useNameSearch(
     if (!enabled) {
       return;
     }
-    const worker = new Worker(new URL("./search.worker.ts", import.meta.url), { type: "module" });
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("./search.worker.ts", import.meta.url), { type: "module" });
+    } catch {
+      setFailed(true);
+      return;
+    }
+    setFailed(false);
     workerRef.current = worker;
+    worker.onerror = () => {
+      setReady(false);
+      setFailed(true);
+    };
     worker.onmessage = (event: MessageEvent<SearchResponse>) => {
       const message = event.data;
       if (message.type === "ready") {
@@ -154,11 +172,11 @@ export function useNameSearch(
     [query, matchedTokens],
   );
 
-  // The row set is final when there is no query, or when the worker's answer is
-  // for the query currently on screen. (Index-`ready` alone is not enough: after
+  // The row set is final when there is no query, when the worker's answer is
+  // for the query currently on screen, or when there is no worker to wait for. (Index-`ready` alone is not enough: after
   // the index builds there is still a query round-trip during which `matchedIds`
   // is the interim substring set.)
-  const settled = query.trim().length === 0 || workerCurrent;
+  const settled = query.trim().length === 0 || workerCurrent || failed;
 
   return { matchedIds, highlight, ready, settled };
 }

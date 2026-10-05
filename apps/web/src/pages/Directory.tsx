@@ -261,6 +261,8 @@ export function Directory() {
     sort.direction,
   ]);
 
+  const searchPending = isSearchPending(profiles !== null, rows.length, searchSettled);
+
   // Report the settled search to analytics — a bucketed count only, never the
   // query text or the matched ids (P6; see lib/analytics.ts).
   //
@@ -482,7 +484,7 @@ export function Directory() {
             Directory
           </h1>
           <p className="text-sm text-muted-foreground" aria-live="polite">
-            {profiles ? countLabel(rows.length, profiles.length) : "Loading…"}
+            {countReadout(rows.length, profiles?.length ?? null, searchPending)}
           </p>
           {/* Why the Directory may be showing more brothers than the URL asked
               for. The Near control carries this line too, but that one is inside a
@@ -603,7 +605,12 @@ export function Directory() {
       )}
 
       {profiles && rows.length === 0 ? (
-        <EmptyState q={q} starredOnly={starredOnly} hasStars={stars.set.size > 0} />
+        <EmptyState
+          q={q}
+          starredOnly={starredOnly}
+          hasStars={stars.set.size > 0}
+          pending={searchPending}
+        />
       ) : wide ? (
         <DirectoryGrid
           rows={rows}
@@ -640,18 +647,27 @@ export function Directory() {
   );
 }
 
-/** The Directory's various empty states (§5.6.6/§5.6.9). */
+/**
+ * The Directory's various empty states (§5.6.6/§5.6.9). While Name Search is
+ * still `pending` the empty row set is not an answer yet, so the same calm card
+ * says "Searching…" instead — and the page doesn't jump when the answer lands
+ * (OFC-459).
+ */
 function EmptyState({
   q,
   starredOnly,
   hasStars,
+  pending,
 }: {
   q: string;
   starredOnly: boolean;
   hasStars: boolean;
+  pending: boolean;
 }) {
   let message: string;
-  if (starredOnly && !hasStars) {
+  if (pending) {
+    message = "Searching…";
+  } else if (starredOnly && !hasStars) {
     message = "You haven't starred anyone yet — click a star to add them.";
   } else if (starredOnly) {
     message = "None of your starred brothers match the current view.";
@@ -665,6 +681,29 @@ function EmptyState({
       {message}
     </p>
   );
+}
+
+/**
+ * An empty row set is not an answer while Name Search is still working: before
+ * the worker replies, the interim substring set is empty for any misspelling, and
+ * "No brothers match" (or "0 of N" in the live region) would tell the brother
+ * there is no such person a moment before the results arrive (OFC-459). A
+ * non-empty interim set is shown as is — it only ever grows (D110).
+ */
+function isSearchPending(loaded: boolean, shown: number, settled: boolean): boolean {
+  return loaded && shown === 0 && !settled;
+}
+
+/**
+ * The count line's text: "Loading…" before the roster, "Searching…" while an
+ * empty interim search answer is not yet final (never a false "0 of N" in the
+ * live region — OFC-459), else the result count.
+ */
+function countReadout(shown: number, total: number | null, pending: boolean): string {
+  if (total === null) {
+    return "Loading…";
+  }
+  return pending ? "Searching…" : countLabel(shown, total);
 }
 
 /** The result-count readout (§5.6.9): "248 brothers", narrowing to "of N" when filtered. */
