@@ -1,9 +1,11 @@
 import { type KeyObject, sign as cryptoSign, generateKeyPairSync } from "node:crypto";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { errors as joseErrors } from "jose";
 import { describe, expect, it } from "vitest";
 import { ProfileCache } from "../data/cache.js";
 import { makeProfile } from "../test-support/make-profile.js";
-import type { KeyResolver } from "./ghost-jwks.js";
+import { type KeyResolver, createGhostKeyResolver } from "./ghost-jwks.js";
 import { GhostIdentityProvider } from "./ghost-provider.js";
 import type { GhostMemberLookup } from "./ghost-reader.js";
 import { JwtKeyResolutionError } from "./jwt-verify.js";
@@ -16,7 +18,9 @@ import { AuthError } from "./types.js";
  * verifies with), so the genuine signature/alg-pin/iss/aud/exp/nonce/resolution
  * flow is exercised end to end without the live Ghost site — including the
  * regression case that broke against the real instance: **RS512 over a 1024-bit
- * key**, which jose rejects but Ghost actually uses.
+ * key**, which jose rejects but Ghost before 6.67 uses (and self-hosted sites on
+ * older Ghost still do). Ghost 6.67+ signs with a 2048-bit key instead, and rotates
+ * to it through a two-key JWKS window — both are covered too (N191).
  */
 
 const ISSUER = "https://staging.pbe400.org/members/api";
@@ -134,10 +138,24 @@ describe("GhostIdentityProvider.createSession", () => {
     expect(nonce.consumedCount).toBe(1);
   });
 
-  it("verifies an RS512 token over a 1024-bit key — Ghost's real key (regression)", async () => {
-    // Ghost signs member JWTs RS512 with a 1024-bit RSA key; jose rejects that
-    // key length, which is why the verifier uses Node crypto. This must pass.
+  it("verifies an RS512 token over a 1024-bit key — legacy Ghost's key (regression)", async () => {
+    // Ghost before 6.67 signs member JWTs RS512 with a 1024-bit RSA key, and
+    // self-hosted sites on older Ghost (ghost-staging among them) still do; jose
+    // rejects that key length, which is why the verifier uses Node crypto (N191).
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 1024 });
+    const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
+    const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
+    const session = await provider.createSession({
+      token: makeToken({ privateKey, alg: "RS512" }),
+      state: "n",
+    });
+    expect(session.identity.profileId).toBe(5001);
+  });
+
+  it("verifies an RS512 token over a 2048-bit key — Ghost 6.67+'s key, live pbe400.org's today", async () => {
+    // The rotated key (N191): same algorithm, larger modulus. The 1024-bit case
+    // above guards legacy Ghost; this one guards the key production signs with.
+    const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
     const provider = buildProvider(publicKey, cache, singleUseNonce("n"));
     const session = await provider.createSession({
@@ -421,5 +439,73 @@ describe("GhostIdentityProvider.createSession — Ghost member uuid (D137)", () 
       provider.createSession({ token: makeToken({ privateKey }), state: "n" }),
     ).rejects.toMatchObject({ status: 403, code: "debrothered" });
     expect(calls).toBe(0);
+  });
+});
+
+/**
+ * Ghost's key rotation (N191), through the **real** `createGhostKeyResolver` — the
+ * jose `createRemoteJWKSet` path — against a JWKS served from a local HTTP server,
+ * not the stub resolver the cases above use. Ghost 6.67 publishes the new 2048-bit
+ * key, under a new `kid`, 48 hours before signing with it, and keeps the old key
+ * published for 2 hours after the switch; during that window the JWKS carries both.
+ * A sign-in must verify under either key, chosen by `kid`. This also pins that
+ * jose's 2048-bit floor applies only to *its* verify, never to the key resolution
+ * Book uses — if it ever moved into resolution, the legacy 1024-bit key would
+ * start failing here.
+ */
+describe("GhostIdentityProvider.createSession — Ghost key rotation (N191)", () => {
+  async function serveJwks(keys: object[]): Promise<{ url: string; close: () => void }> {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(JSON.stringify({ keys }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    return {
+      url: `http://127.0.0.1:${port}/members/.well-known/jwks.json`,
+      close: () => server.close(),
+    };
+  }
+
+  it("verifies under either key of a two-key JWKS, by kid, and refuses an unknown kid", async () => {
+    const legacy = generateKeyPairSync("rsa", { modulusLength: 1024 });
+    const rotated = generateKeyPairSync("rsa", { modulusLength: 2048 });
+    const jwks = await serveJwks([
+      { ...legacy.publicKey.export({ format: "jwk" }), kid: "legacy-kid", use: "sig" },
+      { ...rotated.publicKey.export({ format: "jwk" }), kid: "rotated-kid", use: "sig" },
+    ]);
+    try {
+      const cache = await loadedCache({ id: 5001, email: LINKED_EMAIL });
+      const provider = (nonce: string) =>
+        new GhostIdentityProvider({
+          keyResolver: createGhostKeyResolver(jwks.url),
+          issuer: ISSUER,
+          audience: AUDIENCE,
+          nonceStore: singleUseNonce(nonce),
+          cache,
+          ensureUser: async () => ({ stars: [] }),
+        });
+
+      for (const [privateKey, kid] of [
+        [legacy.privateKey, "legacy-kid"],
+        [rotated.privateKey, "rotated-kid"],
+      ] as const) {
+        const session = await provider(kid).createSession({
+          token: makeToken({ privateKey, kid, alg: "RS512" }),
+          state: kid,
+        });
+        expect(session.identity.profileId).toBe(5001);
+      }
+
+      // A key that was signed with but never published must not verify.
+      await expect(
+        provider("x").createSession({
+          token: makeToken({ privateKey: rotated.privateKey, kid: "unpublished-kid" }),
+          state: "x",
+        }),
+      ).rejects.toMatchObject({ status: 401, code: "invalid_token" });
+    } finally {
+      jwks.close();
+    }
   });
 });

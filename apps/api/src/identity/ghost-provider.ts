@@ -63,10 +63,11 @@ export interface GhostProviderDeps {
  * `createSession` is the security-critical heart of the handshake:
  *  1. Verify the Ghost-issued JWT against Ghost's JWKS — signature, `iss`,
  *     `aud`, `exp` — with the **algorithm pinned to the asymmetric RS family**
- *     (Ghost uses RS512 over a 1024-bit key), which rejects `alg:none` and every
- *     symmetric algorithm (the two classic forges, D104). The signature is
- *     checked with Node `crypto` rather than jose, because jose rejects Ghost's
- *     1024-bit key (see `ghost-jwks.ts`).
+ *     (Ghost uses RS512 — over a 2048-bit key since Ghost 6.67, a 1024-bit one
+ *     before), which rejects `alg:none` and every symmetric algorithm (the two
+ *     classic forges, D104). The signature is checked with Node `crypto` rather
+ *     than jose, because jose rejects the 1024-bit key that self-hosted Ghost on
+ *     older versions still signs with (see `ghost-jwks.ts`; N191).
  *  2. Verify and **consume the single-use `state` nonce** (D104) — replay-proof.
  *  3. Extract the member email from `sub`, **normalize it** (D97), and resolve it
  *     against the in-memory email index. Resolution **fails closed**: no match →
@@ -191,7 +192,8 @@ export class GhostIdentityProvider implements IdentityProvider {
   /**
    * Verify the compact JWT and return its normalized subject email, or throw an
    * `AuthError`. Done with Node's `crypto.verify` (not jose) so it accepts
-   * Ghost's 1024-bit RSA key — see `ghost-jwks.ts`. Every D104 property is
+   * legacy Ghost's 1024-bit RSA key as well as the 2048-bit key Ghost 6.67+
+   * signs with — see `ghost-jwks.ts`. Every D104 property is
    * preserved: the algorithm is pinned to the asymmetric RS family (so
    * `alg:none` and all symmetric algorithms are rejected before any key is
    * touched), the `kid` is required and resolved against the JWKS, and `iss`,
