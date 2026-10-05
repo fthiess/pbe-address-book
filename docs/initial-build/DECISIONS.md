@@ -3869,7 +3869,6 @@ The verdict prints as a final `VERDICT {json}` line holding **counts and boolean
 
 **Not changed.** The wait itself. A shared warm index (OFC-68) removes the rebuild on Back, and non-PII memoisation (OFC-180) would shorten the reload path. Both are tracked separately.
 
-
 ### D193 — The backup-integrity job runs the latest release's code, weekly for four weeks then monthly; Book's operator documentation is two runbooks *(2026-10-05 — Forrest's calls at the PL-6b plan gate; OFC-333, OFC-356; amends D151's cadence clause)*
 
 **Three decisions, all Forrest's, on the recommendations offered.**
