@@ -3877,7 +3877,7 @@ The verdict prints as a final `VERDICT {json}` line holding **counts and boolean
 
 **(2) Cadence: weekly for the job's first four weeks, then monthly.** D151 said "weekly until public launch, then monthly". Public launch was 2026-09-19, so read literally the job would start monthly. D151's own reasoning points the other way: frequency should track how new and unproven the pipeline is, and *this* pipeline is brand new. Its service accounts, cross-project grants and Cloud Build bootstrap have never run. It is weekly until it has been boring for a month, then monthly. The switch is a one-word change to `VERIFY_CADENCE` in `prod.env` and a re-run of the provisioner (OFC-460).
 
-**(3) Two runbooks, not one (the OFC-356 fork).** `infra/DR-RUNBOOK.md` covers disasters: restore in place, stand-up from nothing, and the integrity job. `infra/RUNBOOK.md` covers routine operations. `infra/README.md` keeps building an environment from its scripts. **Each runbook opens with a statement of its scope and a pointer to the other**, ahead of any table of contents, so that someone who is panicking and in a hurry can tell within seconds whether they are in the right document (Forrest's explicit requirement). One document would be easier to find, but an emergency procedure read under stress should be short and linear, not interleaved with UAT chores. The opening statements are how two documents avoid the findability cost.
+**(3) Two runbooks, not one (the OFC-356 fork).** `infra/DR-RUNBOOK.md` covers disasters: restore in place, stand-up from nothing, and the integrity job. A routine runbook, `infra/RUNBOOK.md`, takes the recurring operations out of `infra/README.md`, which keeps building an environment from its scripts. The DR runbook lands with OFC-333's PR; the routine runbook follows in OFC-356's own PR, and until it lands `README.md` carries the routine procedures and the opening pointer to the DR runbook. **Each runbook opens with a statement of its scope and a pointer to the other**, ahead of any table of contents, so that someone who is panicking and in a hurry can tell within seconds whether they are in the right document (Forrest's explicit requirement). One document would be easier to find, but an emergency procedure read under stress should be short and linear, not interleaved with UAT chores. The opening statements are how two documents avoid the findability cost.
 
 **Why.** All three choices favour the edge case the job and the runbooks exist for: a real failure, met by someone who is not in the middle of building Book. (1) keeps a clean alert trustworthy, (2) keeps the job's own newness from hiding, and (3) keeps the recovery path uncluttered.
 
@@ -3907,12 +3907,21 @@ In Cloud Build mode it first installs the newest Node of the `.nvmrc` major from
 
 **Alerting** (presence-based only, D148/D151). Three log-based metrics live in the verify project: FAIL markers, PASS markers (history only), and Scheduler attempts at `severity>=ERROR`. One policy ORs the FAIL and Scheduler conditions at `> 0`. The conditions filter on the metric type alone, without a resource type, because the monitored-resource mapping of a `build`-resource log-based metric could not be verified offline. `infra/verify-alert-test.cloudbuild.yaml` is the induced-failure test from Phase 7.8's gate: a one-step build that prints only a FAIL marker, run as the job's own service account.
 
-**Two holes, closed as far as they cheaply go.** (a) A Cloud Build timeout kills the VM without running the trap. The inner `timeout` fires first, and the bootstrap then sweeps every `verify-*` database and prints FAIL. Anything that still escapes is swept by the next run, so a leftover copy lives at most one cycle, inside the verify project. (b) A build that cannot start at all (an image pull failure, say) prints no marker. Only the Scheduler condition and D151's "glance at the history" habit see it.
+**Two holes, closed as far as they cheaply go.** (a) A Cloud Build timeout kills the VM without running the trap. The inner `timeout` fires first, and the bootstrap then deletes **that run's** database (the wrapper writes its id to `VERIFY_DB_ID_FILE` before creating it) and prints FAIL. It never touches other `verify-*` databases, so an operator's hand run in the same project is safe. Anything that still escapes is swept by the next run, so a leftover copy lives at most one cycle, inside the verify project. (b) A build that cannot start at all (an image pull failure, say) prints no marker. Only the Scheduler condition and D151's "glance at the history" habit see it.
+
+**Review round (`/code-review` high, five reviewers plus confidence scoring).** One finding cleared the 80 threshold: the provisioner passed `--update-headers` on the Scheduler **create** path, which only `update http` accepts (`create http` takes `--headers`; gcloud 585 `--help`). The first real provisioning run would have died after the production bucket grants and before any job or alert existed. The stub `gcloud` could not catch a flag the real CLI rejects. Findings fixed below the threshold:
+- the timeout sweep is now scoped to its own run, as (a) above;
+- the wrapper maps every failure past argument parsing to exit 1, as documented;
+- `VERIFY_ALLOW_DUPLICATE_EMAILS` passes the waiver to both tools, for a D97 duplicate that would otherwise fail every run;
+- the DR runbook's stand-up step 5 now uses maintenance mode instead of `--force`;
+- the triage table now describes `envelopeAgrees` and `snapshotValid` correctly;
+- the runbook and the provisioner say a release must come first;
+- `README.md` opens with its scope and a pointer to the DR runbook.
 
 **Tested, and what is not.** Offline:
 - `bash -n` on both scripts;
 - the wrapper's `--dry-run` and usage paths;
-- the provisioner run end to end against a stub `gcloud`. Its generated build JSON parses, and the extracted bootstrap passes `bash -n`.
+- the provisioner run end to end against a stub `gcloud`, on both the create and the update path (create passes `--headers` and pauses the new job; update passes `--update-headers` and leaves its state alone). Its generated build JSON parses, and the extracted bootstrap passes `bash -n`.
 
 Live from the workstation:
 - the release lookup (`v2026.10.04`);

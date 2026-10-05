@@ -30,7 +30,8 @@
 #   ENV_FILE=infra/environments/staging.env bash infra/verify-backup.sh
 #
 # Exit status: 0 verified; 1 a check failed or the run could not complete;
-# 2 usage error.
+# 2 usage error (of this script — every later failure, whatever the failing
+# command's own code, is reported as 1).
 #
 set -euo pipefail
 
@@ -52,6 +53,8 @@ Environment (from ENV_FILE, overridable):
   VERIFY_PROJECT_ID   default pbe-book-verify
   VERIFY_REGION       default: REGION, then us-central1
   VERIFY_MAX_AGE_HOURS  passed to backup:verify (default: its own, 20)
+  VERIFY_ALLOW_DUPLICATE_EMAILS  true passes --allow-duplicate-emails to BOTH
+                      tools (D97/N190); default false
 
 Exit status: 0 verified, 1 failed or could not complete, 2 usage error.
 EOF
@@ -93,6 +96,11 @@ IMAGE_BUCKET="${IMAGE_BUCKET:?ENV_FILE must set IMAGE_BUCKET}"
 VERIFY_PROJECT_ID="${VERIFY_PROJECT_ID:-pbe-book-verify}"
 VERIFY_REGION="${VERIFY_REGION:-${REGION:-us-central1}}"
 VERIFY_MAX_AGE_HOURS="${VERIFY_MAX_AGE_HOURS:-}"
+# D97 tolerates a cross-profile duplicate email in live data, and the restore
+# refuses one unless waived. If production ever holds one, every run fails until
+# it is de-duplicated — or until this is set to true in the env file, which passes
+# the waiver to BOTH tools (N190 (5): one without the other fails snapshotValid).
+VERIFY_ALLOW_DUPLICATE_EMAILS="${VERIFY_ALLOW_DUPLICATE_EMAILS:-false}"
 
 if [[ "${VERIFY_PROJECT_ID}" == "${SOURCE_PROJECT}" ]]; then
   echo "verify-backup: the verify project must not be the source project (D151)." >&2
@@ -129,6 +137,9 @@ RESTORE_ARGS=(
   --no-safety-snapshot
   --no-forensic-entry
 )
+if [[ "${VERIFY_ALLOW_DUPLICATE_EMAILS}" == true ]]; then
+  RESTORE_ARGS+=(--allow-duplicate-emails)
+fi
 
 if [[ "${DRY_RUN}" == true ]]; then
   echo "==> --dry-run: nothing will be created, read or deleted. The run would:"
@@ -173,6 +184,9 @@ teardown() {
       [[ ${rc} -eq 0 ]] && rc=1
     fi
   fi
+  # Every failure past argument parsing is a 1, whatever the failing command's own
+  # code was (gcloud and backup:verify both use 2 for their usage errors).
+  [[ ${rc} -ne 0 ]] && rc=1
   if [[ ${rc} -eq 0 ]]; then
     echo "==> VERIFIED: the newest backup of ${SOURCE_PROJECT} restores, hydrates and is complete."
   else
@@ -204,6 +218,10 @@ done
 #    this database exists to be deleted.
 echo "==> Creating ${DB_ID}"
 DB_CREATED=true # set first: if create half-succeeds, teardown still tries
+# Cloud Build's bootstrap reads this if the run times out before the trap can run.
+if [[ -n "${VERIFY_DB_ID_FILE:-}" ]]; then
+  printf '%s\n' "${DB_ID}" >"${VERIFY_DB_ID_FILE}"
+fi
 gcloud firestore databases create --database="${DB_ID}" --location="${VERIFY_REGION}" \
   --type=firestore-native --project="${VERIFY_PROJECT_ID}" --quiet >/dev/null
 
@@ -248,6 +266,9 @@ VERIFY_ARGS=(
 )
 if [[ -n "${VERIFY_MAX_AGE_HOURS}" ]]; then
   VERIFY_ARGS+=(--max-age-hours "${VERIFY_MAX_AGE_HOURS}")
+fi
+if [[ "${VERIFY_ALLOW_DUPLICATE_EMAILS}" == true ]]; then
+  VERIFY_ARGS+=(--allow-duplicate-emails)
 fi
 VERIFY_OUT="${ARTIFACT_DIR}/verify-output.txt"
 set +e

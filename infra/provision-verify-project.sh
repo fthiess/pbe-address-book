@@ -200,19 +200,19 @@ else
   mkdir -p /workspace/src
   if curl -fsSL "https://github.com/\${repo}/archive/refs/tags/\${tag}.tar.gz" | tar -xz -C /workspace/src --strip-components=1; then
     cd /workspace/src
-    ENV_FILE="infra/environments/${ENV_BASENAME}" timeout -k 60 ${INNER_TIMEOUT_SECONDS} bash infra/verify-backup.sh --in-cloud-build || rc=\$?
+    ENV_FILE="infra/environments/${ENV_BASENAME}" VERIFY_DB_ID_FILE=/workspace/verify-db-id timeout -k 60 ${INNER_TIMEOUT_SECONDS} bash infra/verify-backup.sh --in-cloud-build || rc=\$?
   else
     echo "!! could not fetch the source of \${tag}" >&2
     rc=1
   fi
 fi
-if [ "\${rc}" -eq 124 ] || [ "\${rc}" -eq 137 ]; then
-  # Timed out: the wrapper's teardown may not have run. Nothing else is running
-  # here, so every verify-* database is ours to delete.
-  echo "!! timed out after ${INNER_TIMEOUT_SECONDS}s — sweeping verify-* databases" >&2
-  for name in \$(gcloud firestore databases list --project="${VERIFY_PROJECT_ID}" --filter="name~/databases/verify-" --format="value(name)"); do
-    gcloud firestore databases delete --database="\${name##*/}" --project="${VERIFY_PROJECT_ID}" --quiet >/dev/null || true
-  done
+if { [ "\${rc}" -eq 124 ] || [ "\${rc}" -eq 137 ]; } && [ -s /workspace/verify-db-id ]; then
+  # Timed out: the wrapper's teardown may not have run. Delete THIS run's
+  # database only (the wrapper recorded its id before creating it) — an
+  # operator's hand run in the same project must never lose its database.
+  db="\$(cat /workspace/verify-db-id)"
+  echo "!! timed out after ${INNER_TIMEOUT_SECONDS}s — deleting \${db}" >&2
+  gcloud firestore databases delete --database="\${db}" --project="${VERIFY_PROJECT_ID}" --quiet >/dev/null || true
 fi
 result=FAIL
 [ "\${rc}" -eq 0 ] && result=PASS
@@ -253,10 +253,14 @@ if gcloud scheduler jobs describe "${JOB_NAME}" --location="${VERIFY_REGION}" \
   echo "==> Converging Cloud Scheduler job ${JOB_NAME} (state unchanged)"
   VERB=update
   NEW_JOB=false
+  # The two verbs spell the header flag differently (gcloud 585 --help): only
+  # `update http` has --update-headers, and only `create http` has --headers.
+  HEADER_FLAG=--update-headers
 else
   echo "==> Creating Cloud Scheduler job ${JOB_NAME} (it will be PAUSED)"
   VERB=create
   NEW_JOB=true
+  HEADER_FLAG=--headers
 fi
 retry_gcp gcloud scheduler jobs "${VERB}" http "${JOB_NAME}" \
   --location="${VERIFY_REGION}" --project "${VERIFY_PROJECT_ID}" \
@@ -264,7 +268,7 @@ retry_gcp gcloud scheduler jobs "${VERB}" http "${JOB_NAME}" \
   --uri="${BUILDS_URI}" --http-method=POST \
   --oauth-service-account-email="${SCHEDULER_SA}" \
   --oauth-token-scope=https://www.googleapis.com/auth/cloud-platform \
-  --update-headers=Content-Type=application/json \
+  "${HEADER_FLAG}=Content-Type=application/json" \
   --message-body-from-file="${BUILD_FILE}" \
   --attempt-deadline=180s \
   --description="Book backup-integrity job (D102/D151, OFC-333): ${VERIFY_CADENCE}, source ${SOURCE_PROJECT}"
@@ -363,6 +367,8 @@ STATE="$(gcloud scheduler jobs describe "${JOB_NAME}" --location="${VERIFY_REGIO
   --project "${VERIFY_PROJECT_ID}" --format='value(state)')"
 echo
 echo "==> Done. Scheduler job ${JOB_NAME} is ${STATE}."
+echo "    ⚠ The build runs the LATEST GITHUB RELEASE's code (D193). Until a release"
+echo "      contains infra/verify-backup.sh, every run FAILs — release first."
 echo "    Run it once and WATCH it (D151 — first run confirmed by eye):"
 echo "      gcloud scheduler jobs run ${JOB_NAME} --location=${VERIFY_REGION} --project=${VERIFY_PROJECT_ID}"
 echo "      https://console.cloud.google.com/cloud-build/builds;region=${VERIFY_REGION}?project=${VERIFY_PROJECT_ID}"

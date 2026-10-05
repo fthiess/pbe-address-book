@@ -64,8 +64,9 @@ Then the real thing, in order:
    ENV_FILE=infra/environments/prod.env bash infra/maintenance-begin.sh
    ```
    The restore refuses to run until this is in place. Its `--force` flag skips
-   that check; it exists only for an environment with no Hosting at all (a
-   stand-up from nothing, below).
+   that check. It is for a target with no Hosting site to probe, which in
+   practice means only the integrity job's throwaway database. It is never for a
+   live recovery.
 
    ⚠ **If `firebase login` has never been run on this machine**, the script fails
    with "No authorized accounts". The Firebase CLI also accepts **ADC**, which
@@ -208,19 +209,19 @@ names it changes with it. In order:
 4. **Deploy** by release tag, as for any release (`README.md`, "Releasing to
    production"). The WIF condition requires the `production` GitHub Environment,
    so Forrest approves the deploy as usual.
-5. **Load the data.** Restore the newest snapshot you have into the new project.
-   There is no maintenance page on an empty site, so pass `--force`:
-   ```bash
-   npm run restore --workspace apps/api -- --file <snapshot.json> \
-     --project <new> --force --skip-ghost-audit --dry-run
-   npm run restore --workspace apps/api -- --file <snapshot.json> \
-     --project <new> --force --skip-ghost-audit --confirm <new>
-   ```
-   Copy the image objects across if the old bucket is still readable
+5. **Load the data, with Book down.** Step 4 left Book live and serving an
+   empty directory, so this is a restore in place, and it runs exactly like one,
+   without `--force`. Take Book down with `maintenance-begin.sh`, restore,
+   force a cold start, then bring Book back up with `maintenance-end.sh` (Restore
+   in place, steps 1–4). The only differences: give `--file <snapshot.json>`
+   instead of `--object` if the snapshot is on disk, and `--skip-ghost-audit` is
+   reasonable on a first load. Copy the image objects across first if the old
+   bucket is still readable
    (`gcloud storage cp -r gs://<old>-images/* gs://<new>-images/`). Otherwise
    brothers' photos fall back to placeholders until re-uploaded; the profiles
-   still restore. Then force a cold start (Restore in place, step 3) and re-run
-   the Ghost seed if the snapshot predates 2026-10-01 21:15 UTC.
+   still restore. Re-run the Ghost seed if the snapshot predates 2026-10-01
+   21:15 UTC. (The 2026-09-16 genesis load used `--force` on a site nobody had
+   been told about yet; a recovery has members waiting, so it uses maintenance.)
 6. **Verify on loaded data** (D163): sign in, check the Directory count against
    the snapshot's profile count, open a deceased brother and a brother with a
    photo.
@@ -263,14 +264,15 @@ check failed:
 | Check | What `false` means | First move |
 |---|---|---|
 | `snapshotFresh` | The newest backup is over 20h old, or future-dated | The backup pipeline has stalled: the backup alerts in `pbe-book-prod` should agree. `README.md`, "Verifying the backup" |
-| `snapshotValid` | The snapshot fails D101's structural rules | Treat that backup as untrustworthy; re-run by hand to see the issues |
+| `snapshotValid` | The snapshot fails D101's structural rules | Rarely seen here: the restore runs the same rules first and refuses, so a structurally bad snapshot usually ends the run with **no VERDICT line** (below). Treat that backup as untrustworthy |
 | `profilesRestored` / `usersRestored` / `configRestored` | The restored data differs from the snapshot | A restore defect, not a backup one: re-run by hand |
 | `hydratesAndCounts` | Book's real cache would not load it to the same counts | Re-run by hand; this is the check closest to "Book would not start" |
-| `imagesPresent` / `envelopeAgrees` | A photo the data names is missing from the bucket | Images were lost or never written; versioning keeps 90 days of history |
+| `imagesPresent` | Its counts say which: `missingHeadshots` / `missingThumbnails` above 0 means photos the profiles name are missing from the bucket; `envelopeAgrees: 0` means the backup's own image list disagrees with the one derived from its profiles | Missing photos: lost or never written, and versioning keeps 90 days of history to recover from. A disagreeing list: a defect in the backup writer (D147), not in the photos |
 
-If there is no `VERDICT` line, the run did not reach the checks. The restore's
-output is deliberately withheld from the build log (it can name brothers), so
-**re-run by hand to see it**. From the repo root, with ADC:
+If there is no `VERDICT` line, the run did not reach the checks. Usually the
+restore refused the snapshot. The restore's output is deliberately withheld from
+the build log (it can name brothers), so **re-run by hand to see it**. From the
+repo root, with ADC:
 
 ```bash
 ENV_FILE=infra/environments/prod.env bash infra/verify-backup.sh
@@ -280,8 +282,18 @@ Run by hand, the restore's output is shown and its artifacts are kept under
 `apps/api/restore-artifacts/verify-<timestamp>/` (⚠ real member data; delete when
 done). The throwaway database is still deleted at exit.
 
+**Every run fails at the restore with a duplicate email.** D97 tolerates two
+profiles sharing an address in live data (those brothers' sign-ins fail closed
+until an admin fixes it), but the restore refuses such a snapshot unless waived.
+The real fix is to de-duplicate the two profiles in Book; the next backup is then
+clean. Until then, set `VERIFY_ALLOW_DUPLICATE_EMAILS=true` in `prod.env`, merge
+it, and **cut a release**, because the job reads the env file from the release.
+That passes the waiver to both tools, as N190 (5) requires. Remove it once the
+duplicate is gone.
+
 **A database left behind.** A run killed by Cloud Build's timeout never runs its
-teardown. The bootstrap sweeps after its own time limit, and every later run
+teardown. The bootstrap deletes that run's database after its own time limit, and
+every later run
 deletes any `verify-*` database older than 3 hours, so nothing waits longer than a
 cycle. To check or clean up by hand:
 
@@ -321,12 +333,18 @@ ENV_FILE=infra/environments/prod.env BILLING_ACCOUNT=<id> bash infra/provision-v
 ```
 
 It creates the Scheduler job **paused**, and re-running it never changes that
-state. Before arming it:
+state.
+
+⚠ **The job runs the latest release's code** (D193), so nothing below can pass
+until a release contains `infra/verify-backup.sh` (it arrived after
+`v2026.10.04`). Release first, then:
 
 1. **Run it once and watch it** (D151: the first run is confirmed by eye):
    ```bash
    gcloud scheduler jobs run book-backup-verify --location=us-central1 --project=pbe-book-verify
    ```
+   If gcloud refuses to run a paused job, resume it, run it, and pause it again
+   straight away. The schedule fires only on Mondays, so this window is harmless.
    In the Cloud Build history, confirm that the source is the expected release,
    that the source buckets are production's, that the `VERDICT` line is all
    `true`, that the log ends with `BOOK-VERIFY-RESULT=PASS`, and that

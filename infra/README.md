@@ -1,5 +1,11 @@
 # Infrastructure — provisioning playbook
 
+> **This document is for building Book's environments and for routine
+> operations** (maintenance, releases, cold starts, an admin lockout, staging and
+> UAT chores). **If Book's data is lost or corrupted, the production project is
+> damaged, or the backup-integrity check has failed, use the disaster runbook
+> instead: [`DR-RUNBOOK.md`](DR-RUNBOOK.md).**
+
 How Book's cloud environment is built, as a reproducible playbook. This is the
 interim, imperative form; the fuller ephemeral setup/teardown automation (and
 the Terraform-vs-scripts decision) is Phase 7 work (DECISIONS **D102**). For now
