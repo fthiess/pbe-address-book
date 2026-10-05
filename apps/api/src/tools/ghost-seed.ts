@@ -30,7 +30,7 @@
  *
  * ⚠ INVISIBLE UNTIL A COLD START, AND EDITS CONFLICT UNTIL THEN — the same model
  * as `backfill-full-name.ts` (D181), which see. Run --apply when Book is quiet,
- * then IMMEDIATELY force a new revision (infra/README.md "Force a cold start").
+ * then IMMEDIATELY force a new revision (infra/RUNBOOK.md "Force a cold start").
  *
  * ⚠ THE PLAN FILE AND THE RUN ARTIFACT ARE REAL MEMBER PII (emails, notes). They
  * go to `restore-artifacts/`, which is gitignored; this repo is public.
@@ -101,7 +101,7 @@ function printHelp(): void {
       "  GHOST_ADMIN_API_KEY The Ghost Admin API key ({id}:{secret}). Never pass it as an argument.",
       "",
       "⚠ The plan and run files hold real member emails — never commit them.",
-      "⚠ Force a cold start of the API right after --apply (infra/README.md).",
+      "⚠ Force a cold start of the API right after --apply (infra/RUNBOOK.md).",
     ].join("\n"),
   );
 }
@@ -448,7 +448,7 @@ console.log(
   `==> Linked ${outcome.written.length} profile(s); moved ${outcome.ghostPushed.length} Ghost email(s); ${outcome.skipped.length} skipped (edited since the plan); ${outcome.ghostFailed.length} Ghost failure(s); ${outcome.failed.length} failed. Outcome recorded in ${artifact}`,
 );
 console.log(
-  "==> NOW force a cold start of pbe-book-api (infra/README.md) — until then the change is invisible and edits to these records get 412.",
+  "==> NOW force a cold start of pbe-book-api (infra/RUNBOOK.md) — until then the change is invisible and edits to these records get 412.",
 );
 if (outcome.failed.length > 0 || outcome.ghostFailed.length > 0) {
   process.exit(1);

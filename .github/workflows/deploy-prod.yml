@@ -47,7 +47,7 @@ jobs:
         run: |
           case "$GITHUB_REF" in
             refs/tags/v*) echo "Promoting $GITHUB_REF" ;;
-            *) echo "::error::production deploys only a release tag (refs/tags/v*), not $GITHUB_REF — see infra/README.md, Releasing to production"; exit 1 ;;
+            *) echo "::error::production deploys only a release tag (refs/tags/v*), not $GITHUB_REF — see infra/RUNBOOK.md, Releasing to production"; exit 1 ;;
           esac
 
   verify:

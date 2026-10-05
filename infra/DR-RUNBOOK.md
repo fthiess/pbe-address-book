@@ -8,9 +8,10 @@
 > **For everything else, use the other runbook.** Taking Book down for
 > maintenance, forcing a cold start, releasing or rolling back a release, a
 > locked-out administrator, a failed sign-in, staging and UAT chores: all of
-> those are in **[`infra/README.md`](README.md)**. Building an environment's
-> infrastructure from its scripts is there too. A bad *release* is not a
-> disaster: roll it back from that document's "Releasing to production" section.
+> those are in **[`RUNBOOK.md`](RUNBOOK.md)**. A bad *release* is not a
+> disaster: roll it back from that runbook's "Releasing to production" section.
+> Building an environment's infrastructure from its scripts is in
+> [`README.md`](README.md).
 
 Each procedure below is written for **production** (`pbe-book-prod`,
 `ENV_FILE=infra/environments/prod.env`). On staging, swap the project and env
@@ -23,7 +24,7 @@ file. Staging's data is fake and is reseeded by every deploy.
 | Book's data is wrong, lost or corrupted, but the project and its backups are intact | [Restore in place](#restore-in-place) |
 | The production project is unusable or has been deleted | [Stand Book up from nothing](#stand-book-up-from-nothing) |
 | An email says the backup-integrity check failed | [When the integrity job fails](#when-the-integrity-job-fails) |
-| Book is down or broken after a release, and the data is fine | Not a disaster: roll back (`README.md`, "Releasing to production", §4) |
+| Book is down or broken after a release, and the data is fine | Not a disaster: roll back (`RUNBOOK.md`, "Releasing to production", §4) |
 
 Before anything destructive: **Book can be down for hours without real harm.**
 D102's posture is an RTO of hours for a directory nobody's life or business
@@ -59,7 +60,7 @@ change, pick the newest snapshot taken before it. Snapshots land twice daily
 
 Then the real thing, in order:
 
-1. **Take Book down** (D187; the procedure is in `README.md`, "Maintenance mode"):
+1. **Take Book down** (D187; the procedure is in `RUNBOOK.md`, "Maintenance mode"):
    ```bash
    ENV_FILE=infra/environments/prod.env bash infra/maintenance-begin.sh
    ```
@@ -100,7 +101,7 @@ Then the real thing, in order:
    Confirm the `N profiles cached` line in the new revision's startup log.
 
    ⚠ **If the snapshot was taken before 2026-10-01 21:15 UTC, re-run the Ghost
-   seed now** (`README.md`, "Linking profiles to Ghost members"). Such a snapshot
+   seed now** (`RUNBOOK.md`, "Linking profiles to Ghost members"). Such a snapshot
    predates D183 and has no `ghostMemberId`s. Until they are back, a primary-email
    edit mints a duplicate Ghost member and locks the brother out (N180).
 
@@ -206,7 +207,7 @@ names it changes with it. In order:
    ```
    Paste the printed `book-backup-scheduler` uniqueId into `BACKUP_INVOKER_SUBJECT`
    and merge that change before the next step.
-4. **Deploy** by release tag, as for any release (`README.md`, "Releasing to
+4. **Deploy** by release tag, as for any release (`RUNBOOK.md`, "Releasing to
    production"). The WIF condition requires the `production` GitHub Environment,
    so Forrest approves the deploy as usual.
 5. **Load the data, with Book down.** Step 4 left Book live and serving an
