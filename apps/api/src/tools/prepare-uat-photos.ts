@@ -26,7 +26,7 @@
  * The output is deliberately a LOCAL directory, not a direct GCS write: it keeps
  * this tool's job purely "transcode", leaves the artifact inspectable before it
  * goes anywhere near a bucket, and makes the upload a single documented command
- * (`infra/README.md`). The corpus and its derivatives must **never** enter this
+ * (`infra/RUNBOOK.md`). The corpus and its derivatives must **never** enter this
  * repo — it is public, and while these faces are synthetic the fixture prefix is
  * private and shared with the tester roster.
  *
@@ -64,7 +64,7 @@ function printHelp(): void {
       "",
       "Sources are ordered by FILENAME so the index mapping is deterministic — a",
       "re-run puts the same face on the same profile. Upload the result to the",
-      "private UAT fixtures bucket; see infra/README.md. Never commit it: this repo",
+      "private UAT fixtures bucket; see infra/RUNBOOK.md. Never commit it: this repo",
       "is PUBLIC.",
     ].join("\n"),
   );
@@ -163,6 +163,6 @@ const manifest: UatPhotoManifest = {
 await writeFile(join(out, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 
 console.log(
-  `Prepared ${photos.length} photo(s) into ${out} (headshots/, thumbnails/, manifest.json). Upload with the command in infra/README.md; do NOT commit these.`,
+  `Prepared ${photos.length} photo(s) into ${out} (headshots/, thumbnails/, manifest.json). Upload with the command in infra/RUNBOOK.md; do NOT commit these.`,
 );
 process.exit(0);

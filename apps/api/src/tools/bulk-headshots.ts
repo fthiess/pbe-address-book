@@ -244,7 +244,7 @@ async function writeRecord(
 
 function coldStartReminder(): void {
   console.log(
-    `==> NOW force a cold start of pbe-book-api in ${projectId} (infra/README.md) and confirm "N profiles cached"${flags.has("--book-up") ? "." : ", then end maintenance."}`,
+    `==> NOW force a cold start of pbe-book-api in ${projectId} (infra/RUNBOOK.md) and confirm "N profiles cached"${flags.has("--book-up") ? "." : ", then end maintenance."}`,
   );
 }
 

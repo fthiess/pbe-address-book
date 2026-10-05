@@ -26,7 +26,7 @@
  * names do not show until the instance is replaced, and (b) an edit to a
  * backfilled record in that window fails its precondition (412) because the cache
  * still holds the pre-backfill token. So: run this, then IMMEDIATELY force a new
- * revision (same image; the recipe is in infra/README.md "Force a cold start").
+ * revision (same image; the recipe is in infra/RUNBOOK.md "Force a cold start").
  * Same model as the restore, minus the hard-down: the blast radius is one optional
  * field and a few minutes of 412s, not the roster.
  *
@@ -69,7 +69,7 @@ function printHelp(): void {
       "  --out <dir>         Where the changed-ids artifact goes (default restore-artifacts/).",
       "  --help, -h          Show this help and exit.",
       "",
-      "⚠ Force a cold start of the API right after a real run (infra/README.md).",
+      "⚠ Force a cold start of the API right after a real run (infra/RUNBOOK.md).",
     ].join("\n"),
   );
 }
@@ -201,7 +201,7 @@ console.log(
   `==> Wrote ${written.length} Full name(s); ${skipped.length} skipped (edited since the read); ${failed.length} failed. Outcome recorded in ${artifact}`,
 );
 console.log(
-  "==> NOW force a cold start of pbe-book-api (infra/README.md) — until then the change is invisible and edits to these records get 412.",
+  "==> NOW force a cold start of pbe-book-api (infra/RUNBOOK.md) — until then the change is invisible and edits to these records get 412.",
 );
 if (failed.length > 0) {
   process.exit(1);
