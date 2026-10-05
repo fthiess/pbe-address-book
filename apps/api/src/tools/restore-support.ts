@@ -19,6 +19,16 @@ export interface RestoreOptions {
   /** The backup bucket; defaults to `<project>-backups`, as provisioned. */
   bucket: string | null;
   projectId: string | null;
+  /**
+   * The Firestore database inside the target project; `null` means `(default)`,
+   * which is every live environment. A named database exists for one caller — the
+   * backup-integrity job (D102/D151), which restores into a per-run database in the
+   * separate `pbe-book-verify` project and deletes it afterwards. `--confirm` still
+   * names the *project*, deliberately: the project id is the discriminator this tool
+   * and its out-of-band siblings (D181) share, and D151 put the throwaway database in
+   * its own project precisely so that discriminator keeps meaning something.
+   */
+  database: string | null;
   /** Must equal the resolved project id before anything is written. */
   confirm: string | null;
   /** Where the safety snapshot, restore report and Ghost report are written. */
@@ -46,11 +56,30 @@ export interface RestoreOptions {
   allowDuplicateEmails: boolean;
   skipGhostAudit: boolean;
   safetySnapshot: boolean;
+  /**
+   * Deliver the forensic privileged-roster entry to Cloud Logging (D101/D150). Off
+   * only under `--no-forensic-entry`, which the integrity job passes and which
+   * {@link parseArgs} refuses unless `--database` names a non-default database — so
+   * the record of a restore into a live environment can never be silenced (D192).
+   */
+  forensicEntry: boolean;
   help: boolean;
 }
 
 /** The literal that asks the bucket for its newest snapshot rather than a name. */
 export const LATEST_OBJECT = "latest";
+
+/** Firestore's name for a project's default database — the one every live environment uses. */
+export const DEFAULT_DATABASE = "(default)";
+
+/**
+ * A named Firestore database id: 4–63 characters, lowercase letters, digits and
+ * hyphens, starting with a letter and ending with a letter or digit
+ * (https://cloud.google.com/firestore/docs/manage-databases#database_id). Checked
+ * here so a typo is a usage error before anything connects, not a server error
+ * after the snapshot has been read.
+ */
+const DATABASE_ID = /^[a-z][a-z0-9-]{2,61}[a-z0-9]$/;
 
 /** Where artifacts land unless `--out-dir` says otherwise. Gitignored (real PII). */
 export const DEFAULT_OUT_DIR = "restore-artifacts";
@@ -61,6 +90,7 @@ function defaults(): RestoreOptions {
     object: null,
     bucket: null,
     projectId: null,
+    database: null,
     confirm: null,
     outDir: DEFAULT_OUT_DIR,
     hostingUrl: null,
@@ -70,6 +100,7 @@ function defaults(): RestoreOptions {
     allowDuplicateEmails: false,
     skipGhostAudit: false,
     safetySnapshot: true,
+    forensicEntry: true,
     help: false,
   };
 }
@@ -79,6 +110,7 @@ const VALUE_FLAGS = new Set([
   "--object",
   "--bucket",
   "--project",
+  "--database",
   "--confirm",
   "--out-dir",
   "--hosting-url",
@@ -97,6 +129,9 @@ function assign(options: RestoreOptions, flag: string, value: string): void {
       break;
     case "--project":
       options.projectId = value;
+      break;
+    case "--database":
+      options.database = value;
       break;
     case "--confirm":
       options.confirm = value;
@@ -118,44 +153,77 @@ const BOOLEAN_FLAGS = new Set([
   "--allow-duplicate-emails",
   "--skip-ghost-audit",
   "--no-safety-snapshot",
+  "--no-forensic-entry",
   "--help",
   "-h",
 ]);
 
-function setBoolean(options: RestoreOptions, flag: string): boolean {
+function setBoolean(options: RestoreOptions, flag: string): void {
   switch (flag) {
     case "--allow-duplicate-emails":
       options.allowDuplicateEmails = true;
-      return true;
+      break;
     case "--dry-run":
       options.dryRun = true;
-      return true;
+      break;
     case "--force":
       options.force = true;
-      return true;
+      break;
     case "--allow-emulator":
       options.allowEmulator = true;
-      return true;
+      break;
     case "--skip-ghost-audit":
       options.skipGhostAudit = true;
-      return true;
+      break;
     case "--no-safety-snapshot":
       options.safetySnapshot = false;
-      return true;
+      break;
+    case "--no-forensic-entry":
+      options.forensicEntry = false;
+      break;
     case "--help":
     case "-h":
       options.help = true;
-      return true;
+      break;
     default:
-      return false;
+      break;
   }
 }
 
 /**
- * Parse the argument vector. Accepts `--flag value` and `--flag=value`. An
- * unrecognized argument is an **error**, never a silent ignore: a mistyped
- * `--dry-runn` that parsed as "no flags given" would run a live restore, which is
- * the worst possible reading of a typo in this particular tool.
+ * A value flag's value: inline after `=`, or else the next token — but never a next
+ * token that looks like a flag (see {@link scanFlags}). `null` means "needs a
+ * value"; `last` is the index of the last token consumed.
+ */
+function readValue(
+  argv: readonly string[],
+  index: number,
+  equals: number,
+): { value: string | null; last: number } {
+  if (equals !== -1) {
+    const inline = (argv[index] ?? "").slice(equals + 1);
+    return { value: inline === "" ? null : inline, last: index };
+  }
+  const next = argv[index + 1];
+  if (next === undefined || next.startsWith("-")) {
+    return { value: null, last: index };
+  }
+  return { value: next === "" ? null : next, last: index + 1 };
+}
+
+/** One recognized flag, in command-line order; `value` is null for a boolean flag. */
+export interface ScannedFlag {
+  flag: string;
+  value: string | null;
+}
+
+/**
+ * Split an argument vector into recognized flags. Accepts `--flag value` and
+ * `--flag=value`. Shared by the restore and the integrity check (`verify-backup`),
+ * so the rules below hold for both by construction rather than by two copies kept
+ * in step. An unrecognized argument is an **error**, never a silent ignore: a
+ * mistyped `--dry-runn` that parsed as "no flags given" would run a live restore,
+ * which is the worst possible reading of a typo in this particular tool.
  *
  * TWO RULES THAT LOOK PEDANTIC AND ARE NOT (added in 7b-3 review). **A value flag
  * never consumes a token that looks like a flag**, and **a boolean flag rejects an
@@ -168,49 +236,92 @@ function setBoolean(options: RestoreOptions, flag: string): boolean {
  * asked for a preview. Refusing costs a legitimate value beginning with `-`, which
  * the inline `--flag=-value` form still expresses.
  */
-export function parseArgs(argv: readonly string[]): {
-  options: RestoreOptions;
-  errors: string[];
-} {
-  const options = defaults();
+export function scanFlags(
+  argv: readonly string[],
+  valueFlags: ReadonlySet<string>,
+  booleanFlags: ReadonlySet<string>,
+): { flags: ScannedFlag[]; errors: string[] } {
+  const flags: ScannedFlag[] = [];
   const errors: string[] = [];
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index] ?? "";
     const equals = arg.indexOf("=");
     const flag = equals === -1 ? arg : arg.slice(0, equals);
-    if (VALUE_FLAGS.has(flag)) {
-      let value = equals === -1 ? undefined : arg.slice(equals + 1);
-      if (value === undefined) {
-        const next = argv[index + 1];
-        if (next === undefined || next.startsWith("-")) {
-          errors.push(`${flag} needs a value.`);
-          continue;
-        }
-        value = next;
-        index++;
-      }
-      if (value === "") {
+    if (valueFlags.has(flag)) {
+      const { value, last } = readValue(argv, index, equals);
+      index = last;
+      if (value === null) {
         errors.push(`${flag} needs a value.`);
-        continue;
+      } else {
+        flags.push({ flag, value });
       }
-      assign(options, flag, value);
-      continue;
-    }
-    if (BOOLEAN_FLAGS.has(flag) && equals !== -1) {
-      errors.push(`${flag} takes no value (got ${arg}).`);
-      continue;
-    }
-    if (!setBoolean(options, flag)) {
+    } else if (!booleanFlags.has(flag)) {
       errors.push(`Unrecognized argument: ${arg}`);
+    } else if (equals !== -1) {
+      errors.push(`${flag} takes no value (got ${arg}).`);
+    } else {
+      flags.push({ flag, value: null });
     }
   }
+  return { flags, errors };
+}
+
+/** Parse the restore's argument vector — the flag rules are {@link scanFlags}'s. */
+export function parseArgs(argv: readonly string[]): {
+  options: RestoreOptions;
+  errors: string[];
+} {
+  const options = defaults();
+  const { flags, errors } = scanFlags(argv, VALUE_FLAGS, BOOLEAN_FLAGS);
+  for (const { flag, value } of flags) {
+    if (value === null) {
+      setBoolean(options, flag);
+    } else {
+      assign(options, flag, value);
+    }
+  }
+  checkCombinations(options, errors);
+  return { options, errors };
+}
+
+/** The rules about which flags may appear together — judged after every flag is read. */
+function checkCombinations(options: RestoreOptions, errors: string[]): void {
   if (options.file === null && options.object === null && !options.help) {
     errors.push("Give a snapshot: --file <path> or --object <name|latest>.");
   }
   if (options.file !== null && options.object !== null) {
     errors.push("--file and --object are mutually exclusive.");
   }
-  return { options, errors };
+  if (!isDefaultDatabase(options.database) && !DATABASE_ID.test(options.database ?? "")) {
+    errors.push(
+      `--database "${options.database}" is not a valid Firestore database id (lowercase letters, digits and hyphens, 4–63 characters, starting with a letter).`,
+    );
+  }
+  // D192: the forensic entry may be withheld only from a restore into a named,
+  // throwaway database. Refusing here — not merely warning — is what makes the flag
+  // safe to exist: no spelling of a restore into a live environment's `(default)`
+  // database can leave that restore unrecorded.
+  if (!options.forensicEntry && isDefaultDatabase(options.database)) {
+    errors.push(
+      "--no-forensic-entry is only for a restore into a named, throwaway database (--database <id>); a restore into a project's default database is always recorded.",
+    );
+  }
+}
+
+/** Whether a `--database` value means the project's default database. */
+export function isDefaultDatabase(database: string | null): boolean {
+  return database === null || database === DEFAULT_DATABASE;
+}
+
+/**
+ * How the tool names its target everywhere it prints one — the target line, the
+ * dry-run lines, the refusal. A named database is always spelled out, so an
+ * operator can never read "pbe-book-verify" and miss which database in it the run
+ * is about to replace; the default database keeps the bare project id every
+ * existing runbook line already shows.
+ */
+export function describeTarget(projectId: string, database: string | null): string {
+  return isDefaultDatabase(database) ? projectId : `${projectId}, database "${database}"`;
 }
 
 /**
