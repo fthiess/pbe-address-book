@@ -319,13 +319,18 @@ POLICY_FILE="$(mktemp)"
 trap 'rm -f "${BUILD_FILE}" "${POLICY_FILE}"' EXIT
 # Any occurrence trips it (> 0): a weekly job has no burst to wait for. Two
 # conditions, one email: both mean "the backup is unverified this cycle".
+# ⚠ Monitoring REQUIRES a resource.type in every condition filter (first live run,
+# 2026-10-05: INVALID_ARGUMENT without one). A log-based metric is written against
+# its log entries' monitored resource: `build` for the Cloud Build log, and
+# `cloud_scheduler_job` for the Scheduler's attempt log — both listed by the verify
+# project's monitoredResourceDescriptors.
 cat >"${POLICY_FILE}" <<YAML
 displayName: "${VERIFY_POLICY_NAME}"
 combiner: OR
 conditions:
   - displayName: "backup-integrity run reported FAIL"
     conditionThreshold:
-      filter: 'metric.type="logging.googleapis.com/user/${METRIC_FAILED}"'
+      filter: 'metric.type="logging.googleapis.com/user/${METRIC_FAILED}" AND resource.type="build"'
       aggregations:
         - alignmentPeriod: 300s
           perSeriesAligner: ALIGN_DELTA
@@ -337,7 +342,7 @@ conditions:
         count: 1
   - displayName: "backup-integrity schedule could not start a build"
     conditionThreshold:
-      filter: 'metric.type="logging.googleapis.com/user/${METRIC_SCHEDULER}"'
+      filter: 'metric.type="logging.googleapis.com/user/${METRIC_SCHEDULER}" AND resource.type="cloud_scheduler_job"'
       aggregations:
         - alignmentPeriod: 300s
           perSeriesAligner: ALIGN_DELTA
