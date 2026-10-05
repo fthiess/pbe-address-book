@@ -3869,3 +3869,65 @@ The verdict prints as a final `VERDICT {json}` line holding **counts and boolean
 
 **Not changed.** The wait itself. A shared warm index (OFC-68) removes the rebuild on Back, and non-PII memoisation (OFC-180) would shorten the reload path. Both are tracked separately.
 
+### D193 — The backup-integrity job runs the latest release's code, weekly for four weeks then monthly; Book's operator documentation is two runbooks *(2026-10-05 — Forrest's calls at the PL-6b plan gate; OFC-333, OFC-356; amends D151's cadence clause)*
+
+**Three decisions, all Forrest's, on the recommendations offered.**
+
+**(1) The scheduled job verifies with the code of the latest GitHub Release, not `main`.** The backup is written by production's API, and production runs the latest release. A checker built from `main` could have moved ahead of it: a validator or snapshot-shape change merged but not yet released would then fail a perfectly good production backup, and an alert that cries wolf gets ignored. Running the release's code keeps the writer and the checker in step. The cost is that the job cannot be armed until a release contains PL-6a's `backup:verify` and PL-6b's wrapper; `v2026.10.04` has neither. The build resolves the release through github.com's own `/releases/latest` redirect, not the REST API, whose unauthenticated rate limit is per IP, and Cloud Build's egress IPs are shared.
+
+**(2) Cadence: weekly for the job's first four weeks, then monthly.** D151 said "weekly until public launch, then monthly". Public launch was 2026-09-19, so read literally the job would start monthly. D151's own reasoning points the other way: frequency should track how new and unproven the pipeline is, and *this* pipeline is brand new. Its service accounts, cross-project grants and Cloud Build bootstrap have never run. It is weekly until it has been boring for a month, then monthly. The switch is a one-word change to `VERIFY_CADENCE` in `prod.env` and a re-run of the provisioner (OFC-460).
+
+**(3) Two runbooks, not one (the OFC-356 fork).** `infra/DR-RUNBOOK.md` covers disasters: restore in place, stand-up from nothing, and the integrity job. A routine runbook, `infra/RUNBOOK.md`, takes the recurring operations out of `infra/README.md`, which keeps building an environment from its scripts. The DR runbook lands with OFC-333's PR; the routine runbook follows in OFC-356's own PR, and until it lands `README.md` carries the routine procedures and the opening pointer to the DR runbook. **Each runbook opens with a statement of its scope and a pointer to the other**, ahead of any table of contents, so that someone who is panicking and in a hurry can tell within seconds whether they are in the right document (Forrest's explicit requirement). One document would be easier to find, but an emergency procedure read under stress should be short and linear, not interleaved with UAT chores. The opening statements are how two documents avoid the findability cost.
+
+**Why.** All three choices favour the edge case the job and the runbooks exist for: a real failure, met by someone who is not in the middle of building Book. (1) keeps a clean alert trustworthy, (2) keeps the job's own newness from hiding, and (3) keeps the recovery path uncluttered.
+
+### N193 — The backup-integrity job as built: one Cloud Build step, a trap teardown, and logs that never name a brother *(2026-10-05 — OFC-333 PR 2, PL-6b; D151, D192, D193)*
+
+**Shape.** `infra/provision-verify-project.sh` builds `pbe-book-verify` against a source environment's env file. The source is production's, from day one, so the cutover plan's "repoint" step never happened. The script creates two keyless service accounts:
+- `book-verify` runs the build. It holds `datastore.owner` and `logging.logWriter` in the verify project, plus **bucket-scoped** `storage.objectViewer` on the source's backup and image buckets. That cross-project grant is the one production IAM change, and why the script is Forrest's to run.
+- `book-verify-scheduler` holds `cloudbuild.builds.editor` and `serviceAccountUser` on the runner.
+
+A Cloud Scheduler job POSTs an inline build to the regional Cloud Build API (OAuth, `cloud-platform` scope). The build is one step in the `google-cloud-cli` image, using the `script` field, which receives no Cloud Build substitution (Cloud Build docs, "Running bash scripts"). The step:
+1. resolves the latest release and downloads its source tarball;
+2. runs `timeout -k 60 2400 bash infra/verify-backup.sh --in-cloud-build`;
+3. prints `BOOK-VERIFY-RESULT=PASS|FAIL`.
+
+The marker is assembled from a variable, so the literal FAIL string never appears in the build's own text. **The Scheduler job is created paused**, and the provisioner never changes its state on a re-run, so arming it is always a deliberate act after a watched run.
+
+**The wrapper** (`infra/verify-backup.sh`, also runnable by hand) requires `ENV_FILE` with no default, refuses a verify project equal to the source, and supports `--dry-run`. The run:
+1. sweeps `verify-*` databases older than 3 hours;
+2. creates `verify-<UTC timestamp>` (unique per run, so a recently deleted id is never reused; delete protection and PITR are opt-in and left off);
+3. runs the restore with N190's flag list into it;
+4. reads the object `latest` resolved to from the restore's `Resolved "latest" to …` line, and passes that same object to `backup:verify`;
+5. deletes the database **from an EXIT trap** armed before the create.
+
+In Cloud Build mode it first installs the newest Node of the `.nvmrc` major from nodejs.org, checked against the published SHA-256 list, then runs `npm ci`. `build:libs` runs in both modes.
+
+**PII discipline in the log.** The restore's output can name brothers (the admin-roster delta, a refusal naming a duplicate email), and `backup:verify`'s stderr can name an account (N190). In Cloud Build both go to files on the build VM's disk, which dies with the VM. The log carries only progress lines, the counts-and-booleans `VERDICT` line and the marker, and a failure says "re-run by hand to see it". By hand, the output is shown and kept under `apps/api/restore-artifacts/verify-<id>/` (gitignored).
+
+**Alerting** (presence-based only, D148/D151). Three log-based metrics live in the verify project: FAIL markers, PASS markers (history only), and Scheduler attempts at `severity>=ERROR`. One policy ORs the FAIL and Scheduler conditions at `> 0`. The conditions filter on the metric type alone, without a resource type, because the monitored-resource mapping of a `build`-resource log-based metric could not be verified offline. `infra/verify-alert-test.cloudbuild.yaml` is the induced-failure test from Phase 7.8's gate: a one-step build that prints only a FAIL marker, run as the job's own service account.
+
+**Two holes, closed as far as they cheaply go.** (a) A Cloud Build timeout kills the VM without running the trap. The inner `timeout` fires first, and the bootstrap then deletes **that run's** database (the wrapper writes its id to `VERIFY_DB_ID_FILE` before creating it) and prints FAIL. It never touches other `verify-*` databases, so an operator's hand run in the same project is safe. Anything that still escapes is swept by the next run, so a leftover copy lives at most one cycle, inside the verify project. (b) A build that cannot start at all (an image pull failure, say) prints no marker. Only the Scheduler condition and D151's "glance at the history" habit see it.
+
+**Review round (`/code-review` high, five reviewers plus confidence scoring).** One finding cleared the 80 threshold: the provisioner passed `--update-headers` on the Scheduler **create** path, which only `update http` accepts (`create http` takes `--headers`; gcloud 585 `--help`). The first real provisioning run would have died after the production bucket grants and before any job or alert existed. The stub `gcloud` could not catch a flag the real CLI rejects. Findings fixed below the threshold:
+- the timeout sweep is now scoped to its own run, as (a) above;
+- the wrapper maps every failure past argument parsing to exit 1, as documented;
+- `VERIFY_ALLOW_DUPLICATE_EMAILS` passes the waiver to both tools, for a D97 duplicate that would otherwise fail every run;
+- the DR runbook's stand-up step 5 now uses maintenance mode instead of `--force`;
+- the triage table now describes `envelopeAgrees` and `snapshotValid` correctly;
+- the runbook and the provisioner say a release must come first;
+- `README.md` opens with its scope and a pointer to the DR runbook.
+
+**Tested, and what is not.** Offline:
+- `bash -n` on both scripts;
+- the wrapper's `--dry-run` and usage paths;
+- the provisioner run end to end against a stub `gcloud`, on both the create and the update path (create passes `--headers` and pauses the new job; update passes `--update-headers` and leaves its state alone). Its generated build JSON parses, and the extracted bootstrap passes `bash -n`.
+
+Live from the workstation:
+- the release lookup (`v2026.10.04`);
+- the tarball fetch;
+- the Node 24 lookup.
+
+**Not yet exercised:** the grants, the Scheduler → Cloud Build call, the build image's tools, the alert filters, and N190's two GCS read paths. They are first proven by a staging rehearsal from the workstation and then a watched production run, in that order (the N138 lesson D151 cites), before the schedule is armed.
+
+**A finding the DR runbook now states.** Production's backups live in `gs://pbe-book-prod-backups`, inside the production project. A project gone past GCP's 30-day undelete window would take its backups and images with it. Whether to keep a copy outside the project is OFC-461 (Backlog, Forrest's call). D151's "no idle copy of the directory" governs the verify project and may argue against keeping one there.

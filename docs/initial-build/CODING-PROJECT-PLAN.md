@@ -255,6 +255,8 @@ Build a periodic job that stands a throwaway environment up from the provisionin
 
 **Gate:** a scheduled run stands the environment up, restores the latest backup, validates, hydrate-and-counts, reports every manifest image object as present, and tears the environment down; an induced failure alerts to `ALERT_EMAIL`; the DR runbook exists and names honestly which of its steps automation does not rehearse.
 
+*As built — post-launch sessions PL-6a/PL-6b (D192, N190, D193, N193):* the restore's `--database` and `--no-forensic-entry`, the `backup:verify` check, `infra/verify-backup.sh`, `infra/provision-verify-project.sh` and `infra/DR-RUNBOOK.md`. Built against production from day one, so there was no repoint step; the scheduled job runs the latest release's code; weekly for four weeks, then monthly.
+
 **Sessions (2):** the code (a `--database` flag on the restore CLI, the verify tool, their tests) and then the provisioning, scheduling and runbook. **If the schedule slips, this phase moving *past* cutover is an acceptable outcome and a better one than compressing it into cutover week** — its value is highest on production data anyway. What must not slip with it is the cutover item that repoints the job at prod; that lives in `CUTOVER-PLAN.md`.
 
 *Later scheduled by: D152 — **Stage 4.2**, after cutover. That is the fallback the paragraph above already sanctions being taken deliberately, not a new decision; it remains an open fork in `LAUNCH-SCHEDULE.md`, where the dates and rationale live.*

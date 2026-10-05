@@ -196,7 +196,7 @@ Everything in §3–§7 executed on the night of Sept 15 (US time). One producti
 ## 8. Post-launch steady state and what is still owed
 
 - Run `provision-observability.sh` against prod (alerts armed by the first
-  backup); repoint the integrity job (OFC-333); confirm the first backup lands.
+  backup); repoint the integrity job (OFC-333 — *superseded: built against prod from day one in PL-6b, D193; `infra/DR-RUNBOOK.md`*); confirm the first backup lands.
 - Run the Ghost pull-and-seed (OFC-340; built as `npm run ghost:seed`, D183) to
   turn the Book→Ghost push on; then the
   alignment audit cadence. ⚠ **Until OFC-340 runs, do not "resolve in Book's
