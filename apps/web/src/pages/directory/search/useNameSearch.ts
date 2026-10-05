@@ -78,9 +78,13 @@ export function useNameSearch(
     query: string;
     ids: Set<number> | null;
     tokens: ReadonlyMap<number, Set<string>>;
-  }>({ query: "", ids: null, tokens: EMPTY_TOKENS });
+    /** The dataset the answering index was built from (see `workerCurrent`). */
+    records: readonly unknown[] | null;
+  }>({ query: "", ids: null, tokens: EMPTY_TOKENS, records: null });
   const workerRef = useRef<Worker | null>(null);
   const seqRef = useRef(0);
+  // The dataset the worker's index was last built from, stamped onto each answer.
+  const indexRecordsRef = useRef<readonly unknown[] | null>(null);
 
   // Create the worker once enabled (immediately for the Directory; on first
   // engagement for the picker — OFC-119). While disabled, `workerRef.current`
@@ -112,6 +116,7 @@ export function useNameSearch(
           query: message.query,
           ids: message.ids === null ? null : new Set(message.ids),
           tokens: message.tokens ?? EMPTY_TOKENS,
+          records: indexRecordsRef.current,
         });
       }
     };
@@ -132,6 +137,11 @@ export function useNameSearch(
       return;
     }
     setReady(false);
+    // Bump the sequence so an answer already in flight from the previous index is
+    // discarded on arrival; answers accepted from here on are stamped with these
+    // records (`workerCurrent` checks the stamp).
+    seqRef.current += 1;
+    indexRecordsRef.current = records;
     worker.postMessage({ type: "build", records, config });
   }, [records, config, enabled]);
 
@@ -157,8 +167,15 @@ export function useNameSearch(
     [substringIndex, query],
   );
 
-  // Whether the worker's answer is for the query currently on screen.
-  const workerCurrent = ready && workerResult.query === query;
+  // Whether the worker's answer is for the query AND the dataset currently on
+  // screen. The dataset half matters on every reload: the worker indexes the
+  // still-empty roster first and answers the query "nothing". In the render where
+  // the roster lands, `ready` and that answer are both still the old ones — an
+  // effect cannot clear them before that frame paints — so matching on the query
+  // text alone made the Directory flash "No brothers match" before the real
+  // answer (OFC-459, found in Forrest's live test). Comparing the dataset during
+  // render closes it: an answer computed from other records is never current.
+  const workerCurrent = ready && workerResult.query === query && workerResult.records === records;
   const matchedIds = workerCurrent ? workerResult.ids : substring;
   // Matched tokens only exist once the worker has answered this query; before
   // that, the substring fallback highlights itself (substring layer only).

@@ -3869,6 +3869,8 @@ The verdict prints as a final `VERDICT {json}` line holding **counts and boolean
 
 **Not changed.** The wait itself. A shared warm index (OFC-68) removes the rebuild on Back, and non-PII memoisation (OFC-180) would shorten the reload path. Both are tracked separately.
 
+*Later updated by: N196 (a stale worker answer still flashed it; answers are now stamped with their dataset).*
+
 ### D193 — The backup-integrity job runs the latest release's code, weekly for four weeks then monthly; Book's operator documentation is two runbooks *(2026-10-05 — Forrest's calls at the PL-6b plan gate; OFC-333, OFC-356; amends D151's cadence clause)*
 
 **Three decisions, all Forrest's, on the recommendations offered.**
@@ -3948,4 +3950,14 @@ Forrest ran `provision-verify-project.sh` against `prod.env` for the first time 
 
 - **Monitoring refuses a condition filter without `resource.type`** (`INVALID_ARGUMENT: must specify a restriction on "resource.type"`). N193 had left it out on purpose, because the resource type of a `build`-resource log-based metric could not be verified offline. That reasoning was backwards: the policy is invalid without one. The verify project's `monitoredResourceDescriptors` list both `build` and `cloud_scheduler_job`, so the conditions now name them. The script had stopped at the policy step, after creating the three metrics and the notification channel, and a re-run converges from there.
 - **A just-enabled Cloud Scheduler API answers `PERMISSION_DENIED` to the project's owner** ("or the resource may not exist") for about 40 seconds. `retry_gcp` absorbed it on the sixth attempt. That is harmless, but it reads like a real IAM failure while it lasts.
+
+### N196 — OFC-459, round two: a worker answer counts only for the dataset it was computed from *(2026-10-05 — Forrest's live test of N192 on staging; amends N192)*
+
+**What Forrest saw.** After N192, a reload of `?q=theisen` showed "Searching…" and then, for a frame or two, "No brothers match", before the results. `?q=brown` never showed "Searching…", because its substring match is non-empty, but it flashed "No brothers match" over the results. A nonsense query settled correctly.
+
+**Why N192's tests missed it.** They held the worker script until the roster had loaded, so the worker built exactly one index. On a real reload the worker loads first and indexes the **still-empty roster**: `nameRecords` is `[]` while `profiles` is `null`. It goes `ready` and answers the URL's query with "nothing", and the hook keeps that answer. When the roster lands, the hook re-posts `build`. But in **that same render** `ready` is still `true` and the kept answer still names the current query text, so `workerCurrent` held, `matchedIds` was empty and `settled` was true. That render painted the empty state before any effect could intervene.
+
+**Why the obvious fix was not enough.** Clearing the kept answer in the build effect (plus a sequence bump for in-flight answers) still failed the new test, because effects run after the frame they would need to prevent. The fix has to hold **during render**. Each accepted answer is now stamped with the `records` array the answering index was built from (`indexRecordsRef`, set when `build` is posted), and `workerCurrent` also requires `workerResult.records === records`. An answer computed from another dataset is never current, so the render where the roster arrives falls back to the substring set and its honest "Searching…". The sequence bump stays, so an answer in flight from the old index is still dropped on arrival. A config change rebuilds over the same `records` and is not caught by the stamp; `config` is a constant in every caller.
+
+**Test.** `e2e/directory-search-settling-459.spec.ts` gained a case that mirrors the real order: the worker is not held, and the roster is delayed 1.5 s. A `MutationObserver` installed by `addInitScript` records whether "No brothers match" **ever** appears, even for one frame, on reloads of `?q=smyth` and `?q=smith`. It failed on `main` and against the effect-only attempt, and it passes with the stamp (3/3 repeated runs; 51 Directory-family e2e tests green).
 

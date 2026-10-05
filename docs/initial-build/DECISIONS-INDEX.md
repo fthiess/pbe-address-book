@@ -65,7 +65,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Name search
 
-- D35 (fuzzy + phonetic over tokenized names) → D66 (A/B criterion) → **N19** (Beider-Morse via bmpm) → **D110** (Web Worker; memo dropped) → **D123** (curated nickname expansion) → **N83** (fold atomic Latin letters NFKD can't — ø/æ/ß/…; worker result ⊇ substring match, so a query never drops a hit it once showed); package + highlighting **N20**. → **N192** (an *empty* interim set is not "no match": the Directory shows "Searching…" until `settled`, and ⚠ a worker that fails to load or throws now counts as settled on the substring answer — without that, "Searching…" would never clear on browsers without module workers).
+- D35 (fuzzy + phonetic over tokenized names) → D66 (A/B criterion) → **N19** (Beider-Morse via bmpm) → **D110** (Web Worker; memo dropped) → **D123** (curated nickname expansion) → **N83** (fold atomic Latin letters NFKD can't — ø/æ/ß/…; worker result ⊇ substring match, so a query never drops a hit it once showed); package + highlighting **N20**. → **N192** (an *empty* interim set is not "no match": the Directory shows "Searching…" until `settled`, and ⚠ a worker that fails to load or throws now counts as settled on the substring answer — without that, "Searching…" would never clear on browsers without module workers). → **N196** (⚠ a worker answer is current only for the dataset it was computed from — on a reload the worker answers from the still-EMPTY roster first, and that stale "nothing" painted one frame of "No brothers match"; the check must hold during render, an effect is a frame too late).
 
 ## Proximity search
 

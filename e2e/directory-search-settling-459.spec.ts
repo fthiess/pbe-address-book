@@ -193,3 +193,38 @@ test("if the search worker cannot load, the substring answer stands — no endle
   await page.getByRole("searchbox", { name: /name search/i }).fill("smi");
   await expect(page.getByRole("rowheader", { name: /Karl Smith/ })).toBeVisible();
 });
+
+test("a stale answer from the pre-roster index never flashes 'No brothers match' (live-test finding)", async ({
+  page,
+}) => {
+  // The real-world order on a reload: the worker script loads and indexes the
+  // EMPTY roster before /api/profiles answers, and answers the query from that
+  // empty index. When the roster lands the worker rebuilds, and on its new `ready`
+  // that earlier "nothing" must not be taken as the answer for the current query.
+  // Forrest saw it on staging as a one-or-two-frame flash, so a MutationObserver
+  // installed before any app code records whether the text EVER appears.
+  await page.addInitScript(() => {
+    (window as unknown as { __sawNoMatch: boolean }).__sawNoMatch = false;
+    new MutationObserver(() => {
+      if (document.body?.textContent?.includes("No brothers match")) {
+        (window as unknown as { __sawNoMatch: boolean }).__sawNoMatch = true;
+      }
+    }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+  const gate = workerGate();
+  await mockApi(page, gate);
+  // Registered after mockApi, so this handler wins: the roster answers late.
+  await page.route("**/api/profiles", async (route) => {
+    await new Promise((r) => setTimeout(r, 1500));
+    return route.fulfill({ json: { profiles: BROTHERS, majors: [] } });
+  });
+  for (const q of ["smyth", "smith"]) {
+    await page.goto(`/?q=${q}`);
+    await expect(page.getByRole("rowheader", { name: /Karl Smith/ })).toBeVisible();
+    // Let any late re-render land before reading the flag.
+    await page.waitForTimeout(300);
+    expect(
+      await page.evaluate(() => (window as unknown as { __sawNoMatch: boolean }).__sawNoMatch),
+    ).toBe(false);
+  }
+});
