@@ -27,18 +27,11 @@ import process from "node:process";
 import { initializeApp } from "firebase-admin/app";
 import { getFirestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
-import {
-  type LiveObject,
-  type Orphan,
-  type PointerMap,
-  orphanReason,
-  planSweep,
-} from "./image-sweep-plan.js";
+import { type Orphan, type PointerMap, orphanReason, planSweep } from "./image-sweep-plan.js";
+import { listImageObjects } from "./verify-backup-state.js";
 
 const TOOL = "image-sweep";
 const DEFAULT_OUT_DIR = "restore-artifacts";
-/** The image-key prefixes (`@pbe/shared` images.ts). */
-const PREFIXES = ["headshots/", "thumbnails/"] as const;
 /** Objects younger than this are never planned for deletion (an upload may be mid-flight). */
 const MIN_AGE_MS = 60 * 60 * 1000;
 
@@ -136,17 +129,7 @@ interface PlanFile {
 }
 
 async function runPlan(): Promise<number> {
-  const objects: LiveObject[] = [];
-  for (const prefix of PREFIXES) {
-    const [files] = await bucket.getFiles({ prefix });
-    for (const file of files) {
-      objects.push({
-        key: file.name,
-        generation: String(file.metadata.generation ?? ""),
-        created: String(file.metadata.timeCreated ?? ""),
-      });
-    }
-  }
+  const objects = await listImageObjects(bucketName);
   const pointers = await readPointers();
   const plan = planSweep(objects, pointers, new Date(), MIN_AGE_MS);
   const byReason = (r: Orphan["reason"]) => plan.orphans.filter((o) => o.reason === r).length;

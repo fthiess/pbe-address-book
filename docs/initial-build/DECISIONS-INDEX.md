@@ -90,7 +90,7 @@ How to read a line: chains run oldest → newest; **bold** marks the current wor
 
 ## Images
 
-- Storage: **D8** + **D17** (versioned, immutable, WEBP in GCS) → **D94** (3-month purge of superseded versions) → **D195** (`npm run images:sweep`: plan → apply deletion of every live object no profile points at — replaced bulk-load photos (absorbs OFC-448), renumber leftovers, strays; ⚠ `/img/*` does not check the version, so an orphan at a reused id is servable — the sweep is a privacy fix too).
+- Storage: **D8** + **D17** (versioned, immutable, WEBP in GCS) → **D94** (3-month purge of superseded versions) → **D195** (`npm run images:sweep`: plan → apply deletion of every live object no profile points at — replaced bulk-load photos (absorbs OFC-448), renumber leftovers, strays; and `/img/*` now 404s any version but the profile's current one, so an orphan is never servable).
 - Serving: ~~D23~~ (CDN signed cookies) → **D126** (app-served from the private bucket via `/img/*`; no CDN, no load balancer) → **D146** (D126's `private` was being *delivered* as `public` — the SPA asset rule's `.webp` glob also matches a headshot through the `/img/**` rewrite; enforcement moved to `firebase.json`, OFC-321); thumbnails D9 → D42 → **D126**; strict path parse + effective-role visibility **N43**. ⚠ The Directory currently requests every thumbnail on first load, not the visible ones (**OFC-322**, N134).
 - Pipeline: **N42** → **N47** (seams, ordering, purge) + **N48** (live-test fixes); regenerate-thumbnails feature dropped **D114**.
 - Bulk loads: genesis **D180** (via the restore snapshot) → **D182 (current)** (`bulk-headshots.ts` on a live directory: objects first, pointer last, a brother's own photo never overwritten, replaced photos kept until `--purge`).

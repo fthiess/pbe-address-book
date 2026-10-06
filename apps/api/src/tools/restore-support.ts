@@ -463,3 +463,20 @@ export async function probeMaintenance(origin: string): Promise<boolean | null> 
     return null;
   }
 }
+
+/**
+ * Why an operator tool must not write yet, or `null` when `origin` is serving the
+ * maintenance page. Shared by the tools whose pre-flight has the same two
+ * refusals (`headshots:bulk`, `renumber --purge-sessions`) so the wording and the
+ * probe cannot drift between them; see {@link probeMaintenance} for why "could not
+ * tell" refuses too.
+ */
+export async function maintenanceRefusal(origin: string): Promise<string | null> {
+  const inMaintenance = await probeMaintenance(origin);
+  if (inMaintenance === true) {
+    return null;
+  }
+  return inMaintenance === false
+    ? `${origin} is not serving the maintenance page. Run infra/maintenance-begin.sh first.`
+    : `${origin} did not answer, so this cannot confirm Book is down. Check --hosting-url.`;
+}

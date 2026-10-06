@@ -40,12 +40,14 @@ import { buildBackupSnapshot } from "../data/backup.js";
 import { parseSnapshot, validateSnapshot } from "../data/restore.js";
 import { loadSnapshotText } from "./backup-io.js";
 import {
+  type FreeTextHit,
   type IdMove,
   type ImageCopy,
   type RenumberCounts,
+  type RenumberResult,
   renumberSnapshot,
 } from "./renumber-plan.js";
-import { LATEST_OBJECT, probeMaintenance, renderValidationReport } from "./restore-support.js";
+import { LATEST_OBJECT, maintenanceRefusal, renderValidationReport } from "./restore-support.js";
 
 const TOOL = "renumber";
 const DEFAULT_OUT_DIR = "restore-artifacts";
@@ -157,7 +159,7 @@ interface RenumberPlanFile {
   counts: RenumberCounts;
   moves: IdMove[];
   imageCopies: ImageCopy[];
-  freeTextHits: { collection: string; docId: string; path: string }[];
+  freeTextHits: FreeTextHit[];
 }
 
 function positiveInt(name: string): number {
@@ -167,6 +169,23 @@ function positiveInt(name: string): number {
     fail(`--${name} must be a positive integer.`);
   }
   return value;
+}
+
+/** Print what the transform did — before anything is written, so a dry run shows it too. */
+function reportTransform(result: Extract<RenumberResult, { ok: true }>): void {
+  const c = result.counts;
+  const first = result.moves[0];
+  const last = result.moves[result.moves.length - 1];
+  console.log(
+    `==> Moves #${first?.from}–#${last?.from} → #${first?.to}–#${last?.to} (${c.profilesMoved} profiles); ` +
+      `${c.bigBrotherIds} bigBrotherId, ${c.verifiedBy} verifiedBy, ${c.consentSnapshotVerifiedBy} consent-snapshot verifiedBy, ` +
+      `${c.usersMoved} users docs, ${c.stars} stars, ${c.bannerUpdatedBy} banner updatedBy; ${result.imageCopies.length} image objects to copy.`,
+  );
+  for (const hit of result.freeTextHits) {
+    console.log(
+      `  NOTE ${hit.collection}/${hit.docId} \`${hit.path}\` names a moved id in a URL — not rewritten; review by hand.`,
+    );
+  }
 }
 
 async function runSnapshot(): Promise<number> {
@@ -183,7 +202,13 @@ async function runSnapshot(): Promise<number> {
     values["backup-bucket"] ?? `${projectId}-backups`,
   );
   console.log(`==> Snapshot source: ${loaded.source}`);
-  const parsed = parseSnapshot(JSON.parse(loaded.text));
+  let raw: unknown;
+  try {
+    raw = JSON.parse(loaded.text);
+  } catch (error) {
+    fail(`the snapshot is not valid JSON: ${(error as Error).message}`);
+  }
+  const parsed = parseSnapshot(raw);
   if (!parsed.ok) {
     for (const issue of parsed.errors) {
       console.error(`  ERROR [${issue.rule}] ${issue.message}`);
@@ -212,6 +237,11 @@ async function runSnapshot(): Promise<number> {
     fail("the transformed snapshot does not validate; nothing was written.");
   }
 
+  reportTransform(result);
+  if (dryRun) {
+    console.log("==> [dry-run] Wrote nothing.");
+    return 0;
+  }
   await mkdir(outDir, { recursive: true });
   const snapshotPath = resolve(outDir, `${TOOL}-${stamp}-snapshot.json`);
   await writeFile(
@@ -233,19 +263,6 @@ async function runSnapshot(): Promise<number> {
   const planPath = resolve(outDir, `${TOOL}-${stamp}-plan.json`);
   await writeFile(planPath, `${JSON.stringify(plan, null, 2)}\n`);
 
-  const c = result.counts;
-  const first = result.moves[0];
-  const last = result.moves[result.moves.length - 1];
-  console.log(
-    `==> Moves #${first?.from}–#${last?.from} → #${first?.to}–#${last?.to} (${c.profilesMoved} profiles); ` +
-      `${c.bigBrotherIds} bigBrotherId, ${c.verifiedBy} verifiedBy, ${c.consentSnapshotVerifiedBy} consent-snapshot verifiedBy, ` +
-      `${c.usersMoved} users docs, ${c.stars} stars, ${c.bannerUpdatedBy} banner updatedBy; ${result.imageCopies.length} image objects to copy.`,
-  );
-  for (const hit of result.freeTextHits) {
-    console.log(
-      `  NOTE ${hit.collection}/${hit.docId} \`${hit.path}\` names a moved id in a URL — not rewritten; review by hand.`,
-    );
-  }
   console.log(`==> Transformed snapshot: ${snapshotPath}`);
   console.log(`==> Plan (moves + image copies): ${planPath}`);
   console.log("    REAL MEMBER PII — keep both out of the repo and off shared storage.");
@@ -266,10 +283,10 @@ async function copyOne(
   md5Of: (key: string) => Promise<string | null>,
   doCopy: (from: string, to: string) => Promise<void>,
 ): Promise<string> {
-  const source = await md5Of(copy.from);
-  const target = await md5Of(copy.to);
+  const [source, target] = await Promise.all([md5Of(copy.from), md5Of(copy.to)]);
   if (source === null) {
-    return target === null ? "source-missing" : "already-done";
+    // Even with a target present: nothing can prove it holds this brother's bytes.
+    return "source-missing";
   }
   if (target === source) {
     return "already-done";
@@ -361,13 +378,9 @@ async function runPurgeSessions(): Promise<number> {
     console.log("==> Maintenance pre-flight SKIPPED (--force).");
   } else {
     const hostingUrl = values["hosting-url"] ?? `https://${projectId}.web.app`;
-    const inMaintenance = await probeMaintenance(hostingUrl);
-    if (inMaintenance !== true) {
-      fail(
-        inMaintenance === false
-          ? `${hostingUrl} is not serving the maintenance page. Run infra/maintenance-begin.sh first.`
-          : `${hostingUrl} did not answer, so this cannot confirm Book is down. Check --hosting-url.`,
-      );
+    const refusal = await maintenanceRefusal(hostingUrl);
+    if (refusal !== null) {
+      fail(refusal);
     }
     console.log(`==> Maintenance pre-flight: ${hostingUrl} is serving the maintenance page.`);
   }

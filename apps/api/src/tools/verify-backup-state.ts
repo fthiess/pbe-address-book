@@ -2,6 +2,7 @@ import type { Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { FirestoreBackupSource } from "../data/backup.js";
 import { ProfileCache } from "../data/cache.js";
+import type { LiveObject } from "./image-sweep-plan.js";
 import type { RestoredState } from "./verify-backup-support.js";
 
 /**
@@ -29,20 +30,30 @@ export async function readRestoredState(db: Firestore): Promise<RestoredState> {
 const IMAGE_PREFIXES = ["headshots/", "thumbnails/"] as const;
 
 /**
- * Every live object key under the manifest's two prefixes — one paged listing each
+ * Every live object under the manifest's two prefixes — one paged listing each
  * rather than a metadata call per manifest entry (~1,500 at today's roster).
  * `getFiles` auto-paginates by default, the same behaviour `GcsBackupStore.latest`
- * already relies on. Needs only `storage.objects.list`, which the verify project's
- * cross-project `objectViewer` grant (D151 (2)) carries.
+ * already relies on, and lists live versions only. Needs only
+ * `storage.objects.list`, which the verify project's cross-project `objectViewer`
+ * grant (D151 (2)) carries. Also the listing `images:sweep` judges (D195).
  */
-export async function listImageKeys(bucketName: string): Promise<Set<string>> {
+export async function listImageObjects(bucketName: string): Promise<LiveObject[]> {
   const bucket = getStorage().bucket(bucketName);
-  const keys = new Set<string>();
+  const objects: LiveObject[] = [];
   for (const prefix of IMAGE_PREFIXES) {
     const [files] = await bucket.getFiles({ prefix });
     for (const file of files) {
-      keys.add(file.name);
+      objects.push({
+        key: file.name,
+        generation: String(file.metadata.generation ?? ""),
+        created: String(file.metadata.timeCreated ?? ""),
+      });
     }
   }
-  return keys;
+  return objects;
+}
+
+/** Every live object key under the manifest's two prefixes (see {@link listImageObjects}). */
+export async function listImageKeys(bucketName: string): Promise<Set<string>> {
+  return new Set((await listImageObjects(bucketName)).map((object) => object.key));
 }

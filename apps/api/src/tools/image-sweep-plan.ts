@@ -53,7 +53,12 @@ export interface SweepPlan {
   readonly orphans: Orphan[];
   /** Live objects a profile points at. */
   readonly referenced: number;
-  /** Orphan-looking objects younger than the minimum age — left alone this run. */
+  /**
+   * Orphan-looking objects younger than the minimum age, or whose age or
+   * generation the listing did not give — left alone this run (fail safe: an
+   * unknown age could be an upload mid-flight, and without a generation the
+   * apply's delete would not be conditional).
+   */
   readonly tooNew: string[];
   /** Keys under the image prefixes that are not a well-formed image key — never deleted. */
   readonly unrecognized: string[];
@@ -93,7 +98,7 @@ export function planSweep(
     const reason = orphanReason(object.key, pointers);
     if (reason === null) {
       referenced++;
-    } else if (now.getTime() - Date.parse(object.created) < minAgeMs) {
+    } else if (!oldEnough(object, now, minAgeMs)) {
       tooNew.push(object.key);
     } else {
       orphans.push({ key: object.key, generation: object.generation, reason });
@@ -118,4 +123,10 @@ function missingKeys(pointers: PointerMap, live: ReadonlySet<string>): string[] 
     }
   }
   return missing;
+}
+
+/** True only when the object is known to be older than `minAgeMs` and has a generation. */
+function oldEnough(object: LiveObject, now: Date, minAgeMs: number): boolean {
+  const age = now.getTime() - Date.parse(object.created);
+  return object.generation !== "" && Number.isFinite(age) && age >= minAgeMs;
 }

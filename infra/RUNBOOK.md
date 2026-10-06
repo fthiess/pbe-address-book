@@ -441,9 +441,8 @@ undo, then (after re-running the load) a purge.
 `headshots/` and `thumbnails/` that no profile's `hasHeadshot` / `headshotVersion`
 pointer names: the photos a headshot load replaced (the old OFC-448 purge), the
 objects the Constitution-ID renumber left at the moved brothers' old ids, and any
-other strays. It is a **privacy** step as well as tidying, because `/img/*` does not
-check the version: an orphan at an id someone now holds is servable under that
-brother's visibility, to anyone with its URL (D195).
+other strays. Since D195, `/img/*` serves only a profile's current version, so an
+orphan is never shown to anyone. Sweeping is tidiness, and it frees storage.
 
 It writes no Firestore document, so Book stays up and no cold start follows. It
 runs in two steps, and the apply deletes only what the plan names. Each delete
@@ -459,8 +458,9 @@ BUCKET=pbe-book-prod-images  # IMAGE_BUCKET in infra/environments/<env>.env
 npm run images:sweep --workspace apps/api -- --project $PROJECT --bucket $BUCKET --plan
 
 # 2. REVIEW the counts (referenced / orphaned, by reason) and the plan file.
-#    Anything created in the last hour is left out (an upload may be between its
-#    objects and its pointer, D98). A WARN line is a profile whose photo is missing,
+#    Anything created in the last hour, or whose age or generation the listing
+#    didn't report, is left out (an upload may be between its objects and its
+#    pointer, D98). A WARN line is a profile whose photo is missing,
 #    which is the integrity job's business: investigate it, don't sweep past it.
 
 # 3. Apply exactly that file. Each object is re-checked against the live pointers

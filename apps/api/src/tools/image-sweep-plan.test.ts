@@ -63,6 +63,17 @@ describe("planSweep", () => {
     expect(plan.missing).toEqual(["headshots/5004/v4.webp", "thumbnails/5004/v4.webp"]);
   });
 
+  it("fails safe: an object with no known age or generation is never planned", () => {
+    const plan = planSweep(
+      [obj("headshots/5003/a.webp", ""), obj("headshots/5003/b.webp", OLD, "")],
+      pointers,
+      NOW,
+      HOUR,
+    );
+    expect(plan.orphans).toEqual([]);
+    expect(plan.tooNew).toEqual(["headshots/5003/a.webp", "headshots/5003/b.webp"]);
+  });
+
   it("plans nothing for a clean bucket", () => {
     const plan = planSweep(
       [obj("headshots/5001/v2.webp"), obj("thumbnails/5001/v2.webp")],
