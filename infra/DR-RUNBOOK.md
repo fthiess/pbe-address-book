@@ -105,6 +105,25 @@ Then the real thing, in order:
    predates D183 and has no `ghostMemberId`s. Until they are back, a primary-email
    edit mints a duplicate Ghost member and locks the brother out (N180).
 
+   ⚠ **If the snapshot was taken before the 2026-10-06 Constitution-ID renumber
+   (D195; the exact cut-over instant is in N198), it carries the OLD numbering:**
+   the 44 brothers from #1437 up sit one number too high, a non-initiate is back at
+   #1437, and restoring it silently undoes the fix. Don't, unless that is the
+   intent. If it truly is the only good snapshot, there are two ways to fix it
+   afterwards:
+   - **Before the restore, preferably:** delete the profile at #1437 from the
+     snapshot file, then run `renumber --snapshot --file <that file> --gap 1437
+     --expect 44` and restore the result.
+   - **After restoring it as is:** delete the profile at #1437 in Book's Admin
+     page. ⚠ His Ghost member is already gone, so first clear the record's
+     `ghostMemberId` in the Firestore console, or the delete's Ghost step fails.
+     Then run the renumber as N198 records it.
+
+   Either way, the moved brothers' photos need `renumber --copy-images` again, and
+   once `images:sweep` has removed the old-prefix objects they can't be copied. At
+   that point their photos come back only by restoring noncurrent generations by
+   hand (`infra/RUNBOOK.md`, "Sweeping orphaned images").
+
 4. **Bring Book back up**, only after step 3's cold start:
    ```bash
    ENV_FILE=infra/environments/prod.env bash infra/maintenance-end.sh

@@ -54,6 +54,16 @@ export function registerImageRoutes(
     if (!stored) {
       return reply.code(404).send({ error: "not_found" });
     }
+    // Only the brother's CURRENT photo is served (D195). The bucket can hold other
+    // objects under his id — a bulk load's replaced photos kept for undo (D182), a
+    // previous holder's objects after the Constitution-ID renumber, the debris of a
+    // write that failed between its objects and its pointer (D98) — and the key
+    // alone would otherwise serve them under this record's visibility. Every URL
+    // the SPA builds comes from this same cached pointer, so no real request
+    // differs from it.
+    if (stored.hasHeadshot !== true || stored.headshotVersion !== parsed.version) {
+      return reply.code(404).send({ error: "not_found" });
+    }
     const isOwner = session.identity.profileId === parsed.id;
     if (!isOwner && effectiveRole(session) === "brother" && hiddenFromBrothers(stored)) {
       return reply.code(404).send({ error: "not_found" });

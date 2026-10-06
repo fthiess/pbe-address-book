@@ -374,6 +374,22 @@ describe("GET /img/* — hardened visibility (N43)", () => {
     }
   });
 
+  it("404s an object that exists but is not the brother's CURRENT photo (D195)", async () => {
+    // An orphan: a superseded bulk-load photo kept for undo, or an object a
+    // renumber left at an id someone else now holds. It is in the bucket, the id
+    // is in the cache and visible — only the version is wrong.
+    ctx.imageStore.seed(thumbnailObjectKey(5003, "superseded"), Buffer.from("other-t"));
+    ctx.imageStore.seed(headshotObjectKey(5001, "stray"), Buffer.from("stray-h"));
+    for (const key of [thumbnailObjectKey(5003, "superseded"), headshotObjectKey(5001, "stray")]) {
+      const response = await ctx.app.inject({
+        method: "GET",
+        url: `/img/${key}`,
+        headers: { cookie: await ctx.cookieFor(5001, "admin") },
+      });
+      expect(response.statusCode).toBe(404);
+    }
+  });
+
   it("404s an image for a brother that does not exist", async () => {
     const response = await ctx.app.inject({
       method: "GET",

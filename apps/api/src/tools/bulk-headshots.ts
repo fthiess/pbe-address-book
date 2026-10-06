@@ -66,7 +66,7 @@ import {
   planUploads,
 } from "./bulk-headshots-plan.js";
 import { headshotVersionOf } from "./headshot-files.js";
-import { probeMaintenance } from "./restore-support.js";
+import { maintenanceRefusal } from "./restore-support.js";
 
 const DEFAULT_OUT_DIR = "restore-artifacts";
 const TOOL = "bulk-headshots";
@@ -178,13 +178,9 @@ async function requireMaintenance(): Promise<void> {
     console.log("==> Maintenance pre-flight SKIPPED (--force).");
     return;
   }
-  const inMaintenance = await probeMaintenance(hostingUrl);
-  if (inMaintenance !== true) {
-    fail(
-      inMaintenance === false
-        ? `${hostingUrl} is not serving the maintenance page. Run infra/maintenance-begin.sh first.`
-        : `${hostingUrl} did not answer, so this cannot confirm Book is down. Check --hosting-url.`,
-    );
+  const refusal = await maintenanceRefusal(hostingUrl);
+  if (refusal !== null) {
+    fail(refusal);
   }
   console.log(`==> Maintenance pre-flight: ${hostingUrl} is serving the maintenance page.`);
 }
