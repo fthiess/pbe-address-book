@@ -26,6 +26,7 @@ Live production and IAM commands are Forrest's to run.
 | A brother can't sign in | [Diagnosing a failed sign-in](#diagnosing-a-failed-sign-in) |
 | An administrator locked themself out | [Recovering a locked-out administrator](#recovering-a-locked-out-administrator-d191) |
 | Load a batch of photos | [Loading a batch of headshots](#loading-a-batch-of-headshots-d182--the-procedure) |
+| Delete photos no profile uses any more | [Sweeping orphaned images](#sweeping-orphaned-images-d195--the-procedure) |
 | Re-link profiles to Ghost members (after an old restore) | [Linking profiles to Ghost members](#linking-profiles-to-ghost-members-d183--the-procedure) |
 | Reset staging, or freeze it for a UAT window | [Staging: reseeding and the freeze](#staging-reseeding-and-the-freeze) |
 | Add or remove a UAT tester, or change the test photos | [The UAT fixtures bucket](#the-uat-fixtures-bucket-and-the-photo-corpus-stage-12-ofc-249) |
@@ -433,6 +434,44 @@ pointed at a few of the AI-generated originals in
 staging**. Change one of those profiles' photos in the app after writing the plan to
 see the `changed` skip. Run steps 1–4 exactly as for production (`--book-up`), then an
 undo, then (after re-running the load) a purge.
+
+## Sweeping orphaned images (D195) — the procedure
+
+`npm run images:sweep --workspace apps/api` deletes the live objects under
+`headshots/` and `thumbnails/` that no profile's `hasHeadshot` / `headshotVersion`
+pointer names: the photos a headshot load replaced (the old OFC-448 purge), the
+objects the Constitution-ID renumber left at the moved brothers' old ids, and any
+other strays. It is a **privacy** step as well as tidying, because `/img/*` does not
+check the version: an orphan at an id someone now holds is servable under that
+brother's visibility, to anyone with its URL (D195).
+
+It writes no Firestore document, so Book stays up and no cold start follows. It
+runs in two steps, and the apply deletes only what the plan names. Each delete
+leaves a noncurrent version that the bucket keeps 90 days (D94), and the plan file's
+generations are the way back.
+
+```bash
+PROJECT=pbe-book-prod        # or pbe-book-staging
+BUCKET=pbe-book-prod-images  # IMAGE_BUCKET in infra/environments/<env>.env
+
+# 1. Plan: lists the bucket, reads every pointer, writes
+#    restore-artifacts/image-sweep-plan-<timestamp>.json. Changes nothing.
+npm run images:sweep --workspace apps/api -- --project $PROJECT --bucket $BUCKET --plan
+
+# 2. REVIEW the counts (referenced / orphaned, by reason) and the plan file.
+#    Anything created in the last hour is left out (an upload may be between its
+#    objects and its pointer, D98). A WARN line is a profile whose photo is missing,
+#    which is the integrity job's business: investigate it, don't sweep past it.
+
+# 3. Apply exactly that file. Each object is re-checked against the live pointers
+#    and deleted only at its planned generation.
+npm run images:sweep --workspace apps/api -- --project $PROJECT --bucket $BUCKET   --apply restore-artifacts/image-sweep-plan-<timestamp>.json --dry-run   # then --confirm $PROJECT
+```
+
+⚠ Once a sweep has run, a restore of an older backup will find its photos'
+objects missing: the snapshot's pointers name versions that are now noncurrent.
+Restoring those generations is a by-hand `gcloud storage cp` per object (the sweep's
+record lists them). Sweep only when the photos it deletes are accepted as gone.
 
 ## Linking profiles to Ghost members (D183) — the procedure
 

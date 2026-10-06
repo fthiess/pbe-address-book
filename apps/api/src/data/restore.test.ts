@@ -221,6 +221,28 @@ describe("validateSnapshot — reference integrity", () => {
     expect(report.warnings).toHaveLength(2);
   });
 
+  it("warns but does not refuse on a dangling attribution — the hard delete leaves them by design", () => {
+    const report = validateSnapshot(
+      dataset({
+        profiles: [
+          doc({ id: 5001, verifiedBy: 5001 }),
+          doc({
+            id: 5002,
+            verifiedBy: 9001,
+            deceasedConsentSnapshot: { verifiedBy: 9002 },
+            debrotherConsentSnapshot: { verifiedBy: 5001 },
+          }),
+        ],
+        config: [{ id: "systemBanner", data: { updatedBy: 9003 } }],
+      }),
+    );
+    expect(report.errors).toEqual([]);
+    expect(report.warnings).toHaveLength(3);
+    expect(messages(report.warnings)).toContain("`verifiedBy` names #9001");
+    expect(messages(report.warnings)).toContain("`deceasedConsentSnapshot.verifiedBy` names #9002");
+    expect(messages(report.warnings)).toContain("`updatedBy` names #9003");
+  });
+
   it("warns on an unrecognized config singleton, restoring it verbatim", () => {
     const report = validateSnapshot(
       dataset({

@@ -189,7 +189,7 @@ Required / default / visibility / validation for each field. The **Visibility** 
 
 | Field | Type | Required | Default | Visibility | Notes |
 |---|---|---|---|---|---|
-| `id` | `number` | yes | — | public | Positive integer, unique, immutable after creation. |
+| `id` | `number` | yes | — | public | Positive integer, unique, immutable after creation (one deliberate exception: the 2026-10-06 renumber, D195). |
 | `role` | `Role` (`'brother'\|'manager'\|'admin'`) | domain: yes | `brother` (by omission) | public | Book permission level; stored **optionally** (an omitted document is a `brother`, normalized at hydration). Public read; **protected write** — set only by the change-role action, never via PATCH (decision D128). |
 | `firstName` | `string` | yes | — | public | Non-empty. |
 | `middleName` | `string?` | no | absent | public | |
@@ -365,7 +365,7 @@ Headshots and their thumbnails are binary objects, so they live in Google Cloud 
 
 Applied on write (server-authoritative; the client validates the same rules for fast feedback).
 
-- **`id`** — positive integer; unique across `profiles`; immutable once created.
+- **`id`** — positive integer; unique across `profiles`; immutable once created. No write path can change it; the one correction ever made (D195) went through an offline restore.
 - **`firstName`, `lastName`** — present, non-empty after trimming.
 - **`classYear`** — integer in `[1890, currentYear + 6]`, or `null`.
 - **`email`, `alternateEmail`** — match a basic email pattern (`name@domain.tld`). Stored **normalized** — lowercased, trimmed, Unicode-NFC — with only the normalized form persisted; the identical normalization is applied to the authentication identity (the Ghost JWT `sub`) at resolution, closing case/Unicode drift between Ghost and Book. No provider-specific (Gmail dot/plus) normalization. Email must be **unique across all profiles**, with primary `email` and `alternateEmail` sharing **one namespace** (no address appears twice anywhere in Book); uniqueness is enforced by the single authoritative instance's in-memory email→profile index (ENGINEERING-DESIGN §2.1, decision D97), and resolution **fails closed** — a normalized address that maps to more than one profile denies sign-in rather than guessing. `alternateEmail` is rejected unless `email` is also present.

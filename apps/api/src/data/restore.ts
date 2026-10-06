@@ -377,6 +377,44 @@ function checkReferences(
 }
 
 /**
+ * The attribution fields (OFC-463): each profile's `verifiedBy` and the two consent
+ * snapshots' `verifiedBy`, and the banner's `updatedBy`. **Warnings**, not errors:
+ * the admin hard delete leaves them naming the deleted brother by design (they
+ * record who acted, and nothing dereferences them), so a dangling one is a state
+ * Book produces. Reported because a wrong one is otherwise invisible — the
+ * Constitution-ID renumber (D195) is what made them worth checking.
+ */
+function checkAttributions(
+  collections: BackupData,
+  profileIds: ReadonlySet<number>,
+  warnings: RestoreIssue[],
+): void {
+  const attributions: [where: string, value: unknown][] = [];
+  for (const doc of collections.profiles) {
+    attributions.push([`Profile "${doc.id}" \`verifiedBy\``, doc.data.verifiedBy]);
+    for (const field of ["deceasedConsentSnapshot", "debrotherConsentSnapshot"]) {
+      const snapshot = doc.data[field];
+      if (isPlainObject(snapshot)) {
+        attributions.push([`Profile "${doc.id}" \`${field}.verifiedBy\``, snapshot.verifiedBy]);
+      }
+    }
+  }
+  for (const doc of collections.config) {
+    if (doc.id === "systemBanner") {
+      attributions.push(['`config` "systemBanner" `updatedBy`', doc.data.updatedBy]);
+    }
+  }
+  for (const [where, value] of attributions) {
+    if (typeof value === "number" && !profileIds.has(value)) {
+      warnings.push({
+        rule: "referenceIntegrity",
+        message: `${where} names #${value}, who is not in the snapshot.`,
+      });
+    }
+  }
+}
+
+/**
  * Every big-brother cycle in the snapshot, each returned as the ids that form it.
  *
  * Deliberately **not** the route's `formsCycle` (`routes/profiles.ts`), which asks
@@ -470,6 +508,7 @@ export function validateSnapshot(
   checkIds(collections.users, "users", errors);
   checkEmails(collections.profiles, errors, warnings, options.allowDuplicateEmails === true);
   checkReferences(collections, profileIds, errors, warnings);
+  checkAttributions(collections, profileIds, warnings);
   checkCycles(collections.profiles, profileIds, errors);
 
   // An empty roster is never a restore anyone means to perform, and it is what a

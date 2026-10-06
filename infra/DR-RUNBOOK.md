@@ -105,6 +105,15 @@ Then the real thing, in order:
    predates D183 and has no `ghostMemberId`s. Until they are back, a primary-email
    edit mints a duplicate Ghost member and locks the brother out (N180).
 
+   ⚠ **If the snapshot was taken before the 2026-10-06 Constitution-ID renumber
+   (D195; the exact cut-over instant is in N198), it carries the OLD numbering:**
+   the 44 brothers from #1437 up sit one number too high, a non-initiate is back at
+   #1437, and restoring it silently undoes the fix. Don't, unless that is the
+   intent. If it truly is the only good snapshot, restore it and then re-run the
+   renumber exactly as N198 records it. Once `images:sweep` has removed the
+   old-prefix images, that snapshot's moved brothers will also have no photo
+   objects.
+
 4. **Bring Book back up**, only after step 3's cold start:
    ```bash
    ENV_FILE=infra/environments/prod.env bash infra/maintenance-end.sh
