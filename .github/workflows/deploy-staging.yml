@@ -54,7 +54,9 @@ concurrency:
 jobs:
   deploy:
     name: Deploy to staging
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: GitHub moves that label to 26.04 gradually from
+    # 2026-10-19 to 11-19, so a floating label would mix images run to run (D196).
+    runs-on: ubuntu-26.04
     # No job-level guard: both triggers are deploy-worthy on their own. The push
     # trigger is already branch- and path-filtered above, and a workflow_dispatch
     # is a deliberate human act. (The old `if` existed to interrogate a
