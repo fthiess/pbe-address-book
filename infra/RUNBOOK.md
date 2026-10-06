@@ -215,7 +215,9 @@ Forrest's manual step, from the `pbe-news-ghost-theme` repo (packaged with
 ### 2. Tag, notes, dispatch (on Forrest's go-ahead)
 
 Tags are dated: `vYYYY.MM.DD`, with `.2`, `.3` … for a second release the same
-day (semver is OFC-430's decision, PL-14). Tag the exact `origin/main` commit
+day — `v2026.10.06`, then `v2026.10.06.2`, never `-2`, which semver reads as a
+pre-release of the morning's tag (Forrest's call, D194; semver itself is OFC-430's
+decision, PL-14). The first release of a day always takes the bare date. Tag the exact `origin/main` commit
 that was reviewed, then publish the notes as a GitHub Release on that tag — the
 changes and the OFC tickets they close, **never a brother's name** (the repo is
 public):

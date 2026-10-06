@@ -340,13 +340,18 @@ state.
 until a release contains `infra/verify-backup.sh` (it arrived after
 `v2026.10.04`). Release first, then:
 
-1. **Run it once and watch it** (D151: the first run is confirmed by eye):
+1. **Run it once and watch it** (D151: the first run is confirmed by eye).
+   Scheduler refuses to run a paused job (`Job.state must be ENABLED`), so resume
+   it, run it, and pause it again in one line. `run` has handed the build to Cloud
+   Build by the time it returns, so the pause cancels nothing, and the schedule
+   fires only on Mondays:
    ```bash
-   gcloud scheduler jobs run book-backup-verify --location=us-central1 --project=pbe-book-verify
+   gcloud scheduler jobs resume book-backup-verify --location=us-central1 --project=pbe-book-verify && gcloud scheduler jobs run book-backup-verify --location=us-central1 --project=pbe-book-verify && gcloud scheduler jobs pause book-backup-verify --location=us-central1 --project=pbe-book-verify
    ```
-   If gcloud refuses to run a paused job, resume it, run it, and pause it again
-   straight away. The schedule fires only on Mondays, so this window is harmless.
-   In the Cloud Build history, confirm that the source is the expected release,
+   ⚠ A hand run of `verify-backup.sh` is **not** a rehearsal of this step: the
+   bootstrap that fetches the release runs only inside Cloud Build, in the step
+   image, and the first scheduled run failed there on a tool the workstation has
+   (N197). In the Cloud Build history, confirm that the source is the expected release,
    that the source buckets are production's, that the `VERDICT` line is all
    `true`, that the log ends with `BOOK-VERIFY-RESULT=PASS`, and that
    `gcloud firestore databases list --project pbe-book-verify` shows no `verify-*`
