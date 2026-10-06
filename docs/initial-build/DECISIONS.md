@@ -4008,3 +4008,46 @@ A delete leaves a noncurrent version for 90 days (D94), and the plan file's gene
 - The operator artifacts of earlier runs are keyed on old ids: genesis, ghost-seed plans, and the D182 undo and purge files. They move to `restore-artifacts/pre-renumber/`, so none is applied by mistake.
 - The as-run record is N198.
 
+### N198 — The Constitution-ID renumber as run on production *(2026-10-06 — OFC-463; D195)*
+
+**Cut-over: 2026-10-06T19:21:31Z.** Every backup taken before this instant carries the old numbering. The last such backup is `backups/2026-10-06T19-12-46-459Z.json`, the one the renumber was transformed from; the first post-renumber backup is `backups/2026-10-06T19-24-37-497Z.json`.
+
+**Before the window.** Forrest took a manual offline backup, then deleted the non-initiate at #1437 with the admin hard delete and confirmed his Ghost member was gone. PR #296 (D195's tooling, plus the `/img/*` current-version check) merged on green after a high-effort `/code-review`, with all 8 findings fixed in the PR. The rehearsal used a fresh production backup (`19-06-02-068Z`, post-delete) in a named database (`rehearsal`) on the local Firestore emulator:
+- restore the backup;
+- run `renumber --snapshot`;
+- dry-run and then really restore the result;
+- run a scratch check script (outside the repo, because it prints real names) that hydrates Book's real `ProfileCache`: 25 checks, all passing;
+- restore the safety snapshot, which brought back collections byte-identical to the original backup, so rollback was proven;
+- dry-run `--copy-images` against the production bucket: 88 would-copy, no errors.
+
+**The window, 19:12:29Z – 19:24:13Z (11 min 44 s, including the wait for Forrest's go on the two destructive steps).**
+1. `maintenance-begin.sh` ran clean (the page served at `/` and at `/api/health`).
+2. An on-demand backup ran (`gcloud scheduler jobs run book-daily-backup`).
+3. `renumber --snapshot --object backups/2026-10-06T19-12-46-459Z.json --gap 1437 --expect 44`:
+   - validation passed with 0 warnings;
+   - 44 profiles moved, #1438–#1481 → #1437–#1480;
+   - 25 `bigBrotherId`, 1 `verifiedBy` and 2 `users` docs remapped;
+   - 0 stars, 0 consent-snapshot `verifiedBy`, 0 banner `updatedBy`;
+   - 88 image objects to copy, and no free-text hits.
+4. `--copy-images`: 88 copied, each MD5-verified; the copy preserves `image/webp`.
+5. Restore `--dry-run`: profiles −1 stale (old #1481), `users` −2 stale (old #1469, #1476), privileged roster unchanged. **Forrest said go.** The real restore wrote 1,558 documents and removed 3 in 9 s. The safety snapshot was written first, and the forensic entry reached the `audit-logs` bucket.
+6. `--purge-sessions`: 5 deleted.
+7. Cold start: revision `pbe-book-api-00013-xwr`, same image, logged `1479 profiles cached`.
+8. The check script against production Firestore: all 25 checks passed.
+9. `maintenance-end.sh` re-released Hosting version `396c6e14fb5fc1a9`, and `book.pbe400.org/api/health` answered 200.
+
+**After.**
+- A post-change backup was taken and the integrity job run by hand (`book-backup-verify`): **PASS** on `19-24-37-497Z`, including `imagesPresent`.
+- The first-hour log check showed no warnings and no 4xx/5xx.
+- The undo record is in `apps/api/restore-artifacts/ofc-463/` in the main checkout (gitignored, real PII): the safety snapshot, the transformed snapshot, the plan and the image-copy record. The 17 artifacts of earlier runs, all keyed on old ids, moved to `restore-artifacts/pre-renumber/` with a README warning.
+
+**What the run taught.**
+- The ticket said both brothers with `users` docs in the moved range had self-verified. Only one had: the other signed in without ever verifying. The tool's count was right, and the hand-written expectation was wrong. **Compute expectations from data on the day, not from a ticket.**
+- `restore` takes `--out-dir`; `renumber`, `headshots:bulk` and `images:sweep` take `--out`. The difference is harmless but cost one re-run.
+- ⚠ The integrity job's builds are **regional**. `gcloud builds list --project pbe-book-verify` without `--region us-central1` lists nothing, which looks exactly like "still running".
+
+**Still open.**
+- Forrest certifies the result in the app. Then `images:sweep` removes the 88 old-prefix objects together with OFC-448's replaced photos and any other strays.
+- The `/img/*` current-version check is on staging now and reaches production with the next release.
+- Mixpanel's `Constitution ID` for the moved brothers corrects itself at each one's next sign-in.
+

@@ -106,7 +106,8 @@ Then the real thing, in order:
    edit mints a duplicate Ghost member and locks the brother out (N180).
 
    ⚠ **If the snapshot was taken before the 2026-10-06 Constitution-ID renumber
-   (D195; the exact cut-over instant is in N198), it carries the OLD numbering:**
+   (D195/N198: **any snapshot taken before 2026-10-06T19:21:31Z** — the last is
+   `backups/2026-10-06T19-12-46-459Z.json`), it carries the OLD numbering:**
    the 44 brothers from #1437 up sit one number too high, a non-initiate is back at
    #1437, and restoring it silently undoes the fix. Don't, unless that is the
    intent. If it truly is the only good snapshot, there are two ways to fix it
@@ -344,6 +345,16 @@ production's backup and image buckets and writes nothing outside
 ⚠ **Detection is presence-based only** (D151, D148). A job that is paused,
 deleted or never scheduled sends nothing, ever. Every few months, glance at the
 build history and see that runs exist.
+
+⚠ **The builds are regional.** List and read them with `--region us-central1`.
+Without it, `gcloud builds list --project pbe-book-verify` shows nothing, which
+looks exactly like "still running" (N198):
+```bash
+gcloud builds list --project pbe-book-verify --region us-central1 --limit 3
+gcloud builds log <id> --project pbe-book-verify --region us-central1 | grep BOOK-VERIFY-RESULT
+```
+To run the job by hand while it is **enabled** (armed since 2026-10-06), use `jobs run` alone; the
+resume/run/pause line above is for a paused job.
 
 **Provisioning** (Forrest's to run: it creates a project and grants read on
 production's buckets):
