@@ -191,6 +191,15 @@ read -r -d '' BOOTSTRAP <<EOF || true
 set -uo pipefail
 repo="${GITHUB_REPO}"
 rc=0
+# The step image ships without curl since its Debian 13 rebuild (N197), and both
+# this bootstrap and verify-backup.sh's Node install need it. Conditional, so an
+# image that carries curl again skips the install; a failed install falls through
+# to the FAIL marker below like any other failure.
+if ! command -v curl >/dev/null 2>&1; then
+  echo "==> Installing curl (not in the step image)"
+  { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends curl ca-certificates >/dev/null; } \
+    || echo "!! could not install curl" >&2
+fi
 tag="\$(curl -fsSI "https://github.com/\${repo}/releases/latest" | tr -d '\015' | sed -n 's#^[Ll]ocation: .*/releases/tag/##p')"
 if [ -z "\${tag}" ]; then
   echo "!! could not resolve the latest release of \${repo}" >&2
