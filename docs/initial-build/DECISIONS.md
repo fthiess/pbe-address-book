@@ -4051,3 +4051,13 @@ A delete leaves a noncurrent version for 90 days (D94), and the plan file's gene
 - The `/img/*` current-version check is on staging now and reaches production with the next release.
 - Mixpanel's `Constitution ID` for the moved brothers corrects itself at each one's next sign-in.
 
+### D196 — Every workflow job runs on a pinned `ubuntu-26.04`, not `ubuntu-latest` *(2026-10-06 — Forrest's call, option A at the OFC-462 plan gate)*
+
+GitHub moves the `ubuntu-latest` label from Ubuntu 24.04 to 26.04 "over a period of several weeks beginning October 19, 2026", finishing by November 19 (actions/runner-images#14748). All four of our jobs (`ci.yml`'s Verify gate, `deploy-staging.yml`'s deploy, and `deploy-prod.yml`'s `release-ref` and deploy) ran on the floating label, so for a month any run could land on either image, and the first production deploy on 26.04 would have been whichever release happened to draw it.
+
+**Options weighed.** (A) Prove the gate green on 26.04, then pin `ubuntu-26.04` explicitly. (B) Pin `ubuntu-24.04`, the lowest-risk move this week, which only postpones the same work to a later bump. (C) Prove green and stay on `ubuntu-latest`, the smallest diff, which accepts a mixed fleet until November 19 and the same surprise at the next LTS. **Forrest chose A**: the image becomes deterministic during the rollout, there is nothing to revisit until Ubuntu 28.04, and staging deploys on 26.04 at the merge, before any production release can.
+
+**What was checked against the 26.04 image manifest (image `20260927`) before the run.** Node 24 (`.nvmrc`) is in the 26.04 toolcache. Node 20, pinned for the Firebase CLI step because google-auth-library's STS fails under newer Node (N87; `infra/README.md`), is in **neither** image's toolcache: `setup-node` already downloads it on 24.04, and the `actions/node-versions` Linux build for 20.x is not tied to an OS version, so it behaves identically on 26.04. Java 21 is preinstalled (`setup-java` installs it explicitly regardless). Playwright 1.61.1 carries a native `ubuntu26.04` dependency table, so `install --with-deps chromium` needs no fallback. Google Cloud CLI is the same version on both images.
+
+**Proof.** The PR's own Verify gate ran on 26.04, and the merge's staging deploy is the first run of the deploy job on it. The staging deploy can't run from a branch (OFC-455's WIF ref lock), which is why the deploy is proven at the merge. Run links are on OFC-462. ⚠ **A pin is a decision, not a default:** when GitHub announces the next LTS (28.04), repeat this check in a ticket of its own. Until then, a runner-related CI failure is not "GitHub moved the label underneath us".
+

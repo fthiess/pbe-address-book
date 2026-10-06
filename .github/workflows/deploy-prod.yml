@@ -40,7 +40,9 @@ concurrency:
 jobs:
   release-ref:
     name: Refuse a non-release ref
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: GitHub moves that label to 26.04 gradually from
+    # 2026-10-19 to 11-19, so a floating label would mix images run to run (D196).
+    runs-on: ubuntu-26.04
     permissions: {}
     steps:
       - name: Require a v* release tag
@@ -60,7 +62,8 @@ jobs:
   deploy:
     name: Deploy to production
     needs: verify
-    runs-on: ubuntu-latest
+    # Same image pin as release-ref (D196).
+    runs-on: ubuntu-26.04
     # Forrest's approval gate and the tags-only policy (D184). The approval
     # prompt appears only after the gate above is green.
     environment: production
